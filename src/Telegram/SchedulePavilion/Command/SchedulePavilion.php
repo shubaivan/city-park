@@ -50,7 +50,7 @@ class SchedulePavilion extends Conversation
         $bot->sendMessage(
             text: 'Альтанка №' . $this->pavilion
         );
-        $current = new \DateTime();
+        $current = $this->createNewDate();
         $currentMonth = (int)$current->format('m');
         $last = (clone $current)->modify('last day of december this year');
         $lastMonth = (int)$last->format('m');
@@ -92,7 +92,7 @@ class SchedulePavilion extends Conversation
         $bot->sendMessage(
             text: 'Місяць ' . $this->month
         );
-        $current = new \DateTime();
+        $current = $this->createNewDate();
         $currentDay = (int)$current->format('d');
         $last = (clone $current)->modify('last day of');
         $lastDay = (int)$last->format('d');
@@ -136,7 +136,7 @@ class SchedulePavilion extends Conversation
             text: 'День ' . $this->day
         );
 
-        $current = new \DateTime();
+        $current = $this->createNewDate();
 
         $scheduledSets = $this->schedulePavilionService->getExistSet(
             (int)$current->format('Y'),
@@ -144,7 +144,7 @@ class SchedulePavilion extends Conversation
             (int)$this->day,
         );
 
-        $chosenDate = new \DateTime();
+        $chosenDate = $this->createNewDate();
         $chosenDate->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
         $chosenDate->setTime(0,0);
         if ($current->format('Y-m-d') == $chosenDate->format('Y-m-d')) {
@@ -181,8 +181,9 @@ class SchedulePavilion extends Conversation
         }
         $inlineKeyboardMarkup->addRow(InlineKeyboardButton::make(text: 'На початок', callback_data: 0));
         foreach ($scheduledSets as $key => $set) {
+            $key = strlen($key) == 1 ? '0'.$key : $key;
             $bot->sendMessage(
-                text: sprintf('годин %s заброньована %s', $key, $set),
+                text: sprintf('година %s:00, заброньована: %s', $key, $set),
             );
         }
         $bot->sendMessage(
@@ -203,8 +204,8 @@ class SchedulePavilion extends Conversation
 
         $this->hour = $bot->callbackQuery()->data;
 
-        $current = new \DateTime();
-        $dateTime = new \DateTime();
+        $current = $this->createNewDate();
+        $dateTime = $this->createNewDate();
         $dateTime->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
         $dateTime->setTime((int)$this->hour,0);
         $bot->sendMessage(
@@ -232,7 +233,7 @@ class SchedulePavilion extends Conversation
 
         $scheduledSet = (new ScheduledSet())
             ->setTelegramUserId($this->telegramUserService->getCurrentUser())
-            ->setYear((int)(new \DateTime())->format('Y'))
+            ->setYear((int)($this->createNewDate())->format('Y'))
             ->setMonth((int)$this->month)
             ->setDay((int)$this->day)
             ->setHour((int)$this->hour)
@@ -266,5 +267,10 @@ class SchedulePavilion extends Conversation
         );
 
         $this->end();
+    }
+
+    private function createNewDate(string $timeZone = 'Europe/Kyiv')
+    {
+        return (new \DateTime())->setTimezone(new \DateTimeZone($timeZone));
     }
 }

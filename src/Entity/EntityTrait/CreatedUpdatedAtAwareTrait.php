@@ -43,13 +43,13 @@ trait CreatedUpdatedAtAwareTrait
     #[ORM\PrePersist]
     public function prePersist(): void
     {
-        $this->created_at = new \DateTime();
-        $this->updated_at = new \DateTime();
+        $this->created_at = (new \DateTime())->setTimezone(new \DateTimeZone('Europe/Kyiv'));
+        $this->updated_at = (new \DateTime())->setTimezone(new \DateTimeZone('Europe/Kyiv'));
     }
 
     #[ORM\PreUpdate]
     public function preUpdate(): void
     {
-        $this->updated_at = new \DateTime();
+        $this->updated_at = (new \DateTime())->setTimezone(new \DateTimeZone('Europe/Kyiv'));
     }
 }

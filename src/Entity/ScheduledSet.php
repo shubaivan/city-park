@@ -2,6 +2,7 @@
 
 namespace App\Entity;
 
+use App\Entity\EntityTrait\CreatedUpdatedAtAwareTrait;
 use App\Repository\ScheduledSetRepository;
 use App\Validator\ScheduleLimit;
 use Doctrine\ORM\Mapping as ORM;
@@ -12,8 +13,11 @@ use Symfony\Component\Validator\Constraints\NotBlank;
 #[ORM\Index(name: "unique_set", columns: ["telegram_user_id", "year", "month", "day", "hour", "pavilion"], options: ['unique' => true])]
 #[UniqueEntity(fields: ["telegramUserId", "year", "month", "day", "hour", "pavilion"], message: 'Хтось вже забронював. Оберіть інший час')]
 #[ScheduleLimit]
+#[ORM\HasLifecycleCallbacks()]
 class ScheduledSet
 {
+    use CreatedUpdatedAtAwareTrait;
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
