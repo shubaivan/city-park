@@ -1,0 +1,30 @@
+version: '3'
+
+services:
+  db-citypark:
+    # Name of the image and tag the Dockerfile creates (update this as needed)
+    # image: timescale/timescaledb:1.6.0-pg12
+    image: postgres:${POSTGRES_VERSION:-16}-alpine
+    command: postgres -c work_mem=4GB -c max_parallel_workers_per_gather=8 -c max_connections=900
+    #    command: ["-c", "config_file=/postgresql_custom.conf"]
+    volumes:
+      - 'psql_db_citypark:/data:rw'
+    ports:
+      - '127.0.0.1:5433:5432'
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    networks:
+      - citypark
+    logging:
+      options:
+        max-size: 20m
+        max-file: "3"
+
+volumes:
+  psql_db_citypark:
+
+networks:
+  citypark:
