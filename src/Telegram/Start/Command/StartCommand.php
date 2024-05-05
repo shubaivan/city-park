@@ -18,6 +18,7 @@ class StartCommand extends Command
             text: 'Оберіть:',
             reply_markup: InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make('Бронювання альтанки', callback_data: 'schedule-pavilion'),
+                InlineKeyboardButton::make('Переглянути свої', callback_data: 'own-schedule'),
                 InlineKeyboardButton::make('Як доїхати?', callback_data: 'type:route'),
             )
         );
