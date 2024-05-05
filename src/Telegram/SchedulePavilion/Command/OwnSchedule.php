@@ -38,6 +38,7 @@ class OwnSchedule extends Conversation
                 parse_mode: ParseMode::HTML
             );
             $this->end();
+            return;
         }
         foreach ($scheduledSets as $set) {
             $scheduledByCurrentUserDate = $set->getScheduledDateTime();
