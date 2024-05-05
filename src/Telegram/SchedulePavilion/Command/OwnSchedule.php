@@ -2,7 +2,6 @@
 
 namespace App\Telegram\SchedulePavilion\Command;
 
-use App\Entity\ScheduledSet;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -11,8 +10,6 @@ use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
-use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
-use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 class OwnSchedule extends Conversation
 {
@@ -38,6 +35,7 @@ class OwnSchedule extends Conversation
                 parse_mode: ParseMode::HTML
             );
             $this->end();
+
             return;
         }
         foreach ($scheduledSets as $set) {
@@ -91,7 +89,7 @@ class OwnSchedule extends Conversation
             $this->end();
         }
         $bot->sendMessage(
-            text: 'Дата: ' . $scheduledSet->getScheduledDateTime()->format('Y/m/d H:i') ,
+            text: 'Дата: ' . $scheduledSet->getScheduledDateTime()->format('Y/m/d H:i'),
         );
         $bot->sendMessage(
             text: 'Видалити бронювання? Натисніть *Підтверджую*',
