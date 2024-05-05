@@ -31,4 +31,24 @@ class SchedulePavilionService
 
         return $scheduled;
     }
+
+    /**
+     * @param TelegramUser $user
+     * @return ScheduledSet[]
+     */
+    public function getOwn(TelegramUser $user)
+    {
+        $scheduledSets = $this->repository->getOwn($user);
+        $scheduled = [];
+        foreach ($scheduledSets as $scheduledSet) {
+            $scheduled[$scheduledSet->getHour()] = $scheduledSet;
+        }
+
+        return $scheduled;
+    }
+
+    public function getById(int $id): ?ScheduledSet
+    {
+        return $this->repository->getById($id);
+    }
 }

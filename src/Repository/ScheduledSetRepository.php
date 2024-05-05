@@ -54,4 +54,24 @@ class ScheduledSetRepository extends ServiceEntityRepository
 
         return $qb->getQuery()->getSingleScalarResult();
     }
+
+    /**
+     * @param TelegramUser $user
+     * @return ScheduledSet[]
+     */
+    public function getOwn(TelegramUser $user): array
+    {
+        $qb = $this->createQueryBuilder('ss');
+        $qb->andWhere('ss.telegramUserId = :user')->setParameter('user', $user);
+
+        return $qb->getQuery()->getResult();
+    }
+
+    public function getById(int $id): ?ScheduledSet
+    {
+        $qb = $this->createQueryBuilder('ss');
+        $qb->andWhere('ss.id = :id')->setParameter('id', $id);
+
+        return $qb->getQuery()->getOneOrNullResult();
+    }
 }
