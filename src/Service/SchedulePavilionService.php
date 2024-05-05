@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\ScheduledSetRepository;
 
@@ -12,12 +13,20 @@ class SchedulePavilionService
         private ScheduledSetRepository $repository
     ) {}
 
-    public function getExistSet(int $year, int $month, int $day, ?int $hour = null, ?TelegramUser $user = null)
+    /**
+     * @param int $year
+     * @param int $month
+     * @param int $day
+     * @param int|null $hour
+     * @param TelegramUser|null $user
+     * @return ScheduledSet[]
+     */
+    public function getExistSet(int $year, int $month, int $day, ?int $hour = null, ?TelegramUser $user = null): array
     {
         $scheduledSets = $this->repository->getByParams($year, $month, $day, $hour, $user);
         $scheduled = [];
         foreach ($scheduledSets as $scheduledSet) {
-            $scheduled[$scheduledSet->getHour()] = $scheduledSet->getTelegramUserId()->concatNameInfo();
+            $scheduled[$scheduledSet->getHour()] = $scheduledSet;
         }
 
         return $scheduled;

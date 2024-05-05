@@ -125,5 +125,17 @@ class ScheduledSet
         return $this;
     }
 
+    public function getScheduledDateTime(): \DateTime
+    {
+        $scheduledByCurrentUserDate = $this->createNewDate();
+        $scheduledByCurrentUserDate->setDate($this->getYear(), $this->getMonth(), $this->getDay());
+        $scheduledByCurrentUserDate->setTime($this->getHour(),0);
 
+        return $scheduledByCurrentUserDate;
+    }
+
+    private function createNewDate(string $timeZone = 'Europe/Kyiv'): \DateTime
+    {
+        return (new \DateTime())->setTimezone(new \DateTimeZone($timeZone));
+    }
 }

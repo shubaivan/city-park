@@ -34,19 +34,23 @@ class SchedulePavilion extends Conversation
         $bot->sendMessage(
             text: 'Оберіть альтанку',
             reply_markup: InlineKeyboardMarkup::make()
-                ->addRow(InlineKeyboardButton::make('Перша', callback_data: '1'), InlineKeyboardButton::make('Друга', callback_data: '2'))
+                ->addRow(
+                    InlineKeyboardButton::make('Перша', callback_data: 'number_1'),
+                    InlineKeyboardButton::make('Друга', callback_data: 'number_2')
+                )
         );
         $this->next('chooseMonth');
     }
 
     public function chooseMonth(Nutgram $bot)
     {
-        if (!$bot->isCallbackQuery()) {
+        if (!$bot->isCallbackQuery() || !str_contains($bot->callbackQuery()->data, 'number_')) {
             $this->choosePavilion($bot);
 
             return;
         }
-        $this->pavilion = $bot->callbackQuery()->data;
+        $this->pavilion = str_replace('number_', '', $bot->callbackQuery()->data);
+
         $bot->sendMessage(
             text: 'Альтанка №' . $this->pavilion
         );
@@ -63,7 +67,9 @@ class SchedulePavilion extends Conversation
             } else {
                 $format = $current->modify('+1 month')->format('Y-m');
             }
-            $month[] = InlineKeyboardButton::make(text: $format, callback_data: $current->format('m'));
+            $month[] = InlineKeyboardButton::make(
+                text: $format, callback_data: 'month_' . $current->format('m')
+            );
             if (count($month) == 3) {
                 $inlineKeyboardMarkup->addRow(...$month);
                 $month = [];
@@ -83,12 +89,13 @@ class SchedulePavilion extends Conversation
 
     public function chooseDay(Nutgram $bot)
     {
-        if (!$bot->isCallbackQuery() || $bot->callbackQuery()->data == "0") {
+        if (!$bot->isCallbackQuery() || $bot->callbackQuery()->data == "0" || !str_contains($bot->callbackQuery()->data, 'month_')) {
             $this->choosePavilion($bot);
 
             return;
         }
-        $this->month = $bot->callbackQuery()->data;
+
+        $this->month = str_replace('month_', '', $bot->callbackQuery()->data);
         $bot->sendMessage(
             text: 'Місяць ' . $this->month
         );
@@ -105,7 +112,9 @@ class SchedulePavilion extends Conversation
             } else {
                 $format = $current->modify('+1 day')->format('F-d');
             }
-            $days[] = InlineKeyboardButton::make(text: $format, callback_data: $current->format('d'));
+            $days[] = InlineKeyboardButton::make(
+                text: $format, callback_data: 'day_' . $current->format('d')
+            );
             if (count($days) == 5) {
                 $inlineKeyboardMarkup->addRow(...$days);
                 $days = [];
@@ -125,13 +134,14 @@ class SchedulePavilion extends Conversation
 
     public function chooseTimeSet(Nutgram $bot)
     {
-        if (!$bot->isCallbackQuery() || $bot->callbackQuery()->data == "0") {
+        if (!$bot->isCallbackQuery() || $bot->callbackQuery()->data == "0" || !str_contains($bot->callbackQuery()->data, 'day_')) {
             $this->choosePavilion($bot);
 
             return;
         }
 
-        $this->day = $bot->callbackQuery()->data;
+        $this->day = str_replace('day_', '', $bot->callbackQuery()->data);
+
         $bot->sendMessage(
             text: 'День ' . $this->day
         );
@@ -159,16 +169,23 @@ class SchedulePavilion extends Conversation
 
         $inlineKeyboardMarkup = InlineKeyboardMarkup::make();
         $hours = [];
+        $presentAvailableSets = false;
         for ($i = $currentHour; $i<$last; $i++) {
             if (array_key_exists($i, $scheduledSets)) {
                 $chosenDate->modify('+1 hour');
                 continue;
             } elseif ($i == $currentHour) {
+                $presentAvailableSets = true;
                 $format = $chosenDate->format('D/H-i');
-                $hours[] = InlineKeyboardButton::make(text: $format, callback_data: $chosenDate->format('H'));
+                $hours[] = InlineKeyboardButton::make(
+                    text: $format, callback_data: 'hour_' . $chosenDate->format('H')
+                );
             } else {
+                $presentAvailableSets = true;
                 $format = $chosenDate->modify('+1 hour')->format('D/H-i');
-                $hours[] = InlineKeyboardButton::make(text: $format, callback_data: $chosenDate->format('H'));
+                $hours[] = InlineKeyboardButton::make(
+                    text: $format, callback_data: 'hour_' . $chosenDate->format('H')
+                );
             }
 
             if (count($hours) == 3) {
@@ -176,56 +193,164 @@ class SchedulePavilion extends Conversation
                 $hours = [];
             }
         }
+
         if (count($hours)) {
             $inlineKeyboardMarkup->addRow(...$hours);
         }
+
         $inlineKeyboardMarkup->addRow(InlineKeyboardButton::make(text: 'На початок', callback_data: 0));
-        foreach ($scheduledSets as $key => $set) {
-            $key = strlen($key) == 1 ? '0'.$key : $key;
+
+        /** @var InlineKeyboardButton[] $availableDecline */
+        $availableDecline = [];
+        foreach ($scheduledSets as  $set) {
+            $key = strlen($set->getHour()) == 1 ? '0'.$set->getHour() : $set->getHour();
+            if ($set->getTelegramUserId()->getTelegramId() == $this->telegramUserService->getCurrentUser()->getTelegramId()) {
+                $scheduledByCurrentUserDate = $set->getScheduledDateTime();
+
+                $availableDecline[] = InlineKeyboardButton::make(
+                    text: 'Відмінити: ' . $scheduledByCurrentUserDate->format('D/H-i'),
+                    callback_data: 'decline_' . $key
+                );
+            } else {
+                $bot->sendMessage(
+                    text: sprintf('година %s:00, заброньована: %s', $key, $set->getTelegramUserId()->concatNameInfo()),
+                );
+            }
+        }
+
+        if ($availableDecline) {
+            $scheduledInlineKeyboardMarkup = InlineKeyboardMarkup::make();
+            $declineHours = [];
+            foreach ($availableDecline as $decline) {
+                $declineHours[] = $decline;
+                if (count($declineHours) == 1) {
+                    $scheduledInlineKeyboardMarkup->addRow(...$declineHours);
+                    $declineHours = [];
+                }
+            }
+
+            if (count($declineHours)) {
+                $scheduledInlineKeyboardMarkup->addRow(...$declineHours);
+            }
+
             $bot->sendMessage(
-                text: sprintf('година %s:00, заброньована: %s', $key, $set),
+                text: 'Ваші бронювання:',
+                reply_markup: $scheduledInlineKeyboardMarkup
             );
         }
-        $bot->sendMessage(
-            text: 'Оберіть час',
-            reply_markup: $inlineKeyboardMarkup,
-        );
+
+        if ($presentAvailableSets) {
+            $bot->sendMessage(
+                text: 'Оберіть час нового бронювання:',
+                reply_markup: $inlineKeyboardMarkup,
+            );
+        } else {
+            $bot->sendMessage(
+                text: 'Нажадь немає доступних бронювань. Оберіть іншу дату.',
+                reply_markup: $inlineKeyboardMarkup,
+            );
+        }
+
 
         $this->next('scheduleDate');
     }
 
     public function scheduleDate(Nutgram $bot)
     {
-        if (!$bot->isCallbackQuery() || $bot->callbackQuery()->data == "0") {
+        if (!$bot->isCallbackQuery()
+            || $bot->callbackQuery()->data == "0"
+            || (!str_contains($bot->callbackQuery()->data, 'hour_') && !str_contains($bot->callbackQuery()->data, 'decline_'))
+        ) {
             $this->choosePavilion($bot);
 
             return;
         }
 
-        $this->hour = $bot->callbackQuery()->data;
+        $chosenHour = $bot->callbackQuery()->data;
+        if (str_contains($chosenHour, 'decline_')) {
+            $this->hour = str_replace('decline_', '', $chosenHour);
 
+            $current = $this->createNewDate();
+            $dateTime = $this->createNewDate();
+            $dateTime->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
+            $dateTime->setTime((int)$this->hour,0);
+            $bot->sendMessage(
+                text: 'Дата: ' . $dateTime->format('Y/m/d H:i') ,
+            );
+
+            $bot->sendMessage(
+                text: 'Видалити бронювання? Натисніть *Підтверджую*',
+                parse_mode: ParseMode::MARKDOWN,
+                reply_markup: InlineKeyboardMarkup::make()->addRow(
+                    InlineKeyboardButton::make(text: 'Підтверджую', callback_data: 1),
+                    InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
+                )
+            );
+
+            $this->next('removeScheduled');
+        } else {
+            $this->hour = str_replace('hour_', '', $chosenHour);
+
+            $current = $this->createNewDate();
+            $dateTime = $this->createNewDate();
+            $dateTime->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
+            $dateTime->setTime((int)$this->hour,0);
+            $bot->sendMessage(
+                text: 'Дата: ' . $dateTime->format('Y/m/d H:i') ,
+            );
+            $bot->sendMessage(
+                text: 'Якщо згодні натисніть *Підтверджую*',
+                parse_mode: ParseMode::MARKDOWN,
+                reply_markup: InlineKeyboardMarkup::make()->addRow(
+                    InlineKeyboardButton::make(text: 'Підтверджую', callback_data: 1),
+                    InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
+                )
+            );
+
+            $this->next('approveDate');
+        }
+    }
+
+    public function removeScheduled(Nutgram $bot)
+    {
+        if (!$bot->isCallbackQuery() || $bot->callbackQuery()->data != "1") {
+            $this->choosePavilion($bot);
+
+            return;
+        }
         $current = $this->createNewDate();
-        $dateTime = $this->createNewDate();
-        $dateTime->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
-        $dateTime->setTime((int)$this->hour,0);
-        $bot->sendMessage(
-            text: 'Дата: ' . $dateTime->format('Y/m/d H:i') ,
+        $scheduledSets = $this->schedulePavilionService->getExistSet(
+            (int)$current->format('Y'),
+            (int)$this->month,
+            (int)$this->day,
+            (int)$this->hour,
+            $this->telegramUserService->getCurrentUser()
         );
+        if (!$scheduledSets) {
+            $bot->sendMessage(
+                text: '<b>Не знайшло ваше бронювання.</b>',
+                parse_mode: ParseMode::HTML
+            );
+
+            $this->choosePavilion($bot);
+
+            return;
+        }
+        $scheduledSet = array_shift($scheduledSets);
+        $this->em->remove($scheduledSet);
+        $this->em->flush();
+
         $bot->sendMessage(
-            text: 'Якщо згодні натисніть *Підтверджую*',
-            parse_mode: ParseMode::MARKDOWN,
-            reply_markup: InlineKeyboardMarkup::make()->addRow(
-                InlineKeyboardButton::make(text: 'Підтверджую', callback_data: 1),
-                InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
-            )
+            text: '<b>Ваше бронювання видалено.</b>',
+            parse_mode: ParseMode::HTML
         );
 
-        $this->next('approveDate');
+        $this->end();
     }
 
     public function approveDate(Nutgram $bot)
     {
-        if (!$bot->isCallbackQuery() || $bot->callbackQuery()->data == "0") {
+        if (!$bot->isCallbackQuery() || $bot->callbackQuery()->data != "1") {
             $this->choosePavilion($bot);
 
             return;
@@ -269,7 +394,7 @@ class SchedulePavilion extends Conversation
         $this->end();
     }
 
-    private function createNewDate(string $timeZone = 'Europe/Kyiv')
+    private function createNewDate(string $timeZone = 'Europe/Kyiv'): \DateTime
     {
         return (new \DateTime())->setTimezone(new \DateTimeZone($timeZone));
     }
