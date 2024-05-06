@@ -40,7 +40,7 @@ class OwnSchedule extends Conversation
         }
         foreach ($scheduledSets as $set) {
             $availableDecline[] = InlineKeyboardButton::make(
-                text: 'Відмінити: ' . sprintf('альтанка №:%s, час:%s', $set->getPavilion(), $set->getScheduledDateTime()->format('Y/m/d H:i:s')),
+                text: sprintf('альтанка №:%s, час:%s', $set->getPavilion(), $set->getScheduledDateTime()->format('Y/m/d H:i')),
                 callback_data: 'decline_' . $set->getId()
             );
         }
