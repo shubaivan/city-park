@@ -62,7 +62,11 @@ class ScheduledSetRepository extends ServiceEntityRepository
     public function getOwn(TelegramUser $user): array
     {
         $qb = $this->createQueryBuilder('ss');
-        $qb->andWhere('ss.telegramUserId = :user')->setParameter('user', $user);
+        $qb
+            ->andWhere('ss.telegramUserId = :user')
+            ->setParameter('user', $user)
+            ->orderBy('ss.pavilion')
+        ;
 
         return $qb->getQuery()->getResult();
     }

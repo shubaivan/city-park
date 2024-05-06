@@ -38,13 +38,7 @@ class SchedulePavilionService
      */
     public function getOwn(TelegramUser $user)
     {
-        $scheduledSets = $this->repository->getOwn($user);
-        $scheduled = [];
-        foreach ($scheduledSets as $scheduledSet) {
-            $scheduled[$scheduledSet->getHour()] = $scheduledSet;
-        }
-
-        return $scheduled;
+        return $this->repository->getOwn($user);
     }
 
     public function getById(int $id): ?ScheduledSet

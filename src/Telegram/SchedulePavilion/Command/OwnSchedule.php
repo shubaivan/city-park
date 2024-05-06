@@ -39,10 +39,8 @@ class OwnSchedule extends Conversation
             return;
         }
         foreach ($scheduledSets as $set) {
-            $scheduledByCurrentUserDate = $set->getScheduledDateTime();
-
             $availableDecline[] = InlineKeyboardButton::make(
-                text: 'Відмінити: ' . $scheduledByCurrentUserDate->format('Y/m/d H:i:s'),
+                text: 'Відмінити: ' . sprintf('альтанка №:%s, час:%s', $set->getPavilion(), $set->getScheduledDateTime()->format('Y/m/d H:i:s')),
                 callback_data: 'decline_' . $set->getId()
             );
         }
