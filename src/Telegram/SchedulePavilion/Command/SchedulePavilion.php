@@ -9,9 +9,10 @@ use Doctrine\ORM\EntityManagerInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
+use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
-use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
+use SergiX44\Nutgram\Telegram\Types\Message\Message;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 class SchedulePavilion extends Conversation
@@ -23,6 +24,7 @@ class SchedulePavilion extends Conversation
     public ?string $hour;
 
     public function __construct(
+        protected string $projectDir,
         private SchedulePavilionService $schedulePavilionService,
         private EntityManagerInterface $em,
         private TelegramUserService $telegramUserService,
@@ -51,10 +53,24 @@ class SchedulePavilion extends Conversation
         }
         $this->pavilion = str_replace('number_', '', $bot->callbackQuery()->data);
 
+        $file = sprintf(
+            '%s/assets/img/pavilion%s',
+            $this->projectDir,
+            $this->pavilion
+        );
+        if (is_file($file) && is_readable($file)) {
+            $photo = fopen($file, 'r+');
+
+            /** @var Message $message */
+            $message = $bot->sendPhoto(
+                photo: InputFile::make($photo)
+            );
+        }
+
         $bot->sendMessage(
             text: 'Альтанка №' . $this->pavilion
         );
-        $current = $this->createNewDate();
+        $current = SchedulePavilionService::createNewDate();
         $currentMonth = (int)$current->format('m');
         $last = (clone $current)->modify('last day of december this year');
         $lastMonth = (int)$last->format('m');
@@ -99,7 +115,7 @@ class SchedulePavilion extends Conversation
         $bot->sendMessage(
             text: 'Місяць ' . $this->month
         );
-        $current = $this->createNewDate();
+        $current = SchedulePavilionService::createNewDate();
         $currentDay = (int)$current->format('d');
         $last = (clone $current)->modify('last day of');
         $lastDay = (int)$last->format('d');
@@ -146,7 +162,7 @@ class SchedulePavilion extends Conversation
             text: 'День ' . $this->day
         );
 
-        $current = $this->createNewDate();
+        $current = SchedulePavilionService::createNewDate();
 
         $scheduledSets = $this->schedulePavilionService->getExistSet(
             (int)$current->format('Y'),
@@ -154,7 +170,7 @@ class SchedulePavilion extends Conversation
             (int)$this->day,
         );
 
-        $chosenDate = $this->createNewDate();
+        $chosenDate = SchedulePavilionService::createNewDate();
         $chosenDate->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
         $chosenDate->setTime(0,0);
         if ($current->format('Y-m-d') == $chosenDate->format('Y-m-d')) {
@@ -270,8 +286,8 @@ class SchedulePavilion extends Conversation
         if (str_contains($chosenHour, 'decline_')) {
             $this->hour = str_replace('decline_', '', $chosenHour);
 
-            $current = $this->createNewDate();
-            $dateTime = $this->createNewDate();
+            $current = SchedulePavilionService::createNewDate();
+            $dateTime = SchedulePavilionService::createNewDate();
             $dateTime->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
             $dateTime->setTime((int)$this->hour,0);
             $bot->sendMessage(
@@ -291,8 +307,8 @@ class SchedulePavilion extends Conversation
         } else {
             $this->hour = str_replace('hour_', '', $chosenHour);
 
-            $current = $this->createNewDate();
-            $dateTime = $this->createNewDate();
+            $current = SchedulePavilionService::createNewDate();
+            $dateTime = SchedulePavilionService::createNewDate();
             $dateTime->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
             $dateTime->setTime((int)$this->hour,0);
             $bot->sendMessage(
@@ -318,7 +334,7 @@ class SchedulePavilion extends Conversation
 
             return;
         }
-        $current = $this->createNewDate();
+        $current = SchedulePavilionService::createNewDate();
         $scheduledSets = $this->schedulePavilionService->getExistSet(
             (int)$current->format('Y'),
             (int)$this->month,
@@ -358,12 +374,14 @@ class SchedulePavilion extends Conversation
 
         $scheduledSet = (new ScheduledSet())
             ->setTelegramUserId($this->telegramUserService->getCurrentUser())
-            ->setYear((int)($this->createNewDate())->format('Y'))
+            ->setYear((int)(SchedulePavilionService::createNewDate())->format('Y'))
             ->setMonth((int)$this->month)
             ->setDay((int)$this->day)
             ->setHour((int)$this->hour)
             ->setPavilion((int)$this->pavilion)
         ;
+        $scheduledSet->setScheduledAt($scheduledSet->getScheduledDateTime());
+
         $this->em->persist($scheduledSet);
         $lists = $this->validator->validate($scheduledSet);
         if (count($lists)) {
@@ -392,10 +410,5 @@ class SchedulePavilion extends Conversation
         );
 
         $this->end();
-    }
-
-    private function createNewDate(string $timeZone = 'Europe/Kyiv'): \DateTime
-    {
-        return (new \DateTime())->setTimezone(new \DateTimeZone($timeZone));
     }
 }

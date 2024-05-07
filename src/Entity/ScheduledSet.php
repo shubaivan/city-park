@@ -4,7 +4,9 @@ namespace App\Entity;
 
 use App\Entity\EntityTrait\CreatedUpdatedAtAwareTrait;
 use App\Repository\ScheduledSetRepository;
+use App\Service\SchedulePavilionService;
 use App\Validator\ScheduleLimit;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 use Symfony\Component\Validator\Constraints\NotBlank;
@@ -47,6 +49,9 @@ class ScheduledSet
     #[NotBlank]
     #[ORM\Column(type: 'integer', nullable: false)]
     private int $pavilion;
+
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private \DateTime $scheduledAt;
 
     public function getId(): ?int
     {
@@ -125,17 +130,24 @@ class ScheduledSet
         return $this;
     }
 
+    public function getScheduledAt(): \DateTime
+    {
+        return $this->scheduledAt;
+    }
+
+    public function setScheduledAt(\DateTime $scheduledAt): ScheduledSet
+    {
+        $this->scheduledAt = $scheduledAt;
+
+        return $this;
+    }
+
     public function getScheduledDateTime(): \DateTime
     {
-        $scheduledByCurrentUserDate = $this->createNewDate();
+        $scheduledByCurrentUserDate = SchedulePavilionService::createNewDate();
         $scheduledByCurrentUserDate->setDate($this->getYear(), $this->getMonth(), $this->getDay());
         $scheduledByCurrentUserDate->setTime($this->getHour(),0);
 
         return $scheduledByCurrentUserDate;
-    }
-
-    private function createNewDate(string $timeZone = 'Europe/Kyiv'): \DateTime
-    {
-        return (new \DateTime())->setTimezone(new \DateTimeZone($timeZone));
     }
 }

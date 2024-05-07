@@ -8,8 +8,10 @@ use Doctrine\ORM\EntityManagerInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
+use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
+use SergiX44\Nutgram\Telegram\Types\Message\Message;
 
 class OwnSchedule extends Conversation
 {
@@ -18,6 +20,7 @@ class OwnSchedule extends Conversation
     public ?int $id;
 
     public function __construct(
+        protected string $projectDir,
         private SchedulePavilionService $schedulePavilionService,
         private EntityManagerInterface $em,
         private TelegramUserService $telegramUserService
@@ -39,30 +42,46 @@ class OwnSchedule extends Conversation
             return;
         }
         foreach ($scheduledSets as $set) {
-            $availableDecline[] = InlineKeyboardButton::make(
+            $availableDecline[$set->getPavilion()][] = InlineKeyboardButton::make(
                 text: sprintf('альтанка №:%s, час:%s', $set->getPavilion(), $set->getScheduledDateTime()->format('Y/m/d H:i')),
                 callback_data: 'decline_' . $set->getId()
             );
         }
-        $scheduledInlineKeyboardMarkup = InlineKeyboardMarkup::make();
 
-        $declineHours = [];
-        foreach ($availableDecline as $decline) {
-            $declineHours[] = $decline;
-            if (count($declineHours) == 1) {
-                $scheduledInlineKeyboardMarkup->addRow(...$declineHours);
-                $declineHours = [];
-            }
-        }
+       foreach ($availableDecline as $pavilion => $setSchedule) {
+           $scheduledInlineKeyboardMarkup = InlineKeyboardMarkup::make();
+           $declineHours = [];
+           foreach ($setSchedule as $decline) {
+               $declineHours[] = $decline;
+               if (count($declineHours) == 1) {
+                   $scheduledInlineKeyboardMarkup->addRow(...$declineHours);
+                   $declineHours = [];
+               }
+           }
 
-        if (count($declineHours)) {
-            $scheduledInlineKeyboardMarkup->addRow(...$declineHours);
-        }
+           if (count($declineHours)) {
+               $scheduledInlineKeyboardMarkup->addRow(...$declineHours);
+           }
 
-        $bot->sendMessage(
-            text: 'Ваші бронювання:',
-            reply_markup: $scheduledInlineKeyboardMarkup
-        );
+           $file = sprintf(
+               '%s/assets/img/pavilion%s',
+               $this->projectDir,
+               $pavilion
+           );
+           if (is_file($file) && is_readable($file)) {
+               $photo = fopen($file, 'r+');
+
+               /** @var Message $message */
+               $message = $bot->sendPhoto(
+                   photo: InputFile::make($photo)
+               );
+           }
+
+           $bot->sendMessage(
+               text: sprintf('Альтанка №%s. Ваші бронювання:', $pavilion),
+               reply_markup: $scheduledInlineKeyboardMarkup
+           );
+       }
 
         $this->next('scheduleDate');
     }

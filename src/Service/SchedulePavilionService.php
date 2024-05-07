@@ -45,4 +45,9 @@ class SchedulePavilionService
     {
         return $this->repository->getById($id);
     }
+
+    public static function createNewDate(string $timeZone = 'Europe/Kyiv'): \DateTime
+    {
+        return (new \DateTime())->setTimezone(new \DateTimeZone($timeZone));
+    }
 }

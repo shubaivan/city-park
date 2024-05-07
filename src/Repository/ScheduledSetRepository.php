@@ -4,6 +4,7 @@ namespace App\Repository;
 
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
+use App\Service\SchedulePavilionService;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -65,6 +66,8 @@ class ScheduledSetRepository extends ServiceEntityRepository
         $qb
             ->andWhere('ss.telegramUserId = :user')
             ->setParameter('user', $user)
+            ->andWhere('ss.scheduledAt >= :now')
+            ->setParameter('now', SchedulePavilionService::createNewDate())
             ->orderBy('ss.pavilion')
         ;
 
