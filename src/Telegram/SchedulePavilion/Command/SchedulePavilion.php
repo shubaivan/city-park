@@ -383,6 +383,7 @@ class SchedulePavilion extends Conversation
         $scheduledSet->setScheduledAt($scheduledSet->getScheduledDateTime());
 
         $this->em->persist($scheduledSet);
+
         $lists = $this->validator->validate($scheduledSet);
         if (count($lists)) {
             foreach ($lists as $list) {

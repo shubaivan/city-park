@@ -50,7 +50,8 @@ class ScheduledSet
     #[ORM\Column(type: 'integer', nullable: false)]
     private int $pavilion;
 
-    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    #[NotBlank]
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: false)]
     private \DateTime $scheduledAt;
 
     public function getId(): ?int
