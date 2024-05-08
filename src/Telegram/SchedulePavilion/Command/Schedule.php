@@ -2,14 +2,8 @@
 
 namespace App\Telegram\SchedulePavilion\Command;
 
-use App\Entity\ScheduledSet;
-use App\Service\SchedulePavilionService;
-use App\Service\TelegramUserService;
-use Doctrine\ORM\EntityManagerInterface;
-use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Handlers\Type\Command;
 use SergiX44\Nutgram\Nutgram;
-use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 

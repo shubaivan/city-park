@@ -106,7 +106,7 @@ class OwnSchedule extends Conversation
             $this->end();
         }
         $bot->sendMessage(
-            text: 'Дата: ' . $scheduledSet->getScheduledDateTime()->format('Y/m/d H:i'),
+            text: sprintf('альтанка №:%s, час:%s', $scheduledSet->getPavilion(), $scheduledSet->getScheduledDateTime()->format('Y/m/d H:i')),
         );
         $bot->sendMessage(
             text: 'Видалити бронювання? Натисніть *Підтверджую*',

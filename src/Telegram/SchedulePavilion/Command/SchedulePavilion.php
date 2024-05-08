@@ -96,7 +96,7 @@ class SchedulePavilion extends Conversation
         }
         $inlineKeyboardMarkup->addRow(InlineKeyboardButton::make(text: 'На початок', callback_data: 0));
         $bot->sendMessage(
-            text: 'Оберіть місяць',
+            text: 'Оберіть місяць:',
             reply_markup: $inlineKeyboardMarkup,
         );
 
@@ -192,26 +192,21 @@ class SchedulePavilion extends Conversation
             $last = 24;
         }
 
+        $availableHours = [];
+        for ($i = $currentHour; $i < $last; $i++) {
+            if (array_key_exists($i, $scheduledSets)) {
+                continue;
+            }
+            $availableHours[] = $i;
+        }
+
         $inlineKeyboardMarkup = InlineKeyboardMarkup::make();
         $hours = [];
-        $presentAvailableSets = false;
-        for ($i = $currentHour; $i<$last; $i++) {
-            if (array_key_exists($i, $scheduledSets)) {
-                $chosenDate->modify('+1 hour');
-                continue;
-            } elseif ($i == $currentHour) {
-                $presentAvailableSets = true;
-                $format = $chosenDate->format('D/H-i');
-                $hours[] = InlineKeyboardButton::make(
-                    text: $format, callback_data: 'hour_' . $chosenDate->format('H')
-                );
-            } else {
-                $presentAvailableSets = true;
-                $format = $chosenDate->modify('+1 hour')->format('D/H-i');
-                $hours[] = InlineKeyboardButton::make(
-                    text: $format, callback_data: 'hour_' . $chosenDate->format('H')
-                );
-            }
+        foreach ($availableHours as $availableHourItem) {
+            $format = $chosenDate->setTime($availableHourItem, 0)->format('D/H-i');
+            $hours[] = InlineKeyboardButton::make(
+                text: $format, callback_data: 'hour_' . $chosenDate->format('H')
+            );
 
             if (count($hours) == 3) {
                 $inlineKeyboardMarkup->addRow(...$hours);
@@ -264,14 +259,14 @@ class SchedulePavilion extends Conversation
             );
         }
 
-        if ($presentAvailableSets) {
+        if (count($availableHours)) {
             $bot->sendMessage(
                 text: 'Оберіть час нового бронювання:',
                 reply_markup: $inlineKeyboardMarkup,
             );
         } else {
             $bot->sendMessage(
-                text: 'Нажадь немає доступних бронювань. Оберіть іншу дату.',
+                text: 'Нажаль немає доступних бронювань. Оберіть іншу дату.',
                 reply_markup: $inlineKeyboardMarkup,
             );
         }
