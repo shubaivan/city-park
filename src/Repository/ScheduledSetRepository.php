@@ -46,10 +46,11 @@ class ScheduledSetRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
-    public function countOfSetByParams(int $year, int $month, int $day, TelegramUser $user)
+    public function countOfSetByParams(int $pavilion, int $year, int $month, int $day, TelegramUser $user)
     {
         $qb = $this->createQueryBuilder('ss');
         $qb->select('COUNT(ss.id)');
+        $qb->andWhere('ss.pavilion = :pavilion')->setParameter('pavilion', $pavilion);
         $qb->andWhere('ss.year = :year')->setParameter('year', $year);
         $qb->andWhere('ss.month = :month')->setParameter('month', $month);
         $qb->andWhere('ss.day = :day')->setParameter('day', $day);

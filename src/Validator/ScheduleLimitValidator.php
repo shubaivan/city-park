@@ -22,7 +22,13 @@ class ScheduleLimitValidator extends ConstraintValidator
             throw new UnexpectedTypeException($constraint, ScheduledSet::class);
         }
 
-        $count = $this->repository->countOfSetByParams($value->getYear(), $value->getMonth(), $value->getDay(), $value->getTelegramUserId());
+        $count = $this->repository->countOfSetByParams(
+            $value->getPavilion(),
+            $value->getYear(),
+            $value->getMonth(),
+            $value->getDay(),
+            $value->getTelegramUserId()
+        );
         if ($count >= 3) {
             $this->context->buildViolation($constraint->message)
                 ->addViolation();
