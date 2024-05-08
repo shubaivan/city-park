@@ -116,7 +116,15 @@ class SchedulePavilion extends Conversation
             text: 'Місяць ' . $this->month
         );
         $current = SchedulePavilionService::createNewDate();
-        $currentDay = (int)$current->format('d');
+
+        if ($this->month === $current->format('m')) {
+            $currentDay = (int)$current->format('d');
+        } else {
+            $currentDay = 1;
+        }
+
+        $current->setDate((int)$current->format('Y'), (int)$this->month, $currentDay);
+
         $last = (clone $current)->modify('last day of');
         $lastDay = (int)$last->format('d');
 
@@ -124,14 +132,14 @@ class SchedulePavilion extends Conversation
         $days = [];
         for ($i = $currentDay; $i<=$lastDay; $i++) {
             if ($i == $currentDay) {
-                $format = $current->format('F-d');
+                $format = $current->format('M-d');
             } else {
-                $format = $current->modify('+1 day')->format('F-d');
+                $format = $current->modify('+1 day')->format('M-d');
             }
             $days[] = InlineKeyboardButton::make(
                 text: $format, callback_data: 'day_' . $current->format('d')
             );
-            if (count($days) == 5) {
+            if (count($days) == 4) {
                 $inlineKeyboardMarkup->addRow(...$days);
                 $days = [];
             }
@@ -165,6 +173,7 @@ class SchedulePavilion extends Conversation
         $current = SchedulePavilionService::createNewDate();
 
         $scheduledSets = $this->schedulePavilionService->getExistSet(
+            $this->pavilion,
             (int)$current->format('Y'),
             (int)$this->month,
             (int)$this->day,
@@ -224,7 +233,7 @@ class SchedulePavilion extends Conversation
                 $scheduledByCurrentUserDate = $set->getScheduledDateTime();
 
                 $availableDecline[] = InlineKeyboardButton::make(
-                    text: 'Відмінити: ' . $scheduledByCurrentUserDate->format('D/H-i'),
+                    text: sprintf('Відмінити: альтанка №%s, час: %s', $set->getPavilion(), $scheduledByCurrentUserDate->format('Y-m-d/H-i')),
                     callback_data: 'decline_' . $key
                 );
             } else {
@@ -312,7 +321,7 @@ class SchedulePavilion extends Conversation
             $dateTime->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
             $dateTime->setTime((int)$this->hour,0);
             $bot->sendMessage(
-                text: 'Дата: ' . $dateTime->format('Y/m/d H:i') ,
+                text: sprintf('Альтанка %s. Дата: %s', $this->pavilion, $dateTime->format('Y/m/d H:i')),
             );
             $bot->sendMessage(
                 text: 'Якщо згодні натисніть *Підтверджую*',
@@ -336,6 +345,7 @@ class SchedulePavilion extends Conversation
         }
         $current = SchedulePavilionService::createNewDate();
         $scheduledSets = $this->schedulePavilionService->getExistSet(
+            $this->pavilion,
             (int)$current->format('Y'),
             (int)$this->month,
             (int)$this->day,

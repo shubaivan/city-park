@@ -19,6 +19,7 @@ class ScheduledSetRepository extends ServiceEntityRepository
     }
 
     /**
+     * @param string $pavilion
      * @param int $year
      * @param int $month
      * @param int $day
@@ -26,9 +27,10 @@ class ScheduledSetRepository extends ServiceEntityRepository
      * @param TelegramUser|null $user
      * @return ScheduledSet[]
      */
-    public function getByParams(int $year, int $month, int $day, ?int $hour, ?TelegramUser $user): array
+    public function getByParams(string $pavilion, int $year, int $month, int $day, ?int $hour, ?TelegramUser $user): array
     {
         $qb = $this->createQueryBuilder('ss');
+        $qb->andWhere('ss.pavilion = :pavilion')->setParameter('pavilion', $pavilion);
         $qb->andWhere('ss.year = :year')->setParameter('year', $year);
         $qb->andWhere('ss.month = :month')->setParameter('month', $month);
         $qb->andWhere('ss.day = :day')->setParameter('day', $day);

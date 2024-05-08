@@ -14,6 +14,7 @@ class SchedulePavilionService
     ) {}
 
     /**
+     * @param string $pavilion
      * @param int $year
      * @param int $month
      * @param int $day
@@ -21,9 +22,9 @@ class SchedulePavilionService
      * @param TelegramUser|null $user
      * @return ScheduledSet[]
      */
-    public function getExistSet(int $year, int $month, int $day, ?int $hour = null, ?TelegramUser $user = null): array
+    public function getExistSet(string $pavilion, int $year, int $month, int $day, ?int $hour = null, ?TelegramUser $user = null): array
     {
-        $scheduledSets = $this->repository->getByParams($year, $month, $day, $hour, $user);
+        $scheduledSets = $this->repository->getByParams($pavilion, $year, $month, $day, $hour, $user);
         $scheduled = [];
         foreach ($scheduledSets as $scheduledSet) {
             $scheduled[$scheduledSet->getHour()] = $scheduledSet;
