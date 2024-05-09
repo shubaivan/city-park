@@ -28,11 +28,11 @@ class OwnSchedule extends Conversation
 
     public function own(Nutgram $bot)
     {
-        $scheduledSets = $this->schedulePavilionService->getOwn(
+        $ownSchedule = $this->schedulePavilionService->getOwn(
             $this->telegramUserService->getCurrentUser()
         );
-        $availableDecline = [];
-        if (!$scheduledSets) {
+
+        if (!$ownSchedule) {
             $bot->sendMessage(
                 text: '<b>Немає бронювань</b>',
                 parse_mode: ParseMode::HTML
@@ -42,78 +42,38 @@ class OwnSchedule extends Conversation
             return;
         }
 
-        $other = [];
-        foreach ($scheduledSets as $set) {
-            if ($set->getTelegramUserId()->getTelegramId() == $this->telegramUserService->getCurrentUser()->getTelegramId()) {
-                $availableDecline[$set->getPavilion()][] = $set;
-            } else {
-                $other[$set->getPavilion()][] = $set;
-            }
-        }
+        $bot->sendMessage(
+            text: sprintf('<b>Ващі</b> бронювання'),
+            parse_mode: ParseMode::HTML
+        );
 
-        if ($availableDecline) {
-            $bot->sendMessage(
-                text: sprintf('<b>Ващі</b> бронювання'),
-                parse_mode: ParseMode::HTML
+        foreach ($ownSchedule as $pavilion => $setSchedule) {
+            $file = sprintf(
+                '%s/assets/img/pavilion%s',
+                $this->projectDir,
+                $pavilion
             );
+            if (is_file($file) && is_readable($file)) {
+                $photo = fopen($file, 'r+');
 
-            foreach ($availableDecline as $pavilion => $setSchedule) {
-                $file = sprintf(
-                    '%s/assets/img/pavilion%s',
-                    $this->projectDir,
-                    $pavilion
+                /** @var Message $message */
+                $message = $bot->sendPhoto(
+                    photo: InputFile::make($photo)
                 );
-                if (is_file($file) && is_readable($file)) {
-                    $photo = fopen($file, 'r+');
-
-                    /** @var Message $message */
-                    $message = $bot->sendPhoto(
-                        photo: InputFile::make($photo)
-                    );
-                }
-                foreach ($setSchedule as $set) {
-                    $key = strlen($set->getHour()) == 1 ? '0' . $set->getHour() : $set->getHour();
-
-                    $bot->sendMessage(
-                        text: sprintf('альтанка №:%s, час:%s', $set->getPavilion(), $set->getScheduledDateTime()->format('Y/m/d H:i')),
-                        parse_mode: ParseMode::HTML,
-                        reply_markup: InlineKeyboardMarkup::make()
-                            ->addRow(
-                                InlineKeyboardButton::make(
-                                    'Відмінити', callback_data: 'decline_' . $key
-                                ),
-                            )
-                    );
-                }
             }
-        }
+            foreach ($setSchedule as $set) {
+                $key = strlen($set->getHour()) == 1 ? '0' . $set->getHour() : $set->getHour();
 
-        if ($other) {
-            $bot->sendMessage(
-                text: sprintf('<b>Чужі</b> бронювання'),
-                parse_mode: ParseMode::HTML
-            );
-
-            foreach ($other as $pavilion => $setSchedule) {
-                $file = sprintf(
-                    '%s/assets/img/pavilion%s',
-                    $this->projectDir,
-                    $pavilion
+                $bot->sendMessage(
+                    text: sprintf('альтанка №:%s, час:%s', $set->getPavilion(), $set->getScheduledDateTime()->format('Y/m/d H:i')),
+                    parse_mode: ParseMode::HTML,
+                    reply_markup: InlineKeyboardMarkup::make()
+                        ->addRow(
+                            InlineKeyboardButton::make(
+                                'Відмінити', callback_data: 'decline_' . $key
+                            ),
+                        )
                 );
-                if (is_file($file) && is_readable($file)) {
-                    $photo = fopen($file, 'r+');
-
-                    /** @var Message $message */
-                    $message = $bot->sendPhoto(
-                        photo: InputFile::make($photo)
-                    );
-                }
-                foreach ($setSchedule as $set) {
-                    $bot->sendMessage(
-                        text: sprintf('альтанка №:%s, час:%s', $set->getPavilion(), $set->getScheduledDateTime()->format('Y/m/d H:i')),
-                        parse_mode: ParseMode::HTML,
-                    );
-                }
             }
         }
 
