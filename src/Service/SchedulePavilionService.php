@@ -35,7 +35,7 @@ class SchedulePavilionService
 
     /**
      * @param TelegramUser $user
-     * @return ScheduledSet[]
+     * @return array[]
      */
     public function getOwn(TelegramUser $user)
     {

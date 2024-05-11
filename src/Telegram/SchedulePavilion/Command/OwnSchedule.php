@@ -2,6 +2,7 @@
 
 namespace App\Telegram\SchedulePavilion\Command;
 
+use App\Entity\ScheduledSet;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -61,6 +62,7 @@ class OwnSchedule extends Conversation
                     photo: InputFile::make($photo)
                 );
             }
+            /** @var ScheduledSet $set */
             foreach ($setSchedule as $set) {
                 $key = strlen($set->getHour()) == 1 ? '0' . $set->getHour() : $set->getHour();
 
@@ -70,7 +72,7 @@ class OwnSchedule extends Conversation
                     reply_markup: InlineKeyboardMarkup::make()
                         ->addRow(
                             InlineKeyboardButton::make(
-                                'Відмінити', callback_data: 'decline_' . $key
+                                'Відмінити', callback_data: 'decline_' . $set->getId()
                             ),
                         )
                 );
