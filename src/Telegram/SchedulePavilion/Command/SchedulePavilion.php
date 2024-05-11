@@ -221,13 +221,26 @@ class SchedulePavilion extends Conversation
         $inlineKeyboardMarkup->addRow(InlineKeyboardButton::make(text: 'На початок', callback_data: 0));
 
         $other = [];
+        $ownSchedule = [];
         foreach ($scheduledSets as  $set) {
             $key = strlen($set->getHour()) == 1 ? '0'.$set->getHour() : $set->getHour();
             if ($set->getTelegramUserId()->getTelegramId() == $this->telegramUserService->getCurrentUser()->getTelegramId()) {
+                $ownSchedule[] = $set;
+            } else {
+                $other[] = $set;
+            }
+        }
+
+        if ($ownSchedule) {
+            $bot->sendMessage(
+                text: sprintf('<b>Ващі</b> бронювання'),
+                parse_mode: ParseMode::HTML
+            );
+            foreach ($ownSchedule as $set) {
                 $scheduledByCurrentUserDate = $set->getScheduledDateTime();
 
                 $bot->sendMessage(
-                    text: sprintf('Відмінити: альтанка №%s, час: %s', $set->getPavilion(), $scheduledByCurrentUserDate->format('Y-m-d/H-i')),
+                    text: sprintf('альтанка №%s, час: %s', $set->getPavilion(), $scheduledByCurrentUserDate->format('Y-m-d/H-i')),
                     parse_mode: ParseMode::HTML,
                     reply_markup: InlineKeyboardMarkup::make()
                         ->addRow(
@@ -236,8 +249,6 @@ class SchedulePavilion extends Conversation
                             ),
                         )
                 );
-            } else {
-                $other[] = $set;
             }
         }
 
