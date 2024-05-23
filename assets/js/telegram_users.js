@@ -73,7 +73,8 @@ document.addEventListener("DOMContentLoaded", function () {
         modal.find('#save_user').remove();
         modal.find('.prop_conf').remove();
         modal.find('.prop_set').remove();
-        form.find('input').val('');
+        form.find('input[type=text]').val('');
+        form.find('.invalid-feedback').remove();
 
         var divPropConf = $('<div/>', {'class': "prop_conf"});
         divPropConf.attr('order', 0);
@@ -144,6 +145,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         $('.btn#save_user').on('click', function () {
             let createProduct = $('#telegramUserForm');
+
             let account_number = createProduct.find('#account_number');
             if (!account_number.val()) {
                 var divTag = $('<div />').addClass('invalid-feedback');
@@ -152,8 +154,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 divTag.show();
                 return;
             }
-
-            $('.prop_set .invalid-feedback').remove();
 
             let inputColumns = createProduct.find('input[type=text]');
             if (inputColumns.length) {
