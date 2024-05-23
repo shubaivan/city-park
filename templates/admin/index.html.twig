@@ -1,0 +1,46 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Hello Admin!{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    <link rel="stylesheet" type="text/css" href="{{ asset('simditor-2.3.28/styles/simditor.css') }}" />
+{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    <div class="container">
+        <table class="table table-hover">
+            <caption>Management</caption>
+            <thead>
+            <tr>
+                <th scope="col">#</th>
+                <th scope="col">Resource Name</th>
+                <th scope="col">Action</th>
+            </tr>
+            </thead>
+            <tbody>
+
+            <tr>
+                <th scope="row">1</th>
+                <td>
+                    Users
+                </td>
+                <td>
+                    <a href="{{ path('app_admin_users') }}">
+                        List
+                    </a>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+
+    </div>
+
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+{% endblock %}
+

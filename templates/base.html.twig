@@ -1,19 +1,103 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>{% block title %}Welcome!{% endblock %}</title>
-        <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><text y=%221.2em%22 font-size=%2296%22>⚫️</text><text y=%221.3em%22 x=%220.2em%22 font-size=%2276%22 fill=%22%23fff%22>sf</text></svg>">
-        {% block stylesheets %}
-            {{ encore_entry_link_tags('app') }}
-        {% endblock %}
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Welcome!{% endblock %}</title>
+    {% block stylesheets %}
+        {{ encore_entry_link_tags('app') }}
+        <link rel="shortcut icon" type="image/x-icon" href="{{ asset('admin.jpg') }}">
+    {% endblock %}
+</head>
+<body>
+{% block body %}
+    <header>
+        <div class="collapse bg-dark" id="navbarHeader">
+            <div class="container">
+                <div class="row">
+                    <div class="col-sm-8 col-md-7 py-4">
+                        <h4 class="text-white">You are</h4>
+                        <p class="text-muted">
+                            Hello, {{ app.user.userIdentifier }}
+                        </p>
+                    </div>
+                    <div class="col-sm-4 offset-md-1 py-4">
+                        {#<h4 class="text-white">Navigation</h4>#}
+                        <ul class="list-unstyled">
+                            {% if is_granted('IS_AUTHENTICATED_FULLY') %}
+                                <li>
+                                    <a href="{{ path('app_logout') }}" class="text-white row align-items-center">
+                                        Logout <i class="fas fa-sign-out-alt fa-3x"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="navbar navbar-dark bg-dark shadow-sm">
+            <div class="container d-flex justify-content-between">
+                {% if is_granted('IS_AUTHENTICATED_REMEMBERED')%}
+                    <a href="{{ path('app_admin') }}" class="navbar-brand d-flex align-items-center">
+                        <i class="fas fa-home"></i>
+                    </a>
+                {% endif %}
 
-        {% block javascripts %}
-            {{ encore_entry_script_tags('app') }}
-            {% block importmap %}{{ importmap('app') }}{% endblock %}
-        {% endblock %}
-    </head>
-    <body>
-        {% block body %}{% endblock %}
-    </body>
+                {% if is_granted('IS_AUTHENTICATED_REMEMBERED') %}
+                    You are logged.
+                {% else %}
+                    <a href="{{ path('app_login') }}" class="float-lg-left">
+                        Login <i class="fas fa-door-open"></i>
+                    </a>
+                {% endif %}
+
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarHeader"
+                        aria-controls="navbarHeader" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    {# read and display all flash messages #}
+    {#    {{ dump(app.flashes) }}#}
+    {% for label, messages in app.flashes %}
+        {% for message in messages %}
+            {% if label == 'warning' %}
+                {% set class = 'alert-warning' %}
+            {% elseif label == 'notice' %}
+                {% set class = 'alert-success' %}
+            {% elseif label == 'error' %}
+                {% set class = 'alert-danger' %}
+            {% else %}
+                {% set class = 'alert-success' %}
+            {% endif %}
+
+            <div class="alert {{ class }}" role="alert">
+                <h4 class="alert-heading">{{label|capitalize}}</h4>
+                <p class="mb-0"><i class="fa fa-exclamation-circle"></i>{{message}}</p>
+            </div>
+        {% endfor %}
+    {% endfor %}
+
+    <div class="alert alert-danger" role="alert" style="display: none">
+        <h4 class="alert-heading">Error</h4>
+        <p class="mb-0"><i class="fa fa-exclamation-circle"></i>Warning</p>
+    </div>
+
+    <div class="alert alert-success" role="alert" style="display: none">
+        <h4 class="alert-heading">Successul!</h4>
+        <p class="mb-0"><i class="fab fa-angellist"></i>Successul</p>
+    </div>
+{% endblock %}
+{% block javascripts %}
+    {{ encore_entry_script_tags('app') }}
+
+    {#    <script src="{{ asset('bundles/fosjsrouting/js/router.min.js') }}"></script>#}
+    {#    <script src="{{ path('fos_js_routing_js', { callback: 'fos.Router.setData' }) }}"></script>#}
+    <script src="/bundles/fosjsrouting/js/router.min.js"></script>
+    <script src="/js/fos_js_routes.js"></script>
+
+{% endblock %}
+</body>
 </html>

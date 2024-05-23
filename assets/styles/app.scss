@@ -1,0 +1,81 @@
+body {
+    background-color: lightgray;
+}
+
+.keyup {
+    color: red;
+}
+
+.center {
+    margin: auto;
+    width: 60%;
+    padding: 20px;
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+}
+
+.hideform {
+    display: none;
+}
+
+.fa-check{
+    color: green;
+}
+
+.fa-search-plus{
+    color: green;
+}
+
+.fa-arrow-right{
+    color: green;
+}
+
+.fa-bell{
+    color: green;
+}
+
+.fa-bell-slash {
+    color: red;
+}
+
+.fa-ban {
+    color: red;
+}
+
+.fa-minus-square {
+    color: red;
+}
+
+.fa-search-minus{
+    color: red;
+}
+
+#resource_statistics {
+    table, th, td {
+        border: 1px solid black;
+        border-collapse: collapse;
+    }
+    th {
+        padding: 5px;
+        text-align: center;
+    }
+    td {
+        padding: 5px;
+        text-align: left;
+        vertical-align: top;
+    }
+}
+
+.render_play_ground {
+    margin-bottom: 20px;
+}
+
+.core_analysis_result {
+    margin: auto;
+}
+
+@import "~bootstrap/scss/bootstrap";
+@import "~bootstrap-select/sass/bootstrap-select";
+@import "~bootstrap-select/sass/variables";
+@import "~@uppy/core/src/style";
+@import "~@uppy/dashboard/src/style";
+@import "~select2/src/scss/core";

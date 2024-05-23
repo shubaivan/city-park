@@ -1,0 +1,82 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Hello Admin!{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    <link rel="stylesheet" type="text/css" href="{{ asset('simditor-2.3.28/styles/simditor.css') }}" />
+{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    {% if th_keys|length %}
+        <!-- Table -->
+        <table id='telegramUserTable' class='display dataTable'>
+
+            <thead>
+            <tr>
+                {% for th_key in th_keys %}
+                    <th scope="col">{{ th_key }}</th>
+                {% endfor %}
+            </tr>
+            </thead>
+            <tfoot>
+            {% for th_key in th_keys %}
+                <th scope="col">{{ th_key }}</th>
+            {% endfor %}
+            </tfoot>
+
+        </table>
+    {% endif %}
+
+    <!-- Modal -->
+    <div class="modal fade" id="exampleModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="exampleModalLabel">Редагування</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="telegramUserForm">
+                        <div class="form-group">
+                            <label for="own_account" class="col-form-label">Особовий рахунок</label>
+                            <input type="text" id="own_account" class="form-control" name="own_account"/>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Назад</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+    {{ encore_entry_script_tags('index/js/telegram_users.min') }}
+
+    <script defer>
+        console.log('getJSonObject');
+        function getJSonObject(value) {
+            return $.parseJSON(value.replace(/&quot;/ig, '"'));
+        }
+
+        let th_keys = getJSonObject("{{ dataTableKeys ? dataTableKeys|json_encode() : "{}" }}");
+        let for_prepare_defs = getJSonObject("{{ dataTableKeys ? dataTableKeys|json_encode() : "{}" }}");
+    </script >
+
+    <script src="{{ asset('simditor-2.3.28/site/assets/scripts/module.js') }}" defer></script>
+    <script src="{{ asset('simditor-2.3.28/site/assets/scripts/hotkeys.js') }}" defer></script>
+
+
+    <script src="{{ asset('simditor-2.3.28/lib/simditor.js') }}" defer></script>
+
+
+{% endblock %}
+

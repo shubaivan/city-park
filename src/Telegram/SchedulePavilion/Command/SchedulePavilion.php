@@ -12,6 +12,8 @@ use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\KeyboardButton;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\ReplyKeyboardMarkup;
 use SergiX44\Nutgram\Telegram\Types\Message\Message;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
@@ -33,6 +35,16 @@ class SchedulePavilion extends Conversation
 
     public function choosePavilion(Nutgram $bot)
     {
+        if (!$this->telegramUserService->getCurrentUser()->getPhoneNumber()) {
+            $bot->sendMessage(
+                text: 'Подтрібно натиснути',
+                reply_markup: ReplyKeyboardMarkup::make(one_time_keyboard: true)->addRow(
+                    KeyboardButton::make('Підтвердіть ВАШ телефон', true),
+                )
+            );
+            return;
+        }
+
         $bot->sendMessage(
             text: 'Оберіть альтанку',
             reply_markup: InlineKeyboardMarkup::make()

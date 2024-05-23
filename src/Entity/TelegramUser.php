@@ -16,13 +16,14 @@ class TelegramUser
 
     public static array $dataTableFields = [
         'id',
+        'own_account',
         'phone_number',
+        'additional_phones',
         'first_name',
         'last_name',
         'username',
         'start',
-        'last_visit',
-        'order_info'
+        'last_visit'
     ];
 
 
@@ -46,6 +47,12 @@ class TelegramUser
     #[ORM\Column(type: 'string', length: 255, nullable: false)]
     private string $language_code;
 
+    #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    private string $own_account;
+
+    #[ORM\Column(type: 'json', nullable: true, options: ['default' => '{}'])]
+    private ?array $additional_phones = [];
+
     #[ORM\OneToMany(targetEntity: ScheduledSet::class, mappedBy: 'telegramUserId', cascade: ["persist"])]
     private Collection $scheduledSet;
 
@@ -54,6 +61,8 @@ class TelegramUser
         $this->scheduledSet = new ArrayCollection();
         $this->phone_number = null;
         $this->chatId = null;
+        $this->own_account = null;
+        $this->additional_phones = [];
     }
 
     public function getId(): ?int
@@ -148,6 +157,30 @@ class TelegramUser
     public function setChatId(?string $chatId): TelegramUser
     {
         $this->chatId = $chatId;
+
+        return $this;
+    }
+
+    public function getOwnAccount(): string
+    {
+        return $this->own_account;
+    }
+
+    public function setOwnAccount(string $own_account): TelegramUser
+    {
+        $this->own_account = $own_account;
+
+        return $this;
+    }
+
+    public function getAdditionalPhones(): array
+    {
+        return $this->additional_phones ?: [];
+    }
+
+    public function setAdditionalPhones(?array $additional_phones): TelegramUser
+    {
+        $this->additional_phones = $additional_phones ?: [];
 
         return $this;
     }
