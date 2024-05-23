@@ -86,8 +86,8 @@ class AdminController extends AbstractController
         return new JsonResponse($response, Response::HTTP_OK, [], true);
     }
 
-    #[Route('/admin/user/create', name: 'admin-user-create', options: ['expose' => true])]
-    public function createUser(
+    #[Route('/admin/user/update', name: 'admin-user-update', options: ['expose' => true])]
+    public function updateUser(
         Request $request,
         TelegramUserRepository $repository,
         EntityManagerInterface $em
@@ -105,9 +105,13 @@ class AdminController extends AbstractController
                 },
             ]
         ];
-        if (!$request->request->get('user_id')) {
+        if (!$request->request->has('user_id')) {
             throw new \Exception('user_id is required');
         }
+        if (!$request->request->has('additional_phones')) {
+            $params['additional_phones'] = [];
+        }
+
         $currentUser = $repository->find($request->request->get('user_id'));
         $context += [
             AbstractNormalizer::OBJECT_TO_POPULATE => $currentUser,

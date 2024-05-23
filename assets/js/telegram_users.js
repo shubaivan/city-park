@@ -59,7 +59,7 @@ document.addEventListener("DOMContentLoaded", function () {
         var modal = $(this);
         let form = modal.find("form");
 
-        modal.find('#save_changes').remove();
+        modal.find('#save_user').remove();
         modal.find('.prop_conf').remove();
         modal.find('.prop_set').remove();
         form.find('input').val('');
@@ -160,7 +160,7 @@ document.addEventListener("DOMContentLoaded", function () {
             let serialize = createProduct.serialize();
 
             const admin_user_create = window.Routing
-                .generate('admin-user-create');
+                .generate('admin-user-update');
 
             $.ajax({
                 type: "POST",
