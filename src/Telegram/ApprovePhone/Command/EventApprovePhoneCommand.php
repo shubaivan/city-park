@@ -32,7 +32,7 @@ class EventApprovePhoneCommand extends Command
         $this->em->flush();
 
         $bot->sendMessage(
-            text: 'Підтверджено, дякуюмо',
+            text: 'Підтверджено, дякуюмо, тепер можете бронювати',
         );
         $bot->sendMessage(
             text: 'Removing keyboard...',

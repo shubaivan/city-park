@@ -25,8 +25,6 @@ final class Version20240523094432 extends AbstractMigration
 
     public function down(Schema $schema): void
     {
-        // this down() migration is auto-generated, please modify it to your needs
-        $this->addSql('CREATE SCHEMA public');
         $this->addSql('ALTER TABLE telegram_user ALTER additional_phones DROP DEFAULT');
     }
 }

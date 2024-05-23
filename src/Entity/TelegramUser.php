@@ -48,7 +48,7 @@ class TelegramUser
     private string $language_code;
 
     #[ORM\Column(type: 'string', length: 255, nullable: true)]
-    private string $own_account;
+    private ?string $own_account;
 
     #[ORM\Column(type: 'json', nullable: true, options: ['default' => '{}'])]
     private ?array $additional_phones = [];
@@ -161,12 +161,12 @@ class TelegramUser
         return $this;
     }
 
-    public function getOwnAccount(): string
+    public function getOwnAccount(): ?string
     {
         return $this->own_account;
     }
 
-    public function setOwnAccount(string $own_account): TelegramUser
+    public function setOwnAccount(?string $own_account): TelegramUser
     {
         $this->own_account = $own_account;
 

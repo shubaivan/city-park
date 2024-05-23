@@ -37,7 +37,11 @@ class SchedulePavilion extends Conversation
     {
         if (!$this->telegramUserService->getCurrentUser()->getPhoneNumber()) {
             $bot->sendMessage(
-                text: 'Подтрібно натиснути',
+                text: 'Підтвердження телефону обов\'язкове'
+            );
+            $bot->sendMessage(
+                text: 'Подтрібно натиснути *Підтвердіть ВАШ телефон*',
+                parse_mode: ParseMode::MARKDOWN,
                 reply_markup: ReplyKeyboardMarkup::make(one_time_keyboard: true)->addRow(
                     KeyboardButton::make('Підтвердіть ВАШ телефон', true),
                 )
