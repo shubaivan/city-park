@@ -2,9 +2,11 @@
 
 namespace App\Controller;
 
+use App\Entity\Account;
 use App\Entity\Product;
 use App\Entity\TelegramUser;
 use App\Entity\UserOrder;
+use App\Repository\AccountRepository;
 use App\Repository\ProductRepository;
 use App\Repository\TelegramUserRepository;
 use App\Repository\UserOrderRepository;
@@ -74,27 +76,78 @@ class AdminController extends AbstractController
 
     #[Route('/admin/user/{id}', name: 'admin-user-get', options: ['expose' => true], methods: [Request::METHOD_GET])]
     public function getUserById(
-        #[MapEntity(id: 'id')] TelegramUser $telegramUser,
+        int $id,
+        TelegramUserRepository $repository
     ): JsonResponse
     {
-        $response = $this->serializer->serialize(
-            $telegramUser,
-            'json',
-            [AbstractNormalizer::IGNORED_ATTRIBUTES => ['scheduledSet']]
-        );
+        $telegramUser = $repository->getUserInfoById($id);
 
-        return new JsonResponse($response, Response::HTTP_OK, [], true);
+        if (!$telegramUser) {
+            return $this->json([sprintf('User by id: %s was not found', $id)], Response::HTTP_BAD_REQUEST);
+        }
+
+        return new JsonResponse($telegramUser, Response::HTTP_OK);
     }
 
     #[Route('/admin/user/update', name: 'admin-user-update', options: ['expose' => true])]
     public function updateUser(
         Request $request,
         TelegramUserRepository $repository,
+        AccountRepository $accountRepository,
         EntityManagerInterface $em
     ): JsonResponse
     {
         $params = $request->request->all();
+
+        if (!$request->request->has('user_id')) {
+            return $this->json(['user_id is required'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (!$request->request->has('additional_phones')) {
+            $params['additional_phones'] = [];
+        }
+
+        $currentUser = $repository->find($request->request->get('user_id'));
+
+        if (!$currentUser) {
+            return $this->json([sprintf('User by id: %s was not found', $request->request->get('user_id'))], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (isset($params['account'])) {
+            $account = $params['account'];
+            if (isset($account['is_active'])) {
+                $account['is_active'] = $account['is_active'] == 'true';
+            } else {
+                $account['is_active'] = false;
+            }
+
+            unset($params['account']);
+            $accountContext = [];
+
+            $accountEntity = $currentUser->getAccount() ?: null;
+            if (!$accountEntity) {
+                $accountEntity = $accountRepository->findOneBy(['account_number' => $account['account_number']]);
+            }
+
+            if ($accountEntity) {
+                $accountContext += [
+                    AbstractNormalizer::OBJECT_TO_POPULATE => $accountEntity
+                ];
+            }
+
+            $account = $this->denormalizer->denormalize(
+                $account,
+                Account::class,
+                null,
+                $accountContext
+            );
+
+            $em->persist($account);
+            $currentUser->setAccount($account);
+        }
+
         $context = [
+            AbstractNormalizer::OBJECT_TO_POPULATE => $currentUser,
             AbstractNormalizer::CALLBACKS => [
                 'additional_phones' => function (?array $additional_phones): ?array {
                     if (!$additional_phones) {
@@ -104,17 +157,6 @@ class AdminController extends AbstractController
                     return array_values($additional_phones);
                 },
             ]
-        ];
-        if (!$request->request->has('user_id')) {
-            throw new \Exception('user_id is required');
-        }
-        if (!$request->request->has('additional_phones')) {
-            $params['additional_phones'] = [];
-        }
-
-        $currentUser = $repository->find($request->request->get('user_id'));
-        $context += [
-            AbstractNormalizer::OBJECT_TO_POPULATE => $currentUser,
         ];
 
         $updatedUser = $this->denormalizer->denormalize(
@@ -129,7 +171,7 @@ class AdminController extends AbstractController
 
         $response = $this->serializer->serialize(
             $updatedUser, 'json',
-            [AbstractNormalizer::IGNORED_ATTRIBUTES => ['additional_phones']]
+            [AbstractNormalizer::IGNORED_ATTRIBUTES => ['additional_phones', 'account']]
         );
 
         return new JsonResponse($response, Response::HTTP_OK, [], true);

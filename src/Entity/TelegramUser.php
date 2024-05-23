@@ -7,6 +7,7 @@ use App\Repository\TelegramUserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Validator\Constraints\NotBlank;
 
 #[ORM\Entity(repositoryClass: TelegramUserRepository::class)]
 #[ORM\HasLifecycleCallbacks()]
@@ -16,7 +17,11 @@ class TelegramUser
 
     public static array $dataTableFields = [
         'id',
-        'own_account',
+        'account_number',
+        'apartment_number',
+        'house_number',
+        'street',
+        'is_active',
         'phone_number',
         'additional_phones',
         'first_name',
@@ -47,21 +52,23 @@ class TelegramUser
     #[ORM\Column(type: 'string', length: 255, nullable: false)]
     private string $language_code;
 
-    #[ORM\Column(type: 'string', length: 255, nullable: true)]
-    private ?string $own_account;
-
     #[ORM\Column(type: 'json', nullable: true, options: ['default' => '{}'])]
     private ?array $additional_phones = [];
 
     #[ORM\OneToMany(targetEntity: ScheduledSet::class, mappedBy: 'telegramUserId', cascade: ["persist"])]
     private Collection $scheduledSet;
 
+    #[NotBlank]
+    #[ORM\ManyToOne(targetEntity: Account::class, inversedBy: 'users')]
+    #[ORM\JoinColumn(name: 'account_id', referencedColumnName: 'id')]
+    private ?Account $account = null;
+
     public function __construct()
     {
+        $this->account = null;
         $this->scheduledSet = new ArrayCollection();
         $this->phone_number = null;
         $this->chatId = null;
-        $this->own_account = null;
         $this->additional_phones = [];
     }
 
@@ -161,18 +168,6 @@ class TelegramUser
         return $this;
     }
 
-    public function getOwnAccount(): ?string
-    {
-        return $this->own_account;
-    }
-
-    public function setOwnAccount(?string $own_account): TelegramUser
-    {
-        $this->own_account = $own_account;
-
-        return $this;
-    }
-
     public function getAdditionalPhones(): array
     {
         return $this->additional_phones ?: [];
@@ -181,6 +176,18 @@ class TelegramUser
     public function setAdditionalPhones(?array $additional_phones): TelegramUser
     {
         $this->additional_phones = $additional_phones ?: [];
+
+        return $this;
+    }
+
+    public function getAccount(): ?Account
+    {
+        return $this->account;
+    }
+
+    public function setAccount(?Account $account): TelegramUser
+    {
+        $this->account = $account;
 
         return $this;
     }

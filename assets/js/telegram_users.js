@@ -7,7 +7,18 @@ document.addEventListener("DOMContentLoaded", function () {
     var common_defs = [];
 
     common_defs.push({
-        "targets": 3,
+        "targets": 5,
+        "render": function (data, type, row, meta) {
+            if (data === true) {
+                return '<b>Активний</b>;'
+            } else {
+                return '<b>Заблокований</b>';
+            }
+        }
+    });
+
+    common_defs.push({
+        "targets": 7,
         "orderable": false,
         "render": function (data, type, row, meta) {
             var divTag = $('<div/>');
@@ -23,7 +34,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     common_defs.push({
-        "targets": 8,
+        "targets": 13,
         data: 'action',
         render: function (data, type, row, meta) {
             return '    <!-- Button trigger modal -->\n' +
@@ -90,7 +101,11 @@ document.addEventListener("DOMContentLoaded", function () {
                 success: (data) => {
                     console.log(data);
                     modal.find('#exampleModalLabel').text('Редагувати Користувача')
-                    form.find('#own_account').val(data.ownAccount)
+                    form.find('#account_number').val(data.account_number)
+                    form.find('#apartment_number').val(data.apartment_number)
+                    form.find('#house_number').val(data.house_number)
+                    form.find('#street').val(data.street)
+                    form.find('#is_active').prop('checked', data.is_active)
 
                     let product_id_input = $('<input>').attr({
                         type: 'hidden',
@@ -100,8 +115,8 @@ document.addEventListener("DOMContentLoaded", function () {
                     product_id_input.val(data.id);
                     form.append(product_id_input);
 
-                    if (Object.keys(data.additionalPhones).length) {
-                        $.each(data.additionalPhones, function( index, additionalPhone ) {
+                    if (Object.keys(data.additional_phones).length) {
+                        $.each(data.additional_phones, function( index, additionalPhone ) {
                             if (Object.keys(additionalPhone).length) {
                                 let order = parseInt($('#telegramUserForm .prop_conf').attr('order')) + 1;
                                 divPropSet.append(addPropertiesBlock(order, additionalPhone.property_name, additionalPhone.property_value));
@@ -129,12 +144,28 @@ document.addEventListener("DOMContentLoaded", function () {
 
         $('.btn#save_user').on('click', function () {
             let createProduct = $('#telegramUserForm');
+            let account_number = createProduct.find('#account_number');
+            if (!account_number.val()) {
+                var divTag = $('<div />').addClass('invalid-feedback');
+                divTag.text('Це обов\'язкове поле');
+                divTag.insertAfter(account_number);
+                divTag.show();
+                return;
+            }
+
             $('.prop_set .invalid-feedback').remove();
 
-            let inputColumns = createProduct.find('input');
+            let inputColumns = createProduct.find('input[type=text]');
             if (inputColumns.length) {
                 $.each(inputColumns, function (k, v) {
                     $(v).val($.trim($(v).val()));
+                })
+            }
+
+            let checkBoxes = createProduct.find('input[type=checkbox]');
+            if (checkBoxes.length) {
+                $.each(checkBoxes, function (k, v) {
+                    $(v).val($(v).is(":checked"))
                 })
             }
 

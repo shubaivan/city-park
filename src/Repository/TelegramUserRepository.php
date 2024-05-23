@@ -67,8 +67,12 @@ class TelegramUserRepository extends ServiceEntityRepository
         } else {
             $dql = '
                 SELECT 
-                b.id,
-                b.own_account,           
+                b.id,   
+                a.account_number,
+                a.apartment_number,
+                a.house_number,
+                a.street,                   
+                a.is_active,                   
                 b.phone_number,
                 b.additional_phones,
                 b.first_name,
@@ -78,6 +82,7 @@ class TelegramUserRepository extends ServiceEntityRepository
                 date_format(b.updated_at, \'%Y-%m-%d %H:%i:%s\') as last_visit,
                 \'edit\' as action
                 FROM App\Entity\TelegramUser b
+                LEFT JOIN b.account as a
             ';
         }
 
@@ -89,7 +94,10 @@ class TelegramUserRepository extends ServiceEntityRepository
             $or[] = 'ILIKE(b.first_name, :var_search) = TRUE';
             $or[] = 'ILIKE(b.last_name, :var_search) = TRUE';
             $or[] = 'ILIKE(b.phone_number, :var_search) = TRUE';
-            $or[] = 'ILIKE(b.own_account, :var_search) = TRUE';
+            $or[] = 'ILIKE(a.account_number, :var_search) = TRUE';
+            $or[] = 'ILIKE(a.apartment_number, :var_search) = TRUE';
+            $or[] = 'ILIKE(a.house_number, :var_search) = TRUE';
+            $or[] = 'ILIKE(a.street, :var_search) = TRUE';
 
             $bindParams['var_search'] = '%'.$parameterBag->get('search').'%';
             $conditions[] = '(' . implode(' OR ', $or) .')';
@@ -102,11 +110,16 @@ class TelegramUserRepository extends ServiceEntityRepository
         }
 
         if (!$count) {
+            $sortByColumn = '';
+            if (in_array($sortBy, ['id', 'phone_number', 'first_name', 'last_name', 'username'])) {
+                $sortByColumn = 'b.';
+            } else if (in_array($sortBy, ['account_number', 'apartment_number', 'house_number', 'street', 'is_active'])) {
+                $sortByColumn = 'a.';
+            }
+
+            $sortByColumn .= $sortBy;
             $dql .= '
-                GROUP BY b.id';
-            $sortBy = 'b.'.$sortBy;
-            $dql .= '
-                ORDER BY ' . $sortBy . ' ' . $sortOrder;
+                ORDER BY ' . $sortByColumn . ' ' . $sortOrder;
         }
 
         $query = $this->getEntityManager()
@@ -129,5 +142,30 @@ class TelegramUserRepository extends ServiceEntityRepository
         }
 
         return $result;
+    }
+
+    public function getUserInfoById(int $id): ?array
+    {
+        return $this->createQueryBuilder('tu')
+            ->select('
+                tu.id,   
+                a.account_number,
+                a.apartment_number,
+                a.house_number,
+                a.street,                   
+                a.is_active,                   
+                tu.phone_number,
+                tu.additional_phones,
+                tu.first_name,
+                tu.last_name,
+                tu.username,
+                date_format(tu.created_at, \'%Y-%m-%d %H:%i:%s\') as start,
+                date_format(tu.updated_at, \'%Y-%m-%d %H:%i:%s\') as last_visit
+            ')
+            ->leftJoin('tu.account', 'a')
+            ->where('tu.id = :id')
+            ->setParameter('id', $id)
+            ->getQuery()
+            ->getOneOrNullResult();
     }
 }
