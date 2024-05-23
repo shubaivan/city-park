@@ -2,6 +2,7 @@
 
 namespace App\Repository;
 
+use App\Entity\Account;
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Service\SchedulePavilionService;
@@ -48,17 +49,22 @@ class ScheduledSetRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
-    public function countOfSetByParams(int $pavilion, int $year, int $month, int $day, TelegramUser $user)
+    public function countOfSetByParams(
+        int $pavilion, int $year, int $month, int $day, Account $account
+    )
     {
         $qb = $this->createQueryBuilder('ss');
-        $qb->select('COUNT(ss.id)');
-        $qb->andWhere('ss.pavilion = :pavilion')->setParameter('pavilion', $pavilion);
-        $qb->andWhere('ss.year = :year')->setParameter('year', $year);
-        $qb->andWhere('ss.month = :month')->setParameter('month', $month);
-        $qb->andWhere('ss.day = :day')->setParameter('day', $day);
-        $qb->andWhere('ss.telegramUserId = :user')->setParameter('user', $user);
-        $qb->andWhere('ss.scheduledAt >= :now');
-        $qb->setParameter('now', SchedulePavilionService::createNewDate());
+        $qb
+            ->select('COUNT(ss.id)')
+            ->join('ss.telegramUserId', 'tu')
+            ->andWhere('ss.pavilion = :pavilion')->setParameter('pavilion', $pavilion)
+            ->andWhere('ss.year = :year')->setParameter('year', $year)
+            ->andWhere('ss.month = :month')->setParameter('month', $month)
+            ->andWhere('ss.day = :day')->setParameter('day', $day)
+            ->andWhere('tu.account = :account')->setParameter('account', $account)
+            ->andWhere('ss.scheduledAt >= :now')
+            ->setParameter('now', SchedulePavilionService::createNewDate())
+        ;
 
         return $qb->getQuery()->getSingleScalarResult();
     }
@@ -76,8 +82,7 @@ class ScheduledSetRepository extends ServiceEntityRepository
             ->andWhere('ss.scheduledAt >= :now')
             ->setParameter('now', SchedulePavilionService::createNewDate())
             ->orderBy('ss.pavilion')
-            ->addOrderBy('ss.scheduledAt', 'ASC')
-        ;
+            ->addOrderBy('ss.scheduledAt', 'ASC');
 
         return $qb->getQuery()->getResult();
     }

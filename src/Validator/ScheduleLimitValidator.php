@@ -27,7 +27,7 @@ class ScheduleLimitValidator extends ConstraintValidator
             $value->getYear(),
             $value->getMonth(),
             $value->getDay(),
-            $value->getTelegramUserId()
+            $value->getTelegramUserId()->getAccount()
         );
         if ($count >= 3) {
             $this->context->buildViolation($constraint->message)
