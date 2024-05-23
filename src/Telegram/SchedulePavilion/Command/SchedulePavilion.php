@@ -49,6 +49,20 @@ class SchedulePavilion extends Conversation
             return;
         }
 
+        if (!$this->telegramUserService->getCurrentUser()->getAccount()) {
+            $bot->sendMessage(
+                text: sprintf('Ви не можете бронювати! Ваш Аккаунт не підтверджений ОСББ. Зв\'яжітся з Аліною Бухгалтером - +380 93 658 32 02')
+            );
+            return;
+        }
+
+        if (!$this->telegramUserService->getCurrentUser()->getAccount()->isActive()) {
+            $bot->sendMessage(
+                text: sprintf('Ви не можете бронювати! Ваш Аккаунт не активнийю Зв\'яжітся з Аліною Бухгалтером - +380 93 658 32 02')
+            );
+            return;
+        }
+
         $bot->sendMessage(
             text: 'Оберіть альтанку',
             reply_markup: InlineKeyboardMarkup::make()

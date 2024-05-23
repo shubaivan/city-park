@@ -97,7 +97,7 @@ class Account
         return $this;
     }
 
-    public function is_active(): bool
+    public function isActive(): bool
     {
         return $this->is_active;
     }

@@ -63,6 +63,7 @@ class TelegramUserRepository extends ServiceEntityRepository
             $dql = '
                 SELECT COUNT(DISTINCT b)
                 FROM App\Entity\TelegramUser b
+                LEFT JOIN b.account as a
             ';
         } else {
             $dql = '

@@ -3,15 +3,12 @@
 namespace App\Controller;
 
 use App\Entity\Account;
-use App\Entity\Product;
 use App\Entity\TelegramUser;
-use App\Entity\UserOrder;
 use App\Repository\AccountRepository;
-use App\Repository\ProductRepository;
 use App\Repository\TelegramUserRepository;
-use App\Repository\UserOrderRepository;
 use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Bridge\Doctrine\Attribute\MapEntity;
+use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -91,6 +88,7 @@ class AdminController extends AbstractController
 
     #[Route('/admin/user/update', name: 'admin-user-update', options: ['expose' => true])]
     public function updateUser(
+        Nutgram $bot,
         Request $request,
         TelegramUserRepository $repository,
         AccountRepository $accountRepository,
@@ -133,6 +131,7 @@ class AdminController extends AbstractController
                 $accountContext += [
                     AbstractNormalizer::OBJECT_TO_POPULATE => $accountEntity
                 ];
+                $isWasInActive = !$accountEntity->isActive();
             }
 
             $account = $this->denormalizer->denormalize(
@@ -168,6 +167,22 @@ class AdminController extends AbstractController
 
         $em->persist($updatedUser);
         $em->flush();
+
+        if (isset($isWasInActive) && $isWasInActive && $updatedUser->getAccount() && $updatedUser->getAccount()->isActive()) {
+            $bot->sendMessage(
+                text: 'Вас <b>АКТИВУВАЛИ</b> тепер можете броювати',
+                chat_id: $updatedUser->getChatId(),
+                parse_mode: ParseMode::HTML
+            );
+        }
+
+        if (isset($isWasInActive) && !$isWasInActive && $updatedUser->getAccount() && !$updatedUser->getAccount()->isActive()) {
+            $bot->sendMessage(
+                text: 'Вас <b>ЗАБЛОКУВАЛИ</b> тепер НЕ можете броювати',
+                chat_id: $updatedUser->getChatId(),
+                parse_mode: ParseMode::HTML
+            );
+        }
 
         $response = $this->serializer->serialize(
             $updatedUser, 'json',
