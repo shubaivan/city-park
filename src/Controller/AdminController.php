@@ -121,7 +121,7 @@ class AdminController extends AbstractController
 
             unset($params['account']);
             $accountContext = [];
-
+            $isWasInActive = true;
             $accountEntity = $currentUser->getAccount() ?: null;
             if (!$accountEntity) {
                 $accountEntity = $accountRepository->findOneBy(['account_number' => $account['account_number']]);

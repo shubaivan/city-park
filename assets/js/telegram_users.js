@@ -145,7 +145,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         $('.btn#save_user').on('click', function () {
             let createProduct = $('#telegramUserForm');
-
+            createProduct.find('.invalid-feedback').remove();
             let account_number = createProduct.find('#account_number');
             if (!account_number.val()) {
                 var divTag = $('<div />').addClass('invalid-feedback');
