@@ -49,10 +49,9 @@ class ScheduledSetRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
-    public function countOfSetByParams(
+    public function countByDay(
         int $pavilion, int $year, int $month, int $day, Account $account
-    )
-    {
+    ) {
         $qb = $this->createQueryBuilder('ss');
         $qb
             ->select('COUNT(ss.id)')
@@ -64,6 +63,23 @@ class ScheduledSetRepository extends ServiceEntityRepository
             ->andWhere('tu.account = :account')->setParameter('account', $account)
             ->andWhere('ss.scheduledAt >= :now')
             ->setParameter('now', SchedulePavilionService::createNewDate())
+        ;
+
+        return $qb->getQuery()->getSingleScalarResult();
+    }
+
+    public function countByMonth(
+        int $pavilion, \DateTimeInterface $from, \DateTimeInterface $to, Account $account
+    ) {
+        $qb = $this->createQueryBuilder('ss');
+        $qb
+            ->select('COUNT(ss.id)')
+            ->join('ss.telegramUserId', 'tu')
+            ->andWhere('ss.pavilion = :pavilion')->setParameter('pavilion', $pavilion)
+            ->andWhere('tu.account = :account')->setParameter('account', $account)
+            ->andWhere($qb->expr()->between('ss.scheduledAt', ':from', ':to'))
+            ->setParameter('from', $from)
+            ->setParameter('to', $to)
         ;
 
         return $qb->getQuery()->getSingleScalarResult();

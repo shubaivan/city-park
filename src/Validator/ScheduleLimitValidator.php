@@ -22,15 +22,29 @@ class ScheduleLimitValidator extends ConstraintValidator
             throw new UnexpectedTypeException($constraint, ScheduledSet::class);
         }
 
-        $count = $this->repository->countOfSetByParams(
+        $countByDay = $this->repository->countByDay(
             $value->getPavilion(),
             $value->getYear(),
             $value->getMonth(),
             $value->getDay(),
             $value->getTelegramUserId()->getAccount()
         );
-        if ($count >= 3) {
-            $this->context->buildViolation($constraint->message)
+        if ($countByDay >= 3) {
+            $this->context
+                ->buildViolation($constraint->messageDay . ' Кількість ваших бронбвань вже ' . $countByDay)
+                ->addViolation();
+        }
+
+        $first = (clone $value->getScheduledAt())->modify('first day of this month');
+        $first->setTime(0, 0);
+        $last = (clone $value->getScheduledAt())->modify('last day of this month');
+        $last->setTime(23, 59);
+
+        $countByMonth = $this->repository->countByMonth($value->getPavilion(), $first, $last, $value->getTelegramUserId()->getAccount());
+
+        if ($countByMonth >= 12) {
+            $this->context
+                ->buildViolation($constraint->messageMonth . ' Кількість ваших бронбвань вже ' . $countByMonth)
                 ->addViolation();
         }
     }
