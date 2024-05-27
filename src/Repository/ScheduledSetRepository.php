@@ -164,18 +164,35 @@ class ScheduledSetRepository extends ServiceEntityRepository
         $condition = ' WHERE ';
         $conditions = [];
         if ($parameterBag->get('search') && !$total) {
-            $or[] = 'ILIKE(tu.username, :var_search) = TRUE';
-            $or[] = 'ILIKE(tu.first_name, :var_search) = TRUE';
-            $or[] = 'ILIKE(tu.last_name, :var_search) = TRUE';
-            $or[] = 'ILIKE(tu.phone_number, :var_search) = TRUE';
-            $or[] = 'ILIKE(a.account_number, :var_search) = TRUE';
-            $or[] = 'ILIKE(a.apartment_number, :var_search) = TRUE';
-            $or[] = 'ILIKE(a.house_number, :var_search) = TRUE';
-            $or[] = 'ILIKE(a.street, :var_search) = TRUE';
 
-            $bindParams['var_search'] = '%'.$parameterBag->get('search').'%';
+            try {
+                $searchByDate = false;
+                if (\DateTime::createFromFormat('Y-m-d', trim($parameterBag->get('search'))) !== false) {
+                    $dateTime = \DateTime::createFromFormat('Y-m-d', trim($parameterBag->get('search')));
+                    $or[] = 'b.scheduled_at between :from and :to';
+                    $bindParams['from'] = (clone $dateTime)->setTime(0,0)->format('Y-m-d H:i:s');
+                    $bindParams['to'] = (clone $dateTime)->setTime(23,59)->format('Y-m-d H:i:s');
+                    $searchByDate = true;
+                }
+            } catch (\Throwable $t) {
+                $searchByDate = false;
+            }
+
+            if (!$searchByDate) {
+                $or[] = 'ILIKE(tu.username, :var_search) = TRUE';
+                $or[] = 'ILIKE(tu.first_name, :var_search) = TRUE';
+                $or[] = 'ILIKE(tu.last_name, :var_search) = TRUE';
+                $or[] = 'ILIKE(tu.phone_number, :var_search) = TRUE';
+                $or[] = 'ILIKE(a.account_number, :var_search) = TRUE';
+                $or[] = 'ILIKE(a.apartment_number, :var_search) = TRUE';
+                $or[] = 'ILIKE(a.house_number, :var_search) = TRUE';
+                $or[] = 'ILIKE(a.street, :var_search) = TRUE';
+                $or[] = 'ILIKE(b.scheduled_at, :var_search) = TRUE';
+
+                $bindParams['var_search'] = '%'.$parameterBag->get('search').'%';
+            }
+
             $conditions[] = '(' . implode(' OR ', $or) .')';
-
         }
 
         if (count($conditions)) {
