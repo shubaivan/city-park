@@ -175,15 +175,15 @@ class AdminController extends AbstractController
                 $isWasInActive = !$accountEntity->isActive();
             }
 
-            $account = $this->denormalizer->denormalize(
+            $accountEntity = $this->denormalizer->denormalize(
                 $account,
                 Account::class,
                 null,
                 $accountContext
             );
 
-            $em->persist($account);
-            $currentUser->setAccount($account);
+            $em->persist($accountEntity);
+            $currentUser->setAccount($accountEntity);
         }
 
         $context = [

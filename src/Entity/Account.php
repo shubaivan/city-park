@@ -31,8 +31,8 @@ class Account
     #[ORM\Column(length: 255)]
     private ?string $street = null;
 
-    #[ORM\Column(type: 'boolean', nullable: true)]
-    private ?bool $is_active = true;
+    #[ORM\Column(type: 'boolean', nullable: true, options: ['default' => false])]
+    private ?bool $is_active = false;
 
     #[ORM\OneToMany(targetEntity: TelegramUser::class, mappedBy: 'account', cascade: ["persist"])]
     private Collection $users;
@@ -40,7 +40,7 @@ class Account
     public function __construct()
     {
         $this->users = new ArrayCollection();
-        $this->is_active = true;
+        $this->is_active = false;
     }
 
 
