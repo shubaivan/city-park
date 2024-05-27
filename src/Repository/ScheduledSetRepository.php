@@ -187,7 +187,6 @@ class ScheduledSetRepository extends ServiceEntityRepository
                 $or[] = 'ILIKE(a.apartment_number, :var_search) = TRUE';
                 $or[] = 'ILIKE(a.house_number, :var_search) = TRUE';
                 $or[] = 'ILIKE(a.street, :var_search) = TRUE';
-                $or[] = 'ILIKE(b.scheduled_at, :var_search) = TRUE';
 
                 $bindParams['var_search'] = '%'.$parameterBag->get('search').'%';
             }
