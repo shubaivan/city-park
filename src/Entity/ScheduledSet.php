@@ -20,6 +20,19 @@ class ScheduledSet
 {
     use CreatedUpdatedAtAwareTrait;
 
+    public static array $dataTableFields = [
+        'id',
+        'account_number',
+        'apartment_number',
+        'house_number',
+        'street',
+        'is_active',
+        'phone_number',
+        'username',
+        'scheduled_at',
+        'pavilion'
+    ];
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -52,7 +65,7 @@ class ScheduledSet
 
     #[NotBlank]
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: false)]
-    private \DateTime $scheduledAt;
+    private \DateTime $scheduled_at;
 
     public function getId(): ?int
     {
@@ -133,12 +146,12 @@ class ScheduledSet
 
     public function getScheduledAt(): \DateTime
     {
-        return $this->scheduledAt;
+        return $this->scheduled_at;
     }
 
     public function setScheduledAt(\DateTime $scheduledAt): ScheduledSet
     {
-        $this->scheduledAt = $scheduledAt;
+        $this->scheduled_at = $scheduledAt;
 
         return $this;
     }

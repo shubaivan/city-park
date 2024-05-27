@@ -3,8 +3,10 @@
 namespace App\Controller;
 
 use App\Entity\Account;
+use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
+use App\Repository\ScheduledSetRepository;
 use App\Repository\TelegramUserRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use SergiX44\Nutgram\Nutgram;
@@ -30,6 +32,45 @@ class AdminController extends AbstractController
     {
         return $this->render('admin/index.html.twig', [
         ]);
+    }
+
+    #############
+    # Schedule
+    #############
+
+    #[Route('/admin/schedule', name: 'app_admin_schedule')]
+    public function schedule(): Response
+    {
+        $fieldNames = ScheduledSet::$dataTableFields;
+
+        array_map(function ($k) use (&$dataTableColumnData) {
+            $dataTableColumnData[] = ['data' => $k];
+        }, $fieldNames);
+
+        return $this->render('admin/schedule.html.twig', [
+            'th_keys' => $fieldNames,
+            'dataTableKeys' => $dataTableColumnData,
+        ]);
+    }
+
+    #[Route('/admin/schedule/data-table', name: 'admin-schedule-data-table', options: ['expose' => true])]
+    public function getScheduleDataTable(ScheduledSetRepository $repository, Request $request)
+    {
+        $dataTable = $repository
+            ->getDataTablesData($request->request->all());
+
+        return $this->json(
+            array_merge(
+                [
+                    "draw" => $request->request->get('draw'),
+                    "recordsTotal" => $repository
+                        ->getDataTablesData($request->request->all(), true, true),
+                    "recordsFiltered" => $repository
+                        ->getDataTablesData($request->request->all(), true)
+                ],
+                ['data' => $dataTable]
+            )
+        );
     }
 
     #############

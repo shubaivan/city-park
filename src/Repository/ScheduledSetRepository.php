@@ -14,6 +14,8 @@ use Doctrine\Persistence\ManagerRegistry;
  */
 class ScheduledSetRepository extends ServiceEntityRepository
 {
+    use DataTablesApproachRepository;
+
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, ScheduledSet::class);
@@ -35,7 +37,7 @@ class ScheduledSetRepository extends ServiceEntityRepository
         $qb->andWhere('ss.year = :year')->setParameter('year', $year);
         $qb->andWhere('ss.month = :month')->setParameter('month', $month);
         $qb->andWhere('ss.day = :day')->setParameter('day', $day);
-        $qb->andWhere('ss.scheduledAt >= :now');
+        $qb->andWhere('ss.scheduled_at >= :now');
         $qb->setParameter('now', SchedulePavilionService::createNewDate());
 
         if ($hour) {
@@ -61,7 +63,7 @@ class ScheduledSetRepository extends ServiceEntityRepository
             ->andWhere('ss.month = :month')->setParameter('month', $month)
             ->andWhere('ss.day = :day')->setParameter('day', $day)
             ->andWhere('tu.account = :account')->setParameter('account', $account)
-            ->andWhere('ss.scheduledAt >= :now')
+            ->andWhere('ss.scheduled_at >= :now')
             ->setParameter('now', SchedulePavilionService::createNewDate())
         ;
 
@@ -77,7 +79,7 @@ class ScheduledSetRepository extends ServiceEntityRepository
             ->join('ss.telegramUserId', 'tu')
             ->andWhere('ss.pavilion = :pavilion')->setParameter('pavilion', $pavilion)
             ->andWhere('tu.account = :account')->setParameter('account', $account)
-            ->andWhere($qb->expr()->between('ss.scheduledAt', ':from', ':to'))
+            ->andWhere($qb->expr()->between('ss.scheduled_at', ':from', ':to'))
             ->setParameter('from', $from)
             ->setParameter('to', $to)
         ;
@@ -95,10 +97,10 @@ class ScheduledSetRepository extends ServiceEntityRepository
         $qb
             ->andWhere('ss.telegramUserId = :user')
             ->setParameter('user', $user)
-            ->andWhere('ss.scheduledAt >= :now')
+            ->andWhere('ss.scheduled_at >= :now')
             ->setParameter('now', SchedulePavilionService::createNewDate())
             ->orderBy('ss.pavilion')
-            ->addOrderBy('ss.scheduledAt', 'ASC');
+            ->addOrderBy('ss.scheduled_at', 'ASC');
 
         return $qb->getQuery()->getResult();
     }
@@ -109,5 +111,112 @@ class ScheduledSetRepository extends ServiceEntityRepository
         $qb->andWhere('ss.id = :id')->setParameter('id', $id);
 
         return $qb->getQuery()->getOneOrNullResult();
+    }
+
+    /**
+     * @param array $params
+     * @param bool $count
+     * @param bool $total
+     * @return mixed
+     * @throws \Doctrine\ORM\NoResultException
+     * @throws \Doctrine\ORM\NonUniqueResultException
+     */
+    public function getDataTablesData(
+        array $params,
+        bool $count = false,
+        bool $total = false
+    )
+    {
+        $parameterBag = $this->handleDataTablesRequest($params);
+
+        $limit = $parameterBag->get('limit');
+        $offset = $parameterBag->get('offset');
+        $sortBy = $parameterBag->get('sort_by');
+        $sortOrder = $parameterBag->get('sort_order');
+
+        if ($count) {
+            $dql = '
+                SELECT COUNT(DISTINCT b)
+                FROM App\Entity\ScheduledSet b
+                LEFT JOIN b.telegramUserId as tu
+                LEFT JOIN tu.account as a
+            ';
+        } else {
+            $dql = '
+                SELECT 
+                b.id,   
+                a.account_number,
+                a.apartment_number,
+                a.house_number,
+                a.street,                   
+                a.is_active,                   
+                tu.phone_number,
+                tu.username,
+                b.pavilion,
+                date_format(b.scheduled_at, \'%Y-%m-%d %H:%i:%s\') as scheduled_at
+                FROM App\Entity\ScheduledSet b
+                LEFT JOIN b.telegramUserId as tu
+                LEFT JOIN tu.account as a
+            ';
+        }
+
+        $bindParams = [];
+        $condition = ' WHERE ';
+        $conditions = [];
+        if ($parameterBag->get('search') && !$total) {
+            $or[] = 'ILIKE(tu.username, :var_search) = TRUE';
+            $or[] = 'ILIKE(tu.first_name, :var_search) = TRUE';
+            $or[] = 'ILIKE(tu.last_name, :var_search) = TRUE';
+            $or[] = 'ILIKE(tu.phone_number, :var_search) = TRUE';
+            $or[] = 'ILIKE(a.account_number, :var_search) = TRUE';
+            $or[] = 'ILIKE(a.apartment_number, :var_search) = TRUE';
+            $or[] = 'ILIKE(a.house_number, :var_search) = TRUE';
+            $or[] = 'ILIKE(a.street, :var_search) = TRUE';
+
+            $bindParams['var_search'] = '%'.$parameterBag->get('search').'%';
+            $conditions[] = '(' . implode(' OR ', $or) .')';
+
+        }
+
+        if (count($conditions)) {
+            $conditions = array_unique($conditions);
+            $dql .= $condition . implode(' AND ', $conditions);
+        }
+
+        if (!$count) {
+            $sortByColumn = '';
+            if (in_array($sortBy, ['phone_number', 'username'])) {
+                $sortByColumn = 'tu.';
+            } else if (in_array($sortBy, ['account_number', 'apartment_number', 'house_number', 'street', 'is_active'])) {
+                $sortByColumn = 'a.';
+            } else if (in_array($sortBy, ['id', 'pavilion', 'scheduled_at'])) {
+                $sortByColumn = 'b.';
+            }
+
+            $sortByColumn .= $sortBy;
+            $dql .= '
+                ORDER BY ' . $sortByColumn . ' ' . $sortOrder;
+        }
+
+        $query = $this->getEntityManager()
+            ->createQuery($dql);
+        if (!$count) {
+            $query
+                ->setMaxResults($limit)
+                ->setFirstResult($offset);
+        }
+
+        if ($bindParams) {
+            $bindParams = array_unique($bindParams);
+            $query
+                ->setParameters($bindParams);
+        }
+        if ($count) {
+            $result = $query->getSingleScalarResult();
+        } else {
+            $result = $query->getResult();
+        }
+
+        return $result;
     }
 }

@@ -1,0 +1,57 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Hello Admin!{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    <link rel="stylesheet" type="text/css" href="{{ asset('simditor-2.3.28/styles/simditor.css') }}" />
+{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    {% if th_keys|length %}
+        <!-- Table -->
+        <table id='telegramUserTable' class='display dataTable'>
+
+            <thead>
+            <tr>
+                {% for th_key in th_keys %}
+                    <th scope="col">{{ th_key }}</th>
+                {% endfor %}
+            </tr>
+            </thead>
+            <tfoot>
+            {% for th_key in th_keys %}
+                <th scope="col">{{ th_key }}</th>
+            {% endfor %}
+            </tfoot>
+
+        </table>
+    {% endif %}
+
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+    {{ encore_entry_script_tags('index/js/schedule.min') }}
+
+    <script defer>
+        console.log('getJSonObject');
+        function getJSonObject(value) {
+            return $.parseJSON(value.replace(/&quot;/ig, '"'));
+        }
+
+        let th_keys = getJSonObject("{{ dataTableKeys ? dataTableKeys|json_encode() : "{}" }}");
+        let for_prepare_defs = getJSonObject("{{ dataTableKeys ? dataTableKeys|json_encode() : "{}" }}");
+    </script >
+
+    <script src="{{ asset('simditor-2.3.28/site/assets/scripts/module.js') }}" defer></script>
+    <script src="{{ asset('simditor-2.3.28/site/assets/scripts/hotkeys.js') }}" defer></script>
+
+
+    <script src="{{ asset('simditor-2.3.28/lib/simditor.js') }}" defer></script>
+
+
+{% endblock %}
+
