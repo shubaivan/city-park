@@ -101,6 +101,7 @@ class SchedulePavilion extends Conversation
             text: 'Альтанка №' . $this->pavilion
         );
         $current = SchedulePavilionService::createNewDate();
+        $currentYear = (int)$current->format('Y');
         $currentMonth = (int)$current->format('m');
         $last = (clone $current)->modify('last day of december this year');
         $lastMonth = (int)$last->format('m');
@@ -108,11 +109,7 @@ class SchedulePavilion extends Conversation
         $inlineKeyboardMarkup = InlineKeyboardMarkup::make();
         $month = [];
         for ($i = $currentMonth; $i<=$lastMonth; $i++) {
-            if ($i == $currentMonth) {
-                $format = $current->format('Y-m');
-            } else {
-                $format = $current->modify('+1 month')->format('Y-m');
-            }
+            $format = (clone $current)->setDate($currentYear, $i, 1)->format('Y-m');
             $month[] = InlineKeyboardButton::make(
                 text: $format, callback_data: 'month_' . $current->format('m')
             );
