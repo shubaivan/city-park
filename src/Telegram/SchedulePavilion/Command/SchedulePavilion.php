@@ -109,9 +109,10 @@ class SchedulePavilion extends Conversation
         $inlineKeyboardMarkup = InlineKeyboardMarkup::make();
         $month = [];
         for ($i = $currentMonth; $i<=$lastMonth; $i++) {
-            $format = (clone $current)->setDate($currentYear, $i, 1)->format('Y-m');
+            $chooseMonth = clone $current;
+            $format = $chooseMonth->setDate($currentYear, $i, 1)->format('Y-m');
             $month[] = InlineKeyboardButton::make(
-                text: $format, callback_data: 'month_' . $current->format('m')
+                text: $format, callback_data: 'month_' . $chooseMonth->format('m')
             );
             if (count($month) == 3) {
                 $inlineKeyboardMarkup->addRow(...$month);
