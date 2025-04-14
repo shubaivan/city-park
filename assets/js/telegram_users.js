@@ -73,6 +73,7 @@ document.addEventListener("DOMContentLoaded", function () {
         modal.find('#save_user').remove();
         modal.find('.prop_conf').remove();
         modal.find('.prop_set').remove();
+
         form.find('input[type=text]').val('');
         form.find('.invalid-feedback').remove();
 
@@ -144,9 +145,9 @@ document.addEventListener("DOMContentLoaded", function () {
         form.append('<button id="save_user" type="button" class="btn btn-primary">Зберегти</button>')
 
         $('.btn#save_user').on('click', function () {
-            let createProduct = $('#telegramUserForm');
-            createProduct.find('.invalid-feedback').remove();
-            let account_number = createProduct.find('#account_number');
+            let telegramUserForm = $('#telegramUserForm');
+            telegramUserForm.find('.invalid-feedback').remove();
+            let account_number = telegramUserForm.find('#account_number');
             if (!account_number.val()) {
                 var divTag = $('<div />').addClass('invalid-feedback');
                 divTag.text('Це обов\'язкове поле');
@@ -155,14 +156,14 @@ document.addEventListener("DOMContentLoaded", function () {
                 return;
             }
 
-            let inputColumns = createProduct.find('input[type=text]');
+            let inputColumns = telegramUserForm.find('input[type=text]');
             if (inputColumns.length) {
                 $.each(inputColumns, function (k, v) {
                     $(v).val($.trim($(v).val()));
                 })
             }
 
-            let checkBoxes = createProduct.find('input[type=checkbox]');
+            let checkBoxes = telegramUserForm.find('input[type=checkbox]');
             if (checkBoxes.length) {
                 $.each(checkBoxes, function (k, v) {
                     $(v).val($(v).is(":checked"))
@@ -188,7 +189,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 invalidFeedback.show();
                 return;
             }
-            let serialize = createProduct.serialize();
+            let serialize = telegramUserForm.serialize();
 
             const admin_user_create = window.Routing
                 .generate('admin-user-update');

@@ -9,6 +9,7 @@ use App\Repository\AccountRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Repository\TelegramUserRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -133,11 +134,12 @@ class AdminController extends AbstractController
         Request $request,
         TelegramUserRepository $repository,
         AccountRepository $accountRepository,
-        EntityManagerInterface $em
+        EntityManagerInterface $em,
+        LoggerInterface $logger
     ): JsonResponse
     {
         $params = $request->request->all();
-
+        $logger->info('##################### admin-user-update', $params);
         if (!$request->request->has('user_id')) {
             return $this->json(['user_id is required'], Response::HTTP_BAD_REQUEST);
         }
