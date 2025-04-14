@@ -76,6 +76,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         form.find('input[type=text]').val('');
         form.find('.invalid-feedback').remove();
+        form.find('input[type=hidden]').remove()
 
         var divPropConf = $('<div/>', {'class': "prop_conf"});
         divPropConf.attr('order', 0);
