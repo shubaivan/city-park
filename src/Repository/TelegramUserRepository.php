@@ -124,8 +124,13 @@ class TelegramUserRepository extends ServiceEntityRepository
             }
 
             $sortByColumn .= $sortBy;
-            $dql .= '
+            if ($sortBy === 'debt') {
+                $dql .= '
+                ORDER BY COALESCE(a.debt, 0) ' . $sortOrder;
+            } else {
+                $dql .= '
                 ORDER BY ' . $sortByColumn . ' ' . $sortOrder;
+            }
         }
 
         $query = $this->getEntityManager()
