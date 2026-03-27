@@ -86,7 +86,8 @@ document.addEventListener("DOMContentLoaded", function () {
         'id': 'debtFilterBtn',
         'text': 'Показати боржників'
     });
-    $('#telegramUserTable_wrapper .dataTables_filter').append(filterBtn);
+    var filterContainer = $('#telegramUserTable_wrapper .dataTables_filter, #telegramUserTable_wrapper .dt-search');
+    filterContainer.append(filterBtn);
 
     filterBtn.on('click', function () {
         debtFilter = !debtFilter;
