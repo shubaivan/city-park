@@ -1,0 +1,45 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Боржники{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    <div class="container mt-4">
+        <h3>Завантаження файлу боржників</h3>
+        <p class="text-muted">Завантажте файл .xlsx з колонками: № кв., Особ. рах., Борг</p>
+
+        <form action="{{ path('app_admin_debt_upload') }}" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="debt_file">Файл боржників (.xlsx)</label>
+                <input type="file" class="form-control-file" id="debt_file" name="debt_file" accept=".xlsx" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Завантажити та оновити</button>
+        </form>
+
+        {% if result is defined %}
+            <div class="mt-4">
+                <div class="alert alert-{{ result.success ? 'success' : 'danger' }}">
+                    <h5>Результат:</h5>
+                    <ul>
+                        <li>Оброблено рядків: {{ result.processed }}</li>
+                        <li>Оновлено акаунтів: {{ result.updated }}</li>
+                        <li>Не знайдено: {{ result.not_found }}</li>
+                        <li>Скинуто борг (відсутні у файлі): {{ result.reset }}</li>
+                    </ul>
+                    {% if result.missing|length > 0 %}
+                        <details>
+                            <summary>Не знайдені особові рахунки ({{ result.missing|length }})</summary>
+                            <ul>
+                                {% for acc in result.missing %}
+                                    <li>{{ acc }}</li>
+                                {% endfor %}
+                            </ul>
+                        </details>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+{% endblock %}

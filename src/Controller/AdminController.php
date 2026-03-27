@@ -17,6 +17,8 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 use Symfony\Component\Serializer\SerializerInterface;
@@ -233,5 +235,113 @@ class AdminController extends AbstractController
         );
 
         return new JsonResponse($response, Response::HTTP_OK, [], true);
+    }
+
+    #############
+    # Debt Management
+    #############
+
+    #[Route('/admin/debt', name: 'app_admin_debt')]
+    public function debt(): Response
+    {
+        return $this->render('admin/debt.html.twig');
+    }
+
+    #[Route('/admin/debt/upload', name: 'app_admin_debt_upload', methods: [Request::METHOD_POST])]
+    public function uploadDebt(
+        Request $request,
+        AccountRepository $accountRepository,
+        EntityManagerInterface $em,
+        LoggerInterface $logger
+    ): Response
+    {
+        /** @var UploadedFile|null $file */
+        $file = $request->files->get('debt_file');
+
+        if (!$file || !$file->isValid()) {
+            return $this->render('admin/debt.html.twig', [
+                'result' => [
+                    'success' => false,
+                    'processed' => 0,
+                    'updated' => 0,
+                    'not_found' => 0,
+                    'reset' => 0,
+                    'missing' => ['Файл не завантажено або пошкоджено'],
+                ],
+            ]);
+        }
+
+        $spreadsheet = IOFactory::load($file->getPathname());
+        $worksheet = $spreadsheet->getActiveSheet();
+
+        $debtData = [];
+        $processed = 0;
+
+        foreach ($worksheet->getRowIterator(3) as $row) {
+            $accountNumber = $worksheet->getCell('B' . $row->getRowIndex())->getValue();
+            $debt = $worksheet->getCell('C' . $row->getRowIndex())->getValue();
+
+            if ($accountNumber === null || $debt === null) {
+                continue;
+            }
+
+            $accountNumber = trim((string)$accountNumber);
+            if ($accountNumber === '' || $accountNumber === 'Сума:') {
+                continue;
+            }
+
+            $debtData[$accountNumber] = (float)$debt;
+            $processed++;
+        }
+
+        $logger->info('Debt upload: parsed rows', ['count' => $processed]);
+
+        $updated = 0;
+        $notFound = 0;
+        $missing = [];
+        $updatedAccountNumbers = [];
+
+        foreach ($debtData as $accountNumber => $debt) {
+            $account = $accountRepository->findOneBy(['account_number' => $accountNumber]);
+            if ($account) {
+                $account->setDebt((string)$debt);
+                $em->persist($account);
+                $updatedAccountNumbers[] = $accountNumber;
+                $updated++;
+            } else {
+                $missing[] = $accountNumber;
+                $notFound++;
+            }
+        }
+
+        // Reset debt for accounts not in the file
+        $allAccounts = $accountRepository->findAll();
+        $reset = 0;
+        foreach ($allAccounts as $account) {
+            if (!in_array($account->getAccountNumber(), $updatedAccountNumbers) && $account->hasDebt()) {
+                $account->setDebt('0');
+                $em->persist($account);
+                $reset++;
+            }
+        }
+
+        $em->flush();
+
+        $logger->info('Debt upload complete', [
+            'updated' => $updated,
+            'not_found' => $notFound,
+            'reset' => $reset,
+        ]);
+
+        return $this->render('admin/debt.html.twig', [
+            'result' => [
+                'success' => true,
+                'processed' => $processed,
+                'updated' => $updated,
+                'not_found' => $notFound,
+                'reset' => $reset,
+                'missing' => $missing,
+            ],
+        ]);
     }
 }

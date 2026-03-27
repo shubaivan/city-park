@@ -63,6 +63,18 @@ class SchedulePavilion extends Conversation
             return;
         }
 
+        if ($this->telegramUserService->getCurrentUser()->getAccount()->hasDebt()) {
+            $debt = $this->telegramUserService->getCurrentUser()->getAccount()->getDebt();
+            $bot->sendMessage(
+                text: sprintf(
+                    "❌ Ви не можете бронювати!\n\nУ вас є борг: <b>%s грн</b>\n\nБудь ласка, сплатіть борг для можливості бронювання.",
+                    number_format((float)$debt, 2, '.', ' ')
+                ),
+                parse_mode: ParseMode::HTML
+            );
+            return;
+        }
+
         $this->showPavilionPicker($bot);
     }
 
