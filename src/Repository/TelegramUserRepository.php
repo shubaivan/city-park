@@ -126,7 +126,7 @@ class TelegramUserRepository extends ServiceEntityRepository
             $sortByColumn .= $sortBy;
             if ($sortBy === 'debt') {
                 $dql .= '
-                ORDER BY COALESCE(a.debt, 0) ' . $sortOrder;
+                ORDER BY CASE WHEN a.debt IS NULL THEN 0 ELSE a.debt END ' . $sortOrder;
             } else {
                 $dql .= '
                 ORDER BY ' . $sortByColumn . ' ' . $sortOrder;
