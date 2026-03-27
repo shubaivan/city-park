@@ -18,7 +18,17 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     common_defs.push({
-        "targets": 7,
+        "targets": 6,
+        "render": function (data, type, row, meta) {
+            if (data && parseFloat(data) > 0) {
+                return '<b style="color:red;">' + parseFloat(data).toFixed(2) + ' грн</b>';
+            }
+            return '<span style="color:green;">0</span>';
+        }
+    });
+
+    common_defs.push({
+        "targets": 8,
         "orderable": false,
         "render": function (data, type, row, meta) {
             var divTag = $('<div/>');
@@ -34,7 +44,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     common_defs.push({
-        "targets": 13,
+        "targets": 14,
         data: 'action',
         render: function (data, type, row, meta) {
             return '    <!-- Button trigger modal -->\n' +
@@ -109,6 +119,14 @@ document.addEventListener("DOMContentLoaded", function () {
                     form.find('#house_number').val(data.house_number)
                     form.find('#street').val(data.street)
                     form.find('#is_active').prop('checked', data.is_active)
+
+                    // Show debt info
+                    let debtDisplay = form.find('#debt_display');
+                    if (data.debt && parseFloat(data.debt) > 0) {
+                        debtDisplay.text(parseFloat(data.debt).toFixed(2) + ' грн').css('color', 'red').css('font-weight', 'bold');
+                    } else {
+                        debtDisplay.text('Немає боргу').css('color', 'green');
+                    }
 
                     let product_id_input = $('<input>').attr({
                         type: 'hidden',

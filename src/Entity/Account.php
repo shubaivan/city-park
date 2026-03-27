@@ -34,6 +34,9 @@ class Account
     #[ORM\Column(type: 'boolean', nullable: true, options: ['default' => false])]
     private ?bool $is_active = false;
 
+    #[ORM\Column(type: 'decimal', precision: 10, scale: 2, nullable: true, options: ['default' => 0])]
+    private ?string $debt = '0';
+
     #[ORM\OneToMany(targetEntity: TelegramUser::class, mappedBy: 'account', cascade: ["persist"])]
     private Collection $users;
 
@@ -41,6 +44,7 @@ class Account
     {
         $this->users = new ArrayCollection();
         $this->is_active = false;
+        $this->debt = '0';
     }
 
 
@@ -107,5 +111,27 @@ class Account
         $this->is_active = $is_active;
 
         return $this;
+    }
+
+    public function getDebt(): ?string
+    {
+        return $this->debt;
+    }
+
+    public function setDebt(?string $debt): static
+    {
+        $this->debt = $debt;
+
+        return $this;
+    }
+
+    public function hasDebt(): bool
+    {
+        return $this->debt !== null && (float)$this->debt > 0;
+    }
+
+    public function getUsers(): Collection
+    {
+        return $this->users;
     }
 }

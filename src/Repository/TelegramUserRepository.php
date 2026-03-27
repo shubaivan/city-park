@@ -67,13 +67,14 @@ class TelegramUserRepository extends ServiceEntityRepository
             ';
         } else {
             $dql = '
-                SELECT 
-                b.id,   
+                SELECT
+                b.id,
                 a.account_number,
                 a.apartment_number,
                 a.house_number,
-                a.street,                   
-                a.is_active,                   
+                a.street,
+                a.is_active,
+                a.debt,
                 b.phone_number,
                 b.additional_phones,
                 b.first_name,
@@ -114,7 +115,7 @@ class TelegramUserRepository extends ServiceEntityRepository
             $sortByColumn = '';
             if (in_array($sortBy, ['id', 'phone_number', 'first_name', 'last_name', 'username'])) {
                 $sortByColumn = 'b.';
-            } else if (in_array($sortBy, ['account_number', 'apartment_number', 'house_number', 'street', 'is_active'])) {
+            } else if (in_array($sortBy, ['account_number', 'apartment_number', 'house_number', 'street', 'is_active', 'debt'])) {
                 $sortByColumn = 'a.';
             }
 
@@ -149,12 +150,13 @@ class TelegramUserRepository extends ServiceEntityRepository
     {
         return $this->createQueryBuilder('tu')
             ->select('
-                tu.id,   
+                tu.id,
                 a.account_number,
                 a.apartment_number,
                 a.house_number,
-                a.street,                   
-                a.is_active,                   
+                a.street,
+                a.is_active,
+                a.debt,
                 tu.phone_number,
                 tu.additional_phones,
                 tu.first_name,
