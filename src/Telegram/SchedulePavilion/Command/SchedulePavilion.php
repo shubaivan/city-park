@@ -39,13 +39,17 @@ class SchedulePavilion extends Conversation
     private function editTrackedMessage(Nutgram $bot, string $text, ?InlineKeyboardMarkup $markup = null, ?ParseMode $parseMode = null): void
     {
         if ($this->trackedMessageId && $this->trackedChatId) {
-            $bot->editMessageText(
-                text: $text,
-                chat_id: $this->trackedChatId,
-                message_id: $this->trackedMessageId,
-                parse_mode: $parseMode,
-                reply_markup: $markup,
-            );
+            try {
+                $bot->editMessageText(
+                    text: $text,
+                    chat_id: $this->trackedChatId,
+                    message_id: $this->trackedMessageId,
+                    parse_mode: $parseMode,
+                    reply_markup: $markup,
+                );
+            } catch (\Throwable $e) {
+                // Ignore "message is not modified" errors
+            }
         }
     }
 
