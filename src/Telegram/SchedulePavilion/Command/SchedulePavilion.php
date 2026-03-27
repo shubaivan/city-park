@@ -9,6 +9,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
+use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\KeyboardButton;
@@ -249,6 +250,17 @@ class SchedulePavilion extends Conversation
             null,
             ParseMode::HTML
         );
+
+        // Send pavilion photo as final confirmation
+        $file = sprintf('%s/assets/img/pavilion%s', $this->projectDir, $this->pavilion);
+        if (is_file($file) && is_readable($file)) {
+            $photo = fopen($file, 'r+');
+            $bot->sendPhoto(
+                photo: InputFile::make($photo),
+                caption: sprintf('🏠 Альтанка: %s, 📅 %s ⏰ %s', $pavilionName, $dateTime->format('d.m.Y'), $dateTime->format('H:i')),
+            );
+        }
+
         $this->end();
     }
 
