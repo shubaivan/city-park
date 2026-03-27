@@ -308,23 +308,6 @@ class SchedulePavilion extends Conversation
         }
         $this->pavilion = str_replace('number_', '', $bot->callbackQuery()->data);
 
-        if ($this->photoSentForPavilion !== $this->pavilion) {
-            $file = sprintf(
-                '%s/assets/img/pavilion%s',
-                $this->projectDir,
-                $this->pavilion
-            );
-            if (is_file($file) && is_readable($file)) {
-                $photo = fopen($file, 'r+');
-                $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
-                $bot->sendPhoto(
-                    photo: InputFile::make($photo),
-                    caption: '🏠 Альтанка: ' . $pavilionName,
-                );
-                $this->photoSentForPavilion = $this->pavilion;
-            }
-        }
-
         $this->showMonthPicker($bot);
     }
 
