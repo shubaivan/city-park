@@ -7,7 +7,6 @@ use App\Service\SchedulePavilionService;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
-use SergiX44\Nutgram\Telegram\Types\Message\Message;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -20,20 +19,12 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class RemindCommand extends Command
 {
-    private ScheduledSetRepository $repository;
-    private Nutgram $bot;
-    private LoggerInterface $logger;
-
     public function __construct(
-        LoggerInterface $logger,
-        ScheduledSetRepository $repository,
-        Nutgram $bot,
-    )
-    {
+        private LoggerInterface $logger,
+        private ScheduledSetRepository $repository,
+        private Nutgram $bot,
+    ) {
         parent::__construct();
-        $this->repository = $repository;
-        $this->bot = $bot;
-        $this->logger = $logger;
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -42,89 +33,73 @@ class RemindCommand extends Command
             $date = SchedulePavilionService::createNewDate();
             $io = new SymfonyStyle($input, $output);
 
-            $msg = sprintf('start RemindCommand at %s', $date->format('Y-m-d H:i:s'));
-            $this->logger->info($msg);
-            $io->success($msg);
-
+            $this->log($io, sprintf('start RemindCommand at %s', $date->format('Y-m-d H:i:s')));
 
             $nextHour = (intval($date->format('H')) + 1) % 24;
+            $currentHour = intval($date->format('H'));
 
-            $msg = sprintf(
-                'year %s, month %s, day %s, next hour %s',
+            $this->log($io, sprintf(
+                'year %s, month %s, day %s, currentHour %s, nextHour %s',
                 $date->format('Y'),
                 $date->format('m'),
                 $date->format('d'),
+                $currentHour,
                 $nextHour
-            );
-            $this->logger->info($msg);
-            $io->success($msg);
+            ));
 
-
-            $scheduledSets = $this->repository->getByParams(
-                1,
-                $date->format('Y'),
-                $date->format('m'),
-                $date->format('d'),
-                $nextHour
-            );
-
-            $msg = sprintf(
-                'count %s pavilion %s',
-                count($scheduledSets),
-                1,
-            );
-            $this->logger->info($msg);
-            $io->success($msg);
-
-            foreach ($scheduledSets as $scheduledSet) {
-                /** @var Message $message */
-                $message = $this->bot->sendMessage(
-                    text: sprintf('У вас є бронювання альтанки №%s яке почнеться о %s', $scheduledSet->getPavilion(), $scheduledSet->getScheduledAt()->format('Y-m-d H-i-s')),
-                    chat_id: $scheduledSet->getTelegramUserid()->getChatId(),
-                    parse_mode: ParseMode::HTML
+            foreach ([1, 2] as $pavilion) {
+                // Remind about upcoming booking (starts in 15 min)
+                $upcomingSets = $this->repository->getByParams(
+                    $pavilion,
+                    $date->format('Y'),
+                    $date->format('m'),
+                    $date->format('d'),
+                    $nextHour
                 );
 
-                $msg = sprintf(
-                    'scheduledSet id %s pavilion %s was reminded',
-                    $scheduledSet->getId(),
-                    1,
+                $this->log($io, sprintf('upcoming: count %s, pavilion %s', count($upcomingSets), $pavilion));
+
+                foreach ($upcomingSets as $scheduledSet) {
+                    $this->bot->sendMessage(
+                        text: sprintf(
+                            '⏰ Ваше бронювання альтанки №%s починається о <b>%s</b>. Чекаємо на вас!',
+                            $scheduledSet->getPavilion(),
+                            $scheduledSet->getScheduledAt()->format('H:i')
+                        ),
+                        chat_id: $scheduledSet->getTelegramUserid()->getChatId(),
+                        parse_mode: ParseMode::HTML
+                    );
+
+                    $this->log($io, sprintf('reminded (upcoming) set id %s, pavilion %s', $scheduledSet->getId(), $pavilion));
+                }
+
+                // Remind about ending booking (ends in 15 min)
+                $endingSets = $this->repository->getByParams(
+                    $pavilion,
+                    $date->format('Y'),
+                    $date->format('m'),
+                    $date->format('d'),
+                    $currentHour
                 );
-                $this->logger->info($msg);
-                $io->success($msg);
+
+                $this->log($io, sprintf('ending: count %s, pavilion %s', count($endingSets), $pavilion));
+
+                foreach ($endingSets as $scheduledSet) {
+                    $endTime = sprintf('%02d:00', ($currentHour + 1) % 24);
+                    $this->bot->sendMessage(
+                        text: sprintf(
+                            '🔔 Ваше бронювання альтанки №%s закінчується о <b>%s</b>. Будь ласка, звільніть альтанку.',
+                            $scheduledSet->getPavilion(),
+                            $endTime
+                        ),
+                        chat_id: $scheduledSet->getTelegramUserid()->getChatId(),
+                        parse_mode: ParseMode::HTML
+                    );
+
+                    $this->log($io, sprintf('reminded (ending) set id %s, pavilion %s', $scheduledSet->getId(), $pavilion));
+                }
             }
 
-            $scheduledSets = $this->repository->getByParams(
-                2,
-                $date->format('Y'),
-                $date->format('m'),
-                $date->format('d'),
-                $nextHour
-            );
-
-            $msg = sprintf(
-                'count %s pavilion %s',
-                count($scheduledSets),
-                2,
-            );
-            $this->logger->info($msg);
-            $io->success($msg);
-
-            foreach ($scheduledSets as $scheduledSet) {
-                /** @var Message $message */
-                $message = $this->bot->sendMessage(
-                    text: sprintf('У вас є бронювання альтанки №%s яке почнеться о %s', $scheduledSet->getPavilion(), $scheduledSet->getScheduledAt()->format('Y-m-d H-i-s')),
-                    chat_id: $scheduledSet->getTelegramUserid()->getChatId(),
-                    parse_mode: ParseMode::HTML
-                );
-
-                $msg = sprintf(
-                    'scheduledSet id %s pavilion %s was reminded',
-                    $scheduledSet->getId(),
-                    1,
-                );
-                $this->logger->info($msg);
-                $io->success($msg);
-            }
             $io->success('Success');
         } catch (\Throwable $t) {
             $this->logger->error($t->getMessage());
@@ -133,5 +108,11 @@ class RemindCommand extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    private function log(SymfonyStyle $io, string $msg): void
+    {
+        $this->logger->info($msg);
+        $io->success($msg);
     }
 }
