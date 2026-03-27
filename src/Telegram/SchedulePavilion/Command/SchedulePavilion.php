@@ -248,32 +248,8 @@ class SchedulePavilion extends Conversation
         $this->showDayPicker($bot, edit: true);
     }
 
-    public function chooseTimeSet(Nutgram $bot)
+    private function showTimePicker(Nutgram $bot, bool $edit = false): void
     {
-        if (!$bot->isCallbackQuery()) {
-            $this->choosePavilion($bot);
-            return;
-        }
-
-        $data = $bot->callbackQuery()->data;
-
-        if ($data === "0") {
-            $this->showPavilionPicker($bot, edit: true);
-            return;
-        }
-
-        if ($data === 'back') {
-            $this->showMonthPicker($bot, edit: true);
-            return;
-        }
-
-        if (!str_contains($data, 'day_')) {
-            $this->choosePavilion($bot);
-            return;
-        }
-
-        $this->day = str_replace('day_', '', $data);
-
         $current = SchedulePavilionService::createNewDate();
         $currentYear = (int)$current->format('Y');
 
@@ -378,14 +354,50 @@ class SchedulePavilion extends Conversation
             $summaryParts[] = 'Нажаль немає доступних бронювань. Оберіть іншу дату.';
         }
 
-        // Edit the day picker message into the time picker
-        $bot->editMessageText(
-            text: implode("\n", $summaryParts),
-            parse_mode: ParseMode::HTML,
-            reply_markup: $inlineKeyboardMarkup,
-        );
+        if ($edit) {
+            $bot->editMessageText(
+                text: implode("\n", $summaryParts),
+                parse_mode: ParseMode::HTML,
+                reply_markup: $inlineKeyboardMarkup,
+            );
+        } else {
+            $bot->sendMessage(
+                text: implode("\n", $summaryParts),
+                parse_mode: ParseMode::HTML,
+                reply_markup: $inlineKeyboardMarkup,
+            );
+        }
 
         $this->next('scheduleDate');
+    }
+
+    public function chooseTimeSet(Nutgram $bot)
+    {
+        if (!$bot->isCallbackQuery()) {
+            $this->choosePavilion($bot);
+            return;
+        }
+
+        $data = $bot->callbackQuery()->data;
+
+        if ($data === "0") {
+            $this->showPavilionPicker($bot, edit: true);
+            return;
+        }
+
+        if ($data === 'back') {
+            $this->showMonthPicker($bot, edit: true);
+            return;
+        }
+
+        if (!str_contains($data, 'day_')) {
+            $this->choosePavilion($bot);
+            return;
+        }
+
+        $this->day = str_replace('day_', '', $data);
+
+        $this->showTimePicker($bot, edit: true);
     }
 
     public function scheduleDate(Nutgram $bot)
@@ -403,7 +415,7 @@ class SchedulePavilion extends Conversation
         }
 
         if ($data === 'back') {
-            $this->showDayPicker($bot, edit: true);
+            $this->showTimePicker($bot, edit: true);
             return;
         }
 
@@ -506,7 +518,7 @@ class SchedulePavilion extends Conversation
         }
 
         if ($data === 'back') {
-            $this->showDayPicker($bot, edit: true);
+            $this->showTimePicker($bot, edit: true);
             return;
         }
 
