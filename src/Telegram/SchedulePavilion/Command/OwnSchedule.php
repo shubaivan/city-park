@@ -35,7 +35,7 @@ class OwnSchedule extends Conversation
 
         if (!$ownSchedule) {
             $bot->sendMessage(
-                text: '<b>Немає бронювань</b>',
+                text: '📋 <b>У вас немає активних бронювань</b>',
                 parse_mode: ParseMode::HTML
             );
             $this->end();
@@ -43,41 +43,38 @@ class OwnSchedule extends Conversation
             return;
         }
 
-        $bot->sendMessage(
-            text: sprintf('<b>Ващі</b> бронювання'),
-            parse_mode: ParseMode::HTML
-        );
+        $textParts = ['📋 <b>Ваші бронювання:</b>', ''];
+
+        $inlineKeyboardMarkup = InlineKeyboardMarkup::make();
 
         foreach ($ownSchedule as $pavilion => $setSchedule) {
-            $file = sprintf(
-                '%s/assets/img/pavilion%s',
-                $this->projectDir,
-                $pavilion
-            );
-            if (is_file($file) && is_readable($file)) {
-                $photo = fopen($file, 'r+');
+            $pavilionName = $pavilion == '1' ? 'Перша' : 'Друга';
+            $textParts[] = '🏠 <b>Альтанка: ' . $pavilionName . '</b>';
 
-                /** @var Message $message */
-                $message = $bot->sendPhoto(
-                    photo: InputFile::make($photo)
-                );
-            }
             /** @var ScheduledSet $set */
             foreach ($setSchedule as $set) {
-                $key = strlen($set->getHour()) == 1 ? '0' . $set->getHour() : $set->getHour();
+                $dateTime = $set->getScheduledDateTime();
+                $textParts[] = sprintf(
+                    '   📅 %s  ⏰ %s',
+                    $dateTime->format('d.m.Y'),
+                    $dateTime->format('H:i')
+                );
 
-                $bot->sendMessage(
-                    text: sprintf('альтанка №:%s, час:%s', $set->getPavilion(), $set->getScheduledDateTime()->format('Y/m/d H:i')),
-                    parse_mode: ParseMode::HTML,
-                    reply_markup: InlineKeyboardMarkup::make()
-                        ->addRow(
-                            InlineKeyboardButton::make(
-                                'Відмінити', callback_data: 'decline_' . $set->getId()
-                            ),
-                        )
+                $inlineKeyboardMarkup->addRow(
+                    InlineKeyboardButton::make(
+                        '❌ Скасувати ' . $dateTime->format('d.m H:i') . ' (Альт. ' . $pavilion . ')',
+                        callback_data: 'decline_' . $set->getId()
+                    ),
                 );
             }
+            $textParts[] = '';
         }
+
+        $bot->sendMessage(
+            text: implode("\n", $textParts),
+            parse_mode: ParseMode::HTML,
+            reply_markup: $inlineKeyboardMarkup,
+        );
 
         $this->next('scheduleDate');
     }
@@ -95,21 +92,29 @@ class OwnSchedule extends Conversation
         $this->id = str_replace('decline_', '', $bot->callbackQuery()->data);
         $scheduledSet = $this->schedulePavilionService->getById($this->id);
         if (!$scheduledSet) {
-            $bot->sendMessage(
-                text: '<b>Немає бронювань</b>',
+            $bot->editMessageText(
+                text: '📋 <b>Бронювання не знайдено</b>',
                 parse_mode: ParseMode::HTML
             );
             $this->end();
+
+            return;
         }
-        $bot->sendMessage(
-            text: sprintf('альтанка №:%s, час:%s', $scheduledSet->getPavilion(), $scheduledSet->getScheduledDateTime()->format('Y/m/d H:i')),
-        );
-        $bot->sendMessage(
-            text: 'Видалити бронювання? Натисніть *Підтверджую*',
-            parse_mode: ParseMode::MARKDOWN,
+
+        $dateTime = $scheduledSet->getScheduledDateTime();
+        $pavilionName = $scheduledSet->getPavilion() == 1 ? 'Перша' : 'Друга';
+
+        $bot->editMessageText(
+            text: sprintf(
+                "Видалити бронювання?\n\n🏠 Альтанка: <b>%s</b>\n📅 Дата: <b>%s</b>\n⏰ Час: <b>%s</b>",
+                $pavilionName,
+                $dateTime->format('d.m.Y'),
+                $dateTime->format('H:i')
+            ),
+            parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()->addRow(
-                InlineKeyboardButton::make(text: 'Підтверджую', callback_data: 1),
-                InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
+                InlineKeyboardButton::make(text: '✅ Підтверджую', callback_data: 1),
+                InlineKeyboardButton::make(text: '⬅️ Назад', callback_data: 0),
             )
         );
 
@@ -128,23 +133,25 @@ class OwnSchedule extends Conversation
 
         $scheduledSet = $this->schedulePavilionService->getById($this->id);
         if (!$scheduledSet) {
-            $bot->sendMessage(
-                text: '<b>Немає бронювань</b>',
+            $bot->editMessageText(
+                text: '📋 <b>Бронювання не знайдено</b>',
                 parse_mode: ParseMode::HTML
             );
             $this->end();
+
+            return;
         }
 
         $this->em->remove($scheduledSet);
         $this->em->flush();
 
-        $bot->sendMessage(
-            text: '<b>Видалено</b>',
+        $bot->editMessageText(
+            text: '✅ <b>Бронювання видалено</b>',
             parse_mode: ParseMode::HTML
         );
 
         $this->id = null;
 
-        $this->own($bot);
+        $this->end();
     }
 }

@@ -63,43 +63,33 @@ class SchedulePavilion extends Conversation
             return;
         }
 
-        $bot->sendMessage(
-            text: 'Оберіть альтанку',
-            reply_markup: InlineKeyboardMarkup::make()
-                ->addRow(
-                    InlineKeyboardButton::make('Перша', callback_data: 'number_1'),
-                    InlineKeyboardButton::make('Друга', callback_data: 'number_2')
-                )
-        );
+        $this->showPavilionPicker($bot);
+    }
+
+    private function showPavilionPicker(Nutgram $bot, bool $edit = false): void
+    {
+        $markup = InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('Перша', callback_data: 'number_1'),
+                InlineKeyboardButton::make('Друга', callback_data: 'number_2')
+            );
+
+        if ($edit) {
+            $bot->editMessageText(
+                text: 'Оберіть альтанку',
+                reply_markup: $markup,
+            );
+        } else {
+            $bot->sendMessage(
+                text: 'Оберіть альтанку',
+                reply_markup: $markup,
+            );
+        }
         $this->next('chooseMonth');
     }
 
-    public function chooseMonth(Nutgram $bot)
+    private function showMonthPicker(Nutgram $bot, bool $edit = false): void
     {
-        if (!$bot->isCallbackQuery() || !str_contains($bot->callbackQuery()->data, 'number_')) {
-            $this->choosePavilion($bot);
-
-            return;
-        }
-        $this->pavilion = str_replace('number_', '', $bot->callbackQuery()->data);
-
-        $file = sprintf(
-            '%s/assets/img/pavilion%s',
-            $this->projectDir,
-            $this->pavilion
-        );
-        if (is_file($file) && is_readable($file)) {
-            $photo = fopen($file, 'r+');
-
-            /** @var Message $message */
-            $message = $bot->sendPhoto(
-                photo: InputFile::make($photo)
-            );
-        }
-
-        $bot->sendMessage(
-            text: 'Альтанка №' . $this->pavilion
-        );
         $current = SchedulePavilionService::createNewDate();
         $currentYear = (int)$current->format('Y');
         $currentMonth = (int)$current->format('m');
@@ -122,28 +112,26 @@ class SchedulePavilion extends Conversation
         if (count($month)) {
             $inlineKeyboardMarkup->addRow(...$month);
         }
-        $inlineKeyboardMarkup->addRow(InlineKeyboardButton::make(text: 'На початок', callback_data: 0));
-        $bot->sendMessage(
-            text: 'Оберіть місяць:',
-            reply_markup: $inlineKeyboardMarkup,
+        $inlineKeyboardMarkup->addRow(
+            InlineKeyboardButton::make(text: '⬅️ Назад', callback_data: 'back'),
+            InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
         );
 
+        $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
+        $text = 'Альтанка: ' . $pavilionName . "\nОберіть місяць:";
+
+        if ($edit) {
+            $bot->editMessageText(text: $text, reply_markup: $inlineKeyboardMarkup);
+        } else {
+            $bot->sendMessage(text: $text, reply_markup: $inlineKeyboardMarkup);
+        }
         $this->next('chooseDay');
     }
 
-    public function chooseDay(Nutgram $bot)
+    private function showDayPicker(Nutgram $bot, bool $edit = false): void
     {
-        if (!$bot->isCallbackQuery() || $bot->callbackQuery()->data == "0" || !str_contains($bot->callbackQuery()->data, 'month_')) {
-            $this->choosePavilion($bot);
-
-            return;
-        }
-
-        $this->month = str_replace('month_', '', $bot->callbackQuery()->data);
-        $bot->sendMessage(
-            text: 'Місяць ' . $this->month
-        );
         $current = SchedulePavilionService::createNewDate();
+        $currentYear = (int)$current->format('Y');
 
         if ($this->month === $current->format('m')) {
             $currentDay = (int)$current->format('d');
@@ -151,7 +139,7 @@ class SchedulePavilion extends Conversation
             $currentDay = 1;
         }
 
-        $current->setDate((int)$current->format('Y'), (int)$this->month, $currentDay);
+        $current->setDate($currentYear, (int)$this->month, $currentDay);
 
         $last = (clone $current)->modify('last day of');
         $lastDay = (int)$last->format('d');
@@ -175,40 +163,117 @@ class SchedulePavilion extends Conversation
         if (count($days)) {
             $inlineKeyboardMarkup->addRow(...$days);
         }
-        $inlineKeyboardMarkup->addRow(InlineKeyboardButton::make(text: 'На початок', callback_data: 0));
-        $bot->sendMessage(
-            text: 'Оберіть день',
-            reply_markup: $inlineKeyboardMarkup,
+        $inlineKeyboardMarkup->addRow(
+            InlineKeyboardButton::make(text: '⬅️ Назад', callback_data: 'back'),
+            InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
         );
 
+        $monthFormatted = SchedulePavilionService::createNewDate()->setDate($currentYear, (int)$this->month, 1)->format('Y-m');
+        $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
+        $text = 'Альтанка: ' . $pavilionName . ', Місяць: ' . $monthFormatted . "\nОберіть день:";
+
+        if ($edit) {
+            $bot->editMessageText(text: $text, reply_markup: $inlineKeyboardMarkup);
+        } else {
+            $bot->sendMessage(text: $text, reply_markup: $inlineKeyboardMarkup);
+        }
         $this->next('chooseTimeSet');
+    }
+
+    public function chooseMonth(Nutgram $bot)
+    {
+        if (!$bot->isCallbackQuery() || !str_contains($bot->callbackQuery()->data, 'number_')) {
+            $this->choosePavilion($bot);
+            return;
+        }
+        $this->pavilion = str_replace('number_', '', $bot->callbackQuery()->data);
+
+        $file = sprintf(
+            '%s/assets/img/pavilion%s',
+            $this->projectDir,
+            $this->pavilion
+        );
+        if (is_file($file) && is_readable($file)) {
+            $photo = fopen($file, 'r+');
+            $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
+            $bot->sendPhoto(
+                photo: InputFile::make($photo),
+                caption: '🏠 Альтанка: ' . $pavilionName,
+            );
+        }
+
+        // Edit the "Оберіть альтанку" message into the month picker
+        $this->showMonthPicker($bot, edit: true);
+    }
+
+    public function chooseDay(Nutgram $bot)
+    {
+        if (!$bot->isCallbackQuery()) {
+            $this->choosePavilion($bot);
+            return;
+        }
+
+        $data = $bot->callbackQuery()->data;
+
+        if ($data === "0") {
+            $this->showPavilionPicker($bot, edit: true);
+            return;
+        }
+
+        if ($data === 'back') {
+            $this->showPavilionPicker($bot, edit: true);
+            return;
+        }
+
+        if (!str_contains($data, 'month_')) {
+            $this->choosePavilion($bot);
+            return;
+        }
+
+        $this->month = str_replace('month_', '', $data);
+
+        // Edit the month picker message into the day picker
+        $this->showDayPicker($bot, edit: true);
     }
 
     public function chooseTimeSet(Nutgram $bot)
     {
-        if (!$bot->isCallbackQuery() || $bot->callbackQuery()->data == "0" || !str_contains($bot->callbackQuery()->data, 'day_')) {
+        if (!$bot->isCallbackQuery()) {
             $this->choosePavilion($bot);
-
             return;
         }
 
-        $this->day = str_replace('day_', '', $bot->callbackQuery()->data);
+        $data = $bot->callbackQuery()->data;
 
-        $bot->sendMessage(
-            text: 'День ' . $this->day
-        );
+        if ($data === "0") {
+            $this->showPavilionPicker($bot, edit: true);
+            return;
+        }
+
+        if ($data === 'back') {
+            $this->showMonthPicker($bot, edit: true);
+            return;
+        }
+
+        if (!str_contains($data, 'day_')) {
+            $this->choosePavilion($bot);
+            return;
+        }
+
+        $this->day = str_replace('day_', '', $data);
 
         $current = SchedulePavilionService::createNewDate();
+        $currentYear = (int)$current->format('Y');
 
         $scheduledSets = $this->schedulePavilionService->getExistSet(
             $this->pavilion,
-            (int)$current->format('Y'),
+            $currentYear,
             (int)$this->month,
             (int)$this->day,
         );
 
         $chosenDate = SchedulePavilionService::createNewDate();
-        $chosenDate->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
+        $chosenDate->setDate($currentYear, (int)$this->month, (int)$this->day);
         $chosenDate->setTime(0,0);
         if ($current->format('Y-m-d') == $chosenDate->format('Y-m-d')) {
             $currentHour = (int)$current->format('H');
@@ -246,12 +311,14 @@ class SchedulePavilion extends Conversation
             $inlineKeyboardMarkup->addRow(...$hours);
         }
 
-        $inlineKeyboardMarkup->addRow(InlineKeyboardButton::make(text: 'На початок', callback_data: 0));
+        $inlineKeyboardMarkup->addRow(
+            InlineKeyboardButton::make(text: '⬅️ Назад', callback_data: 'back'),
+            InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
+        );
 
         $other = [];
         $ownSchedule = [];
-        foreach ($scheduledSets as  $set) {
-            $key = strlen($set->getHour()) == 1 ? '0'.$set->getHour() : $set->getHour();
+        foreach ($scheduledSets as $set) {
             if ($set->getTelegramUserId()->getTelegramId() == $this->telegramUserService->getCurrentUser()->getTelegramId()) {
                 $ownSchedule[] = $set;
             } else {
@@ -259,16 +326,14 @@ class SchedulePavilion extends Conversation
             }
         }
 
+        // Send own bookings with cancel buttons separately (if any)
         if ($ownSchedule) {
-            $bot->sendMessage(
-                text: sprintf('<b>Ващі</b> бронювання'),
-                parse_mode: ParseMode::HTML
-            );
             foreach ($ownSchedule as $set) {
                 $scheduledByCurrentUserDate = $set->getScheduledDateTime();
+                $key = strlen($set->getHour()) == 1 ? '0'.$set->getHour() : $set->getHour();
 
                 $bot->sendMessage(
-                    text: sprintf('альтанка №%s, час: %s', $set->getPavilion(), $scheduledByCurrentUserDate->format('Y-m-d/H-i')),
+                    text: sprintf('Ваше бронювання: альтанка №%s, час: %s', $set->getPavilion(), $scheduledByCurrentUserDate->format('Y-m-d/H-i')),
                     parse_mode: ParseMode::HTML,
                     reply_markup: InlineKeyboardMarkup::make()
                         ->addRow(
@@ -280,48 +345,62 @@ class SchedulePavilion extends Conversation
             }
         }
 
+        // Build summary text
+        $dayFormatted = (clone SchedulePavilionService::createNewDate())->setDate($currentYear, (int)$this->month, (int)$this->day)->format('M-d');
+        $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
+        $summaryParts = ['Альтанка: ' . $pavilionName . ', День: ' . $dayFormatted];
+
         if ($other) {
-            $bot->sendMessage(
-                text: sprintf('<b>Чужі</b> бронювання'),
-                parse_mode: ParseMode::HTML
-            );
+            $summaryParts[] = '';
+            $summaryParts[] = '<b>Чужі бронювання:</b>';
             foreach ($other as $set) {
                 $key = strlen($set->getHour()) == 1 ? '0' . $set->getHour() : $set->getHour();
-
-                $bot->sendMessage(
-                    text: sprintf('година %s:00, заброньована: %s', $key, $set->getTelegramUserId()->concatNameInfo()),
-                );
+                $summaryParts[] = sprintf('  година %s:00, заброньована: %s', $key, $set->getTelegramUserId()->concatNameInfo());
             }
         }
 
+        $summaryParts[] = '';
         if (count($availableHours)) {
-            $bot->sendMessage(
-                text: 'Оберіть час нового бронювання:',
-                reply_markup: $inlineKeyboardMarkup,
-            );
+            $summaryParts[] = 'Оберіть час нового бронювання:';
         } else {
-            $bot->sendMessage(
-                text: 'Нажаль немає доступних бронювань. Оберіть іншу дату.',
-                reply_markup: $inlineKeyboardMarkup,
-            );
+            $summaryParts[] = 'Нажаль немає доступних бронювань. Оберіть іншу дату.';
         }
 
+        // Edit the day picker message into the time picker
+        $bot->editMessageText(
+            text: implode("\n", $summaryParts),
+            parse_mode: ParseMode::HTML,
+            reply_markup: $inlineKeyboardMarkup,
+        );
 
         $this->next('scheduleDate');
     }
 
     public function scheduleDate(Nutgram $bot)
     {
-        if (!$bot->isCallbackQuery()
-            || $bot->callbackQuery()->data == "0"
-            || (!str_contains($bot->callbackQuery()->data, 'hour_') && !str_contains($bot->callbackQuery()->data, 'decline_'))
-        ) {
+        if (!$bot->isCallbackQuery()) {
             $this->choosePavilion($bot);
-
             return;
         }
 
-        $chosenHour = $bot->callbackQuery()->data;
+        $data = $bot->callbackQuery()->data;
+
+        if ($data === "0") {
+            $this->showPavilionPicker($bot, edit: true);
+            return;
+        }
+
+        if ($data === 'back') {
+            $this->showDayPicker($bot, edit: true);
+            return;
+        }
+
+        if (!str_contains($data, 'hour_') && !str_contains($data, 'decline_')) {
+            $this->choosePavilion($bot);
+            return;
+        }
+
+        $chosenHour = $data;
         if (str_contains($chosenHour, 'decline_')) {
             $this->hour = str_replace('decline_', '', $chosenHour);
 
@@ -329,13 +408,10 @@ class SchedulePavilion extends Conversation
             $dateTime = SchedulePavilionService::createNewDate();
             $dateTime->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
             $dateTime->setTime((int)$this->hour,0);
-            $bot->sendMessage(
-                text: 'Дата: ' . $dateTime->format('Y/m/d H:i') ,
-            );
 
-            $bot->sendMessage(
-                text: 'Видалити бронювання? Натисніть *Підтверджую*',
-                parse_mode: ParseMode::MARKDOWN,
+            $bot->editMessageText(
+                text: 'Видалити бронювання ' . $dateTime->format('Y/m/d H:i') . '? Натисніть <b>Підтверджую</b>',
+                parse_mode: ParseMode::HTML,
                 reply_markup: InlineKeyboardMarkup::make()->addRow(
                     InlineKeyboardButton::make(text: 'Підтверджую', callback_data: 1),
                     InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
@@ -350,14 +426,13 @@ class SchedulePavilion extends Conversation
             $dateTime = SchedulePavilionService::createNewDate();
             $dateTime->setDate((int)$current->format('Y'), (int)$this->month, (int)$this->day);
             $dateTime->setTime((int)$this->hour,0);
-            $bot->sendMessage(
-                text: sprintf('Альтанка %s. Дата: %s', $this->pavilion, $dateTime->format('Y/m/d H:i')),
-            );
-            $bot->sendMessage(
-                text: 'Якщо згодні натисніть *Підтверджую*',
-                parse_mode: ParseMode::MARKDOWN,
+
+            $bot->editMessageText(
+                text: sprintf("Альтанка №%s. Дата: %s\nЯкщо згодні натисніть <b>Підтверджую</b>", $this->pavilion, $dateTime->format('Y/m/d H:i')),
+                parse_mode: ParseMode::HTML,
                 reply_markup: InlineKeyboardMarkup::make()->addRow(
                     InlineKeyboardButton::make(text: 'Підтверджую', callback_data: 1),
+                    InlineKeyboardButton::make(text: '⬅️ Назад', callback_data: 'back'),
                     InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
                 )
             );
@@ -383,7 +458,7 @@ class SchedulePavilion extends Conversation
             $this->telegramUserService->getCurrentUser()
         );
         if (!$scheduledSets) {
-            $bot->sendMessage(
+            $bot->editMessageText(
                 text: '<b>Не знайшло ваше бронювання.</b>',
                 parse_mode: ParseMode::HTML
             );
@@ -396,7 +471,7 @@ class SchedulePavilion extends Conversation
         $this->em->remove($scheduledSet);
         $this->em->flush();
 
-        $bot->sendMessage(
+        $bot->editMessageText(
             text: '<b>Ваше бронювання видалено.</b>',
             parse_mode: ParseMode::HTML
         );
@@ -406,9 +481,25 @@ class SchedulePavilion extends Conversation
 
     public function approveDate(Nutgram $bot)
     {
-        if (!$bot->isCallbackQuery() || $bot->callbackQuery()->data != "1") {
+        if (!$bot->isCallbackQuery()) {
             $this->choosePavilion($bot);
+            return;
+        }
 
+        $data = $bot->callbackQuery()->data;
+
+        if ($data === "0") {
+            $this->showPavilionPicker($bot, edit: true);
+            return;
+        }
+
+        if ($data === 'back') {
+            $this->showDayPicker($bot, edit: true);
+            return;
+        }
+
+        if ($data != "1") {
+            $this->choosePavilion($bot);
             return;
         }
 
@@ -427,7 +518,7 @@ class SchedulePavilion extends Conversation
         $lists = $this->validator->validate($scheduledSet);
         if (count($lists)) {
             foreach ($lists as $list) {
-                $bot->sendMessage(
+                $bot->editMessageText(
                     text: '<b>'.$list->getMessage().'</b>',
                     parse_mode: ParseMode::HTML
                 );
@@ -435,7 +526,7 @@ class SchedulePavilion extends Conversation
 
                 return;
             }
-            $bot->sendMessage(
+            $bot->editMessageText(
                 text: '<b>Сталась помилка.</b>',
                 parse_mode: ParseMode::HTML
             );
@@ -445,8 +536,18 @@ class SchedulePavilion extends Conversation
         }
         $this->em->flush();
 
-        $bot->sendMessage(
-            text: '<b>Вітаємо</b>, чекайте нагадування від бота <tg-emoji emoji-id="5368324170671202286">👍</tg-emoji>',
+        $dateTime = SchedulePavilionService::createNewDate();
+        $dateTime->setDate((int)$dateTime->format('Y'), (int)$this->month, (int)$this->day);
+        $dateTime->setTime((int)$this->hour, 0);
+        $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
+
+        $bot->editMessageText(
+            text: sprintf(
+                "🎉🎉🎉\n\n<b>Бронювання підтверджено!</b>\n\n🏠 Альтанка: <b>%s</b>\n📅 Дата: <b>%s</b>\n⏰ Час: <b>%s</b>\n\n📲 Нагадування прийде за годину до початку.\n\n🎉🎉🎉",
+                $pavilionName,
+                $dateTime->format('d.m.Y'),
+                $dateTime->format('H:i')
+            ),
             parse_mode: ParseMode::HTML
         );
 
