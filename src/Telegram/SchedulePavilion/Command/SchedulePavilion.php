@@ -543,7 +543,7 @@ class SchedulePavilion extends Conversation
 
         $bot->editMessageText(
             text: sprintf(
-                "🎉🎉🎉\n\n<b>Бронювання підтверджено!</b>\n\n🏠 Альтанка: <b>%s</b>\n📅 Дата: <b>%s</b>\n⏰ Час: <b>%s</b>\n\n📲 Нагадування прийде за годину до початку.\n\n🎉🎉🎉",
+                "🎉🎉🎉\n\n<b>Бронювання підтверджено!</b>\n\n🏠 Альтанка: <b>%s</b>\n📅 Дата: <b>%s</b>\n⏰ Час: <b>%s</b>\n\n📲 Нагадування прийде за 15 хвилин до початку.\n\n🎉🎉🎉",
                 $pavilionName,
                 $dateTime->format('d.m.Y'),
                 $dateTime->format('H:i')
