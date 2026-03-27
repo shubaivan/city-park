@@ -126,8 +126,7 @@ class OwnSchedule extends Conversation
         if (!$bot->isCallbackQuery()
             || $bot->callbackQuery()->data != "1"
         ) {
-            $this->own($bot);
-
+            $this->renderOwnSchedule($bot);
             return;
         }
 
@@ -138,20 +137,74 @@ class OwnSchedule extends Conversation
                 parse_mode: ParseMode::HTML
             );
             $this->end();
-
             return;
         }
 
         $this->em->remove($scheduledSet);
         $this->em->flush();
-
-        $bot->editMessageText(
-            text: '✅ <b>Бронювання видалено</b>',
-            parse_mode: ParseMode::HTML
-        );
-
         $this->id = null;
 
-        $this->end();
+        // Show remaining bookings
+        $this->renderOwnSchedule($bot);
+    }
+
+    private function renderOwnSchedule(Nutgram $bot): void
+    {
+        $ownSchedule = $this->schedulePavilionService->getOwn(
+            $this->telegramUserService->getCurrentUser()
+        );
+
+        if (!$ownSchedule) {
+            try {
+                $bot->editMessageText(
+                    text: '✅ <b>Бронювання видалено</b>' . "\n\n" . '📋 <b>У вас немає активних бронювань</b>',
+                    parse_mode: ParseMode::HTML
+                );
+            } catch (\Throwable $e) {
+                $bot->sendMessage(
+                    text: '📋 <b>У вас немає активних бронювань</b>',
+                    parse_mode: ParseMode::HTML
+                );
+            }
+            $this->end();
+            return;
+        }
+
+        $textParts = ['✅ <b>Бронювання видалено</b>', '', '📋 <b>Залишилися бронювання:</b>', ''];
+        $inlineKeyboardMarkup = InlineKeyboardMarkup::make();
+
+        foreach ($ownSchedule as $pavilion => $setSchedule) {
+            $pavilionName = $pavilion == '1' ? 'Перша' : 'Друга';
+            $textParts[] = '🏠 <b>Альтанка: ' . $pavilionName . '</b>';
+
+            foreach ($setSchedule as $set) {
+                $dateTime = $set->getScheduledDateTime();
+                $textParts[] = sprintf('   📅 %s  ⏰ %s', $dateTime->format('d.m.Y'), $dateTime->format('H:i'));
+
+                $inlineKeyboardMarkup->addRow(
+                    InlineKeyboardButton::make(
+                        '❌ Скасувати ' . $dateTime->format('d.m H:i') . ' (Альт. ' . $pavilion . ')',
+                        callback_data: 'decline_' . $set->getId()
+                    ),
+                );
+            }
+            $textParts[] = '';
+        }
+
+        try {
+            $bot->editMessageText(
+                text: implode("\n", $textParts),
+                parse_mode: ParseMode::HTML,
+                reply_markup: $inlineKeyboardMarkup,
+            );
+        } catch (\Throwable $e) {
+            $bot->sendMessage(
+                text: implode("\n", $textParts),
+                parse_mode: ParseMode::HTML,
+                reply_markup: $inlineKeyboardMarkup,
+            );
+        }
+
+        $this->next('scheduleDate');
     }
 }
