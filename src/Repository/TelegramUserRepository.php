@@ -106,6 +106,10 @@ class TelegramUserRepository extends ServiceEntityRepository
 
         }
 
+        if (isset($params['debt_filter']) && $params['debt_filter'] === '1' && !$total) {
+            $conditions[] = 'a.debt > 0';
+        }
+
         if (count($conditions)) {
             $conditions = array_unique($conditions);
             $dql .= $condition . implode(' AND ', $conditions);
