@@ -24,8 +24,8 @@
                     <ul>
                         <li>Оброблено рядків: {{ result.processed }}</li>
                         <li>Оновлено акаунтів: {{ result.updated }}</li>
-                        <li>Не знайдено: {{ result.not_found }}</li>
-                        <li>Скинуто борг (відсутні у файлі): {{ result.reset }}</li>
+                        <li>Заблоковано (борг > 0): <b style="color:red">{{ result.blocked }}</b></li>
+                        <li>Не знайдено в базі: {{ result.not_found }}</li>
                     </ul>
                     {% if result.missing|length > 0 %}
                         <details>

@@ -252,7 +252,8 @@ class AdminController extends AbstractController
         Request $request,
         AccountRepository $accountRepository,
         EntityManagerInterface $em,
-        LoggerInterface $logger
+        LoggerInterface $logger,
+        Nutgram $bot
     ): Response
     {
         /** @var UploadedFile|null $file */
@@ -299,29 +300,43 @@ class AdminController extends AbstractController
         $updated = 0;
         $notFound = 0;
         $missing = [];
-        $updatedAccountNumbers = [];
+        $blocked = 0;
 
         foreach ($debtData as $accountNumber => $debt) {
             $account = $accountRepository->findOneBy(['account_number' => $accountNumber]);
             if ($account) {
                 $account->setDebt((string)$debt);
-                $em->persist($account);
-                $updatedAccountNumbers[] = $accountNumber;
+                $wasActive = $account->isActive();
+
+                if ($debt > 0) {
+                    $account->setIsActive(false);
+                    $em->persist($account);
+
+                    if ($wasActive) {
+                        $blocked++;
+                        foreach ($account->getUsers() as $user) {
+                            if ($user->getChatId()) {
+                                try {
+                                    $bot->sendMessage(
+                                        text: sprintf(
+                                            "🚫 Вас <b>ЗАБЛОКОВАНО</b> через борг: <b>%s грн</b>\n\nСплатіть заборгованість для відновлення доступу до бронювання.",
+                                            number_format($debt, 2, '.', ' ')
+                                        ),
+                                        chat_id: $user->getChatId(),
+                                        parse_mode: ParseMode::HTML
+                                    );
+                                } catch (\Throwable $e) {
+                                    $logger->error('Failed to notify user: ' . $e->getMessage());
+                                }
+                            }
+                        }
+                    }
+                }
+
                 $updated++;
             } else {
                 $missing[] = $accountNumber;
                 $notFound++;
-            }
-        }
-
-        // Reset debt for accounts not in the file
-        $allAccounts = $accountRepository->findAll();
-        $reset = 0;
-        foreach ($allAccounts as $account) {
-            if (!in_array($account->getAccountNumber(), $updatedAccountNumbers) && $account->hasDebt()) {
-                $account->setDebt('0');
-                $em->persist($account);
-                $reset++;
             }
         }
 
@@ -330,7 +345,7 @@ class AdminController extends AbstractController
         $logger->info('Debt upload complete', [
             'updated' => $updated,
             'not_found' => $notFound,
-            'reset' => $reset,
+            'blocked' => $blocked,
         ]);
 
         return $this->render('admin/debt.html.twig', [
@@ -339,7 +354,7 @@ class AdminController extends AbstractController
                 'processed' => $processed,
                 'updated' => $updated,
                 'not_found' => $notFound,
-                'reset' => $reset,
+                'blocked' => $blocked,
                 'missing' => $missing,
             ],
         ]);
