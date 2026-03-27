@@ -22,6 +22,7 @@ class TelegramUser
         'house_number',
         'street',
         'is_active',
+        'debt',
         'phone_number',
         'additional_phones',
         'first_name',
