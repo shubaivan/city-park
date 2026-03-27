@@ -48,8 +48,11 @@ class SchedulePavilion extends Conversation
                     reply_markup: $markup,
                 );
             } catch (\Throwable $e) {
-                // Ignore "message is not modified" errors
+                // If tracked message can't be edited, send a new one
+                $this->sendTrackedMessage($bot, $text, $markup, $parseMode);
             }
+        } else {
+            $this->sendTrackedMessage($bot, $text, $markup, $parseMode);
         }
     }
 
