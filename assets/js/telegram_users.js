@@ -32,10 +32,12 @@ document.addEventListener("DOMContentLoaded", function () {
         "orderable": false,
         "render": function (data, type, row, meta) {
             var divTag = $('<div/>');
-            if (Object.keys(data).length) {
+            if (data && typeof data === 'object' && Object.keys(data).length) {
                 $.each(data, function( index, value ) {
-                    var pOrder = $('<p/>').append('<b>' + value.property_name + ':</b> ').append('<i>'+value.property_value+'</i>');
-                    divTag.append(pOrder);
+                    if (value && value.property_name !== undefined) {
+                        var pOrder = $('<p/>').append('<b>' + value.property_name + ':</b> ').append('<i>'+value.property_value+'</i>');
+                        divTag.append(pOrder);
+                    }
                 });
             }
 
@@ -58,6 +60,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const collectionData = window.Routing
         .generate('admin-users-data-table');
 
+    let debtFilter = false;
+
     table = $('#telegramUserTable').DataTable({
         'order': [[0, 'desc']],
         'responsive': true,
@@ -68,11 +72,30 @@ document.addEventListener("DOMContentLoaded", function () {
         'ajax': {
             'url': collectionData,
             "data": function ( d ) {
+                d.debt_filter = debtFilter ? '1' : '0';
                 console.log('ajax data', d);
             }
         },
         columns: th_keys,
         "columnDefs": common_defs
+    });
+
+    // Add debt filter button
+    var filterBtn = $('<button/>', {
+        'class': 'btn btn-warning ml-2 mb-2',
+        'id': 'debtFilterBtn',
+        'text': 'Показати боржників'
+    });
+    $('#telegramUserTable_wrapper .dataTables_filter').append(filterBtn);
+
+    filterBtn.on('click', function () {
+        debtFilter = !debtFilter;
+        if (debtFilter) {
+            $(this).text('Показати всіх').removeClass('btn-warning').addClass('btn-success');
+        } else {
+            $(this).text('Показати боржників').removeClass('btn-success').addClass('btn-warning');
+        }
+        table.ajax.reload();
     });
 
     let exampleModal = $('#exampleModal');
