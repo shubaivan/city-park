@@ -25,6 +25,7 @@
                         <li>Оброблено рядків: {{ result.processed }}</li>
                         <li>Оновлено акаунтів: {{ result.updated }}</li>
                         <li>Заблоковано (борг > 0): <b style="color:red">{{ result.blocked }}</b></li>
+                        <li>Скинуто борг (не в файлі): <b style="color:green">{{ result.reset }}</b></li>
                         <li>Не знайдено в базі: {{ result.not_found }}</li>
                     </ul>
                     {% if result.missing|length > 0 %}
