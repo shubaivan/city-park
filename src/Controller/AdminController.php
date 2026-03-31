@@ -340,12 +340,43 @@ class AdminController extends AbstractController
             }
         }
 
+        // Reset debt for accounts NOT present in the uploaded file
+        $reset = 0;
+        $allAccounts = $accountRepository->findAll();
+        $uploadedAccountNumbers = array_keys($debtData);
+
+        foreach ($allAccounts as $account) {
+            if (!in_array($account->getAccountNumber(), $uploadedAccountNumbers, true)) {
+                if ($account->hasDebt()) {
+                    $account->setDebt('0');
+                    $account->setIsActive(true);
+                    $em->persist($account);
+                    $reset++;
+
+                    foreach ($account->getUsers() as $user) {
+                        if ($user->getChatId()) {
+                            try {
+                                $bot->sendMessage(
+                                    text: "✅ Ваш борг <b>погашено</b>. Доступ до бронювання відновлено!",
+                                    chat_id: $user->getChatId(),
+                                    parse_mode: ParseMode::HTML
+                                );
+                            } catch (\Throwable $e) {
+                                $logger->error('Failed to notify user about debt reset: ' . $e->getMessage());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         $em->flush();
 
         $logger->info('Debt upload complete', [
             'updated' => $updated,
             'not_found' => $notFound,
             'blocked' => $blocked,
+            'reset' => $reset,
         ]);
 
         return $this->render('admin/debt.html.twig', [
@@ -355,6 +386,7 @@ class AdminController extends AbstractController
                 'updated' => $updated,
                 'not_found' => $notFound,
                 'blocked' => $blocked,
+                'reset' => $reset,
                 'missing' => $missing,
             ],
         ]);
