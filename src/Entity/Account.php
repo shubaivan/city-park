@@ -127,7 +127,7 @@ class Account
 
     public function hasDebt(): bool
     {
-        return $this->debt !== null && (float)$this->debt > 0;
+        return $this->debt !== null && (float)$this->debt > 1000;
     }
 
     public function getUsers(): Collection

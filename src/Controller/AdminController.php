@@ -308,7 +308,7 @@ class AdminController extends AbstractController
                 $account->setDebt((string)$debt);
                 $wasActive = $account->isActive();
 
-                if ($debt > 0) {
+                if ($debt > 1000) {
                     $account->setIsActive(false);
                     $em->persist($account);
 
@@ -331,6 +331,10 @@ class AdminController extends AbstractController
                             }
                         }
                     }
+                } else {
+                    // Debt <= 1000: ensure account stays active
+                    $account->setIsActive(true);
+                    $em->persist($account);
                 }
 
                 $updated++;
