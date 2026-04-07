@@ -347,7 +347,7 @@ class AdminController extends AbstractController
         // Reset debt for accounts NOT present in the uploaded file
         $reset = 0;
         $allAccounts = $accountRepository->findAll();
-        $uploadedAccountNumbers = array_keys($debtData);
+        $uploadedAccountNumbers = array_map('strval', array_keys($debtData));
 
         foreach ($allAccounts as $account) {
             if (!in_array($account->getAccountNumber(), $uploadedAccountNumbers, true)) {
