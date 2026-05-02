@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Entity\Account;
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\ScheduledSetRepository;
@@ -51,6 +52,14 @@ class SchedulePavilionService
     public function getById(int $id): ?ScheduledSet
     {
         return $this->repository->getById($id);
+    }
+
+    /**
+     * @return int[] Hours (0-23) already booked by this account on the given day, across all pavilions.
+     */
+    public function getAccountBookedHours(int $year, int $month, int $day, Account $account): array
+    {
+        return $this->repository->getBookedHoursForAccount($year, $month, $day, $account);
     }
 
     public static function createNewDate(string $timeZone = 'Europe/Kyiv'): \DateTime
