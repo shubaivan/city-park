@@ -368,9 +368,17 @@ class SchedulePavilion extends Conversation
             $currentHour = 0;
         }
 
+        $accountBookedHours = [];
+        $account = $this->telegramUserService->getCurrentUser()->getAccount();
+        if ($account) {
+            $accountBookedHours = $this->schedulePavilionService->getAccountBookedHours(
+                $currentYear, (int)$this->month, (int)$this->day, $account
+            );
+        }
+
         $availableHours = [];
         for ($i = $currentHour; $i < 24; $i++) {
-            if (!array_key_exists($i, $scheduledSets)) {
+            if (!array_key_exists($i, $scheduledSets) && !in_array($i, $accountBookedHours, true)) {
                 $availableHours[] = $i;
             }
         }

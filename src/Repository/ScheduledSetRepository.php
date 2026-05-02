@@ -52,13 +52,12 @@ class ScheduledSetRepository extends ServiceEntityRepository
     }
 
     public function countByDay(
-        int $pavilion, int $year, int $month, int $day, Account $account
+        int $year, int $month, int $day, Account $account
     ) {
         $qb = $this->createQueryBuilder('ss');
         $qb
             ->select('COUNT(ss.id)')
             ->join('ss.telegramUserId', 'tu')
-            ->andWhere('ss.pavilion = :pavilion')->setParameter('pavilion', $pavilion)
             ->andWhere('ss.year = :year')->setParameter('year', $year)
             ->andWhere('ss.month = :month')->setParameter('month', $month)
             ->andWhere('ss.day = :day')->setParameter('day', $day)
@@ -71,13 +70,12 @@ class ScheduledSetRepository extends ServiceEntityRepository
     }
 
     public function countByMonth(
-        int $pavilion, \DateTimeInterface $from, \DateTimeInterface $to, Account $account
+        \DateTimeInterface $from, \DateTimeInterface $to, Account $account
     ) {
         $qb = $this->createQueryBuilder('ss');
         $qb
             ->select('COUNT(ss.id)')
             ->join('ss.telegramUserId', 'tu')
-            ->andWhere('ss.pavilion = :pavilion')->setParameter('pavilion', $pavilion)
             ->andWhere('tu.account = :account')->setParameter('account', $account)
             ->andWhere($qb->expr()->between('ss.scheduled_at', ':from', ':to'))
             ->setParameter('from', $from)
@@ -85,6 +83,44 @@ class ScheduledSetRepository extends ServiceEntityRepository
         ;
 
         return $qb->getQuery()->getSingleScalarResult();
+    }
+
+    public function existsAtSameHourForAccount(
+        int $year, int $month, int $day, int $hour, Account $account, ?int $excludeId = null
+    ): bool {
+        $qb = $this->createQueryBuilder('ss');
+        $qb
+            ->select('COUNT(ss.id)')
+            ->join('ss.telegramUserId', 'tu')
+            ->andWhere('ss.year = :year')->setParameter('year', $year)
+            ->andWhere('ss.month = :month')->setParameter('month', $month)
+            ->andWhere('ss.day = :day')->setParameter('day', $day)
+            ->andWhere('ss.hour = :hour')->setParameter('hour', $hour)
+            ->andWhere('tu.account = :account')->setParameter('account', $account);
+
+        if ($excludeId !== null) {
+            $qb->andWhere('ss.id != :excludeId')->setParameter('excludeId', $excludeId);
+        }
+
+        return ((int)$qb->getQuery()->getSingleScalarResult()) > 0;
+    }
+
+    /**
+     * @return int[] Hours (0-23) already booked by this account on the given day, across all pavilions.
+     */
+    public function getBookedHoursForAccount(
+        int $year, int $month, int $day, Account $account
+    ): array {
+        $qb = $this->createQueryBuilder('ss');
+        $qb
+            ->select('DISTINCT ss.hour AS hour')
+            ->join('ss.telegramUserId', 'tu')
+            ->andWhere('ss.year = :year')->setParameter('year', $year)
+            ->andWhere('ss.month = :month')->setParameter('month', $month)
+            ->andWhere('ss.day = :day')->setParameter('day', $day)
+            ->andWhere('tu.account = :account')->setParameter('account', $account);
+
+        return array_map(static fn(array $r): int => (int)$r['hour'], $qb->getQuery()->getScalarResult());
     }
 
     /**

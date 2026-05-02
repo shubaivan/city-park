@@ -22,16 +22,17 @@ class ScheduleLimitValidator extends ConstraintValidator
             throw new UnexpectedTypeException($constraint, ScheduledSet::class);
         }
 
+        $account = $value->getTelegramUserId()->getAccount();
+
         $countByDay = $this->repository->countByDay(
-            $value->getPavilion(),
             $value->getYear(),
             $value->getMonth(),
             $value->getDay(),
-            $value->getTelegramUserId()->getAccount()
+            $account
         );
         if ($countByDay >= 3) {
             $this->context
-                ->buildViolation($constraint->messageDay . ' Кількість ваших бронбвань вже ' . $countByDay)
+                ->buildViolation($constraint->messageDay . ' Кількість ваших бронювань вже ' . $countByDay)
                 ->addViolation();
         }
 
@@ -40,11 +41,24 @@ class ScheduleLimitValidator extends ConstraintValidator
         $last = (clone $value->getScheduledAt())->modify('last day of this month');
         $last->setTime(23, 59);
 
-        $countByMonth = $this->repository->countByMonth($value->getPavilion(), $first, $last, $value->getTelegramUserId()->getAccount());
+        $countByMonth = $this->repository->countByMonth($first, $last, $account);
 
         if ($countByMonth >= 12) {
             $this->context
-                ->buildViolation($constraint->messageMonth . ' Кількість ваших бронбвань вже ' . $countByMonth)
+                ->buildViolation($constraint->messageMonth . ' Кількість ваших бронювань вже ' . $countByMonth)
+                ->addViolation();
+        }
+
+        if ($this->repository->existsAtSameHourForAccount(
+            $value->getYear(),
+            $value->getMonth(),
+            $value->getDay(),
+            $value->getHour(),
+            $account,
+            $value->getId()
+        )) {
+            $this->context
+                ->buildViolation($constraint->messageOverlap)
                 ->addViolation();
         }
     }
