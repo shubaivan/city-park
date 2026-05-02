@@ -24,15 +24,19 @@ class ScheduleLimitValidator extends ConstraintValidator
 
         $account = $value->getTelegramUserId()->getAccount();
 
-        $countByDay = $this->repository->countByDay(
+        $dayBookings = $this->repository->findByDayForAccount(
             $value->getYear(),
             $value->getMonth(),
             $value->getDay(),
             $account
         );
-        if ($countByDay >= 3) {
+        if (count($dayBookings) >= 3) {
             $this->context
-                ->buildViolation($constraint->messageDay . ' Кількість ваших бронювань вже ' . $countByDay)
+                ->buildViolation($constraint->messageDay)
+                ->setParameters([
+                    '%count%' => (string)count($dayBookings),
+                    '%list%' => $this->formatBookings($dayBookings, false),
+                ])
                 ->addViolation();
         }
 
@@ -41,25 +45,52 @@ class ScheduleLimitValidator extends ConstraintValidator
         $last = (clone $value->getScheduledAt())->modify('last day of this month');
         $last->setTime(23, 59);
 
-        $countByMonth = $this->repository->countByMonth($first, $last, $account);
-
-        if ($countByMonth >= 12) {
+        $monthBookings = $this->repository->findByMonthForAccount($first, $last, $account);
+        if (count($monthBookings) >= 12) {
             $this->context
-                ->buildViolation($constraint->messageMonth . ' Кількість ваших бронювань вже ' . $countByMonth)
+                ->buildViolation($constraint->messageMonth)
+                ->setParameters([
+                    '%count%' => (string)count($monthBookings),
+                    '%list%' => $this->formatBookings($monthBookings, true),
+                ])
                 ->addViolation();
         }
 
-        if ($this->repository->existsAtSameHourForAccount(
+        $overlap = $this->repository->findOverlapForAccount(
             $value->getYear(),
             $value->getMonth(),
             $value->getDay(),
             $value->getHour(),
             $account,
             $value->getId()
-        )) {
+        );
+        if ($overlap !== null) {
+            $pavilionName = $overlap->getPavilion() === 1 ? 'Перша' : 'Друга';
             $this->context
                 ->buildViolation($constraint->messageOverlap)
+                ->setParameters([
+                    '%pavilion%' => $pavilionName,
+                    '%hour%' => str_pad((string)$overlap->getHour(), 2, '0', STR_PAD_LEFT),
+                    '%who%' => trim($overlap->getTelegramUserId()->concatNameInfo()),
+                ])
                 ->addViolation();
         }
+    }
+
+    /**
+     * @param ScheduledSet[] $bookings
+     */
+    private function formatBookings(array $bookings, bool $includeDate): string
+    {
+        $lines = [];
+        foreach ($bookings as $b) {
+            $pav = $b->getPavilion() === 1 ? 'Перша' : 'Друга';
+            $hour = str_pad((string)$b->getHour(), 2, '0', STR_PAD_LEFT);
+            $who = trim($b->getTelegramUserId()->concatNameInfo());
+            $prefix = $includeDate ? $b->getScheduledAt()->format('d.m') . ' ' : '';
+            $lines[] = sprintf('%s%s:00 — Альтанка %s (%s)', $prefix, $hour, $pav, $who);
+        }
+
+        return implode('; ', $lines);
     }
 }

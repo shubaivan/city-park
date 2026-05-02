@@ -51,12 +51,14 @@ class ScheduledSetRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
-    public function countByDay(
+    /**
+     * @return ScheduledSet[]
+     */
+    public function findByDayForAccount(
         int $year, int $month, int $day, Account $account
-    ) {
+    ): array {
         $qb = $this->createQueryBuilder('ss');
         $qb
-            ->select('COUNT(ss.id)')
             ->join('ss.telegramUserId', 'tu')
             ->andWhere('ss.year = :year')->setParameter('year', $year)
             ->andWhere('ss.month = :month')->setParameter('month', $month)
@@ -64,45 +66,49 @@ class ScheduledSetRepository extends ServiceEntityRepository
             ->andWhere('tu.account = :account')->setParameter('account', $account)
             ->andWhere('ss.scheduled_at >= :now')
             ->setParameter('now', SchedulePavilionService::createNewDate())
+            ->orderBy('ss.hour', 'ASC')
         ;
 
-        return $qb->getQuery()->getSingleScalarResult();
+        return $qb->getQuery()->getResult();
     }
 
-    public function countByMonth(
+    /**
+     * @return ScheduledSet[]
+     */
+    public function findByMonthForAccount(
         \DateTimeInterface $from, \DateTimeInterface $to, Account $account
-    ) {
+    ): array {
         $qb = $this->createQueryBuilder('ss');
         $qb
-            ->select('COUNT(ss.id)')
             ->join('ss.telegramUserId', 'tu')
             ->andWhere('tu.account = :account')->setParameter('account', $account)
             ->andWhere($qb->expr()->between('ss.scheduled_at', ':from', ':to'))
             ->setParameter('from', $from)
             ->setParameter('to', $to)
+            ->orderBy('ss.scheduled_at', 'ASC')
         ;
 
-        return $qb->getQuery()->getSingleScalarResult();
+        return $qb->getQuery()->getResult();
     }
 
-    public function existsAtSameHourForAccount(
+    public function findOverlapForAccount(
         int $year, int $month, int $day, int $hour, Account $account, ?int $excludeId = null
-    ): bool {
+    ): ?ScheduledSet {
         $qb = $this->createQueryBuilder('ss');
         $qb
-            ->select('COUNT(ss.id)')
             ->join('ss.telegramUserId', 'tu')
             ->andWhere('ss.year = :year')->setParameter('year', $year)
             ->andWhere('ss.month = :month')->setParameter('month', $month)
             ->andWhere('ss.day = :day')->setParameter('day', $day)
             ->andWhere('ss.hour = :hour')->setParameter('hour', $hour)
-            ->andWhere('tu.account = :account')->setParameter('account', $account);
+            ->andWhere('tu.account = :account')->setParameter('account', $account)
+            ->setMaxResults(1);
 
         if ($excludeId !== null) {
             $qb->andWhere('ss.id != :excludeId')->setParameter('excludeId', $excludeId);
         }
 
-        return ((int)$qb->getQuery()->getSingleScalarResult()) > 0;
+        return $qb->getQuery()->getOneOrNullResult();
     }
 
     /**
