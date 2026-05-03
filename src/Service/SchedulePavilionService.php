@@ -62,6 +62,14 @@ class SchedulePavilionService
         return $this->repository->getBookedHoursForAccount($year, $month, $day, $account);
     }
 
+    /**
+     * @return int[] Hours (0-23) already booked by this account on the given pavilion/day.
+     */
+    public function getAccountBookedHoursAtPavilion(int $pavilion, int $year, int $month, int $day, Account $account): array
+    {
+        return $this->repository->getBookedHoursForAccountPavilion($pavilion, $year, $month, $day, $account);
+    }
+
     public static function createNewDate(string $timeZone = 'Europe/Kyiv'): \DateTime
     {
         return (new \DateTime())->setTimezone(new \DateTimeZone($timeZone));

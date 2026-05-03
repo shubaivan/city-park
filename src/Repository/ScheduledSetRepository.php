@@ -30,17 +30,20 @@ class ScheduledSetRepository extends ServiceEntityRepository
      * @param TelegramUser|null $user
      * @return ScheduledSet[]
      */
-    public function getByParams(string $pavilion, int $year, int $month, int $day, ?int $hour, ?TelegramUser $user = null): array
+    public function getByParams(string $pavilion, int $year, int $month, int $day, ?int $hour, ?TelegramUser $user = null, bool $onlyFuture = true): array
     {
         $qb = $this->createQueryBuilder('ss');
         $qb->andWhere('ss.pavilion = :pavilion')->setParameter('pavilion', $pavilion);
         $qb->andWhere('ss.year = :year')->setParameter('year', $year);
         $qb->andWhere('ss.month = :month')->setParameter('month', $month);
         $qb->andWhere('ss.day = :day')->setParameter('day', $day);
-        $qb->andWhere('ss.scheduled_at >= :now');
-        $qb->setParameter('now', SchedulePavilionService::createNewDate());
 
-        if ($hour) {
+        if ($onlyFuture) {
+            $qb->andWhere('ss.scheduled_at >= :now');
+            $qb->setParameter('now', SchedulePavilionService::createNewDate());
+        }
+
+        if ($hour !== null) {
             $qb->andWhere('ss.hour = :hour')->setParameter('hour', $hour);
         }
 
@@ -125,6 +128,29 @@ class ScheduledSetRepository extends ServiceEntityRepository
             ->andWhere('ss.month = :month')->setParameter('month', $month)
             ->andWhere('ss.day = :day')->setParameter('day', $day)
             ->andWhere('tu.account = :account')->setParameter('account', $account);
+
+        return array_map(static fn(array $r): int => (int)$r['hour'], $qb->getQuery()->getScalarResult());
+    }
+
+    /**
+     * @return int[] Hours (0-23) already booked by this account on the given pavilion/day.
+     */
+    public function getBookedHoursForAccountPavilion(
+        int $pavilion, int $year, int $month, int $day, Account $account, ?int $excludeId = null
+    ): array {
+        $qb = $this->createQueryBuilder('ss');
+        $qb
+            ->select('DISTINCT ss.hour AS hour')
+            ->join('ss.telegramUserId', 'tu')
+            ->andWhere('ss.pavilion = :pavilion')->setParameter('pavilion', $pavilion)
+            ->andWhere('ss.year = :year')->setParameter('year', $year)
+            ->andWhere('ss.month = :month')->setParameter('month', $month)
+            ->andWhere('ss.day = :day')->setParameter('day', $day)
+            ->andWhere('tu.account = :account')->setParameter('account', $account);
+
+        if ($excludeId !== null) {
+            $qb->andWhere('ss.id != :excludeId')->setParameter('excludeId', $excludeId);
+        }
 
         return array_map(static fn(array $r): int => (int)$r['hour'], $qb->getQuery()->getScalarResult());
     }

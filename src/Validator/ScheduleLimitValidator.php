@@ -75,6 +75,38 @@ class ScheduleLimitValidator extends ConstraintValidator
                 ])
                 ->addViolation();
         }
+
+        // Forbid 1-hour orphans: a new booking at distance 2 from any existing booking
+        // by the same account on the same pavilion/day would leave a single free hour
+        // trapped between two of the account's bookings — used to squat extra time.
+        $pavilionHours = $this->repository->getBookedHoursForAccountPavilion(
+            $value->getPavilion(),
+            $value->getYear(),
+            $value->getMonth(),
+            $value->getDay(),
+            $account,
+            $value->getId()
+        );
+        $conflicts = [];
+        foreach ($pavilionHours as $h) {
+            if (abs($value->getHour() - $h) === 2) {
+                $conflicts[] = $h;
+            }
+        }
+        if (count($conflicts) > 0) {
+            sort($conflicts);
+            $existing = implode(', ', array_map(
+                static fn(int $h) => str_pad((string)$h, 2, '0', STR_PAD_LEFT) . ':00',
+                $conflicts
+            ));
+            $this->context
+                ->buildViolation($constraint->messageOrphan)
+                ->setParameters([
+                    '%hour%' => str_pad((string)$value->getHour(), 2, '0', STR_PAD_LEFT) . ':00',
+                    '%existing%' => $existing,
+                ])
+                ->addViolation();
+        }
     }
 
     /**

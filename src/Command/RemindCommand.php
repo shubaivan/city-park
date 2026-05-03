@@ -74,12 +74,16 @@ class RemindCommand extends Command
                 }
 
                 // Remind about ending booking (ends in 15 min)
+                // onlyFuture: false because the booking already started ~45 min ago,
+                // so its scheduled_at is in the past relative to "now".
                 $endingSets = $this->repository->getByParams(
                     $pavilion,
                     $date->format('Y'),
                     $date->format('m'),
                     $date->format('d'),
-                    $currentHour
+                    $currentHour,
+                    null,
+                    false
                 );
 
                 $this->log($io, sprintf('ending: count %s, pavilion %s', count($endingSets), $pavilion));
