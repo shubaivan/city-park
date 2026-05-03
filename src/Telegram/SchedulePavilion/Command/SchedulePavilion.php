@@ -393,10 +393,15 @@ class SchedulePavilion extends Conversation
             $format = $chosenDate->setTime($h, 0)->format('D/H-i');
             $isOrphan = false;
             foreach ($accountPavilionHours as $existing) {
-                if (abs($h - $existing) === 2) {
-                    $isOrphan = true;
-                    break;
+                if (abs($h - $existing) !== 2) {
+                    continue;
                 }
+                $middle = (int)(($h + $existing) / 2);
+                if (in_array($middle, $accountPavilionHours, true)) {
+                    continue;
+                }
+                $isOrphan = true;
+                break;
             }
             $label = $isOrphan ? '⚠️ ' . $format : $format;
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'hour_' . $chosenDate->format('H'));

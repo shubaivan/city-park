@@ -79,6 +79,8 @@ class ScheduleLimitValidator extends ConstraintValidator
         // Forbid 1-hour orphans: a new booking at distance 2 from any existing booking
         // by the same account on the same pavilion/day would leave a single free hour
         // trapped between two of the account's bookings — used to squat extra time.
+        // If the middle hour is already booked by the same account, it's just a
+        // 3-in-a-row, not an orphan.
         $pavilionHours = $this->repository->getBookedHoursForAccountPavilion(
             $value->getPavilion(),
             $value->getYear(),
@@ -89,9 +91,14 @@ class ScheduleLimitValidator extends ConstraintValidator
         );
         $conflicts = [];
         foreach ($pavilionHours as $h) {
-            if (abs($value->getHour() - $h) === 2) {
-                $conflicts[] = $h;
+            if (abs($value->getHour() - $h) !== 2) {
+                continue;
             }
+            $middle = (int)(($value->getHour() + $h) / 2);
+            if (in_array($middle, $pavilionHours, true)) {
+                continue;
+            }
+            $conflicts[] = $h;
         }
         if (count($conflicts) > 0) {
             sort($conflicts);
