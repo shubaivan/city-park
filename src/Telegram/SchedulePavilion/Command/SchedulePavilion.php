@@ -369,10 +369,14 @@ class SchedulePavilion extends Conversation
         }
 
         $accountBookedHours = [];
+        $accountPavilionHours = [];
         $account = $this->telegramUserService->getCurrentUser()->getAccount();
         if ($account) {
             $accountBookedHours = $this->schedulePavilionService->getAccountBookedHours(
                 $currentYear, (int)$this->month, (int)$this->day, $account
+            );
+            $accountPavilionHours = $this->schedulePavilionService->getAccountBookedHoursAtPavilion(
+                (int)$this->pavilion, $currentYear, (int)$this->month, (int)$this->day, $account
             );
         }
 
@@ -387,7 +391,15 @@ class SchedulePavilion extends Conversation
         $row = [];
         foreach ($availableHours as $h) {
             $format = $chosenDate->setTime($h, 0)->format('D/H-i');
-            $row[] = InlineKeyboardButton::make(text: $format, callback_data: 'hour_' . $chosenDate->format('H'));
+            $isOrphan = false;
+            foreach ($accountPavilionHours as $existing) {
+                if (abs($h - $existing) === 2) {
+                    $isOrphan = true;
+                    break;
+                }
+            }
+            $label = $isOrphan ? '⚠️ ' . $format : $format;
+            $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'hour_' . $chosenDate->format('H'));
             if (count($row) == 3) {
                 $kb->addRow(...$row);
                 $row = [];
