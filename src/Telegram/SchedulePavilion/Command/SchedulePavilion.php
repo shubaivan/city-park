@@ -341,14 +341,14 @@ class SchedulePavilion extends Conversation
             $weatherEmoji = $this->weatherService->getDayEmoji($current);
             $suffix = '';
             if ($isWeekend) {
-                $suffix .= ' 🌴';
+                $suffix .= '🌴';
             }
             if ($weatherEmoji !== null) {
-                $suffix .= ' ' . $weatherEmoji;
+                $suffix .= $weatherEmoji;
             }
-            $label = $format . $suffix;
+            $label = $suffix !== '' ? $format . ' ' . $suffix : $format;
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'day_' . $current->format('d'));
-            if (count($row) == 3) {
+            if (count($row) == 4) {
                 $kb->addRow(...$row);
                 $row = [];
             }
