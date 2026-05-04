@@ -5,6 +5,7 @@ namespace App\Telegram\SchedulePavilion\Command;
 use App\Entity\ScheduledSet;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
+use App\Service\WeatherService;
 use Doctrine\ORM\EntityManagerInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
@@ -29,7 +30,8 @@ class SchedulePavilion extends Conversation
         private SchedulePavilionService $schedulePavilionService,
         private EntityManagerInterface $em,
         private TelegramUserService $telegramUserService,
-        private ValidatorInterface $validator
+        private ValidatorInterface $validator,
+        private WeatherService $weatherService,
     ) {}
 
     public function choosePavilion(Nutgram $bot)
@@ -432,10 +434,16 @@ class SchedulePavilion extends Conversation
             }
         }
 
-        $dayFormatted = (clone SchedulePavilionService::createNewDate())->setDate($currentYear, (int)$this->month, (int)$this->day)->format('M-d');
+        $dayDate = (clone SchedulePavilionService::createNewDate())->setDate($currentYear, (int)$this->month, (int)$this->day);
+        $dayFormatted = $dayDate->format('M-d');
         $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
         $weekendSuffix = $isWeekend ? ' 🌴 (вихідний)' : '';
         $parts = ['Альтанка: ' . $pavilionName . ', День: ' . $dayFormatted . $weekendSuffix];
+
+        $forecast = $this->weatherService->getDailyForecastLine($dayDate);
+        if ($forecast !== null) {
+            $parts[] = 'Прогноз: ' . $forecast;
+        }
 
         if ($other) {
             $parts[] = '';
