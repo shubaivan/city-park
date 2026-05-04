@@ -5,6 +5,7 @@ namespace App\Telegram\SchedulePavilion\Command;
 use App\Entity\ScheduledSet;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
+use App\Service\UkDateFormatter;
 use App\Service\WeatherService;
 use Doctrine\ORM\EntityManagerInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
@@ -182,7 +183,7 @@ class SchedulePavilion extends Conversation
 
         $this->safeEdit($bot,
             sprintf("Альтанка: %s\nДата: %s\nЧас: %s\n\nЯкщо згодні натисніть <b>Підтверджую</b>",
-                $pavilionName, $dateTime->format('d.m.Y'), $dateTime->format('H:i')),
+                $pavilionName, UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime)),
             InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make(text: '✅ Підтверджую', callback_data: 'confirm'),
                 InlineKeyboardButton::make(text: '⬅️ Назад', callback_data: 'back'),
@@ -246,8 +247,8 @@ class SchedulePavilion extends Conversation
             sprintf(
                 "🎉🎉🎉\n\n<b>Бронювання підтверджено!</b>\n\n🏠 Альтанка: <b>%s</b>\n📅 Дата: <b>%s</b>\n⏰ Час: <b>%s</b>\n\n📲 Нагадування прийде за 15 хвилин до початку.\n\n🎉🎉🎉",
                 $pavilionName,
-                $dateTime->format('d.m.Y'),
-                $dateTime->format('H:i')
+                UkDateFormatter::dayDate($dateTime),
+                UkDateFormatter::time($dateTime)
             ),
             null,
             ParseMode::HTML
@@ -259,7 +260,7 @@ class SchedulePavilion extends Conversation
             $photo = fopen($file, 'r+');
             $bot->sendPhoto(
                 photo: InputFile::make($photo),
-                caption: sprintf('🏠 Альтанка: %s, 📅 %s ⏰ %s', $pavilionName, $dateTime->format('d.m.Y'), $dateTime->format('H:i')),
+                caption: sprintf('🏠 Альтанка: %s, 📅 %s ⏰ %s', $pavilionName, UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime)),
             );
         }
 
@@ -298,7 +299,7 @@ class SchedulePavilion extends Conversation
         $kb = InlineKeyboardMarkup::make();
         $row = [];
         for ($i = $currentMonth; $i <= $lastMonth; $i++) {
-            $format = self::ukMonthEmoji($i) . ' ' . self::ukMonthName($i);
+            $format = UkDateFormatter::monthEmoji($i) . ' ' . UkDateFormatter::monthName($i);
             $row[] = InlineKeyboardButton::make(text: $format, callback_data: 'month_' . str_pad($i, 2, '0', STR_PAD_LEFT));
             if (count($row) == 3) {
                 $kb->addRow(...$row);
@@ -333,8 +334,9 @@ class SchedulePavilion extends Conversation
             if ($i != $currentDay) {
                 $current->modify('+1 day');
             }
-            $format = $current->format('d');
-            $isWeekend = in_array((int)$current->format('N'), [6, 7], true);
+            $weekday = (int)$current->format('N');
+            $format = UkDateFormatter::dayName($weekday) . ' ' . $current->format('d');
+            $isWeekend = in_array($weekday, [6, 7], true);
             $weatherEmoji = $this->weatherService->getDayEmoji($current);
             $suffix = '';
             if ($isWeekend) {
@@ -345,7 +347,7 @@ class SchedulePavilion extends Conversation
             }
             $label = $format . $suffix;
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'day_' . $current->format('d'));
-            if (count($row) == 4) {
+            if (count($row) == 3) {
                 $kb->addRow(...$row);
                 $row = [];
             }
@@ -358,7 +360,7 @@ class SchedulePavilion extends Conversation
             InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
         );
 
-        $monthFormatted = self::ukMonthEmoji((int)$this->month) . ' <b>' . self::ukMonthName((int)$this->month) . '</b>';
+        $monthFormatted = UkDateFormatter::monthEmoji((int)$this->month) . ' <b>' . UkDateFormatter::monthName((int)$this->month) . '</b>';
         $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
         $this->safeEdit($bot, 'Альтанка: ' . $pavilionName . ', Місяць: ' . $monthFormatted . "\nОберіть день:", $kb, ParseMode::HTML);
         $this->next('chooseTimeSet');
@@ -407,7 +409,7 @@ class SchedulePavilion extends Conversation
         $kb = InlineKeyboardMarkup::make();
         $row = [];
         foreach ($availableHours as $h) {
-            $format = self::hourEmoji($h) . ' ' . $chosenDate->setTime($h, 0)->format('H:i');
+            $format = UkDateFormatter::hourEmoji($h) . ' ' . $chosenDate->setTime($h, 0)->format('H:i');
             $isOrphan = false;
             foreach ($accountPavilionHours as $existing) {
                 if (abs($h - $existing) !== 2) {
@@ -443,7 +445,7 @@ class SchedulePavilion extends Conversation
         }
 
         $dayDate = (clone SchedulePavilionService::createNewDate())->setDate($currentYear, (int)$this->month, (int)$this->day);
-        $dayFormatted = $dayDate->format('d') . ' ' . self::ukMonthEmoji((int)$this->month) . ' <b>' . self::ukMonthName((int)$this->month) . '</b>';
+        $dayFormatted = '<b>' . UkDateFormatter::dayDate($dayDate) . '</b>';
         $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
         $weekendSuffix = $isWeekend ? ' 🌴 (вихідний)' : '';
         $parts = ['Альтанка: ' . $pavilionName . ', День: ' . $dayFormatted . $weekendSuffix];
@@ -469,53 +471,4 @@ class SchedulePavilion extends Conversation
         $this->next('scheduleDate');
     }
 
-    private static function ukMonthName(int $month): string
-    {
-        return match ($month) {
-            1 => 'Січень',
-            2 => 'Лютий',
-            3 => 'Березень',
-            4 => 'Квітень',
-            5 => 'Травень',
-            6 => 'Червень',
-            7 => 'Липень',
-            8 => 'Серпень',
-            9 => 'Вересень',
-            10 => 'Жовтень',
-            11 => 'Листопад',
-            12 => 'Грудень',
-            default => '',
-        };
-    }
-
-    private static function hourEmoji(int $hour): string
-    {
-        return match (true) {
-            $hour >= 0 && $hour <= 4 => '🌙',
-            $hour >= 5 && $hour <= 8 => '🌅',
-            $hour >= 9 && $hour <= 11 => '🌤',
-            $hour >= 12 && $hour <= 16 => '☀️',
-            $hour >= 17 && $hour <= 20 => '🌇',
-            default => '🌃',
-        };
-    }
-
-    private static function ukMonthEmoji(int $month): string
-    {
-        return match ($month) {
-            1 => '❄️',
-            2 => '☃️',
-            3 => '🌱',
-            4 => '🌷',
-            5 => '🌿',
-            6 => '☀️',
-            7 => '🏖️',
-            8 => '🌻',
-            9 => '🍁',
-            10 => '🎃',
-            11 => '🍂',
-            12 => '🎄',
-            default => '',
-        };
-    }
 }
