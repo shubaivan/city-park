@@ -32,6 +32,20 @@ class UkDateFormatter
         };
     }
 
+    public static function dayNameMini(int $weekday): string
+    {
+        return match ($weekday) {
+            1 => 'Пн',
+            2 => 'Вт',
+            3 => 'Ср',
+            4 => 'Чт',
+            5 => 'Пт',
+            6 => 'Сб',
+            7 => 'Нд',
+            default => '',
+        };
+    }
+
     public static function monthName(int $month): string
     {
         return match ($month) {
