@@ -407,7 +407,7 @@ class SchedulePavilion extends Conversation
         $kb = InlineKeyboardMarkup::make();
         $row = [];
         foreach ($availableHours as $h) {
-            $format = $chosenDate->setTime($h, 0)->format('D/H-i');
+            $format = $chosenDate->setTime($h, 0)->format('H:i');
             $isOrphan = false;
             foreach ($accountPavilionHours as $existing) {
                 if (abs($h - $existing) !== 2) {
@@ -443,7 +443,7 @@ class SchedulePavilion extends Conversation
         }
 
         $dayDate = (clone SchedulePavilionService::createNewDate())->setDate($currentYear, (int)$this->month, (int)$this->day);
-        $dayFormatted = $dayDate->format('M-d');
+        $dayFormatted = $dayDate->format('d') . ' ' . self::ukMonthEmoji((int)$this->month) . ' <b>' . self::ukMonthName((int)$this->month) . '</b>';
         $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
         $weekendSuffix = $isWeekend ? ' 🌴 (вихідний)' : '';
         $parts = ['Альтанка: ' . $pavilionName . ', День: ' . $dayFormatted . $weekendSuffix];
