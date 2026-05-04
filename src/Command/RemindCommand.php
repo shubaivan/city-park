@@ -4,6 +4,7 @@ namespace App\Command;
 
 use App\Repository\ScheduledSetRepository;
 use App\Service\SchedulePavilionService;
+use App\Service\WeatherService;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
@@ -23,6 +24,7 @@ class RemindCommand extends Command
         private LoggerInterface $logger,
         private ScheduledSetRepository $repository,
         private Nutgram $bot,
+        private WeatherService $weatherService,
     ) {
         parent::__construct();
     }
@@ -60,12 +62,18 @@ class RemindCommand extends Command
                 $this->log($io, sprintf('upcoming: count %s, pavilion %s', count($upcomingSets), $pavilion));
 
                 foreach ($upcomingSets as $scheduledSet) {
+                    $text = sprintf(
+                        '⏰ Ваше бронювання альтанки №%s починається о <b>%s</b>. Чекаємо на вас!',
+                        $scheduledSet->getPavilion(),
+                        $scheduledSet->getScheduledAt()->format('H:i')
+                    );
+                    $forecast = $this->weatherService->getDailyForecastLine($scheduledSet->getScheduledAt());
+                    if ($forecast !== null) {
+                        $text .= "\nПрогноз: " . $forecast;
+                    }
+
                     $this->bot->sendMessage(
-                        text: sprintf(
-                            '⏰ Ваше бронювання альтанки №%s починається о <b>%s</b>. Чекаємо на вас!',
-                            $scheduledSet->getPavilion(),
-                            $scheduledSet->getScheduledAt()->format('H:i')
-                        ),
+                        text: $text,
                         chat_id: $scheduledSet->getTelegramUserid()->getChatId(),
                         parse_mode: ParseMode::HTML
                     );
