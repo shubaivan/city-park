@@ -337,10 +337,18 @@ class SchedulePavilion extends Conversation
             }
             $weekday = (int)$current->format('N');
             $format = UkDateFormatter::dayNameShort($weekday) . $current->format('d');
+            $isWeekend = in_array($weekday, [6, 7], true);
             $weatherEmoji = $this->weatherService->getDayEmoji($current);
-            $label = $weatherEmoji !== null ? $format . $weatherEmoji : $format;
+            $suffix = '';
+            if ($isWeekend) {
+                $suffix .= ' 🌴';
+            }
+            if ($weatherEmoji !== null) {
+                $suffix .= ' ' . $weatherEmoji;
+            }
+            $label = $format . $suffix;
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'day_' . $current->format('d'));
-            if (count($row) == 4) {
+            if (count($row) == 3) {
                 $kb->addRow(...$row);
                 $row = [];
             }
