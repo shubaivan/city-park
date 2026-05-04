@@ -407,7 +407,7 @@ class SchedulePavilion extends Conversation
         $kb = InlineKeyboardMarkup::make();
         $row = [];
         foreach ($availableHours as $h) {
-            $format = $chosenDate->setTime($h, 0)->format('H:i');
+            $format = self::hourEmoji($h) . ' ' . $chosenDate->setTime($h, 0)->format('H:i');
             $isOrphan = false;
             foreach ($accountPavilionHours as $existing) {
                 if (abs($h - $existing) !== 2) {
@@ -485,6 +485,18 @@ class SchedulePavilion extends Conversation
             11 => 'Листопад',
             12 => 'Грудень',
             default => '',
+        };
+    }
+
+    private static function hourEmoji(int $hour): string
+    {
+        return match (true) {
+            $hour >= 0 && $hour <= 4 => '🌙',
+            $hour >= 5 && $hour <= 8 => '🌅',
+            $hour >= 9 && $hour <= 11 => '🌤',
+            $hour >= 12 && $hour <= 16 => '☀️',
+            $hour >= 17 && $hour <= 20 => '🌇',
+            default => '🌃',
         };
     }
 
