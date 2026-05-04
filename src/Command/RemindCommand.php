@@ -4,6 +4,7 @@ namespace App\Command;
 
 use App\Repository\ScheduledSetRepository;
 use App\Service\SchedulePavilionService;
+use App\Service\UkDateFormatter;
 use App\Service\WeatherService;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
@@ -62,12 +63,14 @@ class RemindCommand extends Command
                 $this->log($io, sprintf('upcoming: count %s, pavilion %s', count($upcomingSets), $pavilion));
 
                 foreach ($upcomingSets as $scheduledSet) {
+                    $scheduledAt = $scheduledSet->getScheduledAt();
                     $text = sprintf(
-                        '⏰ Ваше бронювання альтанки №%s починається о <b>%s</b>. Чекаємо на вас!',
+                        "⏰ Ваше бронювання альтанки №%s починається о <b>%s</b>\n📅 %s\nЧекаємо на вас!",
                         $scheduledSet->getPavilion(),
-                        $scheduledSet->getScheduledAt()->format('H:i')
+                        UkDateFormatter::time($scheduledAt),
+                        UkDateFormatter::dayDate($scheduledAt)
                     );
-                    $forecast = $this->weatherService->getDailyForecastLine($scheduledSet->getScheduledAt());
+                    $forecast = $this->weatherService->getDailyForecastLine($scheduledAt);
                     if ($forecast !== null) {
                         $text .= "\nПрогноз: " . $forecast;
                     }
@@ -97,12 +100,13 @@ class RemindCommand extends Command
                 $this->log($io, sprintf('ending: count %s, pavilion %s', count($endingSets), $pavilion));
 
                 foreach ($endingSets as $scheduledSet) {
-                    $endTime = sprintf('%02d:00', ($currentHour + 1) % 24);
+                    $endHour = ($currentHour + 1) % 24;
+                    $endLabel = UkDateFormatter::hourEmoji($endHour) . ' ' . sprintf('%02d:00', $endHour);
                     $this->bot->sendMessage(
                         text: sprintf(
                             '🔔 Ваше бронювання альтанки №%s закінчується о <b>%s</b>. Будь ласка, звільніть альтанку.',
                             $scheduledSet->getPavilion(),
-                            $endTime
+                            $endLabel
                         ),
                         chat_id: $scheduledSet->getTelegramUserid()->getChatId(),
                         parse_mode: ParseMode::HTML

@@ -5,6 +5,7 @@ namespace App\Telegram\SchedulePavilion\Command;
 use App\Entity\ScheduledSet;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
+use App\Service\UkDateFormatter;
 use Doctrine\ORM\EntityManagerInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
@@ -56,8 +57,8 @@ class OwnSchedule extends Conversation
                 $dateTime = $set->getScheduledDateTime();
                 $textParts[] = sprintf(
                     '   📅 %s  ⏰ %s',
-                    $dateTime->format('d.m.Y'),
-                    $dateTime->format('H:i')
+                    UkDateFormatter::dayDate($dateTime),
+                    UkDateFormatter::time($dateTime)
                 );
 
                 $inlineKeyboardMarkup->addRow(
@@ -108,8 +109,8 @@ class OwnSchedule extends Conversation
             text: sprintf(
                 "Видалити бронювання?\n\n🏠 Альтанка: <b>%s</b>\n📅 Дата: <b>%s</b>\n⏰ Час: <b>%s</b>",
                 $pavilionName,
-                $dateTime->format('d.m.Y'),
-                $dateTime->format('H:i')
+                UkDateFormatter::dayDate($dateTime),
+                UkDateFormatter::time($dateTime)
             ),
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()->addRow(
@@ -179,7 +180,7 @@ class OwnSchedule extends Conversation
 
             foreach ($setSchedule as $set) {
                 $dateTime = $set->getScheduledDateTime();
-                $textParts[] = sprintf('   📅 %s  ⏰ %s', $dateTime->format('d.m.Y'), $dateTime->format('H:i'));
+                $textParts[] = sprintf('   📅 %s  ⏰ %s', UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime));
 
                 $inlineKeyboardMarkup->addRow(
                     InlineKeyboardButton::make(
