@@ -298,7 +298,7 @@ class SchedulePavilion extends Conversation
         $kb = InlineKeyboardMarkup::make();
         $row = [];
         for ($i = $currentMonth; $i <= $lastMonth; $i++) {
-            $format = (clone $current)->setDate($currentYear, $i, 1)->format('Y-m');
+            $format = (clone $current)->setDate($currentYear, $i, 1)->format('F Y');
             $row[] = InlineKeyboardButton::make(text: $format, callback_data: 'month_' . str_pad($i, 2, '0', STR_PAD_LEFT));
             if (count($row) == 3) {
                 $kb->addRow(...$row);
@@ -336,16 +336,16 @@ class SchedulePavilion extends Conversation
             $format = $current->format('M-d');
             $isWeekend = in_array((int)$current->format('N'), [6, 7], true);
             $weatherEmoji = $this->weatherService->getDayEmoji($current);
-            $prefix = '';
+            $suffix = '';
             if ($isWeekend) {
-                $prefix .= '🌴';
+                $suffix .= ' 🌴';
             }
             if ($weatherEmoji !== null) {
-                $prefix .= $weatherEmoji;
+                $suffix .= ' ' . $weatherEmoji;
             }
-            $label = $prefix !== '' ? $prefix . ' ' . $format : $format;
+            $label = $format . $suffix;
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'day_' . $current->format('d'));
-            if (count($row) == 4) {
+            if (count($row) == 3) {
                 $kb->addRow(...$row);
                 $row = [];
             }
@@ -358,7 +358,7 @@ class SchedulePavilion extends Conversation
             InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
         );
 
-        $monthFormatted = SchedulePavilionService::createNewDate()->setDate($currentYear, (int)$this->month, 1)->format('Y-m');
+        $monthFormatted = SchedulePavilionService::createNewDate()->setDate($currentYear, (int)$this->month, 1)->format('F Y');
         $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
         $this->safeEdit($bot, 'Альтанка: ' . $pavilionName . ', Місяць: ' . $monthFormatted . "\nОберіть день:", $kb);
         $this->next('chooseTimeSet');
