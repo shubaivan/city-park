@@ -18,6 +18,20 @@ class UkDateFormatter
         };
     }
 
+    public static function dayNameShort(int $weekday): string
+    {
+        return match ($weekday) {
+            1 => 'Пнд',
+            2 => 'Втр',
+            3 => 'Срд',
+            4 => 'Чтв',
+            5 => 'Птн',
+            6 => 'Сбт',
+            7 => 'Ндл',
+            default => '',
+        };
+    }
+
     public static function monthName(int $month): string
     {
         return match ($month) {
@@ -68,12 +82,12 @@ class UkDateFormatter
         };
     }
 
-    /** "Субота, 09 🌿 Травень" */
+    /** "Сбт, 09 🌿 Травень" */
     public static function dayDate(\DateTimeInterface $dt): string
     {
         $weekday = (int) $dt->format('N');
         $month = (int) $dt->format('n');
-        return self::dayName($weekday) . ', ' . $dt->format('d') . ' ' . self::monthEmoji($month) . ' ' . self::monthName($month);
+        return self::dayNameShort($weekday) . ', ' . $dt->format('d') . ' ' . self::monthEmoji($month) . ' ' . self::monthName($month);
     }
 
     /** "🌇 18:00" */

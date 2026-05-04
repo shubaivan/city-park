@@ -56,7 +56,7 @@ class OwnSchedule extends Conversation
             foreach ($setSchedule as $set) {
                 $dateTime = $set->getScheduledDateTime();
                 $textParts[] = sprintf(
-                    '   📅 %s  ⏰ %s',
+                    '   📅 <b>%s</b>  ⏰ <b>%s</b>',
                     UkDateFormatter::dayDate($dateTime),
                     UkDateFormatter::time($dateTime)
                 );
@@ -180,7 +180,7 @@ class OwnSchedule extends Conversation
 
             foreach ($setSchedule as $set) {
                 $dateTime = $set->getScheduledDateTime();
-                $textParts[] = sprintf('   📅 %s  ⏰ %s', UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime));
+                $textParts[] = sprintf('   📅 <b>%s</b>  ⏰ <b>%s</b>', UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime));
 
                 $inlineKeyboardMarkup->addRow(
                     InlineKeyboardButton::make(

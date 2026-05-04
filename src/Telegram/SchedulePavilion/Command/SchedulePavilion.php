@@ -182,7 +182,7 @@ class SchedulePavilion extends Conversation
         $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
 
         $this->safeEdit($bot,
-            sprintf("Альтанка: %s\nДата: %s\nЧас: %s\n\nЯкщо згодні натисніть <b>Підтверджую</b>",
+            sprintf("🏠 Альтанка: <b>%s</b>\n📅 Дата: <b>%s</b>\n⏰ Час: <b>%s</b>\n\nЯкщо згодні натисніть <b>Підтверджую</b>",
                 $pavilionName, UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime)),
             InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make(text: '✅ Підтверджую', callback_data: 'confirm'),
@@ -260,7 +260,8 @@ class SchedulePavilion extends Conversation
             $photo = fopen($file, 'r+');
             $bot->sendPhoto(
                 photo: InputFile::make($photo),
-                caption: sprintf('🏠 Альтанка: %s, 📅 %s ⏰ %s', $pavilionName, UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime)),
+                caption: sprintf('🏠 Альтанка: <b>%s</b>, 📅 <b>%s</b> ⏰ <b>%s</b>', $pavilionName, UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime)),
+                parse_mode: ParseMode::HTML,
             );
         }
 
@@ -335,7 +336,7 @@ class SchedulePavilion extends Conversation
                 $current->modify('+1 day');
             }
             $weekday = (int)$current->format('N');
-            $format = UkDateFormatter::dayName($weekday) . ' ' . $current->format('d');
+            $format = UkDateFormatter::dayNameShort($weekday) . ' ' . $current->format('d');
             $isWeekend = in_array($weekday, [6, 7], true);
             $weatherEmoji = $this->weatherService->getDayEmoji($current);
             $suffix = '';
@@ -347,7 +348,7 @@ class SchedulePavilion extends Conversation
             }
             $label = $format . $suffix;
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'day_' . $current->format('d'));
-            if (count($row) == 3) {
+            if (count($row) == 4) {
                 $kb->addRow(...$row);
                 $row = [];
             }
@@ -448,7 +449,7 @@ class SchedulePavilion extends Conversation
         $dayFormatted = '<b>' . UkDateFormatter::dayDate($dayDate) . '</b>';
         $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
         $weekendSuffix = $isWeekend ? ' 🌴 (вихідний)' : '';
-        $parts = ['Альтанка: ' . $pavilionName . ', День: ' . $dayFormatted . $weekendSuffix];
+        $parts = ['🏠 Альтанка: <b>' . $pavilionName . '</b>, 📅 День: ' . $dayFormatted . $weekendSuffix];
 
         $forecast = $this->weatherService->getDailyForecastLine($dayDate);
         if ($forecast !== null) {
