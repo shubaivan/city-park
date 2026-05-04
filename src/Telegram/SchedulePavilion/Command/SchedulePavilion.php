@@ -387,6 +387,8 @@ class SchedulePavilion extends Conversation
             }
         }
 
+        $isWeekend = in_array((int)$chosenDate->format('N'), [6, 7], true);
+
         $kb = InlineKeyboardMarkup::make();
         $row = [];
         foreach ($availableHours as $h) {
@@ -403,7 +405,13 @@ class SchedulePavilion extends Conversation
                 $isOrphan = true;
                 break;
             }
-            $label = $isOrphan ? '⚠️ ' . $format : $format;
+            $label = $format;
+            if ($isWeekend) {
+                $label = '🌴 ' . $label;
+            }
+            if ($isOrphan) {
+                $label = '⚠️ ' . $label;
+            }
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'hour_' . $chosenDate->format('H'));
             if (count($row) == 3) {
                 $kb->addRow(...$row);
@@ -427,7 +435,8 @@ class SchedulePavilion extends Conversation
 
         $dayFormatted = (clone SchedulePavilionService::createNewDate())->setDate($currentYear, (int)$this->month, (int)$this->day)->format('M-d');
         $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
-        $parts = ['Альтанка: ' . $pavilionName . ', День: ' . $dayFormatted];
+        $weekendSuffix = $isWeekend ? ' 🌴 (вихідний)' : '';
+        $parts = ['Альтанка: ' . $pavilionName . ', День: ' . $dayFormatted . $weekendSuffix];
 
         if ($other) {
             $parts[] = '';
