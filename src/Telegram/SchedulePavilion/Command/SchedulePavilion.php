@@ -300,7 +300,7 @@ class SchedulePavilion extends Conversation
         $kb = InlineKeyboardMarkup::make();
         $row = [];
         for ($i = $currentMonth; $i <= $lastMonth; $i++) {
-            $format = UkDateFormatter::monthEmoji($i) . ' ' . UkDateFormatter::monthName($i);
+            $format = UkDateFormatter::monthEmoji($i) . UkDateFormatter::monthName($i);
             $row[] = InlineKeyboardButton::make(text: $format, callback_data: 'month_' . str_pad($i, 2, '0', STR_PAD_LEFT));
             if (count($row) == 3) {
                 $kb->addRow(...$row);
@@ -337,16 +337,8 @@ class SchedulePavilion extends Conversation
             }
             $weekday = (int)$current->format('N');
             $format = UkDateFormatter::dayNameShort($weekday) . $current->format('d');
-            $isWeekend = in_array($weekday, [6, 7], true);
             $weatherEmoji = $this->weatherService->getDayEmoji($current);
-            $suffix = '';
-            if ($isWeekend) {
-                $suffix .= ' 🌴';
-            }
-            if ($weatherEmoji !== null) {
-                $suffix .= ' ' . $weatherEmoji;
-            }
-            $label = $format . $suffix;
+            $label = $weatherEmoji !== null ? $format . $weatherEmoji : $format;
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'day_' . $current->format('d'));
             if (count($row) == 4) {
                 $kb->addRow(...$row);
@@ -410,7 +402,7 @@ class SchedulePavilion extends Conversation
         $kb = InlineKeyboardMarkup::make();
         $row = [];
         foreach ($availableHours as $h) {
-            $format = UkDateFormatter::hourEmoji($h) . ' ' . $chosenDate->setTime($h, 0)->format('H:i');
+            $format = UkDateFormatter::hourEmoji($h) . $chosenDate->setTime($h, 0)->format('H:i');
             $isOrphan = false;
             foreach ($accountPavilionHours as $existing) {
                 if (abs($h - $existing) !== 2) {
