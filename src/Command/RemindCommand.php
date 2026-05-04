@@ -65,7 +65,7 @@ class RemindCommand extends Command
                 foreach ($upcomingSets as $scheduledSet) {
                     $scheduledAt = $scheduledSet->getScheduledAt();
                     $text = sprintf(
-                        "⏰ Ваше бронювання альтанки №%s починається о <b>%s</b>\n📅 %s\nЧекаємо на вас!",
+                        "⏰ Ваше бронювання альтанки №%s починається о <b>%s</b>\n📅 <b>%s</b>\nЧекаємо на вас!",
                         $scheduledSet->getPavilion(),
                         UkDateFormatter::time($scheduledAt),
                         UkDateFormatter::dayDate($scheduledAt)
