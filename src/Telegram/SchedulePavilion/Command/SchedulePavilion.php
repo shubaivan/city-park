@@ -336,7 +336,7 @@ class SchedulePavilion extends Conversation
                 $current->modify('+1 day');
             }
             $weekday = (int)$current->format('N');
-            $format = UkDateFormatter::dayNameShort($weekday) . ' ' . $current->format('d');
+            $format = UkDateFormatter::dayNameShort($weekday) . $current->format('d');
             $isWeekend = in_array($weekday, [6, 7], true);
             $weatherEmoji = $this->weatherService->getDayEmoji($current);
             $suffix = '';
