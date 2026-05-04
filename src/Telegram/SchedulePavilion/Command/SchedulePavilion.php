@@ -298,8 +298,7 @@ class SchedulePavilion extends Conversation
         $kb = InlineKeyboardMarkup::make();
         $row = [];
         for ($i = $currentMonth; $i <= $lastMonth; $i++) {
-            $monthDate = (clone $current)->setDate($currentYear, $i, 1);
-            $format = $monthDate->format('Y-m') . ' ' . self::ukMonthEmoji($i) . ' ' . self::ukMonthName($i);
+            $format = self::ukMonthEmoji($i) . ' ' . self::ukMonthName($i);
             $row[] = InlineKeyboardButton::make(text: $format, callback_data: 'month_' . str_pad($i, 2, '0', STR_PAD_LEFT));
             if (count($row) == 3) {
                 $kb->addRow(...$row);
@@ -359,8 +358,7 @@ class SchedulePavilion extends Conversation
             InlineKeyboardButton::make(text: 'На початок', callback_data: 0),
         );
 
-        $monthDate = SchedulePavilionService::createNewDate()->setDate($currentYear, (int)$this->month, 1);
-        $monthFormatted = $monthDate->format('Y-m') . ' ' . self::ukMonthEmoji((int)$this->month) . ' <b>' . self::ukMonthName((int)$this->month) . '</b>';
+        $monthFormatted = self::ukMonthEmoji((int)$this->month) . ' <b>' . self::ukMonthName((int)$this->month) . '</b>';
         $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
         $this->safeEdit($bot, 'Альтанка: ' . $pavilionName . ', Місяць: ' . $monthFormatted . "\nОберіть день:", $kb, ParseMode::HTML);
         $this->next('chooseTimeSet');
