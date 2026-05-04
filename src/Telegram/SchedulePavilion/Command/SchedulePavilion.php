@@ -328,8 +328,13 @@ class SchedulePavilion extends Conversation
         $kb = InlineKeyboardMarkup::make();
         $row = [];
         for ($i = $currentDay; $i <= $lastDay; $i++) {
-            $format = ($i == $currentDay) ? $current->format('M-d') : $current->modify('+1 day')->format('M-d');
-            $row[] = InlineKeyboardButton::make(text: $format, callback_data: 'day_' . $current->format('d'));
+            if ($i != $currentDay) {
+                $current->modify('+1 day');
+            }
+            $format = $current->format('M-d');
+            $isWeekend = in_array((int)$current->format('N'), [6, 7], true);
+            $label = $isWeekend ? '🌴 ' . $format : $format;
+            $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'day_' . $current->format('d'));
             if (count($row) == 4) {
                 $kb->addRow(...$row);
                 $row = [];
