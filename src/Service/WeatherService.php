@@ -13,7 +13,10 @@ class WeatherService
     private const LNG = 32.0964188;
     private const TZ = 'Europe/Kyiv';
     private const URL = 'https://api.open-meteo.com/v1/forecast';
-    private const FORECAST_HORIZON_DAYS = 15;
+    private const FORECAST_DAYS = 16;
+
+    /** @var array<string, array{line: string, emoji: string}>|null */
+    private ?array $memo = null;
 
     public function __construct(
         private HttpClientInterface $httpClient,
@@ -23,19 +26,29 @@ class WeatherService
 
     public function getDailyForecastLine(\DateTimeInterface $date): ?string
     {
-        $tz = new \DateTimeZone(self::TZ);
-        $today = (new \DateTimeImmutable('today', $tz))->setTime(0, 0);
-        $target = (new \DateTimeImmutable($date->format('Y-m-d'), $tz))->setTime(0, 0);
-        $diffDays = (int) $today->diff($target)->format('%r%a');
+        return $this->getForecasts()[$date->format('Y-m-d')]['line'] ?? null;
+    }
 
-        if ($diffDays < 0 || $diffDays > self::FORECAST_HORIZON_DAYS) {
-            return null;
+    public function getDayEmoji(\DateTimeInterface $date): ?string
+    {
+        return $this->getForecasts()[$date->format('Y-m-d')]['emoji'] ?? null;
+    }
+
+    /**
+     * @return array<string, array{line: string, emoji: string}>
+     */
+    private function getForecasts(): array
+    {
+        if ($this->memo !== null) {
+            return $this->memo;
         }
 
-        $dateKey = $target->format('Y-m-d');
+        $tz = new \DateTimeZone(self::TZ);
+        $today = (new \DateTimeImmutable('today', $tz))->format('Y-m-d');
+        $cacheKey = 'weather_cherkasy_horizon_' . $today;
 
         try {
-            return $this->cache->get('weather_cherkasy_' . $dateKey, function (ItemInterface $item) use ($dateKey) {
+            $this->memo = $this->cache->get($cacheKey, function (ItemInterface $item) {
                 $item->expiresAfter(3600);
 
                 $response = $this->httpClient->request('GET', self::URL, [
@@ -44,33 +57,44 @@ class WeatherService
                         'longitude' => self::LNG,
                         'daily' => 'temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code',
                         'timezone' => self::TZ,
-                        'start_date' => $dateKey,
-                        'end_date' => $dateKey,
+                        'forecast_days' => self::FORECAST_DAYS,
                     ],
                     'timeout' => 4,
                 ]);
 
                 $data = $response->toArray(false);
-                if (!isset($data['daily']['temperature_2m_max'][0])) {
-                    return null;
+                $times = $data['daily']['time'] ?? [];
+                if (!$times) {
+                    return [];
                 }
 
-                $tMax = (int) round($data['daily']['temperature_2m_max'][0]);
-                $tMin = (int) round($data['daily']['temperature_2m_min'][0]);
-                $prec = (float) ($data['daily']['precipitation_sum'][0] ?? 0);
-                $code = (int) ($data['daily']['weather_code'][0] ?? 0);
+                $out = [];
+                foreach ($times as $idx => $dateStr) {
+                    $tMax = (int) round($data['daily']['temperature_2m_max'][$idx] ?? 0);
+                    $tMin = (int) round($data['daily']['temperature_2m_min'][$idx] ?? 0);
+                    $prec = (float) ($data['daily']['precipitation_sum'][$idx] ?? 0);
+                    $code = (int) ($data['daily']['weather_code'][$idx] ?? 0);
 
-                $emoji = $this->codeToEmoji($code);
-                $cond = $this->codeToText($code, $prec);
-                $signMin = $tMin >= 0 ? '+' : '';
-                $signMax = $tMax >= 0 ? '+' : '';
+                    $emoji = $this->codeToEmoji($code);
+                    $cond = $this->codeToText($code, $prec);
+                    $signMin = $tMin >= 0 ? '+' : '';
+                    $signMax = $tMax >= 0 ? '+' : '';
+                    $line = $emoji . ' ' . $signMin . $tMin . '°…' . $signMax . $tMax . '°, ' . $cond;
 
-                return $emoji . ' ' . $signMin . $tMin . '°…' . $signMax . $tMax . '°, ' . $cond;
+                    $out[$dateStr] = [
+                        'line' => $line,
+                        'emoji' => $emoji,
+                    ];
+                }
+
+                return $out;
             });
         } catch (\Throwable $e) {
             $this->logger->warning('WeatherService: forecast fetch failed: ' . $e->getMessage());
-            return null;
+            $this->memo = [];
         }
+
+        return $this->memo;
     }
 
     private function codeToEmoji(int $code): string

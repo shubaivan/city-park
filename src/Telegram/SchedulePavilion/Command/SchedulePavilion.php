@@ -335,7 +335,15 @@ class SchedulePavilion extends Conversation
             }
             $format = $current->format('M-d');
             $isWeekend = in_array((int)$current->format('N'), [6, 7], true);
-            $label = $isWeekend ? '🌴 ' . $format : $format;
+            $weatherEmoji = $this->weatherService->getDayEmoji($current);
+            $prefix = '';
+            if ($isWeekend) {
+                $prefix .= '🌴';
+            }
+            if ($weatherEmoji !== null) {
+                $prefix .= $weatherEmoji;
+            }
+            $label = $prefix !== '' ? $prefix . ' ' . $format : $format;
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'day_' . $current->format('d'));
             if (count($row) == 4) {
                 $kb->addRow(...$row);
