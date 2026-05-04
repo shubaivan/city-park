@@ -336,7 +336,7 @@ class SchedulePavilion extends Conversation
                 $current->modify('+1 day');
             }
             $weekday = (int)$current->format('N');
-            $format = UkDateFormatter::dayNameShort($weekday) . $current->format('d');
+            $format = UkDateFormatter::dayNameMini($weekday) . $current->format('d');
             $isWeekend = in_array($weekday, [6, 7], true);
             $weatherEmoji = $this->weatherService->getDayEmoji($current);
             $suffix = '';
@@ -348,7 +348,7 @@ class SchedulePavilion extends Conversation
             }
             $label = $suffix !== '' ? $format . ' ' . $suffix : $format;
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'day_' . $current->format('d'));
-            if (count($row) == 4) {
+            if (count($row) == 3) {
                 $kb->addRow(...$row);
                 $row = [];
             }
