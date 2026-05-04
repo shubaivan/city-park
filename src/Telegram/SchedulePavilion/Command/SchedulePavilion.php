@@ -299,7 +299,7 @@ class SchedulePavilion extends Conversation
         $row = [];
         for ($i = $currentMonth; $i <= $lastMonth; $i++) {
             $monthDate = (clone $current)->setDate($currentYear, $i, 1);
-            $format = $monthDate->format('Y-m') . ' ' . self::ukMonthName($i);
+            $format = $monthDate->format('Y-m') . ' ' . self::ukMonthEmoji($i) . ' ' . self::ukMonthName($i);
             $row[] = InlineKeyboardButton::make(text: $format, callback_data: 'month_' . str_pad($i, 2, '0', STR_PAD_LEFT));
             if (count($row) == 3) {
                 $kb->addRow(...$row);
@@ -360,9 +360,9 @@ class SchedulePavilion extends Conversation
         );
 
         $monthDate = SchedulePavilionService::createNewDate()->setDate($currentYear, (int)$this->month, 1);
-        $monthFormatted = $monthDate->format('Y-m') . ' ' . self::ukMonthName((int)$this->month);
+        $monthFormatted = $monthDate->format('Y-m') . ' ' . self::ukMonthEmoji((int)$this->month) . ' <b>' . self::ukMonthName((int)$this->month) . '</b>';
         $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
-        $this->safeEdit($bot, 'Альтанка: ' . $pavilionName . ', Місяць: ' . $monthFormatted . "\nОберіть день:", $kb);
+        $this->safeEdit($bot, 'Альтанка: ' . $pavilionName . ', Місяць: ' . $monthFormatted . "\nОберіть день:", $kb, ParseMode::HTML);
         $this->next('chooseTimeSet');
     }
 
@@ -486,6 +486,25 @@ class SchedulePavilion extends Conversation
             10 => 'Жовтень',
             11 => 'Листопад',
             12 => 'Грудень',
+            default => '',
+        };
+    }
+
+    private static function ukMonthEmoji(int $month): string
+    {
+        return match ($month) {
+            1 => '❄️',
+            2 => '☃️',
+            3 => '🌱',
+            4 => '🌷',
+            5 => '🌿',
+            6 => '☀️',
+            7 => '🏖️',
+            8 => '🌻',
+            9 => '🍁',
+            10 => '🎃',
+            11 => '🍂',
+            12 => '🎄',
             default => '',
         };
     }
