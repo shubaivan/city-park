@@ -410,13 +410,7 @@ class SchedulePavilion extends Conversation
                 $isOrphan = true;
                 break;
             }
-            $label = $format;
-            if ($isWeekend) {
-                $label = '🌴 ' . $label;
-            }
-            if ($isOrphan) {
-                $label = '⚠️ ' . $label;
-            }
+            $label = $isOrphan ? '⚠️ ' . $format : $format;
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'hour_' . $chosenDate->format('H'));
             if (count($row) == 3) {
                 $kb->addRow(...$row);
