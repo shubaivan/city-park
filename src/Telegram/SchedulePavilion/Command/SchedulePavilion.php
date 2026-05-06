@@ -3,6 +3,7 @@
 namespace App\Telegram\SchedulePavilion\Command;
 
 use App\Entity\ScheduledSet;
+use App\Service\DebtPolicy;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use App\Service\UkDateFormatter;
@@ -33,6 +34,7 @@ class SchedulePavilion extends Conversation
         private TelegramUserService $telegramUserService,
         private ValidatorInterface $validator,
         private WeatherService $weatherService,
+        private DebtPolicy $debtPolicy,
     ) {}
 
     public function choosePavilion(Nutgram $bot)
@@ -65,7 +67,7 @@ class SchedulePavilion extends Conversation
             return;
         }
 
-        if ($this->telegramUserService->getCurrentUser()->getAccount()->hasDebt()) {
+        if ($this->debtPolicy->isAccountBlocked($this->telegramUserService->getCurrentUser()->getAccount())) {
             $debt = $this->telegramUserService->getCurrentUser()->getAccount()->getDebt();
             $bot->sendMessage(
                 text: sprintf(

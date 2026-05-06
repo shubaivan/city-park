@@ -3,6 +3,7 @@
 namespace App\Command;
 
 use App\Repository\AccountRepository;
+use App\Service\DebtPolicy;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
@@ -22,6 +23,7 @@ class DebtNotifyCommand extends Command
         private LoggerInterface $logger,
         private AccountRepository $accountRepository,
         private Nutgram $bot,
+        private DebtPolicy $debtPolicy,
     ) {
         parent::__construct();
     }
@@ -35,7 +37,7 @@ class DebtNotifyCommand extends Command
             $notified = 0;
 
             foreach ($accounts as $account) {
-                if (!$account->hasDebt()) {
+                if (!$this->debtPolicy->isAccountBlocked($account)) {
                     continue;
                 }
 

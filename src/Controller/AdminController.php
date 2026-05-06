@@ -8,6 +8,7 @@ use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Repository\TelegramUserRepository;
+use App\Service\DebtPolicy;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
@@ -253,7 +254,8 @@ class AdminController extends AbstractController
         AccountRepository $accountRepository,
         EntityManagerInterface $em,
         LoggerInterface $logger,
-        Nutgram $bot
+        Nutgram $bot,
+        DebtPolicy $debtPolicy
     ): Response
     {
         /** @var UploadedFile|null $file */
@@ -308,7 +310,7 @@ class AdminController extends AbstractController
                 $account->setDebt((string)$debt);
                 $wasActive = $account->isActive();
 
-                if ($debt > 1000) {
+                if ($debtPolicy->isOverThreshold($debt)) {
                     $account->setIsActive(false);
                     $em->persist($account);
 
@@ -332,7 +334,7 @@ class AdminController extends AbstractController
                         }
                     }
                 } else {
-                    // Debt <= 1000: ensure account stays active
+                    // Debt within threshold: ensure account stays active.
                     $account->setIsActive(true);
                     $em->persist($account);
                 }
@@ -351,7 +353,7 @@ class AdminController extends AbstractController
 
         foreach ($allAccounts as $account) {
             if (!in_array($account->getAccountNumber(), $uploadedAccountNumbers, true)) {
-                if ($account->hasDebt()) {
+                if ($debtPolicy->isAccountBlocked($account)) {
                     $account->setDebt('0');
                     $account->setIsActive(true);
                     $em->persist($account);

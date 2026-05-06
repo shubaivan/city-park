@@ -1,5 +1,7 @@
 twig:
     file_name_pattern: '*.twig'
+    globals:
+        debt_block_threshold: '%app.debt_block_threshold%'
 
 when@test:
     twig:
