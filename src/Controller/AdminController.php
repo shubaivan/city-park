@@ -346,30 +346,43 @@ class AdminController extends AbstractController
             }
         }
 
-        // Reset debt for accounts NOT present in the uploaded file
+        // Reset debt for accounts NOT present in the uploaded file.
+        // The file is treated as a full snapshot of outstanding debt — any account
+        // missing from it is considered to have no debt and must be reactivated.
+        // We only touch accounts that previously had debt > 0, so admin-deactivated
+        // (debt = 0, is_active = false) accounts awaiting confirmation stay untouched.
         $reset = 0;
         $allAccounts = $accountRepository->findAll();
         $uploadedAccountNumbers = array_map('strval', array_keys($debtData));
 
         foreach ($allAccounts as $account) {
-            if (!in_array($account->getAccountNumber(), $uploadedAccountNumbers, true)) {
-                if ($debtPolicy->isAccountBlocked($account)) {
-                    $account->setDebt('0');
-                    $account->setIsActive(true);
-                    $em->persist($account);
-                    $reset++;
+            if (in_array($account->getAccountNumber(), $uploadedAccountNumbers, true)) {
+                continue;
+            }
 
-                    foreach ($account->getUsers() as $user) {
-                        if ($user->getChatId()) {
-                            try {
-                                $bot->sendMessage(
-                                    text: "✅ Ваш борг <b>погашено</b>. Доступ до бронювання відновлено!",
-                                    chat_id: $user->getChatId(),
-                                    parse_mode: ParseMode::HTML
-                                );
-                            } catch (\Throwable $e) {
-                                $logger->error('Failed to notify user about debt reset: ' . $e->getMessage());
-                            }
+            $hadDebt = $account->getDebt() !== null && (float)$account->getDebt() > 0;
+            if (!$hadDebt) {
+                continue;
+            }
+
+            $wasInactive = !$account->isActive();
+
+            $account->setDebt('0');
+            $account->setIsActive(true);
+            $em->persist($account);
+            $reset++;
+
+            if ($wasInactive) {
+                foreach ($account->getUsers() as $user) {
+                    if ($user->getChatId()) {
+                        try {
+                            $bot->sendMessage(
+                                text: "✅ Ваш борг <b>погашено</b>. Доступ до бронювання відновлено!",
+                                chat_id: $user->getChatId(),
+                                parse_mode: ParseMode::HTML
+                            );
+                        } catch (\Throwable $e) {
+                            $logger->error('Failed to notify user about debt reset: ' . $e->getMessage());
                         }
                     }
                 }
