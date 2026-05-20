@@ -39,7 +39,9 @@ class SchedulePavilion extends Conversation
 
     public function choosePavilion(Nutgram $bot)
     {
-        if (!$this->telegramUserService->getCurrentUser()->getPhoneNumber()) {
+        $currentUser = $this->telegramUserService->getCurrentUser();
+
+        if (!$currentUser->getPhoneNumber()) {
             $bot->sendMessage(
                 text: 'Підтвердження телефону обов\'язкове'
             );
@@ -53,22 +55,24 @@ class SchedulePavilion extends Conversation
             return;
         }
 
-        if (!$this->telegramUserService->getCurrentUser()->getAccount()) {
+        $account = $this->telegramUserService->resolveAccount($currentUser);
+
+        if (!$account) {
             $bot->sendMessage(
                 text: 'Ви не можете бронювати! Ваш Аккаунт не підтверджений ОСББ. Зв\'яжітся з Аліною Бухгалтером - +380 93 658 32 02'
             );
             return;
         }
 
-        if (!$this->telegramUserService->getCurrentUser()->getAccount()->isActive()) {
+        if (!$account->isActive()) {
             $bot->sendMessage(
                 text: 'Ви не можете бронювати! Ваш Аккаунт не активний. Зв\'яжітся з Аліною Бухгалтером - +380 93 658 32 02'
             );
             return;
         }
 
-        if ($this->debtPolicy->isAccountBlocked($this->telegramUserService->getCurrentUser()->getAccount())) {
-            $debt = $this->telegramUserService->getCurrentUser()->getAccount()->getDebt();
+        if ($this->debtPolicy->isAccountBlocked($account)) {
+            $debt = $account->getDebt();
             $bot->sendMessage(
                 text: sprintf(
                     "❌ Ви не можете бронювати!\n\nУ вас є борг: <b>%s грн</b>\n\nБудь ласка, сплатіть борг для можливості бронювання.",

@@ -2,6 +2,7 @@
 
 namespace App\Repository;
 
+use App\Entity\Account;
 use App\Entity\TelegramUser;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -36,6 +37,52 @@ class TelegramUserRepository extends ServiceEntityRepository
     {
         $this->getEntityManager()->persist($telegramUser);
         $this->getEntityManager()->flush();
+    }
+
+    /**
+     * Find the Account a phone number belongs to as a "умовний власник"
+     * (conditional owner). Conditional owners are stored as additional_phones
+     * entries on an account holder's TelegramUser record, so a family member
+     * using their own Telegram account has no account of their own — we match
+     * their confirmed phone against those entries.
+     */
+    public function findAccountByConditionalPhone(?string $phone): ?Account
+    {
+        $needle = $this->normalizePhone($phone);
+        if ($needle === '') {
+            return null;
+        }
+
+        /** @var TelegramUser[] $holders */
+        $holders = $this->createQueryBuilder('tu')
+            ->andWhere('tu.account IS NOT NULL')
+            ->andWhere('tu.additional_phones IS NOT NULL')
+            ->getQuery()
+            ->getResult();
+
+        foreach ($holders as $holder) {
+            foreach ($holder->getAdditionalPhones() as $entry) {
+                $value = is_array($entry) ? ($entry['property_value'] ?? null) : null;
+                if ($value !== null && $this->normalizePhone($value) === $needle) {
+                    return $holder->getAccount();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Reduce a phone number to its last 9 digits so values entered in the
+     * admin panel ("380...", "+380...", "0...") match the format Telegram
+     * reports for a shared contact. Returns '' for anything too short to be
+     * a real number.
+     */
+    private function normalizePhone(?string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+
+        return strlen($digits) >= 9 ? substr($digits, -9) : '';
     }
 
     /**

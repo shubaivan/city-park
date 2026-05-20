@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Entity\Account;
 use App\Entity\TelegramUser;
 use App\Repository\TelegramUserRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -63,5 +64,31 @@ class TelegramUserService
     public function getCurrentUser(): ?TelegramUser
     {
         return $this->currentUser;
+    }
+
+    /**
+     * Return the Account a user may book against.
+     *
+     * If the user has no account of their own, try to resolve one via their
+     * confirmed phone being listed as a "умовний власник" (conditional owner)
+     * on an account holder's record. When found, the link is persisted so the
+     * family member becomes a normal member of that account.
+     */
+    public function resolveAccount(TelegramUser $user): ?Account
+    {
+        if ($user->getAccount()) {
+            return $user->getAccount();
+        }
+
+        $account = $this->telegramUserRepository->findAccountByConditionalPhone(
+            $user->getPhoneNumber()
+        );
+
+        if ($account) {
+            $user->setAccount($account);
+            $this->em->flush();
+        }
+
+        return $account;
     }
 }
