@@ -45,7 +45,8 @@ class UploadPhotoCommand extends Command
 
         if (!$open) {
             $bot->sendMessage(
-                text: '📷 Дякуємо! Наразі від вас не очікується завантаження фото.',
+                text: '📷 <b>Фото вже отримано.</b> Достатньо одного фото на сесію — наступне фото знадобиться лише після нового бронювання.',
+                parse_mode: ParseMode::HTML,
             );
             return;
         }
@@ -56,6 +57,13 @@ class UploadPhotoCommand extends Command
 
         try {
             $this->saveLargestPhoto($bot, $request);
+        } catch (\Doctrine\DBAL\Exception\UniqueConstraintViolationException $t) {
+            // Race: another photo for this session arrived between our request lookup and save.
+            $bot->sendMessage(
+                text: '📷 <b>Фото вже отримано.</b> Достатньо одного фото на сесію.',
+                parse_mode: ParseMode::HTML,
+            );
+            return;
         } catch (\Throwable $t) {
             $this->logger->error('Photo upload failed: ' . $t->getMessage(), [
                 'exception' => $t,
