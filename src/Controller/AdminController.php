@@ -35,6 +35,12 @@ class AdminController extends AbstractController
         protected readonly SerializerInterface $serializer
     ) {}
 
+    #[Route('/admin/guide', name: 'app_admin_guide')]
+    public function guide(): Response
+    {
+        return $this->render('admin/guide.html.twig');
+    }
+
     #[Route('/admin', name: 'app_admin')]
     public function index(EntityManagerInterface $em): Response
     {
