@@ -4,7 +4,6 @@ namespace App\Command;
 
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
-use SergiX44\Nutgram\Telegram\Types\Command\BotCommand;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -39,11 +38,15 @@ class BotMenuUpdateCommand extends Command
 
         $commands = [];
         foreach (self::MENU as [$cmd, $desc]) {
-            $commands[] = BotCommand::make(command: $cmd, description: $desc);
+            $commands[] = ['command' => $cmd, 'description' => $desc];
         }
 
+        // Nutgram's setMyCommands json-encodes a null scope which Telegram rejects,
+        // so we call the raw API endpoint instead with only the fields we need.
         try {
-            $ok = $this->bot->setMyCommands($commands);
+            $ok = $this->bot->requestJson('setMyCommands', [
+                'commands' => json_encode($commands, JSON_UNESCAPED_UNICODE),
+            ]);
         } catch (\Throwable $t) {
             $this->logger->error('setMyCommands failed: ' . $t->getMessage());
             $io->error($t->getMessage());
