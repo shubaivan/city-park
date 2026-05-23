@@ -4,8 +4,8 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 
 ## Where things live
 
-- Prod path: `/var/www/html/city-park/` (server REDACTED_HOST, `ssh -i ~/.ssh/REDACTED_KEY root@…`)
-- Admin: https://citypark.shuba.dev/admin (login at `/login`, password = env `MAIN_ADMIN_PASSWORD`)
+- Prod path: `/var/www/html/city-park/` on the production server (host + SSH key live in per-machine memory, not in this file)
+- Admin login at `/login`, password = env `MAIN_ADMIN_PASSWORD`
 - Logs: `var/log/{prod,remind,photo-check,photo-cleanup,debt-notify,warm-weather}.log`
 
 ## Core domain
