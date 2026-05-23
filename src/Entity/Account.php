@@ -162,13 +162,14 @@ class Account
     }
 
     /**
-     * Type digit per ОСББ numbering scheme: queue-entrance-TYPE-NNN.
-     * 0 = apartment, 5 = storage (комірка), 7 = parking. Returns null if the
-     * apartment_number is free-text or shorter than 3 digits (legacy rows).
+     * Type digit per ОСББ numbering scheme: queue-entrance-TYPE-NNN encoded in
+     * the особовий рахунок (account_number). 0 = apartment, 5 = storage
+     * (комірка), 7 = parking. Returns null if account_number is shorter than
+     * 3 digits or its 3rd digit isn't a recognised type.
      */
     public function getUnitTypeDigit(): ?int
     {
-        $digits = preg_replace('/\D+/', '', (string)$this->apartment_number);
+        $digits = preg_replace('/\D+/', '', (string)$this->account_number);
         if (strlen($digits) < 3) {
             return null;
         }
