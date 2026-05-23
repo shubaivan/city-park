@@ -8,6 +8,7 @@ use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use App\Service\UkDateFormatter;
 use App\Service\WeatherService;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
@@ -243,25 +244,49 @@ class SchedulePavilion extends Conversation
             return;
         }
 
-        $scheduledSet = (new ScheduledSet())
-            ->setTelegramUserId($this->telegramUserService->getCurrentUser())
-            ->setYear((int)(SchedulePavilionService::createNewDate())->format('Y'))
-            ->setMonth((int)$this->month)
-            ->setDay((int)$this->day)
-            ->setHour((int)$this->hour)
-            ->setPavilion((int)$this->pavilion);
-        $scheduledSet->setScheduledAt($scheduledSet->getScheduledDateTime());
+        $currentUser = $this->telegramUserService->getCurrentUser();
+        $year = (int)(SchedulePavilionService::createNewDate())->format('Y');
 
-        $this->em->persist($scheduledSet);
+        // Idempotency: Telegram can deliver the same callback_query twice
+        // (network/timeout retries). If we already have this exact booking for
+        // this user, skip validation and re-show the success message instead of
+        // surfacing the @UniqueEntity violation on top of the first worker's
+        // success reply.
+        $existing = $this->em->getRepository(ScheduledSet::class)->findOneBy([
+            'telegramUserId' => $currentUser,
+            'year' => $year,
+            'month' => (int)$this->month,
+            'day' => (int)$this->day,
+            'hour' => (int)$this->hour,
+            'pavilion' => (int)$this->pavilion,
+        ]);
 
-        $lists = $this->validator->validate($scheduledSet);
-        if (count($lists)) {
-            $errorMsg = $lists[0]->getMessage();
-            $this->safeEdit($bot, '<b>' . $errorMsg . '</b>', null, ParseMode::HTML);
-            $this->end();
-            return;
+        if ($existing === null) {
+            $scheduledSet = (new ScheduledSet())
+                ->setTelegramUserId($currentUser)
+                ->setYear($year)
+                ->setMonth((int)$this->month)
+                ->setDay((int)$this->day)
+                ->setHour((int)$this->hour)
+                ->setPavilion((int)$this->pavilion);
+            $scheduledSet->setScheduledAt($scheduledSet->getScheduledDateTime());
+
+            $this->em->persist($scheduledSet);
+
+            $lists = $this->validator->validate($scheduledSet);
+            if (count($lists)) {
+                $errorMsg = $lists[0]->getMessage();
+                $this->safeEdit($bot, '<b>' . $errorMsg . '</b>', null, ParseMode::HTML);
+                $this->end();
+                return;
+            }
+            try {
+                $this->em->flush();
+            } catch (UniqueConstraintViolationException) {
+                // Sibling worker won the race and inserted the same row first.
+                $this->em->clear();
+            }
         }
-        $this->em->flush();
 
         $dateTime = SchedulePavilionService::createNewDate();
         $dateTime->setDate((int)$dateTime->format('Y'), (int)$this->month, (int)$this->day);
