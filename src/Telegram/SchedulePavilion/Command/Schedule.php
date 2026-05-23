@@ -16,10 +16,14 @@ class Schedule extends Command
     {
         $bot->sendMessage(
             text: 'Бронювання:',
-            reply_markup: InlineKeyboardMarkup::make()->addRow(
-                InlineKeyboardButton::make('Бронювання альтанки', callback_data: 'schedule-pavilion'),
-                InlineKeyboardButton::make('Переглянути свої', callback_data: 'own-schedule'),
-            )
+            reply_markup: InlineKeyboardMarkup::make()
+                ->addRow(
+                    InlineKeyboardButton::make('Бронювання альтанки', callback_data: 'schedule-pavilion'),
+                    InlineKeyboardButton::make('Переглянути свої', callback_data: 'own-schedule'),
+                )
+                ->addRow(
+                    InlineKeyboardButton::make('📜 Історія бронювань', callback_data: 'booking-history'),
+                )
         );
     }
 }

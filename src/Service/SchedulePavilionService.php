@@ -55,6 +55,23 @@ class SchedulePavilionService
     }
 
     /**
+     * @return array<string, ScheduledSet[]> Past bookings within the last $days, grouped by 'Y-m-d', newest day first.
+     */
+    public function getHistory(int $days = 30): array
+    {
+        $now = self::createNewDate();
+        $from = (clone $now)->modify("-{$days} days");
+        $sets = $this->repository->getHistory($from, $now);
+
+        $grouped = [];
+        foreach ($sets as $set) {
+            $grouped[$set->getScheduledDateTime()->format('Y-m-d')][] = $set;
+        }
+
+        return $grouped;
+    }
+
+    /**
      * @return int[] Hours (0-23) already booked by this account on the given day, across all pavilions.
      */
     public function getAccountBookedHours(int $year, int $month, int $day, Account $account): array

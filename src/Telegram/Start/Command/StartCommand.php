@@ -16,11 +16,15 @@ class StartCommand extends Command
     {
         $bot->sendMessage(
             text: 'Оберіть:',
-            reply_markup: InlineKeyboardMarkup::make()->addRow(
-                InlineKeyboardButton::make('Бронювання', callback_data: 'schedule-pavilion'),
-                InlineKeyboardButton::make('Переглянути свої', callback_data: 'own-schedule'),
-                InlineKeyboardButton::make('Як доїхати?', callback_data: 'type:route'),
-            )
+            reply_markup: InlineKeyboardMarkup::make()
+                ->addRow(
+                    InlineKeyboardButton::make('Бронювання', callback_data: 'schedule-pavilion'),
+                    InlineKeyboardButton::make('Переглянути свої', callback_data: 'own-schedule'),
+                    InlineKeyboardButton::make('Як доїхати?', callback_data: 'type:route'),
+                )
+                ->addRow(
+                    InlineKeyboardButton::make('📜 Історія бронювань', callback_data: 'booking-history'),
+                )
         );
     }
 }

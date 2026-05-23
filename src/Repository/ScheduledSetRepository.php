@@ -156,6 +156,21 @@ class ScheduledSetRepository extends ServiceEntityRepository
     }
 
     /**
+     * @return ScheduledSet[] Past bookings whose scheduled_at falls in [$from, $until), newest first.
+     */
+    public function getHistory(\DateTimeInterface $from, \DateTimeInterface $until): array
+    {
+        $qb = $this->createQueryBuilder('ss');
+        $qb
+            ->andWhere('ss.scheduled_at >= :from')->setParameter('from', $from)
+            ->andWhere('ss.scheduled_at < :until')->setParameter('until', $until)
+            ->orderBy('ss.scheduled_at', 'DESC')
+            ->addOrderBy('ss.pavilion', 'ASC');
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /**
      * @param TelegramUser $user
      * @return ScheduledSet[]
      */

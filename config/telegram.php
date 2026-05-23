@@ -21,3 +21,4 @@ $bot->onCallbackQueryData('type:route', \App\Telegram\Location\Command\RouteComm
 $bot->onCallbackQueryData('schedule-pavilion', \App\Telegram\SchedulePavilion\Command\SchedulePavilion::class);
 $bot->onCommand('обрати павільйон', \App\Telegram\SchedulePavilion\Command\SchedulePavilion::class);
 $bot->onCallbackQueryData('own-schedule', \App\Telegram\SchedulePavilion\Command\OwnSchedule::class);
+$bot->onCallbackQueryData('booking-history', \App\Telegram\SchedulePavilion\Command\BookingHistory::class);
