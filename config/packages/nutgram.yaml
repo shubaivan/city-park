@@ -2,8 +2,8 @@ nutgram:
   # The Telegram bot token
   token: '%env(string:TELEGRAM_TOKEN)%'
 
-  # If true, the webhook mode validates the incoming IP range is from a Telegram server
-  safeMode: false
+  # Optional shared secret to verify incoming webhook calls (use with $bot->setWebhook(secret: ...))
+  #webhook_secret: '%env(string:WEBHOOK_SECRET)%'
 
   # If the nutgram bundle should automatically load the routes from config/telegram.php
   routes: true
