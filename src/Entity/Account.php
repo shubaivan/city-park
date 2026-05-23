@@ -131,25 +131,53 @@ class Account
     }
 
     /**
-     * True when this account is a non-residential unit (parking spot, storage room).
-     * Owners of non-residential units don't pay the yard-maintenance fee, so they
-     * are not entitled to book the pavilion regardless of is_active or debt state.
+     * Type digit per ОСББ numbering scheme: queue-entrance-TYPE-NNN.
+     * 0 = apartment, 5 = storage (комірка), 7 = parking. Returns null if the
+     * apartment_number is free-text or shorter than 3 digits (legacy rows).
      */
-    public function isNonResidential(): bool
+    public function getUnitTypeDigit(): ?int
     {
-        $value = mb_strtolower((string)$this->apartment_number, 'UTF-8');
-        if ($value === '') {
-            return false;
+        $digits = preg_replace('/\D+/', '', (string)$this->apartment_number);
+        if (strlen($digits) < 3) {
+            return null;
         }
-        $needles = [
-            'паркінг', 'паркинг', 'парковка', 'parking',
-            'кладов', 'комірчина', 'комирчина', 'storage',
-        ];
-        foreach ($needles as $needle) {
+        $d = (int)$digits[2];
+        return in_array($d, [0, 5, 7], true) ? $d : null;
+    }
+
+    public function isApartment(): bool
+    {
+        return $this->getUnitTypeDigit() === 0;
+    }
+
+    public function isParking(): bool
+    {
+        return $this->getUnitTypeDigit() === 7;
+    }
+
+    public function isStorage(): bool
+    {
+        if ($this->getUnitTypeDigit() === 5) {
+            return true;
+        }
+        // Legacy rows where apartment_number is free text like "кладова 12".
+        $value = mb_strtolower((string)$this->apartment_number, 'UTF-8');
+        foreach (['кладов', 'комірчина', 'комирчина', 'storage'] as $needle) {
             if (str_contains($value, $needle)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Whether this account is entitled to book the pavilion based on unit type.
+     * Apartments (0) and parking (7) qualify; storage (5) does not — its owners
+     * don't pay the yard-maintenance fee. Unparseable legacy rows are allowed
+     * unless they match a storage keyword, preserving prior behaviour.
+     */
+    public function canBookPavilion(): bool
+    {
+        return !$this->isStorage();
     }
 }
