@@ -12,20 +12,24 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 
 - `Account` is the tenant unit. One Account ↔ many `TelegramUser` (family members / conditional owners).
 - `Account.is_active = false` is the single block flag — used by debt blocking AND photo-miss blocking. Toggled via `/admin/users`.
+- `Account::isNonResidential()` blocks parking + storage units from booking *structurally* (checked before `is_active` — admins can't grant booking to a parking account without renaming the unit). Detects `apartment_number` containing паркінг/парковка/кладов/комірчина/parking/storage.
 - `ScheduledSet` is one row per booked **hour** (no merging). A "session" = consecutive same-pavilion hours by one account, detected at query time.
 - Booking limits live in `src/Validator/`: ≤ 4h / day, ≤ 20h / month, no cross-pavilion overlap same hour, no orphan-1h gaps between existing bookings, debt threshold (env `DEBT_BLOCK_THRESHOLD`, default 1300 UAH).
 
 ## Bot menu (callback wiring in `config/telegram.php`)
 
-| Button | Callback | Handler |
-|---|---|---|
-| Бронювання | `schedule-pavilion` | `SchedulePavilion` (conversation) |
-| Переглянути свої | `own-schedule` | `OwnSchedule` |
-| Як доїхати? | `type:route` | `RouteCommand` |
-| 📜 Історія бронювань | `booking-history` | `BookingHistory` (last 30 days, full info) |
-| 📸 Завантажити фото | `photo-upload-info` | `PhotoUploadInfo` (lists open requests) |
-| ℹ️ Інструкція та FAQ | `info-menu` / `info-topic:*` | `InfoCommand` (edit `TOPICS` const) |
-| (auto) photo upload | `onPhoto` event | `UploadPhotoCommand` |
+| Button | Callback | Slash | Handler |
+|---|---|---|---|
+| Бронювання | `schedule-pavilion` | `/schedule` | `SchedulePavilion` (conversation) |
+| Переглянути свої | `own-schedule` | — | `OwnSchedule` |
+| Як доїхати? | `type:route` | — | `RouteCommand` |
+| 📜 Історія бронювань | `booking-history` + `bh:week:YYYY-Www` | `/history` | `BookingHistory` (weekly paginated, last 30 days, photo status badges) |
+| 📸 Завантажити фото | `photo-upload-info` | `/photo` | `PhotoUploadInfo` (lists open requests) |
+| ℹ️ Інструкція та FAQ | `info-menu` / `info-topic:*` | `/info` | `InfoCommand` (edit `TOPICS` const) |
+| 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
+| (auto) photo upload | `onPhoto` event | — | `UploadPhotoCommand` |
+
+**Slash menu must be pushed via `bin/console bot:menu:update --env=prod` after editing `BotMenuUpdateCommand::MENU`.** Nutgram's `setMyCommands()` has a null-scope bug; the command uses raw `sendRequest()` instead.
 
 ## Photo-obligation lifecycle
 
@@ -55,9 +59,11 @@ When an admin sets `is_active = true` in `/admin/users`, `PavilionPhotoService::
 ssh root@prod
 cd /var/www/html/city-park
 git pull origin master
+composer install --no-dev --optimize-autoloader --no-interaction   # if composer.lock changed
 npx encore production              # if assets/twig changed
 rm -rf var/cache/prod && php bin/console cache:warmup --env=prod
 php bin/console doctrine:migrations:migrate --no-interaction --env=prod   # if migration added
+sudo -u www-data php bin/console bot:menu:update --env=prod          # idempotent; safe every deploy
 mkdir -p public/uploads/pavilion-photos
 chown -R www-data:www-data var/cache var/log public/uploads
 systemctl reload php8.3-fpm
