@@ -60,7 +60,7 @@ ssh root@prod
 cd /var/www/html/city-park
 git pull origin master
 composer install --no-dev --optimize-autoloader --no-interaction   # if composer.lock changed
-npx encore production              # if assets/twig changed
+NODE_OPTIONS=--openssl-legacy-provider npx encore production       # if assets/twig changed (flag needed for prod Node 17+ vs old webpack/terser)
 rm -rf var/cache/prod && php bin/console cache:warmup --env=prod
 php bin/console doctrine:migrations:migrate --no-interaction --env=prod   # if migration added
 sudo -u www-data php bin/console bot:menu:update --env=prod          # idempotent; safe every deploy
