@@ -66,6 +66,21 @@
                             <label class="col-form-label">Борг</label>
                             <p id="debt_display" class="form-control-plaintext">—</p>
                         </div>
+                        <hr/>
+                        <div class="form-group">
+                            <label class="col-form-label"><b>Прив'язані аккаунти (один власник)</b></label>
+                            <p class="form-text text-muted">
+                                Якщо власник має й квартиру, й паркомісце — прив'яжіть їх, щоб ліміти бронювань і борги рахувалися спільно.
+                            </p>
+                            <ul id="group_siblings_list" class="list-group mb-2"></ul>
+                            <div class="input-group">
+                                <input type="text" id="group_link_account_number" class="form-control" placeholder="Особовий рахунок партнера"/>
+                                <div class="input-group-append">
+                                    <button type="button" id="group_link_btn" class="btn btn-success">Прив'язати</button>
+                                </div>
+                            </div>
+                            <div id="group_link_feedback" class="invalid-feedback" style="display:none;"></div>
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer">

@@ -24,7 +24,7 @@ class ScheduleLimitValidator extends ConstraintValidator
 
         $account = $value->getTelegramUserId()->getAccount();
 
-        $dayBookings = $this->repository->findByDayForAccount(
+        $dayBookings = $this->repository->findByDayForOwnerGroup(
             $value->getYear(),
             $value->getMonth(),
             $value->getDay(),
@@ -45,7 +45,7 @@ class ScheduleLimitValidator extends ConstraintValidator
         $last = (clone $value->getScheduledAt())->modify('last day of this month');
         $last->setTime(23, 59);
 
-        $monthBookings = $this->repository->findByMonthForAccount($first, $last, $account);
+        $monthBookings = $this->repository->findByMonthForOwnerGroup($first, $last, $account);
         if (count($monthBookings) >= 12) {
             $this->context
                 ->buildViolation($constraint->messageMonth)
@@ -56,7 +56,7 @@ class ScheduleLimitValidator extends ConstraintValidator
                 ->addViolation();
         }
 
-        $overlap = $this->repository->findOverlapForAccount(
+        $overlap = $this->repository->findOverlapForOwnerGroup(
             $value->getYear(),
             $value->getMonth(),
             $value->getDay(),
@@ -81,7 +81,7 @@ class ScheduleLimitValidator extends ConstraintValidator
         // trapped between two of the account's bookings — used to squat extra time.
         // If the middle hour is already booked by the same account, it's just a
         // 3-in-a-row, not an orphan.
-        $pavilionHours = $this->repository->getBookedHoursForAccountPavilion(
+        $pavilionHours = $this->repository->getBookedHoursForOwnerGroupPavilion(
             $value->getPavilion(),
             $value->getYear(),
             $value->getMonth(),

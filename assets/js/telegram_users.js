@@ -160,6 +160,8 @@ document.addEventListener("DOMContentLoaded", function () {
                     product_id_input.val(data.id);
                     form.append(product_id_input);
 
+                    renderGroupSiblings(data.account_id, data.group_siblings || []);
+
                     if (Object.keys(data.additional_phones).length) {
                         $.each(data.additional_phones, function( index, additionalPhone ) {
                             if (Object.keys(additionalPhone).length) {
@@ -248,6 +250,89 @@ document.addEventListener("DOMContentLoaded", function () {
                     exampleModal.modal('toggle');
                     table.ajax.reload(null, false);
                 }
+            });
+        });
+
+        function renderGroupSiblings(accountId, siblings) {
+            let list = $('#group_siblings_list');
+            list.empty();
+            $('#group_link_feedback').hide().text('');
+            $('#group_link_account_number').val('');
+
+            if (!accountId) {
+                list.append('<li class="list-group-item text-muted">Аккаунт не задано — спершу збережіть особовий рахунок.</li>');
+                $('#group_link_btn').prop('disabled', true);
+                return;
+            }
+            $('#group_link_btn').prop('disabled', false).data('account-id', accountId);
+
+            if (!siblings.length) {
+                list.append('<li class="list-group-item text-muted">Прив\'язок немає — цей аккаунт сам по собі.</li>');
+                return;
+            }
+            $.each(siblings, function (_, sib) {
+                let debtLabel = (sib.debt && parseFloat(sib.debt) > 0)
+                    ? ' <span style="color:red;">(' + parseFloat(sib.debt).toFixed(2) + ' грн)</span>'
+                    : '';
+                let item = $('<li class="list-group-item d-flex justify-content-between align-items-center"></li>');
+                item.append(
+                    '<span>' + (sib.apartment_number || '?') + ' · ' + (sib.street || '') + ' ' + (sib.house_number || '') +
+                    ' · <small>' + (sib.account_number || '') + '</small>' + debtLabel + '</span>'
+                );
+                let btn = $('<button type="button" class="btn btn-sm btn-outline-danger group_unlink_btn">Відв\'язати</button>');
+                btn.data('account-id', sib.id);
+                item.append(btn);
+                list.append(item);
+            });
+        }
+
+        $(document).off('click.groupLink').on('click.groupLink', '#group_link_btn', function () {
+            let sourceId = $(this).data('account-id');
+            let partner = $.trim($('#group_link_account_number').val());
+            let feedback = $('#group_link_feedback');
+            feedback.hide().text('');
+            if (!partner) {
+                feedback.text('Вкажіть особовий рахунок партнера').show();
+                return;
+            }
+            $.ajax({
+                type: 'POST',
+                url: window.Routing.generate('admin-account-group-link'),
+                data: { source_account_id: sourceId, partner_account_number: partner },
+                error: (xhr) => {
+                    let msg = 'Помилка';
+                    try { msg = JSON.parse(xhr.responseText)[0] || msg; } catch (e) {}
+                    feedback.text(msg).show();
+                },
+                success: (resp) => {
+                    renderGroupSiblings(sourceId, resp.group_siblings || []);
+                },
+            });
+        });
+
+        $(document).off('click.groupUnlink').on('click.groupUnlink', '.group_unlink_btn', function () {
+            let siblingId = $(this).data('account-id');
+            let sourceId = $('#group_link_btn').data('account-id');
+            let feedback = $('#group_link_feedback');
+            feedback.hide().text('');
+            $.ajax({
+                type: 'POST',
+                url: window.Routing.generate('admin-account-group-unlink'),
+                data: { account_id: siblingId },
+                error: (xhr) => {
+                    let msg = 'Помилка';
+                    try { msg = JSON.parse(xhr.responseText)[0] || msg; } catch (e) {}
+                    feedback.text(msg).show();
+                },
+                success: () => {
+                    // Re-fetch from server so the source's own group state is correct
+                    // (e.g. if unlink left a group of one, the source may have been auto-cleared too).
+                    $.ajax({
+                        type: 'GET',
+                        url: window.Routing.generate('admin-user-get') + '/' + $('#user_id').val(),
+                        success: (data) => renderGroupSiblings(data.account_id, data.group_siblings || []),
+                    });
+                },
             });
         });
 

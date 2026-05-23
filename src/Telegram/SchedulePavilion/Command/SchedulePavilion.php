@@ -82,13 +82,21 @@ class SchedulePavilion extends Conversation
             return;
         }
 
-        if ($this->debtPolicy->isAccountBlocked($account)) {
-            $debt = $account->getDebt();
-            $bot->sendMessage(
-                text: sprintf(
-                    "❌ Ви не можете бронювати!\n\nУ вас є борг: <b>%s грн</b>\n\nБудь ласка, сплатіть борг для можливості бронювання.",
-                    number_format((float)$debt, 2, '.', ' ')
+        if ($this->debtPolicy->isOwnerGroupBlocked($account)) {
+            $blocking = $this->debtPolicy->getBlockingSiblings($account);
+            $lines = array_map(
+                static fn($a) => sprintf(
+                    '• <b>%s грн</b> — кв. %s (рахунок %s)',
+                    number_format((float)$a->getDebt(), 2, '.', ' '),
+                    htmlspecialchars((string)$a->getApartmentNumber(), ENT_QUOTES, 'UTF-8'),
+                    htmlspecialchars((string)$a->getAccountNumber(), ENT_QUOTES, 'UTF-8'),
                 ),
+                $blocking,
+            );
+            $bot->sendMessage(
+                text: "❌ Ви не можете бронювати!\n\nЗа цією групою аккаунтів є борг:\n"
+                    . implode("\n", $lines)
+                    . "\n\nБудь ласка, сплатіть заборгованість для можливості бронювання.",
                 parse_mode: ParseMode::HTML
             );
             return;

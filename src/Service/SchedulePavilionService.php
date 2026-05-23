@@ -84,7 +84,7 @@ class SchedulePavilionService
      */
     public function getAccountBookedHours(int $year, int $month, int $day, Account $account): array
     {
-        return $this->repository->getBookedHoursForAccount($year, $month, $day, $account);
+        return $this->repository->getBookedHoursForOwnerGroup($year, $month, $day, $account);
     }
 
     /**
@@ -92,7 +92,7 @@ class SchedulePavilionService
      */
     public function getAccountBookedHoursAtPavilion(int $pavilion, int $year, int $month, int $day, Account $account): array
     {
-        return $this->repository->getBookedHoursForAccountPavilion($pavilion, $year, $month, $day, $account);
+        return $this->repository->getBookedHoursForOwnerGroupPavilion($pavilion, $year, $month, $day, $account);
     }
 
     public static function createNewDate(string $timeZone = 'Europe/Kyiv'): \DateTime

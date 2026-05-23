@@ -269,7 +269,8 @@ class AdminController extends AbstractController
     #[Route('/admin/user/{id}', name: 'admin-user-get', options: ['expose' => true], methods: [Request::METHOD_GET])]
     public function getUserById(
         int $id,
-        TelegramUserRepository $repository
+        TelegramUserRepository $repository,
+        AccountRepository $accountRepository,
     ): JsonResponse
     {
         $telegramUser = $repository->getUserInfoById($id);
@@ -278,7 +279,142 @@ class AdminController extends AbstractController
             return $this->json([sprintf('User by id: %s was not found', $id)], Response::HTTP_BAD_REQUEST);
         }
 
+        $telegramUser['group_siblings'] = [];
+        if (!empty($telegramUser['account_id'])) {
+            $account = $accountRepository->find($telegramUser['account_id']);
+            if ($account) {
+                foreach ($accountRepository->findGroupSiblings($account) as $sibling) {
+                    if ($sibling->getId() === $account->getId()) {
+                        continue;
+                    }
+                    $telegramUser['group_siblings'][] = [
+                        'id' => $sibling->getId(),
+                        'account_number' => $sibling->getAccountNumber(),
+                        'apartment_number' => $sibling->getApartmentNumber(),
+                        'street' => $sibling->getStreet(),
+                        'house_number' => $sibling->getHouseNumber(),
+                        'debt' => $sibling->getDebt(),
+                    ];
+                }
+            }
+        }
+
         return new JsonResponse($telegramUser, Response::HTTP_OK);
+    }
+
+    #[Route('/admin/account/group/link', name: 'admin-account-group-link', options: ['expose' => true], methods: [Request::METHOD_POST])]
+    public function linkAccountGroup(
+        Request $request,
+        AccountRepository $accountRepository,
+        EntityManagerInterface $em,
+    ): JsonResponse
+    {
+        $sourceId = (int)$request->request->get('source_account_id');
+        $partnerAccountNumber = trim((string)$request->request->get('partner_account_number'));
+
+        if ($sourceId <= 0 || $partnerAccountNumber === '') {
+            return $this->json(['source_account_id and partner_account_number are required'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $source = $accountRepository->find($sourceId);
+        if (!$source) {
+            return $this->json([sprintf('Source account %d not found', $sourceId)], Response::HTTP_BAD_REQUEST);
+        }
+
+        $partner = $accountRepository->findOneBy(['account_number' => $partnerAccountNumber]);
+        if (!$partner) {
+            return $this->json([sprintf('Partner account with особовий рахунок "%s" not found', $partnerAccountNumber)], Response::HTTP_BAD_REQUEST);
+        }
+
+        if ($partner->getId() === $source->getId()) {
+            return $this->json(['Cannot link account to itself'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $sourceGid = $source->getOwnerGroupId();
+        $partnerGid = $partner->getOwnerGroupId();
+
+        if ($sourceGid !== null && $partnerGid !== null && $sourceGid === $partnerGid) {
+            return $this->json(['Accounts are already in the same group'], Response::HTTP_BAD_REQUEST);
+        }
+
+        // Pick the surviving group id: prefer existing group(s) over a fresh id,
+        // and the smaller of two existing groups (deterministic).
+        if ($sourceGid !== null && $partnerGid !== null) {
+            $survivor = min($sourceGid, $partnerGid);
+            $disappearing = max($sourceGid, $partnerGid);
+            foreach ($accountRepository->findBy(['owner_group_id' => $disappearing]) as $acct) {
+                $acct->setOwnerGroupId($survivor);
+            }
+        } elseif ($sourceGid !== null) {
+            $partner->setOwnerGroupId($sourceGid);
+        } elseif ($partnerGid !== null) {
+            $source->setOwnerGroupId($partnerGid);
+        } else {
+            $survivor = min($source->getId(), $partner->getId());
+            $source->setOwnerGroupId($survivor);
+            $partner->setOwnerGroupId($survivor);
+        }
+
+        $em->flush();
+
+        $siblings = [];
+        foreach ($accountRepository->findGroupSiblings($source) as $sibling) {
+            if ($sibling->getId() === $source->getId()) {
+                continue;
+            }
+            $siblings[] = [
+                'id' => $sibling->getId(),
+                'account_number' => $sibling->getAccountNumber(),
+                'apartment_number' => $sibling->getApartmentNumber(),
+                'street' => $sibling->getStreet(),
+                'house_number' => $sibling->getHouseNumber(),
+                'debt' => $sibling->getDebt(),
+            ];
+        }
+
+        return $this->json([
+            'owner_group_id' => $source->getOwnerGroupId(),
+            'group_siblings' => $siblings,
+        ]);
+    }
+
+    #[Route('/admin/account/group/unlink', name: 'admin-account-group-unlink', options: ['expose' => true], methods: [Request::METHOD_POST])]
+    public function unlinkAccountGroup(
+        Request $request,
+        AccountRepository $accountRepository,
+        EntityManagerInterface $em,
+    ): JsonResponse
+    {
+        $accountId = (int)$request->request->get('account_id');
+        if ($accountId <= 0) {
+            return $this->json(['account_id is required'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $account = $accountRepository->find($accountId);
+        if (!$account) {
+            return $this->json([sprintf('Account %d not found', $accountId)], Response::HTTP_BAD_REQUEST);
+        }
+
+        $oldGid = $account->getOwnerGroupId();
+        if ($oldGid === null) {
+            return $this->json(['Account is not in any group'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $account->setOwnerGroupId(null);
+        $em->flush();
+
+        // If only one sibling remains in the original group, clear its group too
+        // (a group of one is meaningless — it behaves identically to ungrouped via getEffectiveGroupId).
+        $remaining = $accountRepository->findBy(['owner_group_id' => $oldGid]);
+        if (count($remaining) === 1) {
+            $remaining[0]->setOwnerGroupId(null);
+            $em->flush();
+        }
+
+        return $this->json([
+            'owner_group_id' => null,
+            'group_siblings' => [],
+        ]);
     }
 
     #[Route('/admin/user/update', name: 'admin-user-update', options: ['expose' => true])]

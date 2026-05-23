@@ -16,28 +16,23 @@ class AccountRepository extends ServiceEntityRepository
         parent::__construct($registry, Account::class);
     }
 
-    //    /**
-    //     * @return Account[] Returns an array of Account objects
-    //     */
-    //    public function findByExampleField($value): array
-    //    {
-    //        return $this->createQueryBuilder('a')
-    //            ->andWhere('a.exampleField = :val')
-    //            ->setParameter('val', $value)
-    //            ->orderBy('a.id', 'ASC')
-    //            ->setMaxResults(10)
-    //            ->getQuery()
-    //            ->getResult()
-    //        ;
-    //    }
+    /**
+     * Every Account that shares an owner-group with the given account, including itself.
+     * Ungrouped accounts (owner_group_id IS NULL) return just themselves.
+     *
+     * @return Account[]
+     */
+    public function findGroupSiblings(Account $account): array
+    {
+        if ($account->getOwnerGroupId() === null) {
+            return [$account];
+        }
 
-    //    public function findOneBySomeField($value): ?Account
-    //    {
-    //        return $this->createQueryBuilder('a')
-    //            ->andWhere('a.exampleField = :val')
-    //            ->setParameter('val', $value)
-    //            ->getQuery()
-    //            ->getOneOrNullResult()
-    //        ;
-    //    }
+        return $this->createQueryBuilder('a')
+            ->andWhere('a.owner_group_id = :gid')
+            ->setParameter('gid', $account->getOwnerGroupId())
+            ->orderBy('a.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
 }

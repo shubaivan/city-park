@@ -37,6 +37,14 @@ class Account
     #[ORM\Column(type: 'decimal', precision: 10, scale: 2, nullable: true, options: ['default' => 0])]
     private ?string $debt = '0';
 
+    /**
+     * Admin-linked owner group: when set, this account shares booking limits and
+     * debt aggregation with every other account having the same `owner_group_id`.
+     * NULL means "ungrouped" (treated as a group of one via getEffectiveGroupId()).
+     */
+    #[ORM\Column(type: 'integer', nullable: true)]
+    private ?int $owner_group_id = null;
+
     #[ORM\OneToMany(targetEntity: TelegramUser::class, mappedBy: 'account', cascade: ["persist"])]
     private Collection $users;
 
@@ -128,6 +136,29 @@ class Account
     public function getUsers(): Collection
     {
         return $this->users;
+    }
+
+    public function getOwnerGroupId(): ?int
+    {
+        return $this->owner_group_id;
+    }
+
+    public function setOwnerGroupId(?int $owner_group_id): static
+    {
+        $this->owner_group_id = $owner_group_id;
+
+        return $this;
+    }
+
+    /**
+     * Identifier of the owner group this account participates in.
+     * Returns the explicit owner_group_id if set, otherwise the account's own id —
+     * so every account is "in a group" (a group of one by default) and aggregation
+     * queries can join on this value without special-casing nulls.
+     */
+    public function getEffectiveGroupId(): int
+    {
+        return $this->owner_group_id ?? (int)$this->id;
     }
 
     /**

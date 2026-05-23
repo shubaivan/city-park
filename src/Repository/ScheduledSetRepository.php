@@ -55,18 +55,23 @@ class ScheduledSetRepository extends ServiceEntityRepository
     }
 
     /**
+     * Bookings on a given day across every account in this account's owner group.
+     * Ungrouped accounts (owner_group_id IS NULL) resolve to a group of one.
+     *
      * @return ScheduledSet[]
      */
-    public function findByDayForAccount(
+    public function findByDayForOwnerGroup(
         int $year, int $month, int $day, Account $account
     ): array {
         $qb = $this->createQueryBuilder('ss');
         $qb
             ->join('ss.telegramUserId', 'tu')
+            ->join('tu.account', 'a')
             ->andWhere('ss.year = :year')->setParameter('year', $year)
             ->andWhere('ss.month = :month')->setParameter('month', $month)
             ->andWhere('ss.day = :day')->setParameter('day', $day)
-            ->andWhere('tu.account = :account')->setParameter('account', $account)
+            ->andWhere('COALESCE(a.owner_group_id, a.id) = :gid')
+            ->setParameter('gid', $account->getEffectiveGroupId())
             ->andWhere('ss.scheduled_at >= :now')
             ->setParameter('now', SchedulePavilionService::createNewDate())
             ->orderBy('ss.hour', 'ASC')
@@ -76,15 +81,19 @@ class ScheduledSetRepository extends ServiceEntityRepository
     }
 
     /**
+     * Bookings in a date range across every account in this account's owner group.
+     *
      * @return ScheduledSet[]
      */
-    public function findByMonthForAccount(
+    public function findByMonthForOwnerGroup(
         \DateTimeInterface $from, \DateTimeInterface $to, Account $account
     ): array {
         $qb = $this->createQueryBuilder('ss');
         $qb
             ->join('ss.telegramUserId', 'tu')
-            ->andWhere('tu.account = :account')->setParameter('account', $account)
+            ->join('tu.account', 'a')
+            ->andWhere('COALESCE(a.owner_group_id, a.id) = :gid')
+            ->setParameter('gid', $account->getEffectiveGroupId())
             ->andWhere($qb->expr()->between('ss.scheduled_at', ':from', ':to'))
             ->setParameter('from', $from)
             ->setParameter('to', $to)
@@ -94,17 +103,22 @@ class ScheduledSetRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
-    public function findOverlapForAccount(
+    /**
+     * First conflicting booking at (year, month, day, hour) made by any account in this owner group.
+     */
+    public function findOverlapForOwnerGroup(
         int $year, int $month, int $day, int $hour, Account $account, ?int $excludeId = null
     ): ?ScheduledSet {
         $qb = $this->createQueryBuilder('ss');
         $qb
             ->join('ss.telegramUserId', 'tu')
+            ->join('tu.account', 'a')
             ->andWhere('ss.year = :year')->setParameter('year', $year)
             ->andWhere('ss.month = :month')->setParameter('month', $month)
             ->andWhere('ss.day = :day')->setParameter('day', $day)
             ->andWhere('ss.hour = :hour')->setParameter('hour', $hour)
-            ->andWhere('tu.account = :account')->setParameter('account', $account)
+            ->andWhere('COALESCE(a.owner_group_id, a.id) = :gid')
+            ->setParameter('gid', $account->getEffectiveGroupId())
             ->setMaxResults(1);
 
         if ($excludeId !== null) {
@@ -115,38 +129,42 @@ class ScheduledSetRepository extends ServiceEntityRepository
     }
 
     /**
-     * @return int[] Hours (0-23) already booked by this account on the given day, across all pavilions.
+     * @return int[] Hours (0-23) already booked by any account in this owner group on the given day, across all pavilions.
      */
-    public function getBookedHoursForAccount(
+    public function getBookedHoursForOwnerGroup(
         int $year, int $month, int $day, Account $account
     ): array {
         $qb = $this->createQueryBuilder('ss');
         $qb
             ->select('DISTINCT ss.hour AS hour')
             ->join('ss.telegramUserId', 'tu')
+            ->join('tu.account', 'a')
             ->andWhere('ss.year = :year')->setParameter('year', $year)
             ->andWhere('ss.month = :month')->setParameter('month', $month)
             ->andWhere('ss.day = :day')->setParameter('day', $day)
-            ->andWhere('tu.account = :account')->setParameter('account', $account);
+            ->andWhere('COALESCE(a.owner_group_id, a.id) = :gid')
+            ->setParameter('gid', $account->getEffectiveGroupId());
 
         return array_map(static fn(array $r): int => (int)$r['hour'], $qb->getQuery()->getScalarResult());
     }
 
     /**
-     * @return int[] Hours (0-23) already booked by this account on the given pavilion/day.
+     * @return int[] Hours (0-23) already booked by any account in this owner group on the given pavilion/day.
      */
-    public function getBookedHoursForAccountPavilion(
+    public function getBookedHoursForOwnerGroupPavilion(
         int $pavilion, int $year, int $month, int $day, Account $account, ?int $excludeId = null
     ): array {
         $qb = $this->createQueryBuilder('ss');
         $qb
             ->select('DISTINCT ss.hour AS hour')
             ->join('ss.telegramUserId', 'tu')
+            ->join('tu.account', 'a')
             ->andWhere('ss.pavilion = :pavilion')->setParameter('pavilion', $pavilion)
             ->andWhere('ss.year = :year')->setParameter('year', $year)
             ->andWhere('ss.month = :month')->setParameter('month', $month)
             ->andWhere('ss.day = :day')->setParameter('day', $day)
-            ->andWhere('tu.account = :account')->setParameter('account', $account);
+            ->andWhere('COALESCE(a.owner_group_id, a.id) = :gid')
+            ->setParameter('gid', $account->getEffectiveGroupId());
 
         if ($excludeId !== null) {
             $qb->andWhere('ss.id != :excludeId')->setParameter('excludeId', $excludeId);
