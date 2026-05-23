@@ -10,7 +10,6 @@ use App\Service\UkDateFormatter;
 use App\Service\WeatherService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
-use Psr\Cache\CacheItemPoolInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
@@ -37,7 +36,8 @@ class SchedulePavilion extends Conversation
         private ValidatorInterface $validator,
         private WeatherService $weatherService,
         private DebtPolicy $debtPolicy,
-        private CacheItemPoolInterface $cachePool,
+        private string $pavilion1PhotoFileId = '',
+        private string $pavilion2PhotoFileId = '',
     ) {}
 
     public function choosePavilion(Nutgram $bot)
@@ -313,19 +313,22 @@ class SchedulePavilion extends Conversation
     }
 
     /**
-     * Send the static pavilion photo. The two source files (assets/img/pavilion1
-     * and pavilion2) never change, so we upload each one exactly once and reuse
-     * the returned Telegram file_id from then on — sendPhoto by file_id is
-     * instant, while sendPhoto with InputFile re-uploads the bytes every time
-     * (~1-3s) and was the reason /hook overran Telegram's webhook retry
-     * threshold, causing duplicate callback deliveries.
+     * Send the static pavilion photo by file_id. The two source images don't
+     * change, so we pre-upload them once via the `bot:upload-pavilion-photos`
+     * console command and put the returned file_ids in env vars. sendPhoto by
+     * file_id is instant — without this the InputFile upload (~1-3s) pushes
+     * /hook past Telegram's webhook retry threshold and the same callback is
+     * delivered twice.
+     *
+     * If a file_id env var is empty (e.g. first deploy before the upload
+     * command was run) we silently fall back to the slow file upload so the
+     * confirmation message itself still includes the picture.
      */
     private function sendPavilionPhoto(Nutgram $bot, int $pavilion, string $caption): void
     {
-        $cacheKey = 'pavilion_photo_file_id_' . $pavilion;
-        $item = $this->cachePool->getItem($cacheKey);
+        $fileId = $pavilion === 1 ? $this->pavilion1PhotoFileId : $this->pavilion2PhotoFileId;
 
-        if ($item->isHit() && is_string($fileId = $item->get()) && $fileId !== '') {
+        if ($fileId !== '') {
             $bot->sendPhoto(
                 photo: $fileId,
                 caption: $caption,
@@ -339,22 +342,11 @@ class SchedulePavilion extends Conversation
             return;
         }
         $photo = fopen($file, 'r+');
-        $msg = $bot->sendPhoto(
+        $bot->sendPhoto(
             photo: InputFile::make($photo),
             caption: $caption,
             parse_mode: ParseMode::HTML,
         );
-
-        $photos = $msg?->photo ?? [];
-        if (!is_array($photos) || $photos === []) {
-            return;
-        }
-        $largest = end($photos);
-        $newId = $largest->file_id ?? null;
-        if (is_string($newId) && $newId !== '') {
-            $item->set($newId);
-            $this->cachePool->save($item);
-        }
     }
 
     // --- Render helpers: always edit the callback message ---
