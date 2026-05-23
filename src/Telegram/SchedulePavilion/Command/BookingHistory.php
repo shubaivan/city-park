@@ -168,8 +168,8 @@ class BookingHistory
         }
 
         $text = $header . $body;
-        if (strlen($text) > self::MESSAGE_CHAR_LIMIT) {
-            $text = substr($text, 0, self::MESSAGE_CHAR_LIMIT - 80)
+        if (mb_strlen($text, 'UTF-8') > self::MESSAGE_CHAR_LIMIT) {
+            $text = mb_substr($text, 0, self::MESSAGE_CHAR_LIMIT - 80, 'UTF-8')
                 . "\n\n<i>… забагато записів, скорочено. Використайте навігацію по днях у іншому тижні.</i>";
         }
 
