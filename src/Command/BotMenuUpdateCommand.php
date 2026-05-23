@@ -44,7 +44,7 @@ class BotMenuUpdateCommand extends Command
         // Nutgram's setMyCommands json-encodes a null scope which Telegram rejects,
         // so we call the raw API endpoint instead with only the fields we need.
         try {
-            $ok = $this->bot->requestJson('setMyCommands', [
+            $ok = $this->bot->sendRequest('setMyCommands', [
                 'commands' => json_encode($commands, JSON_UNESCAPED_UNICODE),
             ]);
         } catch (\Throwable $t) {
