@@ -278,7 +278,7 @@ class SchedulePavilion extends Conversation
             $lists = $this->validator->validate($scheduledSet);
             if (count($lists)) {
                 $errorMsg = $lists[0]->getMessage();
-                $this->safeEdit($bot, '<b>' . $errorMsg . '</b>', null, ParseMode::HTML);
+                $this->safeEdit($bot, $errorMsg, null, ParseMode::HTML);
                 $this->end();
                 return;
             }

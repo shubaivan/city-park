@@ -125,11 +125,12 @@ class ScheduleLimitValidator extends ConstraintValidator
         foreach ($bookings as $b) {
             $pav = $b->getPavilion() === 1 ? 'Перша' : 'Друга';
             $hour = str_pad((string)$b->getHour(), 2, '0', STR_PAD_LEFT);
-            $who = trim($b->getTelegramUserId()->concatNameInfo());
-            $prefix = $includeDate ? $b->getScheduledAt()->format('d.m') . ' ' : '';
-            $lines[] = sprintf('%s%s:00 — Альтанка %s (%s)', $prefix, $hour, $pav, $who);
+            $when = $includeDate
+                ? $b->getScheduledAt()->format('d.m') . ' о ' . $hour . ':00'
+                : $hour . ':00';
+            $lines[] = '   • ' . $when . ' — Альт. ' . $pav;
         }
 
-        return implode('; ', $lines);
+        return implode("\n", $lines);
     }
 }
