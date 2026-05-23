@@ -23,6 +23,7 @@ class Schedule extends Command
                 )
                 ->addRow(
                     InlineKeyboardButton::make('📜 Історія бронювань', callback_data: 'booking-history'),
+                    InlineKeyboardButton::make('📸 Завантажити фото', callback_data: 'photo-upload-info'),
                 )
         );
     }

@@ -24,6 +24,10 @@ class StartCommand extends Command
                 )
                 ->addRow(
                     InlineKeyboardButton::make('📜 Історія бронювань', callback_data: 'booking-history'),
+                    InlineKeyboardButton::make('📸 Завантажити фото', callback_data: 'photo-upload-info'),
+                )
+                ->addRow(
+                    InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'),
                 )
         );
     }

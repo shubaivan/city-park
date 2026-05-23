@@ -1,0 +1,114 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Фото-завантаження | Admin{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    <div class="container-fluid mt-3">
+        <h3>📸 Очікувані завантаження фото</h3>
+
+        {% if open|length == 0 %}
+            <div class="alert alert-success">Немає відкритих запитів — усі бронювання вже підтверджені фото.</div>
+        {% else %}
+            <table class="table table-striped table-sm">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Аккаунт</th>
+                    <th>Альтанка</th>
+                    <th>Сесія</th>
+                    <th>Нагадувань</th>
+                    <th>Статус</th>
+                    <th>Дія</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for req in open %}
+                    <tr>
+                        <td>{{ req.id }}</td>
+                        <td>
+                            {{ req.account.accountNumber }}<br>
+                            <small>{{ req.account.street }} {{ req.account.houseNumber }}, кв. {{ req.account.apartmentNumber }}</small>
+                        </td>
+                        <td>{{ req.pavilion }}</td>
+                        <td>
+                            {{ req.sessionStartAt|date('Y-m-d H:i') }} → {{ req.sessionEndAt|date('H:i') }}
+                        </td>
+                        <td>{{ req.remindersSent }}/3</td>
+                        <td>
+                            {% if req.blockedAt %}
+                                <span class="badge bg-danger">⛔ Заблоковано {{ req.blockedAt|date('m-d H:i') }}</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">⏳ Очікує</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    onclick="resolveRequest({{ req.id }}, this)">
+                                Закрити запит
+                            </button>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+
+        <h4 class="mt-4">Нещодавно закриті (14 днів)</h4>
+        {% if recent|length == 0 %}
+            <div class="text-muted">Немає.</div>
+        {% else %}
+            <table class="table table-sm">
+                <thead>
+                <tr>
+                    <th>Аккаунт</th>
+                    <th>Альт.</th>
+                    <th>Сесія</th>
+                    <th>Закрито</th>
+                    <th>Фото</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for req in recent %}
+                    {% set key = req.account.id ~ ':' ~ req.pavilion ~ ':' ~ req.sessionStartAt|date('Y-m-d H:i') %}
+                    {% set photo = photosByKey[key] ?? null %}
+                    <tr>
+                        <td>{{ req.account.accountNumber }}</td>
+                        <td>{{ req.pavilion }}</td>
+                        <td>{{ req.sessionStartAt|date('Y-m-d H:i') }}</td>
+                        <td>{{ req.resolvedAt|date('Y-m-d H:i') }}</td>
+                        <td>
+                            {% if photo %}
+                                <a href="{{ photo.filePath }}" target="_blank">
+                                    <img src="{{ photo.filePath }}" alt="photo" style="height:48px;cursor:pointer;border-radius:4px;">
+                                </a>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </div>
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+    <script>
+        function resolveRequest(id, btn) {
+            if (!confirm('Закрити запит на завантаження фото #' + id + '?')) return;
+            fetch('/admin/photo-requests/' + id + '/resolve', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.ok) {
+                        btn.closest('tr').remove();
+                    } else {
+                        alert('Не вдалося закрити: ' + (data.error || 'unknown'));
+                    }
+                });
+        }
+    </script>
+{% endblock %}

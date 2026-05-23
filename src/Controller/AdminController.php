@@ -6,9 +6,13 @@ use App\Entity\Account;
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
+use App\Repository\PavilionPhotoRepository;
+use App\Repository\PhotoUploadRequestRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Repository\TelegramUserRepository;
 use App\Service\DebtPolicy;
+use App\Service\PavilionPhotoService;
+use App\Service\SchedulePavilionService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
@@ -58,10 +62,17 @@ class AdminController extends AbstractController
     }
 
     #[Route('/admin/schedule/data-table', name: 'admin-schedule-data-table', options: ['expose' => true])]
-    public function getScheduleDataTable(ScheduledSetRepository $repository, Request $request)
-    {
+    public function getScheduleDataTable(
+        ScheduledSetRepository $repository,
+        PavilionPhotoRepository $photoRepository,
+        PhotoUploadRequestRepository $requestRepository,
+        PavilionPhotoService $photoService,
+        Request $request,
+    ) {
         $dataTable = $repository
             ->getDataTablesData($request->request->all());
+
+        $this->attachPhotoInfo($dataTable, $photoRepository, $requestRepository, $photoService);
 
         return $this->json(
             array_merge(
@@ -75,6 +86,145 @@ class AdminController extends AbstractController
                 ['data' => $dataTable]
             )
         );
+    }
+
+    /**
+     * Decorate schedule rows with the photo/status of the session each hour belongs to.
+     */
+    private function attachPhotoInfo(
+        array &$rows,
+        PavilionPhotoRepository $photoRepository,
+        PhotoUploadRequestRepository $requestRepository,
+        PavilionPhotoService $photoService,
+    ): void {
+        if (!$rows) {
+            return;
+        }
+
+        $obligationStart = $photoService->obligationStartAt();
+
+        // We don't have account_id in the result rows (just account_number).
+        // Fetch all PavilionPhoto + open requests once and match by account_number+pavilion+window.
+        $em = $photoRepository->createQueryBuilder('p')->getEntityManager();
+        $photos = $em->createQuery(
+            'SELECT p, a FROM App\Entity\PavilionPhoto p JOIN p.account a'
+        )->getResult();
+        $requests = $em->createQuery(
+            'SELECT r, a FROM App\Entity\PhotoUploadRequest r JOIN r.account a WHERE r.resolved_at IS NULL'
+        )->getResult();
+
+        $photosByKey = [];
+        /** @var \App\Entity\PavilionPhoto $photo */
+        foreach ($photos as $photo) {
+            $photosByKey[$photo->getAccount()->getAccountNumber() . ':' . $photo->getPavilion()][] = $photo;
+        }
+        $reqsByKey = [];
+        /** @var \App\Entity\PhotoUploadRequest $req */
+        foreach ($requests as $req) {
+            $reqsByKey[$req->getAccount()->getAccountNumber() . ':' . $req->getPavilion()][] = $req;
+        }
+
+        foreach ($rows as &$row) {
+            $row['photo_url'] = null;
+            $row['photo_status'] = 'legacy';
+
+            $accountNumber = $row['account_number'] ?? null;
+            $pavilion = $row['pavilion'] ?? null;
+            $scheduledAtStr = $row['scheduled_at'] ?? null;
+            if (!$accountNumber || $pavilion === null || !$scheduledAtStr) {
+                continue;
+            }
+            try {
+                $scheduledAt = new \DateTime($scheduledAtStr);
+            } catch (\Throwable) {
+                continue;
+            }
+
+            $key = $accountNumber . ':' . $pavilion;
+            $sessionEnd = (clone $scheduledAt)->modify('+1 hour');
+
+            if ($sessionEnd <= $obligationStart) {
+                $row['photo_status'] = 'legacy';
+                continue;
+            }
+
+            $matchedPhoto = null;
+            foreach ($photosByKey[$key] ?? [] as $photo) {
+                if ($photo->getSessionStartAt() <= $scheduledAt && $photo->getSessionEndAt() > $scheduledAt) {
+                    $matchedPhoto = $photo;
+                    break;
+                }
+            }
+            if ($matchedPhoto) {
+                $row['photo_url'] = $matchedPhoto->getFilePath();
+                $row['photo_status'] = 'uploaded';
+                continue;
+            }
+
+            $matchedReq = null;
+            foreach ($reqsByKey[$key] ?? [] as $req) {
+                if ($req->getSessionStartAt() <= $scheduledAt && $req->getSessionEndAt() > $scheduledAt) {
+                    $matchedReq = $req;
+                    break;
+                }
+            }
+            if ($matchedReq) {
+                $row['photo_status'] = $matchedReq->getBlockedAt() ? 'blocked' : 'pending';
+                continue;
+            }
+
+            if ($scheduledAt > new \DateTime()) {
+                $row['photo_status'] = 'future';
+            } else {
+                $row['photo_status'] = 'pending';
+            }
+        }
+    }
+
+    #############
+    # Photo Upload Requests
+    #############
+
+    #[Route('/admin/photo-requests', name: 'app_admin_photo_requests')]
+    public function photoRequests(PhotoUploadRequestRepository $requestRepository, PavilionPhotoRepository $photoRepository): Response
+    {
+        $open = $requestRepository->findOpen();
+        // Sessions resolved within the last 14 days too, for context.
+        $recent = $requestRepository->createQueryBuilder('r')
+            ->andWhere('r.resolved_at IS NOT NULL')
+            ->andWhere('r.resolved_at >= :since')
+            ->setParameter('since', (new \DateTime())->modify('-14 days'))
+            ->orderBy('r.resolved_at', 'DESC')
+            ->setMaxResults(50)
+            ->getQuery()->getResult();
+
+        $photosByKey = [];
+        foreach ($photoRepository->findAll() as $photo) {
+            $key = $photo->getAccount()->getId() . ':' . $photo->getPavilion() . ':' . $photo->getSessionStartAt()->format('Y-m-d H:i');
+            $photosByKey[$key] = $photo;
+        }
+
+        return $this->render('admin/photo-requests.html.twig', [
+            'open' => $open,
+            'recent' => $recent,
+            'photosByKey' => $photosByKey,
+        ]);
+    }
+
+    #[Route('/admin/photo-requests/{id}/resolve', name: 'app_admin_photo_request_resolve', methods: [Request::METHOD_POST])]
+    public function resolvePhotoRequest(
+        int $id,
+        PhotoUploadRequestRepository $requestRepository,
+        PavilionPhotoService $photoService,
+    ): JsonResponse {
+        $req = $requestRepository->find($id);
+        if (!$req) {
+            return $this->json(['ok' => false, 'error' => 'not found'], Response::HTTP_NOT_FOUND);
+        }
+        if ($req->isOpen()) {
+            $photoService->resolveRequest($req, SchedulePavilionService::createNewDate());
+        }
+        return $this->json(['ok' => true]);
     }
 
     #############
@@ -138,7 +288,8 @@ class AdminController extends AbstractController
         TelegramUserRepository $repository,
         AccountRepository $accountRepository,
         EntityManagerInterface $em,
-        LoggerInterface $logger
+        LoggerInterface $logger,
+        PavilionPhotoService $photoService,
     ): JsonResponse
     {
         $params = $request->request->all();
@@ -215,6 +366,17 @@ class AdminController extends AbstractController
         $em->flush();
 
         if (isset($isWasInActive) && $isWasInActive && $updatedUser->getAccount() && $updatedUser->getAccount()->isActive()) {
+            $forgiven = $photoService->forgiveBlockingRequests(
+                $updatedUser->getAccount(),
+                SchedulePavilionService::createNewDate()
+            );
+            if ($forgiven > 0) {
+                $logger->info(sprintf(
+                    'Admin unblock: forgave %d open photo-upload request(s) for account %d',
+                    $forgiven,
+                    $updatedUser->getAccount()->getId()
+                ));
+            }
             $bot->sendMessage(
                 text: 'Вас <b>АКТИВУВАЛИ</b> тепер можете броювати',
                 chat_id: $updatedUser->getChatId(),

@@ -30,7 +30,8 @@ class ScheduledSet
         'phone_number',
         'username',
         'scheduled_at',
-        'pavilion'
+        'pavilion',
+        'photo_status',
     ];
 
     #[ORM\Id]

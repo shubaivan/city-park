@@ -15,6 +15,8 @@ $bot->registerCommand(\App\Telegram\SchedulePavilion\Command\Schedule::class);
 
 $bot->onContact(\App\Telegram\ApprovePhone\Command\EventApprovePhoneCommand::class);
 
+$bot->onPhoto(\App\Telegram\Photo\Command\UploadPhotoCommand::class);
+
 $bot->onLocation(\App\Telegram\Location\Command\LocationCommand::class);
 $bot->onCallbackQueryData('type:route', \App\Telegram\Location\Command\RouteCommand::class);
 
@@ -22,3 +24,6 @@ $bot->onCallbackQueryData('schedule-pavilion', \App\Telegram\SchedulePavilion\Co
 $bot->onCommand('обрати павільйон', \App\Telegram\SchedulePavilion\Command\SchedulePavilion::class);
 $bot->onCallbackQueryData('own-schedule', \App\Telegram\SchedulePavilion\Command\OwnSchedule::class);
 $bot->onCallbackQueryData('booking-history', \App\Telegram\SchedulePavilion\Command\BookingHistory::class);
+$bot->onCallbackQueryData('photo-upload-info', \App\Telegram\Photo\Command\PhotoUploadInfo::class);
+$bot->onCallbackQueryData('info-menu', \App\Telegram\Info\Command\InfoCommand::class);
+$bot->onCallbackQueryData('^info-topic:.+$', \App\Telegram\Info\Command\InfoCommand::class);
