@@ -2,6 +2,7 @@
 
 namespace App\Telegram\Info\Command;
 
+use App\Telegram\Start\Command\StartCommand;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
@@ -98,6 +99,7 @@ class InfoCommand
                 InlineKeyboardButton::make($topic['title'], callback_data: 'info-topic:' . $key)
             );
         }
+        $markup->addRow(StartCommand::homeButton());
 
         if ($edit) {
             try {
@@ -119,9 +121,11 @@ class InfoCommand
             return;
         }
 
-        $markup = InlineKeyboardMarkup::make()->addRow(
-            InlineKeyboardButton::make('⬅️ До списку тем', callback_data: self::MENU_CALLBACK)
-        );
+        $markup = InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('⬅️ До списку тем', callback_data: self::MENU_CALLBACK)
+            )
+            ->addRow(StartCommand::homeButton());
 
         try {
             $bot->editMessageText(text: $topic['body'], parse_mode: ParseMode::HTML, reply_markup: $markup);

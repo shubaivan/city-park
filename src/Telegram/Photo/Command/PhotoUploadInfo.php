@@ -6,8 +6,10 @@ use App\Entity\PhotoUploadRequest;
 use App\Repository\PhotoUploadRequestRepository;
 use App\Service\TelegramUserService;
 use App\Service\UkDateFormatter;
+use App\Telegram\Start\Command\StartCommand;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class PhotoUploadInfo
 {
@@ -24,6 +26,7 @@ class PhotoUploadInfo
         if (!$account) {
             $bot->sendMessage(
                 text: '📷 У вас немає прив\'язаного аккаунту, тож завантаження не потрібне.',
+                reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
             );
             return;
         }
@@ -35,6 +38,7 @@ class PhotoUploadInfo
             $bot->sendMessage(
                 text: '✅ <b>У вас немає очікуючих завантажень фото.</b>',
                 parse_mode: ParseMode::HTML,
+                reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
             );
             return;
         }
@@ -56,6 +60,7 @@ class PhotoUploadInfo
         $bot->sendMessage(
             text: implode("\n", $lines),
             parse_mode: ParseMode::HTML,
+            reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
         );
     }
 }

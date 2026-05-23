@@ -61,7 +61,15 @@ class SchedulePavilionService
     {
         $now = self::createNewDate();
         $from = (clone $now)->modify("-{$days} days");
-        $sets = $this->repository->getHistory($from, $now);
+        return $this->getHistoryRange($from, $now);
+    }
+
+    /**
+     * @return array<string, ScheduledSet[]> Bookings within [$from, $until), grouped by 'Y-m-d', newest day first.
+     */
+    public function getHistoryRange(\DateTimeInterface $from, \DateTimeInterface $until): array
+    {
+        $sets = $this->repository->getHistory($from, $until);
 
         $grouped = [];
         foreach ($sets as $set) {

@@ -10,16 +10,20 @@ use App\Repository\PhotoUploadRequestRepository;
 use App\Service\PavilionPhotoService;
 use App\Service\SchedulePavilionService;
 use App\Service\UkDateFormatter;
+use App\Telegram\Start\Command\StartCommand;
 use Doctrine\ORM\EntityManagerInterface;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class BookingHistory
 {
-    private const DAYS = 30;
+    public const HISTORY_DAYS = 30;
     private const MESSAGE_CHAR_LIMIT = 3800;
+    public const CALLBACK_PREFIX = 'bh:week:';
 
-    /** @var array<string, PavilionPhoto> account_id:pavilion:Y-m-d H:i => photo (covers each session) */
+    /** @var array<string, PavilionPhoto> account_id:pavilion:Y-m-d H:i => photo */
     private array $photoByHourKey = [];
     /** @var array<string, PhotoUploadRequest> */
     private array $reqByHourKey = [];
@@ -35,124 +39,189 @@ class BookingHistory
 
     public function __invoke(Nutgram $bot): void
     {
-        $history = $this->schedulePavilionService->getHistory(self::DAYS);
+        $now = SchedulePavilionService::createNewDate();
+        $anchor = $this->resolveAnchor($bot, $now);
 
-        if (!$history) {
-            $bot->sendMessage(
-                text: '📜 <b>Історія бронювань за останні ' . self::DAYS . ' днів порожня</b>',
-                parse_mode: ParseMode::HTML,
-            );
-            return;
-        }
+        [$weekStart, $weekEnd] = $this->weekBoundsForAnchor($anchor);
 
-        $this->preloadStatusIndex($history);
+        $history = $this->schedulePavilionService->getHistoryRange($weekStart, $weekEnd);
+        $this->preloadStatusIndex($weekStart, $weekEnd);
 
-        foreach ($this->renderMessages($history) as $msg) {
-            $bot->sendMessage(text: $msg, parse_mode: ParseMode::HTML);
-        }
-    }
+        $text = $this->renderText($history, $weekStart, $weekEnd);
+        $markup = $this->buildNavigation($weekStart, $now);
 
-    /**
-     * Build an index of {account+pavilion+hour => photo|request} for fast lookups while rendering.
-     * @param array<string, ScheduledSet[]> $history
-     */
-    private function preloadStatusIndex(array $history): void
-    {
-        $this->obligationStart = $this->photoService->obligationStartAt();
-
-        $earliest = null;
-        $latest = null;
-        foreach ($history as $sets) {
-            foreach ($sets as $set) {
-                $dt = $set->getScheduledDateTime();
-                if ($earliest === null || $dt < $earliest) {
-                    $earliest = clone $dt;
-                }
-                if ($latest === null || $dt > $latest) {
-                    $latest = clone $dt;
-                }
+        $isCallback = $bot->isCallbackQuery();
+        if ($isCallback) {
+            try {
+                $bot->editMessageText(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
+                return;
+            } catch (\Throwable) {
+                // fall through
             }
         }
-        if (!$earliest || !$latest) {
-            return;
-        }
-        $earliest->modify('-1 day');
-        $latest->modify('+1 day');
-
-        $photos = $this->em->createQuery(
-            'SELECT p, a FROM App\Entity\PavilionPhoto p JOIN p.account a '
-            . 'WHERE p.session_start_at BETWEEN :from AND :until'
-        )->setParameter('from', $earliest)->setParameter('until', $latest)->getResult();
-
-        $requests = $this->em->createQuery(
-            'SELECT r, a FROM App\Entity\PhotoUploadRequest r JOIN r.account a '
-            . 'WHERE r.session_start_at BETWEEN :from AND :until AND r.resolved_at IS NULL'
-        )->setParameter('from', $earliest)->setParameter('until', $latest)->getResult();
-
-        /** @var PavilionPhoto $p */
-        foreach ($photos as $p) {
-            $this->indexBySessionHours(
-                $this->photoByHourKey,
-                $p->getAccount()->getId(),
-                $p->getPavilion(),
-                $p->getSessionStartAt(),
-                $p->getSessionEndAt(),
-                $p,
-            );
-        }
-        /** @var PhotoUploadRequest $r */
-        foreach ($requests as $r) {
-            $this->indexBySessionHours(
-                $this->reqByHourKey,
-                $r->getAccount()->getId(),
-                $r->getPavilion(),
-                $r->getSessionStartAt(),
-                $r->getSessionEndAt(),
-                $r,
-            );
-        }
+        $bot->sendMessage(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
     }
 
-    private function indexBySessionHours(array &$bag, int $accountId, int $pavilion, \DateTimeInterface $start, \DateTimeInterface $end, object $value): void
+    private function resolveAnchor(Nutgram $bot, \DateTime $now): \DateTime
     {
-        $cursor = (clone $start);
-        $endTs = $end->getTimestamp();
-        while ($cursor->getTimestamp() < $endTs) {
-            $key = sprintf('%d:%d:%s', $accountId, $pavilion, $cursor->format('Y-m-d H:i'));
-            $bag[$key] = $value;
-            $cursor->modify('+1 hour');
+        if (!$bot->isCallbackQuery()) {
+            return clone $now;
         }
+        $data = (string)($bot->callbackQuery()->data ?? '');
+        if (!str_starts_with($data, self::CALLBACK_PREFIX)) {
+            return clone $now;
+        }
+        $iso = substr($data, strlen(self::CALLBACK_PREFIX));
+        if (!preg_match('/^(\d{4})-W(\d{2})$/', $iso, $m)) {
+            return clone $now;
+        }
+        $year = (int)$m[1];
+        $week = (int)$m[2];
+        $anchor = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+        $anchor->setISODate($year, $week, 1)->setTime(12, 0, 0);
+        return $anchor;
+    }
+
+    /**
+     * @return array{0:\DateTime, 1:\DateTime} [monday 00:00, next-monday 00:00)
+     */
+    private function weekBoundsForAnchor(\DateTime $anchor): array
+    {
+        $year = (int)$anchor->format('o');
+        $week = (int)$anchor->format('W');
+
+        $start = (new \DateTime('now', new \DateTimeZone('Europe/Kyiv')))
+            ->setISODate($year, $week, 1)
+            ->setTime(0, 0, 0);
+        $end = (clone $start)->modify('+7 days');
+
+        return [$start, $end];
+    }
+
+    private function buildNavigation(\DateTime $weekStart, \DateTime $now): InlineKeyboardMarkup
+    {
+        $markup = InlineKeyboardMarkup::make();
+
+        $prevAnchor = (clone $weekStart)->modify('-7 days');
+        $nextAnchor = (clone $weekStart)->modify('+7 days');
+
+        $oldestAllowed = (clone $now)->modify('-' . self::HISTORY_DAYS . ' days');
+        $prevAllowed = $prevAnchor >= (clone $oldestAllowed)->modify('-7 days');
+        $nextAllowed = $nextAnchor <= $now;
+
+        $navRow = [];
+        if ($prevAllowed) {
+            $navRow[] = InlineKeyboardButton::make(
+                '⬅️ Попередній тиждень',
+                callback_data: self::CALLBACK_PREFIX . $prevAnchor->format('o-\WW'),
+            );
+        }
+        if ($nextAllowed) {
+            $navRow[] = InlineKeyboardButton::make(
+                'Наступний тиждень ➡️',
+                callback_data: self::CALLBACK_PREFIX . $nextAnchor->format('o-\WW'),
+            );
+        }
+        if ($navRow) {
+            $markup->addRow(...$navRow);
+        }
+
+        $thisWeek = (clone $now)->setTime(12, 0, 0);
+        if ($weekStart->format('o-W') !== $thisWeek->format('o-W')) {
+            $markup->addRow(
+                InlineKeyboardButton::make(
+                    '📅 Поточний тиждень',
+                    callback_data: self::CALLBACK_PREFIX . $thisWeek->format('o-\WW'),
+                )
+            );
+        }
+
+        $markup->addRow(StartCommand::homeButton());
+
+        return $markup;
     }
 
     /**
      * @param array<string, ScheduledSet[]> $history
-     * @return string[]
      */
-    private function renderMessages(array $history): array
+    private function renderText(array $history, \DateTime $weekStart, \DateTime $weekEnd): string
     {
-        $header = '📜 <b>Історія бронювань за ' . self::DAYS . " днів:</b>\n";
-        $messages = [];
-        $current = $header;
+        $weekEndDisplay = (clone $weekEnd)->modify('-1 day');
+        $header = sprintf(
+            "📜 <b>Історія бронювань</b>\nТиждень %s — %s\n",
+            $weekStart->format('d.m'),
+            $weekEndDisplay->format('d.m.Y'),
+        );
 
+        if (!$history) {
+            return $header . "\n<i>Цього тижня бронювань не було.</i>";
+        }
+
+        $body = '';
         foreach ($history as $sets) {
             $first = $sets[0]->getScheduledDateTime();
             $section = "\n📅 <b>" . UkDateFormatter::dayDate($first) . "</b>\n";
             foreach ($sets as $set) {
                 $section .= $this->formatEntry($set);
             }
-
-            if (strlen($current) + strlen($section) > self::MESSAGE_CHAR_LIMIT && $current !== '') {
-                $messages[] = $current;
-                $current = '';
-            }
-            $current .= $section;
+            $body .= $section;
         }
 
-        if ($current !== '') {
-            $messages[] = $current;
+        $text = $header . $body;
+        if (strlen($text) > self::MESSAGE_CHAR_LIMIT) {
+            $text = substr($text, 0, self::MESSAGE_CHAR_LIMIT - 80)
+                . "\n\n<i>… забагато записів, скорочено. Використайте навігацію по днях у іншому тижні.</i>";
         }
 
-        return $messages;
+        return $text;
+    }
+
+    private function preloadStatusIndex(\DateTime $weekStart, \DateTime $weekEnd): void
+    {
+        $this->photoByHourKey = [];
+        $this->reqByHourKey = [];
+        $this->obligationStart = $this->photoService->obligationStartAt();
+
+        $from = (clone $weekStart)->modify('-1 day');
+        $until = (clone $weekEnd)->modify('+1 day');
+
+        $photos = $this->em->createQuery(
+            'SELECT p, a FROM App\Entity\PavilionPhoto p JOIN p.account a '
+            . 'WHERE p.session_start_at BETWEEN :from AND :until'
+        )->setParameter('from', $from)->setParameter('until', $until)->getResult();
+
+        $requests = $this->em->createQuery(
+            'SELECT r, a FROM App\Entity\PhotoUploadRequest r JOIN r.account a '
+            . 'WHERE r.session_start_at BETWEEN :from AND :until AND r.resolved_at IS NULL'
+        )->setParameter('from', $from)->setParameter('until', $until)->getResult();
+
+        /** @var PavilionPhoto $p */
+        foreach ($photos as $p) {
+            $this->indexBySessionHours(
+                $this->photoByHourKey,
+                $p->getAccount()->getId(), $p->getPavilion(),
+                $p->getSessionStartAt(), $p->getSessionEndAt(), $p,
+            );
+        }
+        /** @var PhotoUploadRequest $r */
+        foreach ($requests as $r) {
+            $this->indexBySessionHours(
+                $this->reqByHourKey,
+                $r->getAccount()->getId(), $r->getPavilion(),
+                $r->getSessionStartAt(), $r->getSessionEndAt(), $r,
+            );
+        }
+    }
+
+    private function indexBySessionHours(array &$bag, int $accountId, int $pavilion, \DateTimeInterface $start, \DateTimeInterface $end, object $value): void
+    {
+        $cursor = clone $start;
+        $endTs = $end->getTimestamp();
+        while ($cursor->getTimestamp() < $endTs) {
+            $key = sprintf('%d:%d:%s', $accountId, $pavilion, $cursor->format('Y-m-d H:i'));
+            $bag[$key] = $value;
+            $cursor->modify('+1 hour');
+        }
     }
 
     private function formatEntry(ScheduledSet $set): string
