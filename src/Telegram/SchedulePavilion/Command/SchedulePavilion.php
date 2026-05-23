@@ -341,9 +341,14 @@ class SchedulePavilion extends Conversation
         if (!is_file($file) || !is_readable($file)) {
             return;
         }
-        $photo = fopen($file, 'r+');
+        // Open read-only so this works on 0644 root-owned assets as www-data;
+        // InputFile::make(string) uses rb+ and would fail.
+        $stream = fopen($file, 'rb');
+        if ($stream === false) {
+            return;
+        }
         $bot->sendPhoto(
-            photo: InputFile::make($photo),
+            photo: InputFile::make($stream, sprintf('pavilion%d.jpg', $pavilion)),
             caption: $caption,
             parse_mode: ParseMode::HTML,
         );

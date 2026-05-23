@@ -54,10 +54,17 @@ class UploadPavilionPhotosCommand extends Command
                 return Command::FAILURE;
             }
 
+            // Open read-only — InputFile::make() with a string path uses rb+,
+            // which fails on 0644 root-owned assets when running as www-data.
+            $stream = fopen($file, 'rb');
+            if ($stream === false) {
+                $io->error(sprintf('Pavilion %d: cannot open %s', $pavilion, $file));
+                return Command::FAILURE;
+            }
             try {
                 $msg = $this->bot->sendPhoto(
                     chat_id: $chatId,
-                    photo: InputFile::make($file),
+                    photo: InputFile::make($stream, sprintf('pavilion%d.jpg', $pavilion)),
                     caption: sprintf('warmup pavilion%d', $pavilion),
                 );
             } catch (\Throwable $e) {
