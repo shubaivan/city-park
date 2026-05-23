@@ -10,6 +10,7 @@ use App\Service\UkDateFormatter;
 use App\Service\WeatherService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Cache\CacheItemPoolInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
@@ -36,6 +37,7 @@ class SchedulePavilion extends Conversation
         private ValidatorInterface $validator,
         private WeatherService $weatherService,
         private DebtPolicy $debtPolicy,
+        private CacheItemPoolInterface $cachePool,
     ) {}
 
     public function choosePavilion(Nutgram $bot)
@@ -304,18 +306,55 @@ class SchedulePavilion extends Conversation
             ParseMode::HTML
         );
 
-        // Send pavilion photo as final confirmation
-        $file = sprintf('%s/assets/img/pavilion%s', $this->projectDir, $this->pavilion);
-        if (is_file($file) && is_readable($file)) {
-            $photo = fopen($file, 'r+');
-            $bot->sendPhoto(
-                photo: InputFile::make($photo),
-                caption: sprintf('🏠 Альтанка: <b>%s</b>, 📅 <b>%s</b> ⏰ <b>%s</b>', $pavilionName, UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime)),
-                parse_mode: ParseMode::HTML,
-            );
-        }
+        $caption = sprintf('🏠 Альтанка: <b>%s</b>, 📅 <b>%s</b> ⏰ <b>%s</b>', $pavilionName, UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime));
+        $this->sendPavilionPhoto($bot, (int)$this->pavilion, $caption);
 
         $this->end();
+    }
+
+    /**
+     * Send the static pavilion photo. The two source files (assets/img/pavilion1
+     * and pavilion2) never change, so we upload each one exactly once and reuse
+     * the returned Telegram file_id from then on — sendPhoto by file_id is
+     * instant, while sendPhoto with InputFile re-uploads the bytes every time
+     * (~1-3s) and was the reason /hook overran Telegram's webhook retry
+     * threshold, causing duplicate callback deliveries.
+     */
+    private function sendPavilionPhoto(Nutgram $bot, int $pavilion, string $caption): void
+    {
+        $cacheKey = 'pavilion_photo_file_id_' . $pavilion;
+        $item = $this->cachePool->getItem($cacheKey);
+
+        if ($item->isHit() && is_string($fileId = $item->get()) && $fileId !== '') {
+            $bot->sendPhoto(
+                photo: $fileId,
+                caption: $caption,
+                parse_mode: ParseMode::HTML,
+            );
+            return;
+        }
+
+        $file = sprintf('%s/assets/img/pavilion%d', $this->projectDir, $pavilion);
+        if (!is_file($file) || !is_readable($file)) {
+            return;
+        }
+        $photo = fopen($file, 'r+');
+        $msg = $bot->sendPhoto(
+            photo: InputFile::make($photo),
+            caption: $caption,
+            parse_mode: ParseMode::HTML,
+        );
+
+        $photos = $msg?->photo ?? [];
+        if (!is_array($photos) || $photos === []) {
+            return;
+        }
+        $largest = end($photos);
+        $newId = $largest->file_id ?? null;
+        if (is_string($newId) && $newId !== '') {
+            $item->set($newId);
+            $this->cachePool->save($item);
+        }
     }
 
     // --- Render helpers: always edit the callback message ---
