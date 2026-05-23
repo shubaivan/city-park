@@ -129,4 +129,27 @@ class Account
     {
         return $this->users;
     }
+
+    /**
+     * True when this account is a non-residential unit (parking spot, storage room).
+     * Owners of non-residential units don't pay the yard-maintenance fee, so they
+     * are not entitled to book the pavilion regardless of is_active or debt state.
+     */
+    public function isNonResidential(): bool
+    {
+        $value = mb_strtolower((string)$this->apartment_number, 'UTF-8');
+        if ($value === '') {
+            return false;
+        }
+        $needles = [
+            'паркінг', 'паркинг', 'парковка', 'parking',
+            'кладов', 'комірчина', 'комирчина', 'storage',
+        ];
+        foreach ($needles as $needle) {
+            if (str_contains($value, $needle)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
