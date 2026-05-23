@@ -33,7 +33,7 @@ class PavilionPhotoService
      * obligation, no reminders, no blocking. Bookings created before the feature
      * shipped are treated as "done".
      */
-    public const OBLIGATION_START_AT = '2026-05-01 00:00:00';
+    public const OBLIGATION_START_AT = '2026-05-23 19:00:00';
 
     private string $uploadDir;
     private string $publicPathPrefix = '/uploads/pavilion-photos';
