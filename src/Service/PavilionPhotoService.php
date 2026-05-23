@@ -21,8 +21,8 @@ class PavilionPhotoService
      */
     public const LOOKBACK_HOURS = 26;
 
-    public const REMINDER_OFFSETS_MIN = [20, 40, 60];
-    public const BLOCK_AFTER_MIN = 80;
+    public const REMINDER_OFFSETS_MIN = [20, 40];
+    public const BLOCK_AFTER_MIN = 60;
 
     /** Reminders that would fire between 23:00 and 09:00 Kyiv time are deferred to 09:00. */
     public const NIGHT_START_HOUR = 23;
