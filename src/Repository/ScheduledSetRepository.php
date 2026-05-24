@@ -174,7 +174,7 @@ class ScheduledSetRepository extends ServiceEntityRepository
     }
 
     /**
-     * @return ScheduledSet[] Past bookings whose scheduled_at falls in [$from, $until), newest first.
+     * @return ScheduledSet[] Past bookings whose scheduled_at falls in [$from, $until), oldest first.
      */
     public function getHistory(\DateTimeInterface $from, \DateTimeInterface $until): array
     {
@@ -182,7 +182,7 @@ class ScheduledSetRepository extends ServiceEntityRepository
         $qb
             ->andWhere('ss.scheduled_at >= :from')->setParameter('from', $from)
             ->andWhere('ss.scheduled_at < :until')->setParameter('until', $until)
-            ->orderBy('ss.scheduled_at', 'DESC')
+            ->orderBy('ss.scheduled_at', 'ASC')
             ->addOrderBy('ss.pavilion', 'ASC');
 
         return $qb->getQuery()->getResult();

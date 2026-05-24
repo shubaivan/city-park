@@ -25,6 +25,7 @@ $bot->onCommand('обрати павільйон', \App\Telegram\SchedulePavilio
 $bot->onCallbackQueryData('own-schedule', \App\Telegram\SchedulePavilion\Command\OwnSchedule::class);
 $bot->onCallbackQueryData('booking-history', \App\Telegram\SchedulePavilion\Command\BookingHistory::class);
 $bot->onCallbackQueryData('^bh:week:\d{4}-W\d{2}$', \App\Telegram\SchedulePavilion\Command\BookingHistory::class);
+$bot->onCallbackQueryData('^bh:photo:\d+$', \App\Telegram\SchedulePavilion\Command\BookingHistory::class);
 $bot->onCommand('history', \App\Telegram\SchedulePavilion\Command\BookingHistory::class);
 
 $bot->onCallbackQueryData(\App\Telegram\Start\Command\StartCommand::MAIN_MENU_CALLBACK, \App\Telegram\Start\Command\StartCommand::class);

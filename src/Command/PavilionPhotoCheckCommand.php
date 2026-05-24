@@ -97,17 +97,25 @@ class PavilionPhotoCheckCommand extends Command
         $account = $req->getAccount();
         $start = $req->getSessionStartAt();
         $pavilionName = $req->getPavilion() === 1 ? 'Перша' : 'Друга';
+        $totalReminders = count(PavilionPhotoService::REMINDER_OFFSETS_MIN);
+        $blockAfterMin = PavilionPhotoService::BLOCK_AFTER_MIN;
 
         $heading = $reminderNumber === 1
-            ? "📸 <b>Будь ласка, надішліть фото альтанки</b>"
-            : sprintf("📸 <b>Нагадування %d/3 — потрібне фото альтанки</b>", $reminderNumber);
+            ? "📸 <b>Потрібне фото альтанки після бронювання</b>"
+            : sprintf("📸 <b>Нагадування %d/%d — фото альтанки</b>", $reminderNumber, $totalReminders);
 
         $text = sprintf(
-            "%s\n\n🏠 Альтанка: <b>%s</b>\n📅 <b>%s</b>\n⏰ <b>%s</b>\n\nЩоб уникнути блокування — надішліть фото зовнішнього вигляду альтанки після використання просто у цей чат.",
+            "%s\n\n🏠 Альтанка: <b>%s</b>\n📅 <b>%s</b>\n⏰ <b>%s</b>\n\n"
+            . "ℹ️ Після кожного бронювання ОСББ просить надіслати <b>одне фото альтанки</b>, "
+            . "щоб переконатися, що вона прибрана і не пошкоджена. Це обовʼязкова умова користування.\n\n"
+            . "👉 Просто надішліть фото у цей чат — ми автоматично прикріпимо його до бронювання.\n\n"
+            . "⛔ Якщо фото не буде надіслано протягом <b>%d хв</b> після завершення бронювання, "
+            . "акаунт буде тимчасово заблоковано до зʼясування.",
             $heading,
             $pavilionName,
             UkDateFormatter::dayDate($start),
             UkDateFormatter::time($start),
+            $blockAfterMin,
         );
 
         $any = false;

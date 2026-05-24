@@ -188,7 +188,7 @@ class PavilionPhotoService
         }
 
         $offset = self::REMINDER_OFFSETS_MIN[$sent];
-        $dueAt = (clone $req->getSessionEndAt())->modify('+' . $offset . ' minutes');
+        $dueAt = $this->sessionEndKyiv($req)->modify('+' . $offset . ' minutes');
         $dueAt = $this->deferIfNight($dueAt);
 
         if ($now < $dueAt) {
@@ -207,10 +207,24 @@ class PavilionPhotoService
             return false;
         }
 
-        $blockAt = (clone $req->getSessionEndAt())->modify('+' . self::BLOCK_AFTER_MIN . ' minutes');
+        $blockAt = $this->sessionEndKyiv($req)->modify('+' . self::BLOCK_AFTER_MIN . ' minutes');
         $blockAt = $this->deferIfNight($blockAt);
 
         return $now >= $blockAt;
+    }
+
+    /**
+     * Re-anchor a session_end_at read from PG to Kyiv. Doctrine's default DateTimeType
+     * loses the originating timezone on round-trip through `timestamp without time zone`,
+     * so the wall-clock 10:00 (which was originally 10:00 Kyiv) comes back as 10:00 UTC.
+     * Reinterpreting the same wall-clock in Kyiv restores the correct instant.
+     */
+    private function sessionEndKyiv(PhotoUploadRequest $req): \DateTime
+    {
+        return new \DateTime(
+            $req->getSessionEndAt()->format('Y-m-d H:i:s'),
+            new \DateTimeZone('Europe/Kyiv'),
+        );
     }
 
     public function markReminderSent(PhotoUploadRequest $req, \DateTime $now): void

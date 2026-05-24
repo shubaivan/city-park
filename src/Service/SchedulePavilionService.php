@@ -65,7 +65,7 @@ class SchedulePavilionService
     }
 
     /**
-     * @return array<string, ScheduledSet[]> Bookings within [$from, $until), grouped by 'Y-m-d', newest day first.
+     * @return array<string, ScheduledSet[]> Bookings within [$from, $until), grouped by 'Y-m-d', oldest day first.
      */
     public function getHistoryRange(\DateTimeInterface $from, \DateTimeInterface $until): array
     {

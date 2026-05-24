@@ -14,6 +14,7 @@ use App\Telegram\Start\Command\StartCommand;
 use Doctrine\ORM\EntityManagerInterface;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
+use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
@@ -22,11 +23,16 @@ class BookingHistory
     public const HISTORY_DAYS = 30;
     private const MESSAGE_CHAR_LIMIT = 3800;
     public const CALLBACK_PREFIX = 'bh:week:';
+    public const PHOTO_CALLBACK_PREFIX = 'bh:photo:';
+    private const PHOTO_BUTTONS_PER_ROW = 2;
+    private const PHOTO_BUTTONS_LIMIT = 30;
 
     /** @var array<string, PavilionPhoto> account_id:pavilion:Y-m-d H:i => photo */
     private array $photoByHourKey = [];
     /** @var array<string, PhotoUploadRequest> */
     private array $reqByHourKey = [];
+    /** @var PavilionPhoto[] one entry per unique session photo in the week, oldest first */
+    private array $weekPhotos = [];
     private \DateTime $obligationStart;
 
     public function __construct(
@@ -39,6 +45,14 @@ class BookingHistory
 
     public function __invoke(Nutgram $bot): void
     {
+        if ($bot->isCallbackQuery()) {
+            $data = (string)($bot->callbackQuery()->data ?? '');
+            if (str_starts_with($data, self::PHOTO_CALLBACK_PREFIX)) {
+                $this->sendPhoto($bot, (int)substr($data, strlen(self::PHOTO_CALLBACK_PREFIX)));
+                return;
+            }
+        }
+
         $now = SchedulePavilionService::createNewDate();
         $anchor = $this->resolveAnchor($bot, $now);
 
@@ -60,6 +74,60 @@ class BookingHistory
             }
         }
         $bot->sendMessage(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
+    }
+
+    private function sendPhoto(Nutgram $bot, int $photoId): void
+    {
+        $photo = $this->em->getRepository(PavilionPhoto::class)->find($photoId);
+        if (!$photo) {
+            $bot->answerCallbackQuery(text: '📷 Фото не знайдено.', show_alert: true);
+            return;
+        }
+
+        $bot->answerCallbackQuery();
+
+        $start = $photo->getSessionStartAt();
+        $pavilionName = $photo->getPavilion() === 1 ? 'Перша' : 'Друга';
+        $caption = sprintf(
+            "📷 <b>%s · %s</b>\n🏠 Альтанка: <b>%s</b>",
+            UkDateFormatter::dayDate($start),
+            UkDateFormatter::time($start),
+            $pavilionName,
+        );
+
+        try {
+            if ($photo->getTelegramFileId()) {
+                $bot->sendPhoto(photo: $photo->getTelegramFileId(), caption: $caption, parse_mode: ParseMode::HTML);
+                return;
+            }
+        } catch (\Throwable) {
+            // file_id expired or invalid - fall back to file path
+        }
+
+        $fsPath = $this->resolveFsPath($photo->getFilePath());
+        if ($fsPath && is_readable($fsPath)) {
+            $stream = fopen($fsPath, 'rb');
+            if ($stream !== false) {
+                $bot->sendPhoto(
+                    photo: InputFile::make($stream, basename($fsPath)),
+                    caption: $caption,
+                    parse_mode: ParseMode::HTML,
+                );
+                return;
+            }
+        }
+
+        $bot->sendMessage(text: '⚠️ Файл фото недоступний.');
+    }
+
+    private function resolveFsPath(string $publicPath): ?string
+    {
+        $rel = ltrim($publicPath, '/');
+        if (!str_starts_with($rel, 'uploads/pavilion-photos/')) {
+            return null;
+        }
+        $base = realpath(__DIR__ . '/../../../../public');
+        return $base ? $base . '/' . $rel : null;
     }
 
     private function resolveAnchor(Nutgram $bot, \DateTime $now): \DateTime
@@ -136,9 +204,40 @@ class BookingHistory
             );
         }
 
+        $this->appendPhotoButtons($markup);
+
         $markup->addRow(StartCommand::homeButton());
 
         return $markup;
+    }
+
+    private function appendPhotoButtons(InlineKeyboardMarkup $markup): void
+    {
+        if (!$this->weekPhotos) {
+            return;
+        }
+
+        $photos = array_slice($this->weekPhotos, 0, self::PHOTO_BUTTONS_LIMIT);
+        $row = [];
+        foreach ($photos as $p) {
+            $start = $p->getSessionStartAt();
+            $label = sprintf('📷 %s %s · А%d',
+                $start->format('d.m'),
+                $start->format('H:i'),
+                $p->getPavilion(),
+            );
+            $row[] = InlineKeyboardButton::make(
+                $label,
+                callback_data: self::PHOTO_CALLBACK_PREFIX . $p->getId(),
+            );
+            if (count($row) === self::PHOTO_BUTTONS_PER_ROW) {
+                $markup->addRow(...$row);
+                $row = [];
+            }
+        }
+        if ($row) {
+            $markup->addRow(...$row);
+        }
     }
 
     /**
@@ -180,6 +279,7 @@ class BookingHistory
     {
         $this->photoByHourKey = [];
         $this->reqByHourKey = [];
+        $this->weekPhotos = [];
         $this->obligationStart = $this->photoService->obligationStartAt();
 
         $from = (clone $weekStart)->modify('-1 day');
@@ -187,7 +287,8 @@ class BookingHistory
 
         $photos = $this->em->createQuery(
             'SELECT p, a FROM App\Entity\PavilionPhoto p JOIN p.account a '
-            . 'WHERE p.session_start_at BETWEEN :from AND :until'
+            . 'WHERE p.session_start_at BETWEEN :from AND :until '
+            . 'ORDER BY p.session_start_at ASC'
         )->setParameter('from', $from)->setParameter('until', $until)->getResult();
 
         $requests = $this->em->createQuery(
@@ -202,6 +303,9 @@ class BookingHistory
                 $p->getAccount()->getId(), $p->getPavilion(),
                 $p->getSessionStartAt(), $p->getSessionEndAt(), $p,
             );
+            if ($p->getSessionStartAt() >= $weekStart && $p->getSessionStartAt() < $weekEnd) {
+                $this->weekPhotos[] = $p;
+            }
         }
         /** @var PhotoUploadRequest $r */
         foreach ($requests as $r) {
