@@ -21,8 +21,8 @@ class PavilionPhotoService
      */
     public const LOOKBACK_HOURS = 26;
 
-    public const REMINDER_OFFSETS_MIN = [20, 40];
-    public const BLOCK_AFTER_MIN = 60;
+    public const REMINDER_OFFSETS_MIN = [5, 15];
+    public const BLOCK_AFTER_MIN = 20;
 
     /** Reminders that would fire between 23:00 and 09:00 Kyiv time are deferred to 09:00. */
     public const NIGHT_START_HOUR = 23;
@@ -198,21 +198,6 @@ class PavilionPhotoService
         return $sent + 1;
     }
 
-    public function shouldBlock(PhotoUploadRequest $req, \DateTime $now): bool
-    {
-        if (!$req->isOpen() || $req->getBlockedAt() !== null) {
-            return false;
-        }
-        if ($req->getRemindersSent() < count(self::REMINDER_OFFSETS_MIN)) {
-            return false;
-        }
-
-        $blockAt = $this->sessionEndKyiv($req)->modify('+' . self::BLOCK_AFTER_MIN . ' minutes');
-        $blockAt = $this->deferIfNight($blockAt);
-
-        return $now >= $blockAt;
-    }
-
     /**
      * Re-anchor a session_end_at read from PG to Kyiv. Doctrine's default DateTimeType
      * loses the originating timezone on round-trip through `timestamp without time zone`,
@@ -232,6 +217,21 @@ class PavilionPhotoService
         $req->setRemindersSent($req->getRemindersSent() + 1);
         $req->setLastReminderAt($now);
         $this->em->flush();
+    }
+
+    public function shouldBlock(PhotoUploadRequest $req, \DateTime $now): bool
+    {
+        if (!$req->isOpen() || $req->getBlockedAt() !== null) {
+            return false;
+        }
+        if ($req->getRemindersSent() < count(self::REMINDER_OFFSETS_MIN)) {
+            return false;
+        }
+
+        $blockAt = $this->sessionEndKyiv($req)->modify('+' . self::BLOCK_AFTER_MIN . ' minutes');
+        $blockAt = $this->deferIfNight($blockAt);
+
+        return $now >= $blockAt;
     }
 
     public function markBlocked(PhotoUploadRequest $req, \DateTime $now): void

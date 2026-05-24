@@ -2,7 +2,6 @@
 
 namespace App\Command;
 
-use App\Entity\Account;
 use App\Entity\PhotoUploadRequest;
 use App\Entity\TelegramUser;
 use App\Repository\PhotoUploadRequestRepository;
@@ -34,6 +33,8 @@ class PavilionPhotoCheckCommand extends Command
     ) {
         parent::__construct();
     }
+
+
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
