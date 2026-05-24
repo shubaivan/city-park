@@ -86,14 +86,7 @@ class BookingHistory
 
         $bot->answerCallbackQuery();
 
-        $start = $photo->getSessionStartAt();
-        $pavilionName = $photo->getPavilion() === 1 ? 'Перша' : 'Друга';
-        $caption = sprintf(
-            "📷 <b>%s · %s</b>\n🏠 Альтанка: <b>%s</b>",
-            UkDateFormatter::dayDate($start),
-            UkDateFormatter::time($start),
-            $pavilionName,
-        );
+        $caption = $this->buildPhotoCaption($photo);
 
         try {
             if ($photo->getTelegramFileId()) {
@@ -128,6 +121,71 @@ class BookingHistory
         }
         $base = realpath(__DIR__ . '/../../../../public');
         return $base ? $base . '/' . $rel : null;
+    }
+
+    private function buildPhotoCaption(PavilionPhoto $photo): string
+    {
+        $start = $photo->getSessionStartAt();
+        $pavilionName = $photo->getPavilion() === 1 ? 'Перша' : 'Друга';
+        $account = $photo->getAccount();
+
+        $bookers = $this->em->createQuery(
+            'SELECT ss, tu FROM App\Entity\ScheduledSet ss JOIN ss.telegramUserId tu '
+            . 'WHERE tu.account = :account AND ss.pavilion = :pavilion '
+            . 'AND ss.scheduled_at >= :start AND ss.scheduled_at < :end '
+            . 'ORDER BY ss.scheduled_at ASC'
+        )
+            ->setParameter('account', $account)
+            ->setParameter('pavilion', $photo->getPavilion())
+            ->setParameter('start', $start)
+            ->setParameter('end', $photo->getSessionEndAt())
+            ->getResult();
+
+        $bookerLine = '';
+        if ($bookers) {
+            $tu = $bookers[0]->getTelegramUserId();
+            $name = trim(($tu->getFirstName() ?? '') . ' ' . ($tu->getLastName() ?? ''));
+            if ($name === '') {
+                $name = $tu->getUsername() ? '@' . $tu->getUsername() : '—';
+            } elseif ($tu->getUsername()) {
+                $name .= ' (@' . $tu->getUsername() . ')';
+            }
+            $phone = $tu->getPhoneNumber() ?: '—';
+            $bookerLine = sprintf(
+                "\n👤 %s\n📞 %s",
+                $this->escape($name),
+                $this->escape($phone),
+            );
+        }
+
+        $address = trim(sprintf(
+            '%s %s, кв. %s',
+            $account->getStreet() ?? '',
+            $account->getHouseNumber() ?? '',
+            $account->getApartmentNumber() ?? '',
+        ));
+
+        $uploader = $photo->getUploader();
+        $uploaderLine = '';
+        if ($uploader && (!$bookers || $uploader->getId() !== $bookers[0]->getTelegramUserId()->getId())) {
+            $upName = trim(($uploader->getFirstName() ?? '') . ' ' . ($uploader->getLastName() ?? ''));
+            if ($upName === '' && $uploader->getUsername()) {
+                $upName = '@' . $uploader->getUsername();
+            }
+            if ($upName !== '') {
+                $uploaderLine = "\n📸 Завантажив(ла): " . $this->escape($upName);
+            }
+        }
+
+        return sprintf(
+            "📷 <b>%s · %s</b>\n🏠 Альтанка: <b>%s</b>%s\n🏠 %s%s",
+            UkDateFormatter::dayDate($start),
+            UkDateFormatter::time($start),
+            $pavilionName,
+            $bookerLine,
+            $this->escape($address),
+            $uploaderLine,
+        );
     }
 
     private function resolveAnchor(Nutgram $bot, \DateTime $now): \DateTime
