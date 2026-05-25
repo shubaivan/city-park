@@ -144,6 +144,22 @@ document.addEventListener("DOMContentLoaded", function () {
                     form.find('#street').val(data.street)
                     form.find('#is_active').prop('checked', data.is_active)
 
+                    // Track initial blocked state so we know if the save will be
+                    // a blocked→active transition. Show the reason picker accordingly.
+                    let wasBlocked = !data.is_active;
+                    let $reasonGroup = form.find('#unblock_reason_group');
+                    let $reasonSelect = form.find('#unblock_reason');
+                    $reasonSelect.val('');
+                    $reasonGroup.toggle(wasBlocked);
+
+                    form.find('#is_active').off('change.unblockReason').on('change.unblockReason', function () {
+                        let nowChecked = $(this).is(':checked');
+                        $reasonGroup.toggle(wasBlocked && nowChecked);
+                        if (!nowChecked) {
+                            $reasonSelect.val('');
+                        }
+                    });
+
                     // Show debt info
                     let debtDisplay = form.find('#debt_display');
                     if (data.debt && parseFloat(data.debt) > 0) {

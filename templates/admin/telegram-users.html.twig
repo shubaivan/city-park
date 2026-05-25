@@ -62,6 +62,16 @@
                             <label for="is_active" class="col-form-label">Статус</label>
                             <input type="checkbox" value="" id="is_active" class="form-control" name="account[is_active]"/>
                         </div>
+                        <div class="form-group" id="unblock_reason_group" style="display:none">
+                            <label for="unblock_reason" class="col-form-label">Причина розблокування</label>
+                            <select id="unblock_reason" class="form-control" name="account[unblock_reason]">
+                                <option value="">— оберіть —</option>
+                                <option value="photo">📸 Фото надіслано</option>
+                                <option value="debt">💰 Борг сплачено</option>
+                                <option value="other">📝 Інша причина</option>
+                            </select>
+                            <small class="form-text text-muted">Використовується для повідомлення користувачу та логування.</small>
+                        </div>
                         <div class="form-group">
                             <label class="col-form-label">Борг</label>
                             <p id="debt_display" class="form-control-plaintext">—</p>

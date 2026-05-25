@@ -477,6 +477,7 @@ class AdminController extends AbstractController
             return $this->json([sprintf('User by id: %s was not found', $request->request->get('user_id'))], Response::HTTP_BAD_REQUEST);
         }
 
+        $unblockReason = null;
         if (isset($params['account'])) {
             $account = $params['account'];
             if (isset($account['is_active'])) {
@@ -484,6 +485,10 @@ class AdminController extends AbstractController
             } else {
                 $account['is_active'] = false;
             }
+
+            // unblock_reason is admin-only metadata, not an Account field.
+            $unblockReason = $account['unblock_reason'] ?? null;
+            unset($account['unblock_reason']);
 
             unset($params['account']);
             $accountContext = [];
@@ -546,10 +551,24 @@ class AdminController extends AbstractController
                     $updatedUser->getAccount()->getId()
                 ));
             }
+            $logger->info('Admin unblock', [
+                'account_id' => $updatedUser->getAccount()->getId(),
+                'account_number' => $updatedUser->getAccount()->getAccountNumber(),
+                'reason' => $unblockReason ?: 'unspecified',
+            ]);
+
+            $unblockText = match ($unblockReason) {
+                'photo' => "✅ <b>Доступ до бронювання відновлено.</b>\n\n"
+                    . "Дякуємо за надіслане фото — обмеження знято. Можна знову бронювати.",
+                'debt' => "✅ <b>Доступ до бронювання відновлено.</b>\n\n"
+                    . "Борг сплачено — обмеження знято. Можна знову бронювати.",
+                default => "✅ <b>Доступ до бронювання відновлено.</b>\n\nМожна знову бронювати.",
+            };
+
             $bot->sendMessage(
-                text: 'Вас <b>АКТИВУВАЛИ</b> тепер можете броювати',
+                text: $unblockText,
                 chat_id: $updatedUser->getChatId(),
-                parse_mode: ParseMode::HTML
+                parse_mode: ParseMode::HTML,
             );
         }
 
