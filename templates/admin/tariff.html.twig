@@ -1,0 +1,43 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Тариф ОСББ{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    <div class="container mt-4">
+        <h3>💰 Тариф ОСББ — ціна за 1 м²</h3>
+
+        <div class="alert alert-info">
+            <p class="mb-2"><b>Як працює персональний поріг блокування за борг:</b></p>
+            <ul class="mb-2">
+                <li>Місячна плата для квартири = <code>площа × ціна за 1 м²</code></li>
+                <li>Поріг блокування = місячна плата × 1.5 (тобто 150%)</li>
+                <li>Якщо у квартири не задана площа АБО тут ціна = 0 — використовується запасний поріг <b>{{ fallback_threshold }} грн</b> на акаунт.</li>
+            </ul>
+            <p class="mb-0 text-muted">
+                Приклад: квартира 52.30 м² при ціні 13.50 грн/м² → місяць = 706.05 грн → поріг блокування = <b>1059.08 грн</b>.
+            </p>
+        </div>
+
+        {% if success is defined %}
+            <div class="alert alert-success">{{ success }}</div>
+        {% endif %}
+        {% if error is defined %}
+            <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+
+        <form action="{{ path('app_admin_tariff_save') }}" method="post">
+            <div class="form-group mb-3" style="max-width:320px">
+                <label for="price_per_meter">Ціна за 1 м², грн</label>
+                <input type="text" id="price_per_meter" name="price_per_meter" class="form-control"
+                       value="{{ tariff.pricePerMeter }}" placeholder="наприклад, 13.50" required>
+            </div>
+            <p class="text-muted">
+                <small>Останнє оновлення: {{ tariff.updatedAt|date('Y-m-d H:i') }}</small>
+            </p>
+            <button type="submit" class="btn btn-primary">Зберегти</button>
+            <a href="{{ path('app_admin') }}" class="btn btn-link">← Назад в адмінку</a>
+        </form>
+    </div>
+{% endblock %}

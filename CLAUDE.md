@@ -14,7 +14,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 - `Account.is_active = false` is the single block flag — used by debt blocking AND photo-miss blocking. Toggled via `/admin/users`.
 - `Account::isNonResidential()` blocks parking + storage units from booking *structurally* (checked before `is_active` — admins can't grant booking to a parking account without renaming the unit). Detects `apartment_number` containing паркінг/парковка/кладов/комірчина/parking/storage.
 - `ScheduledSet` is one row per booked **hour** (no merging). A "session" = consecutive same-pavilion hours by one account, detected at query time.
-- Booking limits live in `src/Validator/`: ≤ 4h / day, ≤ 20h / month, no cross-pavilion overlap same hour, no orphan-1h gaps between existing bookings, debt threshold (env `DEBT_BLOCK_THRESHOLD`, default 1300 UAH).
+- Booking limits live in `src/Validator/`: ≤ 4h / day, ≤ 20h / month, no cross-pavilion overlap same hour, no orphan-1h gaps between existing bookings, per-account debt threshold computed as `area × tariff.price_per_meter × 1.5` (`DebtPolicy::getThresholdFor`). Fallback to env `DEBT_BLOCK_THRESHOLD` (1300 UAH) when either `Account.area` or `Tariff.price_per_meter` is missing/zero. Tariff is a single-row table set via `/admin/tariff`.
 
 ## Bot menu (callback wiring in `config/telegram.php`)
 

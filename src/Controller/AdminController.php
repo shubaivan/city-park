@@ -9,6 +9,7 @@ use App\Repository\AccountRepository;
 use App\Repository\PavilionPhotoRepository;
 use App\Repository\PhotoUploadRequestRepository;
 use App\Repository\ScheduledSetRepository;
+use App\Repository\TariffRepository;
 use App\Repository\TelegramUserRepository;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
@@ -598,6 +599,53 @@ class AdminController extends AbstractController
         return $this->render('admin/debt.html.twig');
     }
 
+    #[Route('/admin/tariff', name: 'app_admin_tariff', methods: [Request::METHOD_GET])]
+    public function tariff(TariffRepository $tariffRepository, EntityManagerInterface $em, DebtPolicy $debtPolicy): Response
+    {
+        $tariff = $tariffRepository->getOrCreate($em);
+        return $this->render('admin/tariff.html.twig', [
+            'tariff' => $tariff,
+            'fallback_threshold' => $debtPolicy->getThreshold(),
+        ]);
+    }
+
+    #[Route('/admin/tariff/save', name: 'app_admin_tariff_save', methods: [Request::METHOD_POST])]
+    public function tariffSave(
+        Request $request,
+        TariffRepository $tariffRepository,
+        EntityManagerInterface $em,
+        LoggerInterface $logger,
+        DebtPolicy $debtPolicy,
+    ): Response {
+        $raw = trim((string)$request->request->get('price_per_meter', ''));
+        $normalized = str_replace(',', '.', $raw);
+
+        if ($normalized === '' || !is_numeric($normalized) || (float)$normalized < 0) {
+            $tariff = $tariffRepository->getOrCreate($em);
+            return $this->render('admin/tariff.html.twig', [
+                'tariff' => $tariff,
+                'fallback_threshold' => $debtPolicy->getThreshold(),
+                'error' => 'Ціна має бути невідʼємним числом (наприклад, 13.50).',
+            ]);
+        }
+
+        $tariff = $tariffRepository->getOrCreate($em);
+        $old = $tariff->getPricePerMeter();
+        $tariff->setPricePerMeter(number_format((float)$normalized, 2, '.', ''));
+        $em->flush();
+
+        $logger->info('Admin tariff updated', [
+            'old_price' => $old,
+            'new_price' => $tariff->getPricePerMeter(),
+        ]);
+
+        return $this->render('admin/tariff.html.twig', [
+            'tariff' => $tariff,
+            'fallback_threshold' => $debtPolicy->getThreshold(),
+            'success' => sprintf('Збережено. Нова ціна: %s грн/м². Перерахунок порогів відбудеться при наступному завантаженні файлу боржників.', $tariff->getPricePerMeter()),
+        ]);
+    }
+
     #[Route('/admin/debt/example', name: 'app_admin_debt_example')]
     public function debtExample(): Response
     {
@@ -729,8 +777,9 @@ class AdminController extends AbstractController
                 $account->setDebt((string)$debt);
                 $account->setArea(number_format($areaData[$accountNumber], 2, '.', ''));
                 $wasActive = $account->isActive();
+                $accountThreshold = $debtPolicy->getThresholdFor($account);
 
-                if ($debtPolicy->isOverThreshold($debt)) {
+                if ($debtPolicy->isOverThreshold($debt, $account)) {
                     $account->setIsActive(false);
                     $em->persist($account);
 
@@ -741,8 +790,9 @@ class AdminController extends AbstractController
                                 try {
                                     $bot->sendMessage(
                                         text: sprintf(
-                                            "🚫 Вас <b>ЗАБЛОКОВАНО</b> через борг: <b>%s грн</b>\n\nСплатіть заборгованість для відновлення доступу до бронювання.",
-                                            number_format($debt, 2, '.', ' ')
+                                            "🚫 Вас <b>ЗАБЛОКОВАНО</b> через борг: <b>%s грн</b>\n\nПерсональний поріг для вашої квартири — %s грн (150%% від місячної плати).\n\nСплатіть заборгованість для відновлення доступу до бронювання.",
+                                            number_format($debt, 2, '.', ' '),
+                                            number_format($accountThreshold, 2, '.', ' ')
                                         ),
                                         chat_id: $user->getChatId(),
                                         parse_mode: ParseMode::HTML
