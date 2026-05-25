@@ -37,6 +37,9 @@ class Account
     #[ORM\Column(type: 'decimal', precision: 10, scale: 2, nullable: true, options: ['default' => 0])]
     private ?string $debt = '0';
 
+    #[ORM\Column(type: 'decimal', precision: 6, scale: 2, nullable: true)]
+    private ?string $area = null;
+
     /**
      * Admin-linked owner group: when set, this account shares booking limits and
      * debt aggregation with every other account having the same `owner_group_id`.
@@ -129,6 +132,18 @@ class Account
     public function setDebt(?string $debt): static
     {
         $this->debt = $debt;
+
+        return $this;
+    }
+
+    public function getArea(): ?string
+    {
+        return $this->area;
+    }
+
+    public function setArea(?string $area): static
+    {
+        $this->area = $area;
 
         return $this;
     }

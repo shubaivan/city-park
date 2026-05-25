@@ -244,13 +244,13 @@ class ScheduledSetRepository extends ServiceEntityRepository
             ';
         } else {
             $dql = '
-                SELECT 
-                b.id,   
+                SELECT
+                b.id,
                 a.account_number,
                 a.apartment_number,
                 a.house_number,
-                a.street,                   
-                a.is_active,                   
+                a.street,
+                a.is_active,
                 tu.phone_number,
                 tu.username,
                 b.pavilion,
@@ -264,6 +264,62 @@ class ScheduledSetRepository extends ServiceEntityRepository
         $bindParams = [];
         $condition = ' WHERE ';
         $conditions = [];
+
+        // Toolbar filters (date range, pavilion, photo status). Applied to both count
+        // and data queries (i.e. when $total is true OR false) so DataTables pagination
+        // counts match what the user sees.
+        $dateFrom = $params['filter_date_from'] ?? null;
+        $dateTo = $params['filter_date_to'] ?? null;
+        if (is_string($dateFrom) && $dateFrom !== '') {
+            $conditions[] = 'b.scheduled_at >= :filter_date_from';
+            $bindParams['filter_date_from'] = $dateFrom . ' 00:00:00';
+        }
+        if (is_string($dateTo) && $dateTo !== '') {
+            $conditions[] = 'b.scheduled_at <= :filter_date_to';
+            $bindParams['filter_date_to'] = $dateTo . ' 23:59:59';
+        }
+
+        $pavilion = $params['filter_pavilion'] ?? null;
+        if (is_string($pavilion) && $pavilion !== '') {
+            $conditions[] = 'b.pavilion = :filter_pavilion';
+            $bindParams['filter_pavilion'] = (int)$pavilion;
+        }
+
+        $status = $params['filter_status'] ?? null;
+        if (is_string($status) && $status !== '') {
+            $existsPhoto = '(SELECT 1 FROM App\Entity\PavilionPhoto p WHERE p.account = a AND p.pavilion = b.pavilion'
+                . ' AND p.session_start_at <= b.scheduled_at AND p.session_end_at > b.scheduled_at)';
+            $existsBlockedReq = '(SELECT 1 FROM App\Entity\PhotoUploadRequest r WHERE r.account = a AND r.pavilion = b.pavilion'
+                . ' AND r.blocked_at IS NOT NULL AND r.resolved_at IS NULL'
+                . ' AND r.session_start_at <= b.scheduled_at AND r.session_end_at > b.scheduled_at)';
+            $existsPendingReq = '(SELECT 1 FROM App\Entity\PhotoUploadRequest r WHERE r.account = a AND r.pavilion = b.pavilion'
+                . ' AND r.blocked_at IS NULL AND r.resolved_at IS NULL'
+                . ' AND r.session_start_at <= b.scheduled_at AND r.session_end_at > b.scheduled_at)';
+
+            switch ($status) {
+                case 'uploaded':
+                    $conditions[] = 'EXISTS ' . $existsPhoto;
+                    break;
+                case 'blocked':
+                    $conditions[] = 'EXISTS ' . $existsBlockedReq;
+                    break;
+                case 'pending':
+                    $conditions[] = 'EXISTS ' . $existsPendingReq;
+                    $conditions[] = 'NOT EXISTS ' . $existsPhoto;
+                    break;
+                case 'legacy':
+                    $obligationStart = new \DateTime(\App\Service\PavilionPhotoService::OBLIGATION_START_AT, new \DateTimeZone('Europe/Kyiv'));
+                    $obligationStart->modify('-1 hour'); // session end = scheduled_at + 1h; legacy iff end <= cutoff
+                    $conditions[] = 'b.scheduled_at < :legacy_cutoff';
+                    $bindParams['legacy_cutoff'] = $obligationStart->format('Y-m-d H:i:s');
+                    break;
+                case 'future':
+                    $conditions[] = 'b.scheduled_at > :now_filter';
+                    $bindParams['now_filter'] = (new \DateTime())->format('Y-m-d H:i:s');
+                    break;
+            }
+        }
+
         if ($parameterBag->get('search') && !$total) {
 
             try {

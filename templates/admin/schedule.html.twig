@@ -1,34 +1,77 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Hello Admin!{% endblock %}
+{% block title %}Бронювання | Admin{% endblock %}
 
 {% block stylesheets %}
     {{ parent() }}
-    <link rel="stylesheet" type="text/css" href="{{ asset('simditor-2.3.28/styles/simditor.css') }}" />
+    <style>
+        #scheduleFilters .btn.active { box-shadow: inset 0 0 0 2px rgba(0,0,0,.25); }
+        #scheduleFilters .btn-group { margin-right: 8px; margin-bottom: 6px; }
+        #scheduleFilters .filter-label { font-size: 12px; color: #6c757d; margin-right: 4px; }
+        #scheduleFilters .date-inputs input { width: 140px; }
+    </style>
 {% endblock %}
 
 {% block body %}
     {{ parent() }}
 
-    {% if th_keys|length %}
-        <!-- Table -->
-        <table id='telegramUserTable' class='display dataTable'>
+    <div class="container-fluid mt-3">
+        <h3 class="mb-3">📅 Бронювання</h3>
 
-            <thead>
-            <tr>
+        <div id="scheduleFilters" class="mb-3 p-3 bg-light rounded">
+            <div class="d-flex flex-wrap align-items-center">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Період">
+                    <span class="filter-label align-self-center me-2">Період:</span>
+                    <button type="button" class="btn btn-outline-secondary" data-preset="today">Сьогодні</button>
+                    <button type="button" class="btn btn-outline-secondary" data-preset="this-week">Цей тиждень</button>
+                    <button type="button" class="btn btn-outline-secondary" data-preset="last-week">Минулий тиждень</button>
+                    <button type="button" class="btn btn-outline-secondary" data-preset="this-month">Цей місяць</button>
+                    <button type="button" class="btn btn-outline-secondary active" data-preset="all">Усі</button>
+                </div>
+
+                <div class="date-inputs btn-group btn-group-sm" role="group" aria-label="Дати">
+                    <input type="date" id="filterDateFrom" class="form-control form-control-sm" placeholder="з">
+                    <input type="date" id="filterDateTo" class="form-control form-control-sm" placeholder="до">
+                </div>
+
+                <div class="btn-group btn-group-sm" role="group" aria-label="Альтанка">
+                    <span class="filter-label align-self-center me-2">Альт.:</span>
+                    <button type="button" class="btn btn-outline-secondary active" data-pavilion="">Усі</button>
+                    <button type="button" class="btn btn-outline-secondary" data-pavilion="1">A1</button>
+                    <button type="button" class="btn btn-outline-secondary" data-pavilion="2">A2</button>
+                </div>
+
+                <div class="btn-group btn-group-sm" role="group" aria-label="Статус фото">
+                    <span class="filter-label align-self-center me-2">Статус:</span>
+                    <button type="button" class="btn btn-outline-secondary active" data-status="">Усі</button>
+                    <button type="button" class="btn btn-outline-success" data-status="uploaded">📷 Фото</button>
+                    <button type="button" class="btn btn-outline-warning" data-status="pending">⏳ Очікує</button>
+                    <button type="button" class="btn btn-outline-danger" data-status="blocked">⛔ Прострочено</button>
+                    <button type="button" class="btn btn-outline-info" data-status="future">🕓 Майбутнє</button>
+                    <button type="button" class="btn btn-outline-secondary" data-status="legacy">📜 До правила</button>
+                </div>
+
+                <button type="button" id="filterReset" class="btn btn-sm btn-link ms-auto">Скинути</button>
+            </div>
+        </div>
+
+        {% if th_keys|length %}
+            <table id='telegramUserTable' class='display dataTable'>
+                <thead>
+                <tr>
+                    {% for th_key in th_keys %}
+                        <th scope="col">{{ th_key }}</th>
+                    {% endfor %}
+                </tr>
+                </thead>
+                <tfoot>
                 {% for th_key in th_keys %}
                     <th scope="col">{{ th_key }}</th>
                 {% endfor %}
-            </tr>
-            </thead>
-            <tfoot>
-            {% for th_key in th_keys %}
-                <th scope="col">{{ th_key }}</th>
-            {% endfor %}
-            </tfoot>
-
-        </table>
-    {% endif %}
+                </tfoot>
+            </table>
+        {% endif %}
+    </div>
 
 {% endblock %}
 
@@ -37,21 +80,15 @@
     {{ encore_entry_script_tags('index/js/schedule.min') }}
 
     <script defer>
-        console.log('getJSonObject');
         function getJSonObject(value) {
             return $.parseJSON(value.replace(/&quot;/ig, '"'));
         }
 
         let th_keys = getJSonObject("{{ dataTableKeys ? dataTableKeys|json_encode() : "{}" }}");
         let for_prepare_defs = getJSonObject("{{ dataTableKeys ? dataTableKeys|json_encode() : "{}" }}");
-    </script >
+    </script>
 
     <script src="{{ asset('simditor-2.3.28/site/assets/scripts/module.js') }}" defer></script>
     <script src="{{ asset('simditor-2.3.28/site/assets/scripts/hotkeys.js') }}" defer></script>
-
-
     <script src="{{ asset('simditor-2.3.28/lib/simditor.js') }}" defer></script>
-
-
 {% endblock %}
-

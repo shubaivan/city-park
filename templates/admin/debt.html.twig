@@ -7,7 +7,36 @@
 
     <div class="container mt-4">
         <h3>Завантаження файлу боржників</h3>
-        <p class="text-muted">Завантажте файл .xlsx з колонками: № кв., Особ. рах., Борг</p>
+
+        <div class="alert alert-info">
+            <p class="mb-2"><b>Формат файлу .xlsx</b> — дані починаються з <b>3-го рядка</b>, рядок 1 — заголовок, рядок 2 — назви колонок.</p>
+            <table class="table table-bordered table-sm mb-2" style="max-width:560px;background:#fff">
+                <thead>
+                <tr class="table-light">
+                    <th style="width:48px">#</th>
+                    <th>A — № кв.</th>
+                    <th>B — Особ. рах.</th>
+                    <th>C — Борг</th>
+                    <th>D — Площа, м²</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td class="text-muted">3</td>
+                    <td>74</td>
+                    <td>1010074</td>
+                    <td>1350.50</td>
+                    <td>52.30</td>
+                </tr>
+                </tbody>
+            </table>
+            <p class="mb-2 text-muted">
+                Колонка <b>D «Площа, м²»</b> обов'язкова — якщо хоча б один рядок без площі, файл не буде завантажено і ви побачите список рядків, які треба заповнити.
+            </p>
+            <a href="{{ path('app_admin_debt_example') }}" class="btn btn-sm btn-outline-primary">
+                ⬇️ Завантажити приклад .xlsx
+            </a>
+        </div>
 
         <form action="{{ path('app_admin_debt_upload') }}" method="post" enctype="multipart/form-data">
             <div class="form-group">
@@ -29,8 +58,8 @@
                         <li>Не знайдено в базі: {{ result.not_found }}</li>
                     </ul>
                     {% if result.missing|length > 0 %}
-                        <details>
-                            <summary>Не знайдені особові рахунки ({{ result.missing|length }})</summary>
+                        <details open>
+                            <summary>Деталі ({{ result.missing|length }})</summary>
                             <ul>
                                 {% for acc in result.missing %}
                                     <li>{{ acc }}</li>

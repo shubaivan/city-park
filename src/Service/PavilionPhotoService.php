@@ -44,6 +44,7 @@ class PavilionPhotoService
         private PavilionPhotoRepository $photoRepository,
         private PhotoUploadRequestRepository $requestRepository,
         private EntityManagerInterface $em,
+        private DebtPolicy $debtPolicy,
     ) {
         $this->uploadDir = rtrim($projectDir, '/') . '/public/uploads/pavilion-photos';
     }
@@ -294,7 +295,46 @@ class PavilionPhotoService
         $req->setResolvedAt(new \DateTime());
         $this->em->flush();
 
+        $this->maybeAutoUnblockAfterUpload($req);
+
         return $photo;
+    }
+
+    /**
+     * If a photo just cleared a request that had set blocked_at, restore the account's
+     * is_active flag — but only when (a) the account is currently inactive, (b) debt is
+     * within threshold, and (c) no OTHER open blocked request remains for this account.
+     * This handles the "user uploaded after auto-block" case so admins don't have to
+     * manually flip is_active in /admin/users.
+     */
+    private function maybeAutoUnblockAfterUpload(PhotoUploadRequest $req): void
+    {
+        if ($req->getBlockedAt() === null) {
+            return;
+        }
+
+        $account = $req->getAccount();
+        if ($account->isActive() === true) {
+            return;
+        }
+        if ($this->debtPolicy->isAccountBlocked($account)) {
+            return;
+        }
+
+        $remainingBlocked = $this->requestRepository->createQueryBuilder('r')
+            ->andWhere('r.account = :a')->setParameter('a', $account)
+            ->andWhere('r.resolved_at IS NULL')
+            ->andWhere('r.blocked_at IS NOT NULL')
+            ->andWhere('r.id != :id')->setParameter('id', $req->getId())
+            ->setMaxResults(1)
+            ->getQuery()->getOneOrNullResult();
+
+        if ($remainingBlocked !== null) {
+            return;
+        }
+
+        $account->setIsActive(true);
+        $this->em->flush();
     }
 
     /**

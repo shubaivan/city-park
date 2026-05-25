@@ -55,6 +55,8 @@ class UploadPhotoCommand extends Command
             $a->getSessionStartAt() <=> $b->getSessionStartAt());
         $request = $open[0];
 
+        $wasBlocked = $request->getBlockedAt() !== null && $account->isActive() === false;
+
         try {
             $this->saveLargestPhoto($bot, $request);
         } catch (\Doctrine\DBAL\Exception\UniqueConstraintViolationException $t) {
@@ -85,6 +87,13 @@ class UploadPhotoCommand extends Command
             ),
             parse_mode: ParseMode::HTML,
         );
+
+        if ($wasBlocked && $account->isActive() === true) {
+            $bot->sendMessage(
+                text: '✅ <b>Доступ до бронювання відновлено</b> — оскільки ви завантажили фото, ми зняли блокування з вашого акаунту. Можна знову бронювати.',
+                parse_mode: ParseMode::HTML,
+            );
+        }
 
         $remaining = array_slice($open, 1);
         if ($remaining) {

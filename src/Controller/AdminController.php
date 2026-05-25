@@ -23,6 +23,8 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
@@ -204,16 +206,41 @@ class AdminController extends AbstractController
             ->setMaxResults(50)
             ->getQuery()->getResult();
 
+        $allPhotos = $photoRepository->findAll();
+
         $photosByKey = [];
-        foreach ($photoRepository->findAll() as $photo) {
+        foreach ($allPhotos as $photo) {
             $key = $photo->getAccount()->getId() . ':' . $photo->getPavilion() . ':' . $photo->getSessionStartAt()->format('Y-m-d H:i');
             $photosByKey[$key] = $photo;
+        }
+
+        // For each open request, find any photo this account uploaded on the same
+        // calendar day in the same pavilion. Lets admin close the request using an
+        // adjacent-session photo when the family-pair edge case happens.
+        $candidatePhotosByReq = [];
+        foreach ($open as $req) {
+            $candidates = [];
+            $reqDay = $req->getSessionStartAt()->format('Y-m-d');
+            foreach ($allPhotos as $photo) {
+                if ($photo->getAccount()->getId() !== $req->getAccount()->getId()) {
+                    continue;
+                }
+                if ($photo->getPavilion() !== $req->getPavilion()) {
+                    continue;
+                }
+                if ($photo->getSessionStartAt()->format('Y-m-d') !== $reqDay) {
+                    continue;
+                }
+                $candidates[] = $photo;
+            }
+            $candidatePhotosByReq[$req->getId()] = $candidates;
         }
 
         return $this->render('admin/photo-requests.html.twig', [
             'open' => $open,
             'recent' => $recent,
             'photosByKey' => $photosByKey,
+            'candidatePhotosByReq' => $candidatePhotosByReq,
         ]);
     }
 
@@ -552,6 +579,48 @@ class AdminController extends AbstractController
         return $this->render('admin/debt.html.twig');
     }
 
+    #[Route('/admin/debt/example', name: 'app_admin_debt_example')]
+    public function debtExample(): Response
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Боржники');
+
+        $sheet->setCellValue('A1', 'Боржники (приклад файлу для завантаження)');
+        $sheet->mergeCells('A1:D1');
+        $sheet->getStyle('A1')->getFont()->setBold(true);
+
+        $sheet->setCellValue('A2', '№ кв.');
+        $sheet->setCellValue('B2', 'Особ. рах.');
+        $sheet->setCellValue('C2', 'Борг');
+        $sheet->setCellValue('D2', 'Площа, м²');
+        $sheet->getStyle('A2:D2')->getFont()->setBold(true);
+
+        $sheet->setCellValue('A3', '74');
+        $sheet->setCellValue('B3', '1010074');
+        $sheet->setCellValue('C3', 1350.50);
+        $sheet->setCellValue('D3', 52.30);
+
+        foreach (['A', 'B', 'C', 'D'] as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'debt_example_');
+        (new XlsxWriter($spreadsheet))->save($tmp);
+        $content = file_get_contents($tmp);
+        @unlink($tmp);
+
+        return new Response(
+            $content,
+            Response::HTTP_OK,
+            [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition' => 'attachment; filename="debtors-example.xlsx"',
+                'Content-Length' => (string)strlen($content),
+            ]
+        );
+    }
+
     #[Route('/admin/debt/upload', name: 'app_admin_debt_upload', methods: [Request::METHOD_POST])]
     public function uploadDebt(
         Request $request,
@@ -582,11 +651,15 @@ class AdminController extends AbstractController
         $worksheet = $spreadsheet->getActiveSheet();
 
         $debtData = [];
+        $areaData = [];
+        $missingArea = [];
         $processed = 0;
 
         foreach ($worksheet->getRowIterator(3) as $row) {
-            $accountNumber = $worksheet->getCell('B' . $row->getRowIndex())->getValue();
-            $debt = $worksheet->getCell('C' . $row->getRowIndex())->getValue();
+            $rowIndex = $row->getRowIndex();
+            $accountNumber = $worksheet->getCell('B' . $rowIndex)->getValue();
+            $debt = $worksheet->getCell('C' . $rowIndex)->getValue();
+            $area = $worksheet->getCell('D' . $rowIndex)->getValue();
 
             if ($accountNumber === null || $debt === null) {
                 continue;
@@ -597,8 +670,31 @@ class AdminController extends AbstractController
                 continue;
             }
 
+            if ($area === null || trim((string)$area) === '') {
+                $missingArea[] = sprintf('рядок %d (рах. %s)', $rowIndex, $accountNumber);
+                continue;
+            }
+
             $debtData[$accountNumber] = (float)$debt;
+            $areaData[$accountNumber] = (float)str_replace(',', '.', (string)$area);
             $processed++;
+        }
+
+        if (!empty($missingArea)) {
+            return $this->render('admin/debt.html.twig', [
+                'result' => [
+                    'success' => false,
+                    'processed' => 0,
+                    'updated' => 0,
+                    'not_found' => 0,
+                    'reset' => 0,
+                    'blocked' => 0,
+                    'missing' => array_merge(
+                        ['Колонка D (Площа, м²) є порожньою у наступних рядках — оновлення скасовано:'],
+                        $missingArea
+                    ),
+                ],
+            ]);
         }
 
         $logger->info('Debt upload: parsed rows', ['count' => $processed]);
@@ -612,6 +708,7 @@ class AdminController extends AbstractController
             $account = $accountRepository->findOneBy(['account_number' => $accountNumber]);
             if ($account) {
                 $account->setDebt((string)$debt);
+                $account->setArea(number_format($areaData[$accountNumber], 2, '.', ''));
                 $wasActive = $account->isActive();
 
                 if ($debtPolicy->isOverThreshold($debt)) {
