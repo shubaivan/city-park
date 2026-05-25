@@ -491,6 +491,16 @@ class AdminController extends AbstractController
             $unblockReason = $account['unblock_reason'] ?? null;
             unset($account['unblock_reason']);
 
+            // Normalize area: blank or invalid → leave existing value untouched.
+            if (isset($account['area'])) {
+                $areaInput = trim(str_replace(',', '.', (string)$account['area']));
+                if ($areaInput === '' || !is_numeric($areaInput) || (float)$areaInput <= 0) {
+                    unset($account['area']);
+                } else {
+                    $account['area'] = number_format((float)$areaInput, 2, '.', '');
+                }
+            }
+
             unset($params['account']);
             $accountContext = [];
             $isWasInActive = true;
@@ -599,6 +609,121 @@ class AdminController extends AbstractController
         return $this->render('admin/debt.html.twig');
     }
 
+    #[Route('/admin/area', name: 'app_admin_area', methods: [Request::METHOD_GET])]
+    public function area(EntityManagerInterface $em): Response
+    {
+        return $this->renderArea($em);
+    }
+
+    #[Route('/admin/area/upload', name: 'app_admin_area_upload', methods: [Request::METHOD_POST])]
+    public function uploadArea(
+        Request $request,
+        AccountRepository $accountRepository,
+        EntityManagerInterface $em,
+        LoggerInterface $logger,
+    ): Response {
+        /** @var UploadedFile|null $file */
+        $file = $request->files->get('area_file');
+
+        if (!$file || !$file->isValid()) {
+            return $this->renderArea($em, ['error' => 'Файл не завантажено або пошкоджено.']);
+        }
+
+        $spreadsheet = IOFactory::load($file->getPathname());
+
+        // The registry usually has multiple sheets. We pick the one whose row 1
+        // contains "Особовий" (the registry header).
+        $worksheet = null;
+        foreach ($spreadsheet->getAllSheets() as $sheet) {
+            $a1 = (string)$sheet->getCell('A1')->getValue();
+            $b1 = (string)$sheet->getCell('B1')->getValue();
+            $c1 = (string)$sheet->getCell('C1')->getValue();
+            if (
+                stripos($b1, 'особов') !== false
+                || stripos($c1, 'площ') !== false
+                || stripos($a1, 'id') !== false
+            ) {
+                $worksheet = $sheet;
+                break;
+            }
+        }
+        if ($worksheet === null) {
+            $worksheet = $spreadsheet->getActiveSheet();
+        }
+
+        $areaData = [];
+        $skipped = 0;
+        foreach ($worksheet->getRowIterator(2) as $row) {
+            $rowIndex = $row->getRowIndex();
+            $accountNumber = $worksheet->getCell('B' . $rowIndex)->getValue();
+            $area = $worksheet->getCell('C' . $rowIndex)->getValue();
+
+            if ($accountNumber === null || $area === null) {
+                continue;
+            }
+            $accountNumber = trim((string)$accountNumber);
+            $areaStr = trim((string)$area);
+            if ($accountNumber === '' || $areaStr === '') {
+                continue;
+            }
+
+            $areaFloat = (float)str_replace(',', '.', $areaStr);
+            if ($areaFloat <= 0) {
+                $skipped++;
+                continue;
+            }
+
+            $areaData[$accountNumber] = $areaFloat;
+        }
+
+        $updated = 0;
+        $notFound = [];
+        foreach ($areaData as $accountNumber => $area) {
+            $account = $accountRepository->findOneBy(['account_number' => $accountNumber]);
+            if (!$account) {
+                $notFound[] = $accountNumber;
+                continue;
+            }
+            $account->setArea(number_format($area, 2, '.', ''));
+            $em->persist($account);
+            $updated++;
+        }
+
+        $em->flush();
+
+        $logger->info('Area upload', [
+            'parsed' => count($areaData),
+            'updated' => $updated,
+            'not_found' => count($notFound),
+            'skipped' => $skipped,
+        ]);
+
+        return $this->renderArea($em, [
+            'success' => sprintf(
+                'Опрацьовано рядків: %d. Оновлено акаунтів: %d. Не знайдено в базі: %d. Пропущено (0/нечислових): %d.',
+                count($areaData),
+                $updated,
+                count($notFound),
+                $skipped
+            ),
+            'not_found' => $notFound,
+        ]);
+    }
+
+    private function renderArea(EntityManagerInterface $em, array $extra = []): Response
+    {
+        $stats = $em->createQuery(
+            'SELECT COUNT(a.id) AS total,
+                    SUM(CASE WHEN a.area IS NOT NULL AND a.area > 0 THEN 1 ELSE 0 END) AS with_area
+             FROM App\Entity\Account a'
+        )->getSingleResult();
+
+        return $this->render('admin/area.html.twig', array_merge([
+            'total' => (int)$stats['total'],
+            'with_area' => (int)$stats['with_area'],
+        ], $extra));
+    }
+
     #[Route('/admin/tariff', name: 'app_admin_tariff', methods: [Request::METHOD_GET])]
     public function tariff(TariffRepository $tariffRepository, EntityManagerInterface $em, DebtPolicy $debtPolicy): Response
     {
@@ -654,21 +779,19 @@ class AdminController extends AbstractController
         $sheet->setTitle('Боржники');
 
         $sheet->setCellValue('A1', 'Боржники (приклад файлу для завантаження)');
-        $sheet->mergeCells('A1:D1');
+        $sheet->mergeCells('A1:C1');
         $sheet->getStyle('A1')->getFont()->setBold(true);
 
         $sheet->setCellValue('A2', '№ кв.');
         $sheet->setCellValue('B2', 'Особ. рах.');
         $sheet->setCellValue('C2', 'Борг');
-        $sheet->setCellValue('D2', 'Площа, м²');
-        $sheet->getStyle('A2:D2')->getFont()->setBold(true);
+        $sheet->getStyle('A2:C2')->getFont()->setBold(true);
 
         $sheet->setCellValue('A3', '74');
         $sheet->setCellValue('B3', '1010074');
         $sheet->setCellValue('C3', 1350.50);
-        $sheet->setCellValue('D3', 52.30);
 
-        foreach (['A', 'B', 'C', 'D'] as $col) {
+        foreach (['A', 'B', 'C'] as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
@@ -718,15 +841,12 @@ class AdminController extends AbstractController
         $worksheet = $spreadsheet->getActiveSheet();
 
         $debtData = [];
-        $areaData = [];
-        $missingArea = [];
         $processed = 0;
 
         foreach ($worksheet->getRowIterator(3) as $row) {
             $rowIndex = $row->getRowIndex();
             $accountNumber = $worksheet->getCell('B' . $rowIndex)->getValue();
             $debt = $worksheet->getCell('C' . $rowIndex)->getValue();
-            $area = $worksheet->getCell('D' . $rowIndex)->getValue();
 
             if ($accountNumber === null || $debt === null) {
                 continue;
@@ -737,31 +857,8 @@ class AdminController extends AbstractController
                 continue;
             }
 
-            if ($area === null || trim((string)$area) === '') {
-                $missingArea[] = sprintf('рядок %d (рах. %s)', $rowIndex, $accountNumber);
-                continue;
-            }
-
             $debtData[$accountNumber] = (float)$debt;
-            $areaData[$accountNumber] = (float)str_replace(',', '.', (string)$area);
             $processed++;
-        }
-
-        if (!empty($missingArea)) {
-            return $this->render('admin/debt.html.twig', [
-                'result' => [
-                    'success' => false,
-                    'processed' => 0,
-                    'updated' => 0,
-                    'not_found' => 0,
-                    'reset' => 0,
-                    'blocked' => 0,
-                    'missing' => array_merge(
-                        ['Колонка D (Площа, м²) є порожньою у наступних рядках — оновлення скасовано:'],
-                        $missingArea
-                    ),
-                ],
-            ]);
         }
 
         $logger->info('Debt upload: parsed rows', ['count' => $processed]);
@@ -775,7 +872,6 @@ class AdminController extends AbstractController
             $account = $accountRepository->findOneBy(['account_number' => $accountNumber]);
             if ($account) {
                 $account->setDebt((string)$debt);
-                $account->setArea(number_format($areaData[$accountNumber], 2, '.', ''));
                 $wasActive = $account->isActive();
                 $accountThreshold = $debtPolicy->getThresholdFor($account);
 

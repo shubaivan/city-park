@@ -10,14 +10,13 @@
 
         <div class="alert alert-info">
             <p class="mb-2"><b>Формат файлу .xlsx</b> — дані починаються з <b>3-го рядка</b>, рядок 1 — заголовок, рядок 2 — назви колонок.</p>
-            <table class="table table-bordered table-sm mb-2" style="max-width:560px;background:#fff">
+            <table class="table table-bordered table-sm mb-2" style="max-width:480px;background:#fff">
                 <thead>
                 <tr class="table-light">
                     <th style="width:48px">#</th>
                     <th>A — № кв.</th>
                     <th>B — Особ. рах.</th>
                     <th>C — Борг</th>
-                    <th>D — Площа, м²</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -26,12 +25,11 @@
                     <td>74</td>
                     <td>1010074</td>
                     <td>1350.50</td>
-                    <td>52.30</td>
                 </tr>
                 </tbody>
             </table>
             <p class="mb-2 text-muted">
-                Колонка <b>D «Площа, м²»</b> обов'язкова — якщо хоча б один рядок без площі, файл не буде завантажено і ви побачите список рядків, які треба заповнити.
+                Площа квартир оновлюється окремо — через <a href="{{ path('app_admin_area') }}">/admin/area</a> (один реєстр на всі акаунти).
             </p>
             <a href="{{ path('app_admin_debt_example') }}" class="btn btn-sm btn-outline-primary">
                 ⬇️ Завантажити приклад .xlsx
@@ -53,7 +51,7 @@
                     <ul>
                         <li>Оброблено рядків: {{ result.processed }}</li>
                         <li>Оновлено акаунтів: {{ result.updated }}</li>
-                        <li>Заблоковано (борг більший за персональний поріг квартири, формула <code>площа × ціна за 1 м² × 1.5</code>): <b style="color:red">{{ result.blocked }}</b></li>
+                        <li>Заблоковано (борг більший за персональний поріг квартири): <b style="color:red">{{ result.blocked }}</b></li>
                         <li>Скинуто борг (не в файлі): <b style="color:green">{{ result.reset }}</b></li>
                         <li>Не знайдено в базі: {{ result.not_found }}</li>
                     </ul>

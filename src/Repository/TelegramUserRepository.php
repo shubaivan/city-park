@@ -214,6 +214,7 @@ class TelegramUserRepository extends ServiceEntityRepository
                 a.street,
                 a.is_active,
                 a.debt,
+                a.area,
                 a.owner_group_id,
                 tu.phone_number,
                 tu.additional_phones,

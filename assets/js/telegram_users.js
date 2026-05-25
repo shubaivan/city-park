@@ -142,6 +142,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     form.find('#apartment_number').val(data.apartment_number)
                     form.find('#house_number').val(data.house_number)
                     form.find('#street').val(data.street)
+                    form.find('#area').val(data.area || '')
                     form.find('#is_active').prop('checked', data.is_active)
 
                     // Track initial blocked state so we know if the save will be

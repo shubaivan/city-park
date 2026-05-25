@@ -1,0 +1,67 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Площі квартир{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    <div class="container mt-4">
+        <h3>📐 Площі квартир — реєстр</h3>
+
+        <div class="alert alert-info">
+            <p class="mb-2"><b>Що це:</b> один XLSX-файл з реєстром усіх особових рахунків і їхньої площі. Завантажується окремо від файлу боржників — тут не треба нічого міняти, поки бухгалтерія не випустила оновлений реєстр.</p>
+            <p class="mb-2"><b>Формат файлу:</b> сторінка <code>Лист1</code> (або перша вкладка з підходящим заголовком). Дані починаються з <b>2-го рядка</b>.</p>
+            <table class="table table-bordered table-sm mb-2" style="max-width:520px;background:#fff">
+                <thead>
+                <tr class="table-light">
+                    <th style="width:48px">#</th>
+                    <th>A — ID реєстру</th>
+                    <th>B — Особовий рахунок</th>
+                    <th>C — Загальна площа</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td class="text-muted">2</td>
+                    <td>891439</td>
+                    <td>117091</td>
+                    <td>18.8</td>
+                </tr>
+                </tbody>
+            </table>
+            <p class="mb-0 text-muted">
+                Парсер ігнорує колонку A (ID) — нас цікавить лише <b>B</b> (особ. рах.) і <b>C</b> (площа). Інші вкладки книжки (типу «Sheet1» з юридичними довідниками) пропускаються автоматично.
+            </p>
+        </div>
+
+        <div class="alert alert-light">
+            📊 У базі зараз <b>{{ with_area }}</b> з <b>{{ total }}</b> акаунтів мають заповнену площу.
+        </div>
+
+        {% if success is defined %}
+            <div class="alert alert-success">{{ success }}</div>
+        {% endif %}
+        {% if error is defined %}
+            <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+        {% if not_found is defined and not_found|length > 0 %}
+            <details>
+                <summary>Особові рахунки з файлу, яких немає в базі ({{ not_found|length }})</summary>
+                <ul>
+                    {% for acc in not_found %}<li>{{ acc }}</li>{% endfor %}
+                </ul>
+            </details>
+        {% endif %}
+
+        <form action="{{ path('app_admin_area_upload') }}" method="post" enctype="multipart/form-data" class="mt-3">
+            <div class="form-group">
+                <label for="area_file">Файл реєстру (.xlsx)</label>
+                <input type="file" class="form-control-file" id="area_file" name="area_file" accept=".xlsx" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Завантажити та оновити</button>
+            <a href="{{ path('app_admin') }}" class="btn btn-link">← Назад</a>
+        </form>
+
+        <p class="text-muted mt-3"><small>Можна також редагувати площу окремого акаунта вручну у <a href="{{ path('app_admin_users') }}">/admin/users</a> через кнопку «Редагувати».</small></p>
+    </div>
+{% endblock %}
