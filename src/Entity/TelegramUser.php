@@ -23,6 +23,8 @@ class TelegramUser
         'street',
         'is_active',
         'debt',
+        'area',
+        'debt_threshold',
         'phone_number',
         'additional_phones',
         'first_name',

@@ -281,10 +281,27 @@ class AdminController extends AbstractController
     }
 
     #[Route('/admin/users/data-table', name: 'admin-users-data-table', options: ['expose' => true])]
-    public function getUsersDataTable(TelegramUserRepository $repository, Request $request)
-    {
+    public function getUsersDataTable(
+        TelegramUserRepository $repository,
+        AccountRepository $accountRepository,
+        DebtPolicy $debtPolicy,
+        Request $request,
+    ) {
         $dataTable = $repository
             ->getDataTablesData($request->request->all());
+
+        foreach ($dataTable as &$row) {
+            $accNum = $row['account_number'] ?? null;
+            if ($accNum === null) {
+                $row['debt_threshold'] = null;
+                continue;
+            }
+            $account = $accountRepository->findOneBy(['account_number' => $accNum]);
+            $row['debt_threshold'] = $account
+                ? number_format($debtPolicy->getThresholdFor($account), 2, '.', '')
+                : null;
+        }
+        unset($row);
 
         return $this->json(
             array_merge(
@@ -305,6 +322,9 @@ class AdminController extends AbstractController
         int $id,
         TelegramUserRepository $repository,
         AccountRepository $accountRepository,
+        TariffRepository $tariffRepository,
+        DebtPolicy $debtPolicy,
+        EntityManagerInterface $em,
     ): JsonResponse
     {
         $telegramUser = $repository->getUserInfoById($id);
@@ -314,9 +334,14 @@ class AdminController extends AbstractController
         }
 
         $telegramUser['group_siblings'] = [];
+        $telegramUser['debt_threshold'] = null;
+        $telegramUser['tariff_price_per_meter'] = (float)$tariffRepository->getOrCreate($em)->getPricePerMeter();
+        $telegramUser['fallback_threshold'] = $debtPolicy->getThreshold();
+
         if (!empty($telegramUser['account_id'])) {
             $account = $accountRepository->find($telegramUser['account_id']);
             if ($account) {
+                $telegramUser['debt_threshold'] = number_format($debtPolicy->getThresholdFor($account), 2, '.', '');
                 foreach ($accountRepository->findGroupSiblings($account) as $sibling) {
                     if ($sibling->getId() === $account->getId()) {
                         continue;
@@ -572,7 +597,8 @@ class AdminController extends AbstractController
                 'photo' => "✅ <b>Доступ до бронювання відновлено.</b>\n\n"
                     . "Дякуємо за надіслане фото — обмеження знято. Можна знову бронювати.",
                 'debt' => "✅ <b>Доступ до бронювання відновлено.</b>\n\n"
-                    . "Борг сплачено — обмеження знято. Можна знову бронювати.",
+                    . "Борг сплачено — обмеження знято. Можна знову бронювати.\n\n"
+                    . "<i>Нагадуємо: блок вмикається автоматично, якщо борг перевищить персональний поріг (площа × тариф ОСББ × 1.5, тобто 150% місячної плати).</i>",
                 default => "✅ <b>Доступ до бронювання відновлено.</b>\n\nМожна знову бронювати.",
             };
 
@@ -886,7 +912,10 @@ class AdminController extends AbstractController
                                 try {
                                     $bot->sendMessage(
                                         text: sprintf(
-                                            "🚫 Вас <b>ЗАБЛОКОВАНО</b> через борг: <b>%s грн</b>\n\nПерсональний поріг для вашої квартири — %s грн (150%% від місячної плати).\n\nСплатіть заборгованість для відновлення доступу до бронювання.",
+                                            "🚫 Вас <b>ЗАБЛОКОВАНО</b> через борг: <b>%s грн</b>\n\n"
+                                            . "Персональний поріг для вашої квартири: <b>%s грн</b>\n"
+                                            . "<i>(площа × тариф ОСББ × 1.5 = 150%% місячної плати)</i>\n\n"
+                                            . "Сплатіть заборгованість, щоб поновити доступ до бронювання.",
                                             number_format($debt, 2, '.', ' '),
                                             number_format($accountThreshold, 2, '.', ' ')
                                         ),
@@ -943,7 +972,8 @@ class AdminController extends AbstractController
                     if ($user->getChatId()) {
                         try {
                             $bot->sendMessage(
-                                text: "✅ Ваш борг <b>погашено</b>. Доступ до бронювання відновлено!",
+                                text: "✅ Ваш борг <b>повністю погашено</b> — доступ до бронювання відновлено.\n\n"
+                                    . "<i>Нагадуємо: блок вмикається автоматично, якщо борг перевищить персональний поріг (площа × тариф ОСББ × 1.5, тобто 150% місячної плати).</i>",
                                 chat_id: $user->getChatId(),
                                 parse_mode: ParseMode::HTML
                             );

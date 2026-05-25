@@ -27,8 +27,32 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
+    // area column (index 7)
+    common_defs.push({
+        "targets": 7,
+        "render": function (data, type, row, meta) {
+            if (data && parseFloat(data) > 0) {
+                return parseFloat(data).toFixed(2) + ' м²';
+            }
+            return '<span class="text-muted">—</span>';
+        }
+    });
+
+    // debt_threshold column (index 8) — computed server-side
     common_defs.push({
         "targets": 8,
+        "orderable": false,
+        "render": function (data, type, row, meta) {
+            if (data && parseFloat(data) > 0) {
+                return '<b>' + parseFloat(data).toFixed(2) + ' грн</b>';
+            }
+            return '<span class="text-muted">—</span>';
+        }
+    });
+
+    // additional_phones column (index 10 after area/threshold insertion)
+    common_defs.push({
+        "targets": 10,
         "orderable": false,
         "render": function (data, type, row, meta) {
             var divTag = $('<div/>');
@@ -45,8 +69,9 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
+    // action column (was 14, now 16 with area + threshold added)
     common_defs.push({
-        "targets": 14,
+        "targets": 16,
         data: 'action',
         render: function (data, type, row, meta) {
             return '    <!-- Button trigger modal -->\n' +
@@ -61,6 +86,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .generate('admin-users-data-table');
 
     let debtFilter = false;
+    let accountNumberFilter = '';
 
     table = $('#telegramUserTable').DataTable({
         'order': [[0, 'desc']],
@@ -73,20 +99,40 @@ document.addEventListener("DOMContentLoaded", function () {
             'url': collectionData,
             "data": function ( d ) {
                 d.debt_filter = debtFilter ? '1' : '0';
-                console.log('ajax data', d);
+                d.account_number_filter = accountNumberFilter;
             }
         },
         columns: th_keys,
         "columnDefs": common_defs
     });
 
-    // Add debt filter button
+    // Toolbar: account-number exact-match input + debt filter button
+    var filterContainer = $('#telegramUserTable_wrapper .dataTables_filter, #telegramUserTable_wrapper .dt-search');
+
+    var accountInput = $('<input/>', {
+        type: 'text',
+        id: 'accountNumberFilterInput',
+        placeholder: 'Особовий рахунок (точний пошук)',
+        class: 'form-control form-control-sm d-inline-block ml-2 mb-2',
+        style: 'width: 240px'
+    });
+    filterContainer.append(accountInput);
+
+    let accountDebounce;
+    accountInput.on('input', function () {
+        const val = $(this).val().trim();
+        clearTimeout(accountDebounce);
+        accountDebounce = setTimeout(function () {
+            accountNumberFilter = val;
+            table.ajax.reload();
+        }, 350);
+    });
+
     var filterBtn = $('<button/>', {
         'class': 'btn btn-warning ml-2 mb-2',
         'id': 'debtFilterBtn',
         'text': 'Показати боржників'
     });
-    var filterContainer = $('#telegramUserTable_wrapper .dataTables_filter, #telegramUserTable_wrapper .dt-search');
     filterContainer.append(filterBtn);
 
     filterBtn.on('click', function () {
@@ -144,6 +190,28 @@ document.addEventListener("DOMContentLoaded", function () {
                     form.find('#street').val(data.street)
                     form.find('#area').val(data.area || '')
                     form.find('#is_active').prop('checked', data.is_active)
+
+                    // Personal debt threshold — initial value from server, plus
+                    // live recompute as admin edits area in the modal.
+                    const tariffPrice = parseFloat(data.tariff_price_per_meter || 0);
+                    const fallback = parseFloat(data.fallback_threshold || 1300);
+                    function renderThreshold(areaVal) {
+                        const a = parseFloat((areaVal || '').toString().replace(',', '.'));
+                        let text;
+                        if (isFinite(a) && a > 0 && tariffPrice > 0) {
+                            const t = (a * tariffPrice * 1.5).toFixed(2);
+                            text = '<b>' + t + ' грн</b>  <small class="text-muted">(' + a.toFixed(2) + ' м² × ' + tariffPrice.toFixed(2) + ' грн × 1.5)</small>';
+                        } else if (isFinite(a) && a > 0 && tariffPrice <= 0) {
+                            text = '<b class="text-warning">' + fallback.toFixed(2) + ' грн</b>  <small class="text-muted">(тариф не задано → запасний поріг)</small>';
+                        } else {
+                            text = '<b class="text-warning">' + fallback.toFixed(2) + ' грн</b>  <small class="text-muted">(площа не задана → запасний поріг)</small>';
+                        }
+                        form.find('#debt_threshold_display').html(text);
+                    }
+                    renderThreshold(data.area);
+                    form.find('#area').off('input.thresholdRecompute').on('input.thresholdRecompute', function () {
+                        renderThreshold($(this).val());
+                    });
 
                     // Track initial blocked state so we know if the save will be
                     // a blocked→active transition. Show the reason picker accordingly.

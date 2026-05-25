@@ -122,6 +122,7 @@ class TelegramUserRepository extends ServiceEntityRepository
                 a.street,
                 a.is_active,
                 a.debt,
+                a.area,
                 b.phone_number,
                 b.additional_phones,
                 b.first_name,
@@ -155,6 +156,11 @@ class TelegramUserRepository extends ServiceEntityRepository
 
         if (isset($params['debt_filter']) && $params['debt_filter'] === '1' && !$total) {
             $conditions[] = 'a.debt > 0';
+        }
+
+        if (!$total && !empty($params['account_number_filter'])) {
+            $conditions[] = 'a.account_number = :exact_account_number';
+            $bindParams['exact_account_number'] = trim((string)$params['account_number_filter']);
         }
 
         if (count($conditions)) {

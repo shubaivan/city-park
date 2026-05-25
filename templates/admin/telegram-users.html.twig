@@ -64,6 +64,11 @@
                             <small class="form-text text-muted">Заповнюйте вручну тільки якщо реєстру немає у файлі. Інакше використовуйте <a href="{{ path('app_admin_area') }}">/admin/area</a>.</small>
                         </div>
                         <div class="form-group">
+                            <label class="col-form-label">Персональний поріг блокування за борг</label>
+                            <p id="debt_threshold_display" class="form-control-plaintext"><b>—</b></p>
+                            <small id="debt_threshold_formula" class="form-text text-muted">Формула: площа × тариф ОСББ × 1.5 (150% місячної плати). Якщо площа не задана — діє запасний поріг.</small>
+                        </div>
+                        <div class="form-group">
                             <label for="is_active" class="col-form-label">Статус</label>
                             <input type="checkbox" value="" id="is_active" class="form-control" name="account[is_active]"/>
                         </div>
