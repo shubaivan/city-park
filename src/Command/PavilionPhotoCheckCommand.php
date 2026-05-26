@@ -41,13 +41,15 @@ class PavilionPhotoCheckCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $now = SchedulePavilionService::createNewDate();
 
+        $this->log($io, sprintf('=== photo:check tick @ %s ===', $now->format('Y-m-d H:i:s P')));
+
         try {
             $this->materializeRequests($io, $now);
             $this->processOpenRequests($io, $now);
-            $io->success('photo:check complete');
+            $this->log($io, 'tick complete');
         } catch (\Throwable $t) {
             $this->logger->error('pavilion:photo:check failed: ' . $t->getMessage(), ['exception' => $t]);
-            $io->error($t->getMessage());
+            $this->log($io, 'FAILED: ' . $t->getMessage());
             return Command::FAILURE;
         }
 
@@ -57,15 +59,45 @@ class PavilionPhotoCheckCommand extends Command
     private function materializeRequests(SymfonyStyle $io, \DateTime $now): void
     {
         $sessions = $this->photoService->findSessionsNeedingPhotos($now);
+        $created = 0;
+        $reused = 0;
+        $autoResolved = 0;
+
         foreach ($sessions as $s) {
-            $this->photoService->ensureRequest(
+            $result = $this->photoService->ensureRequest(
                 $s['account'],
                 $s['pavilion'],
                 $s['start'],
                 $s['end'],
             );
+            $req = $result['request'];
+
+            $tag = 'reused';
+            if ($result['created']) {
+                $tag = $result['preResolvedByPhoto'] ? 'created+auto-resolved' : 'created';
+                $result['preResolvedByPhoto'] ? $autoResolved++ : $created++;
+            } else {
+                $reused++;
+            }
+
+            $this->log($io, sprintf(
+                '  materialise: acc=%d pav=%d session=%s..%s -> req#%d (%s)',
+                $s['account']->getId(),
+                $s['pavilion'],
+                $s['start']->format('Y-m-d H:i'),
+                $s['end']->format('Y-m-d H:i'),
+                $req->getId(),
+                $tag,
+            ));
         }
-        $io->writeln(sprintf('Sessions discovered: %d', count($sessions)));
+
+        $this->log($io, sprintf(
+            'Materialise summary: %d sessions seen — %d new, %d reused, %d auto-resolved by existing photo',
+            count($sessions),
+            $created,
+            $reused,
+            $autoResolved,
+        ));
     }
 
     private function processOpenRequests(SymfonyStyle $io, \DateTime $now): void
@@ -80,6 +112,14 @@ class PavilionPhotoCheckCommand extends Command
                 if ($this->sendReminder($req, $dueReminder)) {
                     $this->photoService->markReminderSent($req, $now);
                     $reminded++;
+                    $this->log($io, sprintf(
+                        '  reminder %d/%d sent: req#%d acc=%d session=%s',
+                        $dueReminder,
+                        count(PavilionPhotoService::REMINDER_OFFSETS_MIN),
+                        $req->getId(),
+                        $req->getAccount()->getId(),
+                        $req->getSessionStartAt()->format('Y-m-d H:i'),
+                    ));
                 }
                 continue;
             }
@@ -87,10 +127,27 @@ class PavilionPhotoCheckCommand extends Command
             if ($this->photoService->shouldBlock($req, $now)) {
                 $this->blockAccount($req, $now);
                 $blocked++;
+                $this->log($io, sprintf(
+                    '  BLOCKED: req#%d acc=%d session=%s pav=%d',
+                    $req->getId(),
+                    $req->getAccount()->getId(),
+                    $req->getSessionStartAt()->format('Y-m-d H:i'),
+                    $req->getPavilion(),
+                ));
             }
         }
 
-        $io->writeln(sprintf('Reminders sent: %d, accounts blocked: %d', $reminded, $blocked));
+        $this->log($io, sprintf(
+            'Process summary: %d open requests — %d reminded, %d blocked',
+            count($open),
+            $reminded,
+            $blocked,
+        ));
+    }
+
+    private function log(SymfonyStyle $io, string $line): void
+    {
+        $io->writeln(sprintf('[%s] %s', (new \DateTime())->format('Y-m-d H:i:s'), $line));
     }
 
     private function sendReminder(PhotoUploadRequest $req, int $reminderNumber): bool

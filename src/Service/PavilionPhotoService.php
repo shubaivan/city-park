@@ -147,14 +147,17 @@ class PavilionPhotoService
         return $candidates;
     }
 
-    public function ensureRequest(Account $account, int $pavilion, \DateTime $start, \DateTime $end): PhotoUploadRequest
+    /**
+     * @return array{request:PhotoUploadRequest, created:bool, preResolvedByPhoto:bool}
+     */
+    public function ensureRequest(Account $account, int $pavilion, \DateTime $start, \DateTime $end): array
     {
-        $existing = $this->requestRepository->findForSession($account, $pavilion, $start);
+        $existing = $this->requestRepository->findForSession($account, $pavilion, $start, $end);
         if ($existing) {
-            return $existing;
+            return ['request' => $existing, 'created' => false, 'preResolvedByPhoto' => false];
         }
 
-        $photo = $this->photoRepository->findForSession($account, $pavilion, $start);
+        $photo = $this->photoRepository->findForSession($account, $pavilion, $start, $end);
 
         $req = new PhotoUploadRequest();
         $req->setAccount($account);
@@ -168,7 +171,7 @@ class PavilionPhotoService
         $this->em->persist($req);
         $this->em->flush();
 
-        return $req;
+        return ['request' => $req, 'created' => true, 'preResolvedByPhoto' => $photo !== null];
     }
 
     /**

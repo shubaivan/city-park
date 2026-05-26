@@ -17,12 +17,21 @@ class PavilionPhotoRepository extends ServiceEntityRepository
         parent::__construct($registry, PavilionPhoto::class);
     }
 
-    public function findForSession(Account $account, int $pavilion, \DateTimeInterface $sessionStartAt): ?PavilionPhoto
+    /**
+     * Find any photo whose session window fully covers the candidate window.
+     *
+     * One physical session (e.g. 18-21) can yield multiple request rows for sub-windows
+     * (18-21, 19-21, 20-21) as the materializer's lookback shrinks the detected session.
+     * The photo's recorded window covers all sub-windows, so "covers" is the right match
+     * to mark each shorter request as already-fulfilled.
+     */
+    public function findForSession(Account $account, int $pavilion, \DateTimeInterface $sessionStartAt, \DateTimeInterface $sessionEndAt): ?PavilionPhoto
     {
         return $this->createQueryBuilder('p')
             ->andWhere('p.account = :account')->setParameter('account', $account)
             ->andWhere('p.pavilion = :pavilion')->setParameter('pavilion', $pavilion)
-            ->andWhere('p.session_start_at = :start')->setParameter('start', $sessionStartAt)
+            ->andWhere('p.session_start_at <= :start')->setParameter('start', $sessionStartAt)
+            ->andWhere('p.session_end_at >= :end')->setParameter('end', $sessionEndAt)
             ->setMaxResults(1)
             ->getQuery()
             ->getOneOrNullResult();
