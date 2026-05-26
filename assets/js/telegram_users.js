@@ -233,19 +233,28 @@ document.addEventListener("DOMContentLoaded", function () {
                         $blockReason.empty().closest('.form-group').hide();
                     }
 
-                    // Track initial blocked state so we know if the save will be
-                    // a blocked→active transition. Show the reason picker accordingly.
+                    // Track initial blocked state so we know which reason picker to show.
+                    // unblock_reason appears on blocked→active; block_reason appears on
+                    // active→blocked. Both feed into the bot notification text.
                     let wasBlocked = !data.is_active;
-                    let $reasonGroup = form.find('#unblock_reason_group');
-                    let $reasonSelect = form.find('#unblock_reason');
-                    $reasonSelect.val('');
-                    $reasonGroup.toggle(wasBlocked);
+                    let $unblockGroup = form.find('#unblock_reason_group');
+                    let $unblockSelect = form.find('#unblock_reason');
+                    let $blockGroup = form.find('#block_reason_group');
+                    let $blockSelect = form.find('#block_reason');
+                    $unblockSelect.val('');
+                    $blockSelect.val('');
+                    $unblockGroup.toggle(wasBlocked);
+                    $blockGroup.hide();
 
-                    form.find('#is_active').off('change.unblockReason').on('change.unblockReason', function () {
+                    form.find('#is_active').off('change.statusReason').on('change.statusReason', function () {
                         let nowChecked = $(this).is(':checked');
-                        $reasonGroup.toggle(wasBlocked && nowChecked);
+                        $unblockGroup.toggle(wasBlocked && nowChecked);
+                        $blockGroup.toggle(!wasBlocked && !nowChecked);
                         if (!nowChecked) {
-                            $reasonSelect.val('');
+                            $unblockSelect.val('');
+                        }
+                        if (nowChecked) {
+                            $blockSelect.val('');
                         }
                     });
 

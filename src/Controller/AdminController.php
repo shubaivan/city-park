@@ -525,9 +525,10 @@ class AdminController extends AbstractController
                 $account['is_active'] = false;
             }
 
-            // unblock_reason is admin-only metadata, not an Account field.
+            // unblock_reason / block_reason are admin-only metadata, not Account fields.
             $unblockReason = $account['unblock_reason'] ?? null;
-            unset($account['unblock_reason']);
+            $blockReason = $account['block_reason'] ?? null;
+            unset($account['unblock_reason'], $account['block_reason']);
 
             // Normalize area: blank or invalid → leave existing value untouched.
             if (isset($account['area'])) {
@@ -619,11 +620,28 @@ class AdminController extends AbstractController
         }
 
         if (isset($isWasInActive) && !$isWasInActive && $updatedUser->getAccount() && !$updatedUser->getAccount()->isActive()) {
+            $logger->info('Admin block', [
+                'account_id' => $updatedUser->getAccount()->getId(),
+                'account_number' => $updatedUser->getAccount()->getAccountNumber(),
+                'reason' => $blockReason ?: 'unspecified',
+            ]);
+
+            $blockText = match ($blockReason) {
+                'debt' => "⛔ <b>Ваш аккаунт заблоковано</b>\n\n"
+                    . "Причина: <b>борг</b> — сума перевищила персональний поріг (площа × тариф ОСББ × 1.5).\n\n"
+                    . "Зверніться до Аліни Бухгалтера для розблокування — +380 93 658 32 02.",
+                'photo' => "⛔ <b>Ваш аккаунт заблоковано</b>\n\n"
+                    . "Причина: не завантажене фото після бронювання.\n\n"
+                    . "Зверніться до Аліни Бухгалтера для розблокування — +380 93 658 32 02.",
+                default => "⛔ <b>Ваш аккаунт заблоковано</b>\n\n"
+                    . "Зверніться до Аліни Бухгалтера для уточнення причини та розблокування — +380 93 658 32 02.",
+            };
+
             $this->notifyAccountUsers(
                 $bot,
                 $logger,
                 $updatedUser->getAccount(),
-                'Вас <b>ЗАБЛОКУВАЛИ</b> тепер НЕ можете броювати',
+                $blockText,
                 'block',
             );
         }
