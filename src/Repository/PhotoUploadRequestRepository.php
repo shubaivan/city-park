@@ -60,4 +60,20 @@ class PhotoUploadRequestRepository extends ServiceEntityRepository
     {
         return $this->findOpen($account);
     }
+
+    /**
+     * Earliest open request that has already crossed the block threshold for this account.
+     * Used to attribute "why is this account blocked?" in /admin/users.
+     */
+    public function findEarliestBlockedOpen(Account $account): ?PhotoUploadRequest
+    {
+        return $this->createQueryBuilder('r')
+            ->andWhere('r.account = :account')->setParameter('account', $account)
+            ->andWhere('r.resolved_at IS NULL')
+            ->andWhere('r.blocked_at IS NOT NULL')
+            ->orderBy('r.session_start_at', 'ASC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
 }

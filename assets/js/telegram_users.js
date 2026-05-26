@@ -10,10 +10,17 @@ document.addEventListener("DOMContentLoaded", function () {
         "targets": 5,
         "render": function (data, type, row, meta) {
             if (data === true) {
-                return '<b>Активний</b>;'
-            } else {
-                return '<b>Заблокований</b>';
+                return '<b style="color:#0a7c2f;">Активний</b>';
             }
+            var html = '<b style="color:#c00;">Заблокований</b>';
+            if (row.block_reason_label) {
+                html += '<br><small><b>' + row.block_reason_label + '</b>';
+                if (row.block_reason_details) {
+                    html += '<br><span class="text-muted">' + row.block_reason_details + '</span>';
+                }
+                html += '</small>';
+            }
+            return html;
         }
     });
 
@@ -212,6 +219,19 @@ document.addEventListener("DOMContentLoaded", function () {
                     form.find('#area').off('input.thresholdRecompute').on('input.thresholdRecompute', function () {
                         renderThreshold($(this).val());
                     });
+
+                    // Surface the derived block reason (debt / photo-miss / manual)
+                    // so admins don't have to guess why the account is currently inactive.
+                    let $blockReason = form.find('#block_reason_display');
+                    if (!data.is_active && data.block_reason_label) {
+                        let text = '<b>' + data.block_reason_label + '</b>';
+                        if (data.block_reason_details) {
+                            text += '<br><small class="text-muted">' + data.block_reason_details + '</small>';
+                        }
+                        $blockReason.html(text).closest('.form-group').show();
+                    } else {
+                        $blockReason.empty().closest('.form-group').hide();
+                    }
 
                     // Track initial blocked state so we know if the save will be
                     // a blocked→active transition. Show the reason picker accordingly.

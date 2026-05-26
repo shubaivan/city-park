@@ -11,6 +11,7 @@ use App\Repository\PhotoUploadRequestRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Repository\TariffRepository;
 use App\Repository\TelegramUserRepository;
+use App\Service\BlockReasonResolver;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
 use App\Service\SchedulePavilionService;
@@ -285,6 +286,7 @@ class AdminController extends AbstractController
         TelegramUserRepository $repository,
         AccountRepository $accountRepository,
         DebtPolicy $debtPolicy,
+        BlockReasonResolver $blockReasonResolver,
         Request $request,
     ) {
         $dataTable = $repository
@@ -294,12 +296,17 @@ class AdminController extends AbstractController
             $accNum = $row['account_number'] ?? null;
             if ($accNum === null) {
                 $row['debt_threshold'] = null;
+                $row['block_reason_label'] = null;
+                $row['block_reason_details'] = null;
                 continue;
             }
             $account = $accountRepository->findOneBy(['account_number' => $accNum]);
             $row['debt_threshold'] = $account
                 ? number_format($debtPolicy->getThresholdFor($account), 2, '.', '')
                 : null;
+            $reason = $blockReasonResolver->resolve($account);
+            $row['block_reason_label'] = $reason['label'] ?? null;
+            $row['block_reason_details'] = $reason['details'] ?? null;
         }
         unset($row);
 
@@ -324,6 +331,7 @@ class AdminController extends AbstractController
         AccountRepository $accountRepository,
         TariffRepository $tariffRepository,
         DebtPolicy $debtPolicy,
+        BlockReasonResolver $blockReasonResolver,
         EntityManagerInterface $em,
     ): JsonResponse
     {
@@ -337,11 +345,16 @@ class AdminController extends AbstractController
         $telegramUser['debt_threshold'] = null;
         $telegramUser['tariff_price_per_meter'] = (float)$tariffRepository->getOrCreate($em)->getPricePerMeter();
         $telegramUser['fallback_threshold'] = $debtPolicy->getThreshold();
+        $telegramUser['block_reason_label'] = null;
+        $telegramUser['block_reason_details'] = null;
 
         if (!empty($telegramUser['account_id'])) {
             $account = $accountRepository->find($telegramUser['account_id']);
             if ($account) {
                 $telegramUser['debt_threshold'] = number_format($debtPolicy->getThresholdFor($account), 2, '.', '');
+                $reason = $blockReasonResolver->resolve($account);
+                $telegramUser['block_reason_label'] = $reason['label'] ?? null;
+                $telegramUser['block_reason_details'] = $reason['details'] ?? null;
                 foreach ($accountRepository->findGroupSiblings($account) as $sibling) {
                     if ($sibling->getId() === $account->getId()) {
                         continue;
