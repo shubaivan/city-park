@@ -24,6 +24,15 @@ class PavilionPhotoService
     public const REMINDER_OFFSETS_MIN = [5, 15];
     public const BLOCK_AFTER_MIN = 20;
 
+    /**
+     * Grace window AFTER auto-block during which the user can still upload a photo
+     * via the bot and trigger auto-unblock. Past this window the photo upload is
+     * rejected — the obligation must be resolved by an admin. Counted from the
+     * actual block instant (so night-deferred sessions get a fair 15 min after
+     * the morning block fires, not 35 min from the literal session end at night).
+     */
+    public const UPLOAD_GRACE_AFTER_BLOCK_MIN = 15;
+
     /** Reminders that would fire between 23:00 and 09:00 Kyiv time are deferred to 09:00. */
     public const NIGHT_START_HOUR = 23;
     public const NIGHT_END_HOUR = 9;
@@ -232,10 +241,34 @@ class PavilionPhotoService
             return false;
         }
 
-        $blockAt = $this->sessionEndKyiv($req)->modify('+' . self::BLOCK_AFTER_MIN . ' minutes');
-        $blockAt = $this->deferIfNight($blockAt);
+        return $now >= $this->blockAt($req);
+    }
 
-        return $now >= $blockAt;
+    /**
+     * Wall-clock instant at which auto-block fires for a given request, with night-deferral.
+     */
+    public function blockAt(PhotoUploadRequest $req): \DateTime
+    {
+        $blockAt = $this->sessionEndKyiv($req)->modify('+' . self::BLOCK_AFTER_MIN . ' minutes');
+        return $this->deferIfNight($blockAt);
+    }
+
+    /**
+     * Latest instant at which a user-initiated photo upload is still accepted for
+     * auto-unblock. Past this cutoff the bot refuses the upload and points the
+     * user at the accountant. Computed from the actual (deferred) block instant
+     * + UPLOAD_GRACE_AFTER_BLOCK_MIN, so night-deferred sessions get a fair
+     * grace window after the morning block fires.
+     */
+    public function uploadCutoffAt(PhotoUploadRequest $req): \DateTime
+    {
+        return (clone $this->blockAt($req))
+            ->modify('+' . self::UPLOAD_GRACE_AFTER_BLOCK_MIN . ' minutes');
+    }
+
+    public function isUploadStillAllowed(PhotoUploadRequest $req, \DateTime $now): bool
+    {
+        return $now < $this->uploadCutoffAt($req);
     }
 
     public function markBlocked(PhotoUploadRequest $req, \DateTime $now): void

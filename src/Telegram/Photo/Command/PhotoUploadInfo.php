@@ -4,6 +4,8 @@ namespace App\Telegram\Photo\Command;
 
 use App\Entity\PhotoUploadRequest;
 use App\Repository\PhotoUploadRequestRepository;
+use App\Service\PavilionPhotoService;
+use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use App\Service\UkDateFormatter;
 use App\Telegram\Start\Command\StartCommand;
@@ -16,6 +18,7 @@ class PhotoUploadInfo
     public function __construct(
         private TelegramUserService $telegramUserService,
         private PhotoUploadRequestRepository $requestRepository,
+        private PavilionPhotoService $photoService,
     ) {}
 
     public function __invoke(Nutgram $bot): void
@@ -43,19 +46,35 @@ class PhotoUploadInfo
             return;
         }
 
+        $now = SchedulePavilionService::createNewDate();
+        $hasActive = false;
+        $hasExpired = false;
+
         $lines = ['📸 <b>Завантажте фото зовнішнього вигляду альтанки</b>', ''];
         $lines[] = 'Очікується завантаження для:';
         foreach ($open as $req) {
             $start = $req->getSessionStartAt();
+            $allowed = $this->photoService->isUploadStillAllowed($req, $now);
+            $hasActive = $hasActive || $allowed;
+            $hasExpired = $hasExpired || !$allowed;
             $lines[] = sprintf(
-                '   🏠 Альт. %d · 📅 %s · ⏰ %s',
+                '   %s 🏠 Альт. %d · 📅 %s · ⏰ %s',
+                $allowed ? '🟢' : '❌',
                 $req->getPavilion(),
                 UkDateFormatter::dayDate($start),
                 UkDateFormatter::time($start),
             );
         }
         $lines[] = '';
-        $lines[] = '<i>Просто надішліть фото у цей чат — і ми автоматично прикріпимо його до бронювання.</i>';
+        if ($hasActive) {
+            $lines[] = '<i>Просто надішліть фото у цей чат — і ми автоматично прикріпимо його до бронювання.</i>';
+        }
+        if ($hasExpired) {
+            $lines[] = sprintf(
+                '❌ — прострочено (минув %d-хвилинний час після блокування). Для розблокування зверніться до Аліни Бухгалтера — +380 93 658 32 02.',
+                PavilionPhotoService::UPLOAD_GRACE_AFTER_BLOCK_MIN,
+            );
+        }
 
         $bot->sendMessage(
             text: implode("\n", $lines),

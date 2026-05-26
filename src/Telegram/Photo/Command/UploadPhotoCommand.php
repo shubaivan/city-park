@@ -5,6 +5,7 @@ namespace App\Telegram\Photo\Command;
 use App\Entity\PhotoUploadRequest;
 use App\Repository\PhotoUploadRequestRepository;
 use App\Service\PavilionPhotoService;
+use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use App\Service\UkDateFormatter;
 use Psr\Log\LoggerInterface;
@@ -51,9 +52,28 @@ class UploadPhotoCommand extends Command
             return;
         }
 
-        usort($open, fn(PhotoUploadRequest $a, PhotoUploadRequest $b) =>
+        $now = SchedulePavilionService::createNewDate();
+        $active = array_values(array_filter(
+            $open,
+            fn(PhotoUploadRequest $r) => $this->photoService->isUploadStillAllowed($r, $now),
+        ));
+
+        if (!$active) {
+            $bot->sendMessage(
+                text: '⏰ <b>Час на завантаження фото минув.</b>' . "\n\n"
+                    . sprintf(
+                        'Фото приймається лише протягом %d хв після блокування. '
+                        . 'Для розблокування зверніться до Аліни Бухгалтера — +380 93 658 32 02.',
+                        PavilionPhotoService::UPLOAD_GRACE_AFTER_BLOCK_MIN,
+                    ),
+                parse_mode: ParseMode::HTML,
+            );
+            return;
+        }
+
+        usort($active, fn(PhotoUploadRequest $a, PhotoUploadRequest $b) =>
             $a->getSessionStartAt() <=> $b->getSessionStartAt());
-        $request = $open[0];
+        $request = $active[0];
 
         $wasBlocked = $request->getBlockedAt() !== null && $account->isActive() === false;
 
@@ -95,12 +115,17 @@ class UploadPhotoCommand extends Command
             );
         }
 
-        $remaining = array_slice($open, 1);
-        if ($remaining) {
+        // Re-query: attachPhoto auto-resolves sibling open requests covered by the
+        // photo's window, so the post-upload "still pending" count must reflect that.
+        $stillOpen = array_filter(
+            $this->requestRepository->findOpenForAccount($account),
+            fn(PhotoUploadRequest $r) => $r->isOpen() && $this->photoService->isUploadStillAllowed($r, $now),
+        );
+        if ($stillOpen) {
             $bot->sendMessage(
                 text: sprintf(
                     'У вас ще %d очікування завантаження фото. Будь ласка, надішліть наступне фото.',
-                    count($remaining),
+                    count($stillOpen),
                 ),
             );
         }

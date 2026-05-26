@@ -213,10 +213,13 @@ class PavilionPhotoCheckCommand extends Command
 
         $start = $req->getSessionStartAt();
         $text = sprintf(
-            "⛔ <b>Ваш аккаунт заблоковано</b>\n\nПричина: не завантажено фото альтанки після бронювання:\n📅 <b>%s</b>\n⏰ <b>%s</b>\n🏠 Альт. <b>%d</b>\n\nЗверніться до Аліни Бухгалтера для розблокування — +380 93 658 32 02.",
+            "⛔ <b>Ваш аккаунт заблоковано</b>\n\nПричина: не завантажено фото альтанки після бронювання:\n📅 <b>%s</b>\n⏰ <b>%s</b>\n🏠 Альт. <b>%d</b>\n\n"
+            . "📸 <i>У вас ще є <b>%d хв</b>, щоб надіслати фото в цей чат — блокування зніметься автоматично.</i>\n\n"
+            . "Після цього — лише через Аліну Бухгалтера: +380 93 658 32 02.",
             UkDateFormatter::dayDate($start),
             UkDateFormatter::time($start),
             $req->getPavilion(),
+            PavilionPhotoService::UPLOAD_GRACE_AFTER_BLOCK_MIN,
         );
 
         foreach ($account->getUsers() as $user) {
