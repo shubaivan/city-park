@@ -615,18 +615,16 @@ class AdminController extends AbstractController
                 default => "✅ <b>Доступ до бронювання відновлено.</b>\n\nМожна знову бронювати.",
             };
 
-            $bot->sendMessage(
-                text: $unblockText,
-                chat_id: $updatedUser->getChatId(),
-                parse_mode: ParseMode::HTML,
-            );
+            $this->notifyAccountUsers($bot, $logger, $updatedUser->getAccount(), $unblockText, 'unblock');
         }
 
         if (isset($isWasInActive) && !$isWasInActive && $updatedUser->getAccount() && !$updatedUser->getAccount()->isActive()) {
-            $bot->sendMessage(
-                text: 'Вас <b>ЗАБЛОКУВАЛИ</b> тепер НЕ можете броювати',
-                chat_id: $updatedUser->getChatId(),
-                parse_mode: ParseMode::HTML
+            $this->notifyAccountUsers(
+                $bot,
+                $logger,
+                $updatedUser->getAccount(),
+                'Вас <b>ЗАБЛОКУВАЛИ</b> тепер НЕ можете броювати',
+                'block',
             );
         }
 
@@ -636,6 +634,41 @@ class AdminController extends AbstractController
         );
 
         return new JsonResponse($response, Response::HTTP_OK, [], true);
+    }
+
+    /**
+     * Block / unblock applies to the whole Account, so the notice must reach every
+     * TelegramUser hanging off it — not just the row the admin happened to click on.
+     * Skips users without a chat_id and swallows per-user send errors so one offline
+     * family member can't fail the whole admin save.
+     */
+    private function notifyAccountUsers(
+        Nutgram $bot,
+        LoggerInterface $logger,
+        Account $account,
+        string $text,
+        string $kind,
+    ): void {
+        foreach ($account->getUsers() as $user) {
+            /** @var TelegramUser $user */
+            if (!$user->getChatId()) {
+                continue;
+            }
+            try {
+                $bot->sendMessage(
+                    text: $text,
+                    chat_id: $user->getChatId(),
+                    parse_mode: ParseMode::HTML,
+                );
+            } catch (\Throwable $t) {
+                $logger->warning(sprintf('admin %s notice send failed', $kind), [
+                    'account_id' => $account->getId(),
+                    'user_id' => $user->getId(),
+                    'chat_id' => $user->getChatId(),
+                    'error' => $t->getMessage(),
+                ]);
+            }
+        }
     }
 
     #############
