@@ -296,6 +296,28 @@ class PavilionPhotoService
 
         $this->em->persist($photo);
         $req->setResolvedAt(new \DateTime());
+
+        // A single session can have spawned multiple overlapping requests (the materializer
+        // bug fixed elsewhere). One upload should clear every sibling whose window is
+        // covered by this photo's window — same pavilion, photo's start <= sibling's start
+        // and photo's end >= sibling's end. Without this, the user would have to upload
+        // the same photo two or three times to fully unblock the account.
+        foreach ($this->requestRepository->findOpenForAccount($req->getAccount()) as $sibling) {
+            if ($sibling->getId() === $req->getId()) {
+                continue;
+            }
+            if ($sibling->getPavilion() !== $req->getPavilion()) {
+                continue;
+            }
+            if ($photo->getSessionStartAt() > $sibling->getSessionStartAt()) {
+                continue;
+            }
+            if ($photo->getSessionEndAt() < $sibling->getSessionEndAt()) {
+                continue;
+            }
+            $sibling->setResolvedAt(new \DateTime());
+        }
+
         $this->em->flush();
 
         $this->maybeAutoUnblockAfterUpload($req);
