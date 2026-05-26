@@ -158,6 +158,14 @@ class TelegramUserRepository extends ServiceEntityRepository
             $conditions[] = 'a.debt > 0';
         }
 
+        if (isset($params['photo_blocked_filter']) && $params['photo_blocked_filter'] === '1' && !$total) {
+            $conditions[] = 'a.is_active = false';
+            $conditions[] = 'a.id IN (
+                SELECT IDENTITY(r.account) FROM App\Entity\PhotoUploadRequest r
+                WHERE r.resolved_at IS NULL AND r.blocked_at IS NOT NULL
+            )';
+        }
+
         if (!$total && !empty($params['account_number_filter'])) {
             $conditions[] = 'a.account_number = :exact_account_number';
             $bindParams['exact_account_number'] = trim((string)$params['account_number_filter']);

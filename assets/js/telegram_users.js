@@ -93,6 +93,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .generate('admin-users-data-table');
 
     let debtFilter = false;
+    let photoBlockedFilter = false;
     let accountNumberFilter = '';
 
     table = $('#telegramUserTable').DataTable({
@@ -106,6 +107,7 @@ document.addEventListener("DOMContentLoaded", function () {
             'url': collectionData,
             "data": function ( d ) {
                 d.debt_filter = debtFilter ? '1' : '0';
+                d.photo_blocked_filter = photoBlockedFilter ? '1' : '0';
                 d.account_number_filter = accountNumberFilter;
             }
         },
@@ -148,6 +150,23 @@ document.addEventListener("DOMContentLoaded", function () {
             $(this).text('Показати всіх').removeClass('btn-warning').addClass('btn-success');
         } else {
             $(this).text('Показати боржників').removeClass('btn-success').addClass('btn-warning');
+        }
+        table.ajax.reload();
+    });
+
+    var photoBlockedBtn = $('<button/>', {
+        'class': 'btn btn-outline-danger ml-2 mb-2',
+        'id': 'photoBlockedFilterBtn',
+        'text': '📸 Заблоковані за фото'
+    });
+    filterContainer.append(photoBlockedBtn);
+
+    photoBlockedBtn.on('click', function () {
+        photoBlockedFilter = !photoBlockedFilter;
+        if (photoBlockedFilter) {
+            $(this).text('Показати всіх').removeClass('btn-outline-danger').addClass('btn-danger');
+        } else {
+            $(this).text('📸 Заблоковані за фото').removeClass('btn-danger').addClass('btn-outline-danger');
         }
         table.ajax.reload();
     });
