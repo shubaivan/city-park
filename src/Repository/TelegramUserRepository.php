@@ -166,6 +166,10 @@ class TelegramUserRepository extends ServiceEntityRepository
             )';
         }
 
+        if (isset($params['blocked_filter']) && $params['blocked_filter'] === '1' && !$total) {
+            $conditions[] = 'a.is_active = false';
+        }
+
         if (!$total && !empty($params['account_number_filter'])) {
             $conditions[] = 'a.account_number = :exact_account_number';
             $bindParams['exact_account_number'] = trim((string)$params['account_number_filter']);
