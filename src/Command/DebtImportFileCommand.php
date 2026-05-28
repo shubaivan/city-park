@@ -3,7 +3,9 @@
 namespace App\Command;
 
 use App\Entity\Account;
+use App\Entity\AccountStatusLog;
 use App\Repository\AccountRepository;
+use App\Service\AccountStatusAuditor;
 use App\Service\DebtPolicy;
 use Doctrine\ORM\EntityManagerInterface;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -30,6 +32,7 @@ class DebtImportFileCommand extends Command
         private DebtPolicy $debtPolicy,
         private EntityManagerInterface $em,
         private Nutgram $bot,
+        private AccountStatusAuditor $auditor,
     ) {
         parent::__construct();
     }
@@ -134,6 +137,12 @@ class DebtImportFileCommand extends Command
             if ($debt > $threshold) {
                 $account->setIsActive(false);
                 if ($wasActive) {
+                    $this->auditor->log(
+                        $account, true, false,
+                        AccountStatusLog::SOURCE_DEBT_IMPORT,
+                        'debt',
+                        sprintf('debt=%.2f, threshold=%.2f, source=%s', $debt, $threshold, basename($path)),
+                    );
                     $blocked++;
                     foreach ($account->getUsers() as $user) {
                         if (!$user->getChatId()) continue;
@@ -159,6 +168,12 @@ class DebtImportFileCommand extends Command
             } else {
                 if (!$wasActive) {
                     $account->setIsActive(true);
+                    $this->auditor->log(
+                        $account, false, true,
+                        AccountStatusLog::SOURCE_DEBT_IMPORT,
+                        'debt',
+                        sprintf('debt=%.2f, threshold=%.2f, source=%s', $debt, $threshold, basename($path)),
+                    );
                     $unblocked++;
                     foreach ($account->getUsers() as $user) {
                         if (!$user->getChatId()) continue;
@@ -191,6 +206,14 @@ class DebtImportFileCommand extends Command
             $wasInactive = !$account->isActive();
             $account->setDebt('0');
             $account->setIsActive(true);
+            if ($wasInactive) {
+                $this->auditor->log(
+                    $account, false, true,
+                    AccountStatusLog::SOURCE_DEBT_IMPORT,
+                    'debt',
+                    sprintf('reset (not in file %s)', basename($path)),
+                );
+            }
             $this->em->persist($account);
             $reset++;
 

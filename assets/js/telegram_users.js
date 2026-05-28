@@ -92,9 +92,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const collectionData = window.Routing
         .generate('admin-users-data-table');
 
-    let debtFilter = false;
-    let photoBlockedFilter = false;
-    let blockedFilter = false;
+    // Single mutually-exclusive status filter — buttons act like a radio group.
+    // Old design (three independent toggles) ANDed conditions on the server,
+    // which produced surprising empty results when admins clicked more than one.
+    let statusFilter = 'all'; // 'all' | 'debt' | 'photo_blocked' | 'blocked'
     let accountNumberFilter = '';
 
     table = $('#telegramUserTable').DataTable({
@@ -107,9 +108,7 @@ document.addEventListener("DOMContentLoaded", function () {
         'ajax': {
             'url': collectionData,
             "data": function ( d ) {
-                d.debt_filter = debtFilter ? '1' : '0';
-                d.photo_blocked_filter = photoBlockedFilter ? '1' : '0';
-                d.blocked_filter = blockedFilter ? '1' : '0';
+                d.status_filter = statusFilter;
                 d.account_number_filter = accountNumberFilter;
             }
         },
@@ -117,7 +116,6 @@ document.addEventListener("DOMContentLoaded", function () {
         "columnDefs": common_defs
     });
 
-    // Toolbar: account-number exact-match input + debt filter button
     var filterContainer = $('#telegramUserTable_wrapper .dataTables_filter, #telegramUserTable_wrapper .dt-search');
 
     var accountInput = $('<input/>', {
@@ -139,56 +137,71 @@ document.addEventListener("DOMContentLoaded", function () {
         }, 350);
     });
 
-    var filterBtn = $('<button/>', {
-        'class': 'btn btn-warning ml-2 mb-2',
-        'id': 'debtFilterBtn',
-        'text': 'Показати боржників'
-    });
-    filterContainer.append(filterBtn);
+    // value === statusFilter literal; activeClass paints the chosen button.
+    var statusButtons = [
+        { value: 'debt',          label: '💰 Боржники',           idleClass: 'btn-outline-warning',   activeClass: 'btn-warning' },
+        { value: 'photo_blocked', label: '📸 Заблоковані за фото', idleClass: 'btn-outline-danger',    activeClass: 'btn-danger' },
+        { value: 'blocked',       label: '🚫 Усі заблоковані',     idleClass: 'btn-outline-secondary', activeClass: 'btn-secondary' },
+    ];
 
-    filterBtn.on('click', function () {
-        debtFilter = !debtFilter;
-        if (debtFilter) {
-            $(this).text('Показати всіх').removeClass('btn-warning').addClass('btn-success');
-        } else {
-            $(this).text('Показати боржників').removeClass('btn-success').addClass('btn-warning');
-        }
+    var $filterLabel = $('<span/>', {
+        'class': 'ml-3 mb-2 text-muted',
+        'style': 'font-size:0.9em;align-self:center;',
+        'text': 'Фільтр:'
+    });
+    filterContainer.append($filterLabel);
+
+    var $statusGroup = $('<div/>', {
+        'class': 'btn-group ml-2 mb-2',
+        'role': 'group',
+        'aria-label': 'Status filter'
+    });
+    filterContainer.append($statusGroup);
+
+    statusButtons.forEach(function (def) {
+        var $btn = $('<button/>', {
+            'type': 'button',
+            'class': 'btn ' + def.idleClass,
+            'data-value': def.value,
+            'text': def.label
+        });
+        $statusGroup.append($btn);
+    });
+
+    var $resetBtn = $('<button/>', {
+        'type': 'button',
+        'class': 'btn btn-link ml-1 mb-2',
+        'id': 'filterResetBtn',
+        'text': '✖ Скинути'
+    });
+    filterContainer.append($resetBtn);
+
+    function renderFilterButtons() {
+        $statusGroup.find('button').each(function () {
+            var def = statusButtons.find(d => d.value === $(this).data('value'));
+            $(this).removeClass(def.idleClass + ' ' + def.activeClass);
+            $(this).addClass(statusFilter === def.value ? def.activeClass : def.idleClass);
+        });
+        var anyActive = statusFilter !== 'all' || accountNumberFilter !== '';
+        $resetBtn.toggle(anyActive);
+    }
+
+    $statusGroup.on('click', 'button', function () {
+        var clicked = $(this).data('value');
+        statusFilter = (statusFilter === clicked) ? 'all' : clicked;
+        renderFilterButtons();
         table.ajax.reload();
     });
 
-    var photoBlockedBtn = $('<button/>', {
-        'class': 'btn btn-outline-danger ml-2 mb-2',
-        'id': 'photoBlockedFilterBtn',
-        'text': '📸 Заблоковані за фото'
-    });
-    filterContainer.append(photoBlockedBtn);
-
-    photoBlockedBtn.on('click', function () {
-        photoBlockedFilter = !photoBlockedFilter;
-        if (photoBlockedFilter) {
-            $(this).text('Показати всіх').removeClass('btn-outline-danger').addClass('btn-danger');
-        } else {
-            $(this).text('📸 Заблоковані за фото').removeClass('btn-danger').addClass('btn-outline-danger');
-        }
+    $resetBtn.on('click', function () {
+        statusFilter = 'all';
+        accountNumberFilter = '';
+        accountInput.val('');
+        renderFilterButtons();
         table.ajax.reload();
     });
 
-    var blockedBtn = $('<button/>', {
-        'class': 'btn btn-outline-secondary ml-2 mb-2',
-        'id': 'blockedFilterBtn',
-        'text': '🚫 Усі заблоковані'
-    });
-    filterContainer.append(blockedBtn);
-
-    blockedBtn.on('click', function () {
-        blockedFilter = !blockedFilter;
-        if (blockedFilter) {
-            $(this).text('Показати всіх').removeClass('btn-outline-secondary').addClass('btn-secondary');
-        } else {
-            $(this).text('🚫 Усі заблоковані').removeClass('btn-secondary').addClass('btn-outline-secondary');
-        }
-        table.ajax.reload();
-    });
+    renderFilterButtons();
 
     let exampleModal = $('#exampleModal');
     exampleModal.on('show.bs.modal', function (event) {
@@ -296,6 +309,47 @@ document.addEventListener("DOMContentLoaded", function () {
                         }
                     });
 
+                    // Render last 5 status-log entries so admins can answer
+                    // "who blocked X and why" without going to logs/DB.
+                    let $historyGroup = form.find('#status_history_group');
+                    let $historyList = form.find('#status_history_list');
+                    $historyList.empty();
+                    let history = data.status_history || [];
+                    if (history.length === 0) {
+                        $historyGroup.hide();
+                    } else {
+                        $historyGroup.show();
+                        let sourceLabels = {
+                            'admin': '👤 Адмін',
+                            'debt_import': '📥 Імпорт боргів',
+                            'debt_recompute': '🔁 Перерахунок боргу',
+                            'photo_check': '📸 Перевірка фото',
+                            'photo_attach': '📸 Завантаження фото',
+                            'photo_forgive': '📸 Forgive',
+                            'photo_bulk_unblock': '📸 Bulk unblock',
+                        };
+                        let reasonLabels = {
+                            'debt': '💰 борг',
+                            'photo': '📸 фото',
+                            'other': '📝 інша',
+                        };
+                        $.each(history, function (_, e) {
+                            let badge = e.new_active
+                                ? '<span class="badge badge-success">✅ Розблок</span>'
+                                : '<span class="badge badge-danger">⛔ Блок</span>';
+                            let src = sourceLabels[e.source] || e.source;
+                            let reason = e.reason_code ? (reasonLabels[e.reason_code] || e.reason_code) : '—';
+                            let actor = e.actor ? '<i> · ' + e.actor + '</i>' : '<i class="text-muted"> · авто</i>';
+                            let detail = e.reason_text ? '<br><small class="text-muted">' + e.reason_text + '</small>' : '';
+                            $historyList.append(
+                                '<li class="list-group-item p-2">'
+                                + badge + ' <small>' + e.at + '</small> · ' + src + ' · ' + reason + actor
+                                + detail
+                                + '</li>'
+                            );
+                        });
+                    }
+
                     // Show debt info
                     let debtDisplay = form.find('#debt_display');
                     if (data.debt && parseFloat(data.debt) > 0) {
@@ -353,6 +407,18 @@ document.addEventListener("DOMContentLoaded", function () {
                 return;
             }
 
+            // Active → blocked transition must include a reason. Mirrors the
+            // server-side check in AdminController::updateUser; both layers needed
+            // because the bot notification and audit log read off the same field.
+            let $blockSelect = telegramUserForm.find('#block_reason');
+            if ($blockSelect.closest('.form-group').is(':visible') && !$blockSelect.val()) {
+                var divTag = $('<div />').addClass('invalid-feedback');
+                divTag.text('Оберіть причину блокування');
+                divTag.insertAfter($blockSelect);
+                divTag.show();
+                return;
+            }
+
             let inputColumns = telegramUserForm.find('input[type=text]');
             if (inputColumns.length) {
                 $.each(inputColumns, function (k, v) {
@@ -395,8 +461,20 @@ document.addEventListener("DOMContentLoaded", function () {
                 type: "POST",
                 url: admin_user_create,
                 data: serialize,
-                error: (result) => {
-                    console.log(result);
+                error: (xhr) => {
+                    let msg = 'Помилка збереження';
+                    try {
+                        let parsed = JSON.parse(xhr.responseText);
+                        if (Array.isArray(parsed) && parsed.length) {
+                            msg = parsed[0];
+                        }
+                    } catch (e) {}
+                    let $target = telegramUserForm.find('#block_reason').closest('.form-group').is(':visible')
+                        ? telegramUserForm.find('#block_reason')
+                        : telegramUserForm.find('#account_number');
+                    var divTag = $('<div />').addClass('invalid-feedback').text(msg);
+                    divTag.insertAfter($target);
+                    divTag.show();
                 },
                 success: (data) => {
                     exampleModal.modal('toggle');

@@ -154,20 +154,25 @@ class TelegramUserRepository extends ServiceEntityRepository
 
         }
 
-        if (isset($params['debt_filter']) && $params['debt_filter'] === '1' && !$total) {
-            $conditions[] = 'a.debt > 0';
-        }
-
-        if (isset($params['photo_blocked_filter']) && $params['photo_blocked_filter'] === '1' && !$total) {
-            $conditions[] = 'a.is_active = false';
-            $conditions[] = 'a.id IN (
-                SELECT IDENTITY(r.account) FROM App\Entity\PhotoUploadRequest r
-                WHERE r.resolved_at IS NULL AND r.blocked_at IS NOT NULL
-            )';
-        }
-
-        if (isset($params['blocked_filter']) && $params['blocked_filter'] === '1' && !$total) {
-            $conditions[] = 'a.is_active = false';
+        // Single mutually-exclusive status filter — see telegram_users.js.
+        // Legacy debt_filter / photo_blocked_filter / blocked_filter params are
+        // ignored; the UI now sends `status_filter` with one of: debt / photo_blocked / blocked.
+        if (!$total && !empty($params['status_filter']) && $params['status_filter'] !== 'all') {
+            switch ($params['status_filter']) {
+                case 'debt':
+                    $conditions[] = 'a.debt > 0';
+                    break;
+                case 'photo_blocked':
+                    $conditions[] = 'a.is_active = false';
+                    $conditions[] = 'a.id IN (
+                        SELECT IDENTITY(r.account) FROM App\Entity\PhotoUploadRequest r
+                        WHERE r.resolved_at IS NULL AND r.blocked_at IS NOT NULL
+                    )';
+                    break;
+                case 'blocked':
+                    $conditions[] = 'a.is_active = false';
+                    break;
+            }
         }
 
         if (!$total && !empty($params['account_number_filter'])) {

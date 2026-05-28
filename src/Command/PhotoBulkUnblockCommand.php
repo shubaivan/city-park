@@ -3,7 +3,9 @@
 namespace App\Command;
 
 use App\Entity\Account;
+use App\Entity\AccountStatusLog;
 use App\Repository\AccountRepository;
+use App\Service\AccountStatusAuditor;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
 use App\Service\SchedulePavilionService;
@@ -31,6 +33,7 @@ class PhotoBulkUnblockCommand extends Command
         private DebtPolicy $debtPolicy,
         private EntityManagerInterface $em,
         private Nutgram $bot,
+        private AccountStatusAuditor $auditor,
     ) {
         parent::__construct();
     }
@@ -111,6 +114,12 @@ class PhotoBulkUnblockCommand extends Command
             }
 
             $account->setIsActive(true);
+            $this->auditor->log(
+                $account, false, true,
+                AccountStatusLog::SOURCE_PHOTO_BULK_UNBLOCK,
+                'photo',
+                sprintf('forgave %d open request(s)', $forgiven),
+            );
             $this->em->flush();
             $unblocked++;
 

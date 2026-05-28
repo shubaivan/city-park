@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Entity\Account;
+use App\Entity\AccountStatusLog;
 use App\Entity\PavilionPhoto;
 use App\Entity\PhotoUploadRequest;
 use App\Entity\ScheduledSet;
@@ -54,6 +55,7 @@ class PavilionPhotoService
         private PhotoUploadRequestRepository $requestRepository,
         private EntityManagerInterface $em,
         private DebtPolicy $debtPolicy,
+        private AccountStatusAuditor $auditor,
     ) {
         $this->uploadDir = rtrim($projectDir, '/') . '/public/uploads/pavilion-photos';
     }
@@ -392,6 +394,12 @@ class PavilionPhotoService
         }
 
         $account->setIsActive(true);
+        $this->auditor->log(
+            $account, false, true,
+            AccountStatusLog::SOURCE_PHOTO_ATTACH,
+            'photo',
+            sprintf('auto-unblock after photo upload for request_id=%d', $req->getId()),
+        );
         $this->em->flush();
     }
 

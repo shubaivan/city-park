@@ -3,7 +3,9 @@
 namespace App\Command;
 
 use App\Entity\Account;
+use App\Entity\AccountStatusLog;
 use App\Repository\AccountRepository;
+use App\Service\AccountStatusAuditor;
 use App\Service\DebtPolicy;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -28,6 +30,7 @@ class DebtRecomputeCommand extends Command
         private DebtPolicy $debtPolicy,
         private EntityManagerInterface $em,
         private Nutgram $bot,
+        private AccountStatusAuditor $auditor,
     ) {
         parent::__construct();
     }
@@ -90,6 +93,12 @@ class DebtRecomputeCommand extends Command
         foreach ($toBlock as $r) {
             $account = $r['account'];
             $account->setIsActive(false);
+            $this->auditor->log(
+                $account, true, false,
+                AccountStatusLog::SOURCE_DEBT_RECOMPUTE,
+                'debt',
+                sprintf('debt=%.2f, threshold=%.2f', $r['debt'], $r['threshold']),
+            );
             $this->em->persist($account);
             $blockedCount++;
 
@@ -120,6 +129,12 @@ class DebtRecomputeCommand extends Command
         foreach ($toUnblock as $r) {
             $account = $r['account'];
             $account->setIsActive(true);
+            $this->auditor->log(
+                $account, false, true,
+                AccountStatusLog::SOURCE_DEBT_RECOMPUTE,
+                'debt',
+                sprintf('debt=%.2f, threshold=%.2f', $r['debt'], $r['threshold']),
+            );
             $this->em->persist($account);
             $unblockedCount++;
 

@@ -3,14 +3,17 @@
 namespace App\Controller;
 
 use App\Entity\Account;
+use App\Entity\AccountStatusLog;
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
+use App\Repository\AccountStatusLogRepository;
 use App\Repository\PavilionPhotoRepository;
 use App\Repository\PhotoUploadRequestRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Repository\TariffRepository;
 use App\Repository\TelegramUserRepository;
+use App\Service\AccountStatusAuditor;
 use App\Service\BlockReasonResolver;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
@@ -36,7 +39,9 @@ class AdminController extends AbstractController
 {
     public function __construct(
         protected readonly DenormalizerInterface $denormalizer,
-        protected readonly SerializerInterface $serializer
+        protected readonly SerializerInterface $serializer,
+        protected readonly AccountStatusAuditor $statusAuditor,
+        protected readonly AccountStatusLogRepository $statusLogRepository,
     ) {}
 
     #[Route('/admin/guide', name: 'app_admin_guide')]
@@ -347,6 +352,7 @@ class AdminController extends AbstractController
         $telegramUser['fallback_threshold'] = $debtPolicy->getThreshold();
         $telegramUser['block_reason_label'] = null;
         $telegramUser['block_reason_details'] = null;
+        $telegramUser['status_history'] = [];
 
         if (!empty($telegramUser['account_id'])) {
             $account = $accountRepository->find($telegramUser['account_id']);
@@ -355,6 +361,16 @@ class AdminController extends AbstractController
                 $reason = $blockReasonResolver->resolve($account);
                 $telegramUser['block_reason_label'] = $reason['label'] ?? null;
                 $telegramUser['block_reason_details'] = $reason['details'] ?? null;
+                foreach ($this->statusLogRepository->findRecentForAccount($account, 5) as $entry) {
+                    $telegramUser['status_history'][] = [
+                        'new_active' => $entry->getNewActive(),
+                        'source' => $entry->getSource(),
+                        'reason_code' => $entry->getReasonCode(),
+                        'reason_text' => $entry->getReasonText(),
+                        'actor' => $entry->getActorUsername(),
+                        'at' => $entry->getCreatedAt()->format('Y-m-d H:i'),
+                    ];
+                }
                 foreach ($accountRepository->findGroupSiblings($account) as $sibling) {
                     if ($sibling->getId() === $account->getId()) {
                         continue;
@@ -555,6 +571,17 @@ class AdminController extends AbstractController
                 $isWasInActive = !$accountEntity->isActive();
             }
 
+            // Block reason is mandatory on active → blocked transition so the audit log,
+            // bot notification, and admin UI all have a non-empty cause to display.
+            $isCurrentlyActive = $accountEntity ? $accountEntity->isActive() : true;
+            $willBeBlocked = $account['is_active'] === false;
+            if ($isCurrentlyActive && $willBeBlocked && !in_array($blockReason, ['debt', 'photo', 'other'], true)) {
+                return $this->json(
+                    ['Оберіть причину блокування (борг / фото / інша)'],
+                    Response::HTTP_BAD_REQUEST,
+                );
+            }
+
             $accountEntity = $this->denormalizer->denormalize(
                 $account,
                 Account::class,
@@ -607,6 +634,14 @@ class AdminController extends AbstractController
                 'reason' => $unblockReason ?: 'unspecified',
             ]);
 
+            $this->statusAuditor->log(
+                $updatedUser->getAccount(), false, true,
+                AccountStatusLog::SOURCE_ADMIN,
+                $unblockReason ?: 'other',
+                $forgiven > 0 ? sprintf('forgave %d open photo request(s)', $forgiven) : null,
+            );
+            $em->flush();
+
             $unblockText = match ($unblockReason) {
                 'photo' => "✅ <b>Доступ до бронювання відновлено.</b>\n\n"
                     . "Дякуємо за надіслане фото — обмеження знято. Можна знову бронювати.",
@@ -625,6 +660,13 @@ class AdminController extends AbstractController
                 'account_number' => $updatedUser->getAccount()->getAccountNumber(),
                 'reason' => $blockReason ?: 'unspecified',
             ]);
+
+            $this->statusAuditor->log(
+                $updatedUser->getAccount(), true, false,
+                AccountStatusLog::SOURCE_ADMIN,
+                $blockReason,
+            );
+            $em->flush();
 
             $blockText = match ($blockReason) {
                 'debt' => "⛔ <b>Ваш аккаунт заблоковано</b>\n\n"

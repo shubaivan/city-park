@@ -2,9 +2,11 @@
 
 namespace App\Command;
 
+use App\Entity\AccountStatusLog;
 use App\Entity\PhotoUploadRequest;
 use App\Entity\TelegramUser;
 use App\Repository\PhotoUploadRequestRepository;
+use App\Service\AccountStatusAuditor;
 use App\Service\PavilionPhotoService;
 use App\Service\SchedulePavilionService;
 use App\Service\UkDateFormatter;
@@ -30,6 +32,7 @@ class PavilionPhotoCheckCommand extends Command
         private PhotoUploadRequestRepository $requestRepository,
         private Nutgram $bot,
         private EntityManagerInterface $em,
+        private AccountStatusAuditor $auditor,
     ) {
         parent::__construct();
     }
@@ -207,7 +210,20 @@ class PavilionPhotoCheckCommand extends Command
     private function blockAccount(PhotoUploadRequest $req, \DateTime $now): void
     {
         $account = $req->getAccount();
+        $wasActive = $account->isActive();
         $account->setIsActive(false);
+        if ($wasActive) {
+            $this->auditor->log(
+                $account, true, false,
+                AccountStatusLog::SOURCE_PHOTO_CHECK,
+                'photo',
+                sprintf('photo_request_id=%d, session=%s @ pav %d',
+                    $req->getId(),
+                    $req->getSessionStartAt()->format('Y-m-d H:i'),
+                    $req->getPavilion()
+                ),
+            );
+        }
         $this->photoService->markBlocked($req, $now);
         $this->em->flush();
 
