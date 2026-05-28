@@ -156,7 +156,8 @@ class TelegramUserRepository extends ServiceEntityRepository
 
         // Single mutually-exclusive status filter — see telegram_users.js.
         // Legacy debt_filter / photo_blocked_filter / blocked_filter params are
-        // ignored; the UI now sends `status_filter` with one of: debt / photo_blocked / blocked.
+        // ignored; the UI now sends `status_filter` with one of:
+        // debt / photo_blocked / debt_blocked / blocked.
         if (!$total && !empty($params['status_filter']) && $params['status_filter'] !== 'all') {
             switch ($params['status_filter']) {
                 case 'debt':
@@ -168,6 +169,25 @@ class TelegramUserRepository extends ServiceEntityRepository
                         SELECT IDENTITY(r.account) FROM App\Entity\PhotoUploadRequest r
                         WHERE r.resolved_at IS NULL AND r.blocked_at IS NOT NULL
                     )';
+                    break;
+                case 'debt_blocked':
+                    // Mirrors DebtPolicy::getThresholdFor: per-account threshold is
+                    // area * tariff.price_per_meter * 1.5; when area or tariff is
+                    // missing/zero, fall back to the env-configured global threshold.
+                    $pricePerMeter = (float)($params['_debt_price_per_meter'] ?? 0);
+                    $fallback = (float)($params['_debt_fallback_threshold'] ?? 1300);
+                    $conditions[] = 'a.is_active = false';
+                    if ($pricePerMeter > 0) {
+                        $conditions[] = '(
+                            (a.area > 0 AND a.debt > a.area * :debt_price * 1.5)
+                            OR ((a.area IS NULL OR a.area = 0) AND a.debt > :debt_fallback)
+                        )';
+                        $bindParams['debt_price'] = $pricePerMeter;
+                        $bindParams['debt_fallback'] = $fallback;
+                    } else {
+                        $conditions[] = 'a.debt > :debt_fallback';
+                        $bindParams['debt_fallback'] = $fallback;
+                    }
                     break;
                 case 'blocked':
                     $conditions[] = 'a.is_active = false';

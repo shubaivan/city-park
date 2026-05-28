@@ -139,9 +139,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // value === statusFilter literal; activeClass paints the chosen button.
     var statusButtons = [
-        { value: 'debt',          label: '💰 Боржники',           idleClass: 'btn-outline-warning',   activeClass: 'btn-warning' },
-        { value: 'photo_blocked', label: '📸 Заблоковані за фото', idleClass: 'btn-outline-danger',    activeClass: 'btn-danger' },
-        { value: 'blocked',       label: '🚫 Усі заблоковані',     idleClass: 'btn-outline-secondary', activeClass: 'btn-secondary' },
+        { value: 'debt',          label: '💰 Боржники',            idleClass: 'btn-outline-warning',   activeClass: 'btn-warning' },
+        { value: 'photo_blocked', label: '📸 Заблоковані за фото',  idleClass: 'btn-outline-danger',    activeClass: 'btn-danger' },
+        { value: 'debt_blocked',  label: '💸 Заблоковані за борг',  idleClass: 'btn-outline-dark',      activeClass: 'btn-dark' },
+        { value: 'blocked',       label: '🚫 Усі заблоковані',      idleClass: 'btn-outline-secondary', activeClass: 'btn-secondary' },
     ];
 
     var $filterLabel = $('<span/>', {

@@ -292,10 +292,17 @@ class AdminController extends AbstractController
         AccountRepository $accountRepository,
         DebtPolicy $debtPolicy,
         BlockReasonResolver $blockReasonResolver,
+        TariffRepository $tariffRepository,
+        EntityManagerInterface $em,
         Request $request,
     ) {
-        $dataTable = $repository
-            ->getDataTablesData($request->request->all());
+        // Inject tariff + fallback so the repository can build the per-row
+        // debt-threshold predicate used by the "Заблоковані за борг" filter.
+        $params = $request->request->all();
+        $params['_debt_price_per_meter'] = (float)$tariffRepository->getOrCreate($em)->getPricePerMeter();
+        $params['_debt_fallback_threshold'] = (float)$debtPolicy->getThreshold();
+
+        $dataTable = $repository->getDataTablesData($params);
 
         foreach ($dataTable as &$row) {
             $accNum = $row['account_number'] ?? null;
@@ -319,10 +326,8 @@ class AdminController extends AbstractController
             array_merge(
                 [
                     "draw" => $request->request->get('draw'),
-                    "recordsTotal" => $repository
-                        ->getDataTablesData($request->request->all(), true, true),
-                    "recordsFiltered" => $repository
-                        ->getDataTablesData($request->request->all(), true)
+                    "recordsTotal" => $repository->getDataTablesData($params, true, true),
+                    "recordsFiltered" => $repository->getDataTablesData($params, true),
                 ],
                 ['data' => $dataTable]
             )
