@@ -95,8 +95,18 @@ document.addEventListener("DOMContentLoaded", function () {
     // Single mutually-exclusive status filter — buttons act like a radio group.
     // Old design (three independent toggles) ANDed conditions on the server,
     // which produced surprising empty results when admins clicked more than one.
-    let statusFilter = 'all'; // 'all' | 'debt' | 'photo_blocked' | 'blocked'
-    let accountNumberFilter = '';
+    let statusFilter = 'all'; // 'all' | 'debt' | 'photo_blocked' | 'debt_blocked' | 'blocked'
+
+    // Per-field search filters — all AND'd together on the server. The DataTables
+    // global "Search:" input still works as an OR-across-everything quick lookup;
+    // these per-field inputs are for narrowing.
+    const fieldFilters = {
+        account_number: '',
+        last_name: '',
+        first_name: '',
+        phone: '',
+        address: '',
+    };
 
     table = $('#telegramUserTable').DataTable({
         'order': [[0, 'desc']],
@@ -109,33 +119,65 @@ document.addEventListener("DOMContentLoaded", function () {
             'url': collectionData,
             "data": function ( d ) {
                 d.status_filter = statusFilter;
-                d.account_number_filter = accountNumberFilter;
+                d.account_number_filter = fieldFilters.account_number;
+                d.search_last_name = fieldFilters.last_name;
+                d.search_first_name = fieldFilters.first_name;
+                d.search_phone = fieldFilters.phone;
+                d.search_address = fieldFilters.address;
             }
         },
         columns: th_keys,
         "columnDefs": common_defs
     });
 
-    var filterContainer = $('#telegramUserTable_wrapper .dataTables_filter, #telegramUserTable_wrapper .dt-search');
-
-    var accountInput = $('<input/>', {
-        type: 'text',
-        id: 'accountNumberFilterInput',
-        placeholder: 'Особовий рахунок (точний пошук)',
-        class: 'form-control form-control-sm d-inline-block ml-2 mb-2',
-        style: 'width: 240px'
+    // Render the field-search panel as a dedicated row above the table so the
+    // labelled inputs don't compete for space with the global DataTables search.
+    var $fieldPanel = $('<div/>', {
+        'id': 'usersFieldFilters',
+        'class': 'd-flex flex-wrap align-items-end mb-3',
+        'style': 'gap:8px;',
     });
-    filterContainer.append(accountInput);
+    $('#telegramUserTable_wrapper').prepend($fieldPanel);
 
-    let accountDebounce;
-    accountInput.on('input', function () {
-        const val = $(this).val().trim();
-        clearTimeout(accountDebounce);
-        accountDebounce = setTimeout(function () {
-            accountNumberFilter = val;
+    var fieldDefs = [
+        { key: 'account_number', label: 'Особ. рахунок', placeholder: 'точний пошук',     width: '160px' },
+        { key: 'last_name',      label: 'Прізвище',       placeholder: 'Шуба',              width: '160px' },
+        { key: 'first_name',     label: "Ім'я",           placeholder: 'Іван',              width: '140px' },
+        { key: 'phone',          label: 'Телефон',        placeholder: '380...',            width: '160px' },
+        { key: 'address',        label: 'Адреса',         placeholder: 'вулиця / буд / кв', width: '220px' },
+    ];
+
+    var debounceTimers = {};
+    fieldDefs.forEach(function (def) {
+        var $wrap = $('<div/>', { 'class': 'd-flex flex-column' });
+        $wrap.append($('<label/>', {
+            'class': 'mb-1 text-muted',
+            'style': 'font-size:0.78em;',
+            'text': def.label,
+        }));
+        var $input = $('<input/>', {
+            'type': 'text',
+            'data-field': def.key,
+            'placeholder': def.placeholder,
+            'class': 'form-control form-control-sm js-user-field-filter',
+            'style': 'width:' + def.width,
+        });
+        $wrap.append($input);
+        $fieldPanel.append($wrap);
+    });
+
+    $fieldPanel.on('input', '.js-user-field-filter', function () {
+        var field = $(this).data('field');
+        var val = $(this).val().trim();
+        clearTimeout(debounceTimers[field]);
+        debounceTimers[field] = setTimeout(function () {
+            fieldFilters[field] = val;
+            renderFilterButtons();
             table.ajax.reload();
         }, 350);
     });
+
+    var filterContainer = $('#telegramUserTable_wrapper .dataTables_filter, #telegramUserTable_wrapper .dt-search');
 
     // value === statusFilter literal; activeClass paints the chosen button.
     var statusButtons = [
@@ -177,13 +219,17 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     filterContainer.append($resetBtn);
 
+    function anyFieldFilterActive() {
+        return Object.values(fieldFilters).some(function (v) { return v !== ''; });
+    }
+
     function renderFilterButtons() {
         $statusGroup.find('button').each(function () {
             var def = statusButtons.find(d => d.value === $(this).data('value'));
             $(this).removeClass(def.idleClass + ' ' + def.activeClass);
             $(this).addClass(statusFilter === def.value ? def.activeClass : def.idleClass);
         });
-        var anyActive = statusFilter !== 'all' || accountNumberFilter !== '';
+        var anyActive = statusFilter !== 'all' || anyFieldFilterActive();
         $resetBtn.toggle(anyActive);
     }
 
@@ -196,8 +242,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     $resetBtn.on('click', function () {
         statusFilter = 'all';
-        accountNumberFilter = '';
-        accountInput.val('');
+        Object.keys(fieldFilters).forEach(function (k) { fieldFilters[k] = ''; });
+        $fieldPanel.find('.js-user-field-filter').val('');
         renderFilterButtons();
         table.ajax.reload();
     });

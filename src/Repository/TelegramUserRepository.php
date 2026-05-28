@@ -200,6 +200,27 @@ class TelegramUserRepository extends ServiceEntityRepository
             $bindParams['exact_account_number'] = trim((string)$params['account_number_filter']);
         }
 
+        // Per-field ILIKE search — AND'd together so each input narrows the result.
+        // The DataTables global "Search:" input stays as a separate OR-across-all
+        // quick lookup (handled by the search block above).
+        $ilikeFieldMap = [
+            'search_last_name'  => 'b.last_name',
+            'search_first_name' => 'b.first_name',
+            'search_phone'      => 'b.phone_number',
+        ];
+        foreach ($ilikeFieldMap as $param => $column) {
+            if (!$total && !empty($params[$param])) {
+                $conditions[] = "ILIKE($column, :$param) = TRUE";
+                $bindParams[$param] = '%' . trim((string)$params[$param]) . '%';
+            }
+        }
+        if (!$total && !empty($params['search_address'])) {
+            $conditions[] = '(ILIKE(a.street, :search_address) = TRUE
+                OR ILIKE(a.house_number, :search_address) = TRUE
+                OR ILIKE(a.apartment_number, :search_address) = TRUE)';
+            $bindParams['search_address'] = '%' . trim((string)$params['search_address']) . '%';
+        }
+
         if (count($conditions)) {
             $conditions = array_unique($conditions);
             $dql .= $condition . implode(' AND ', $conditions);
