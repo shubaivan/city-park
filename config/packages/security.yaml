@@ -9,6 +9,7 @@ security:
                 users:
                     main_admin: { password: "%env(MAIN_ADMIN_PASSWORD)%", roles: [ 'ROLE_ADMIN' ] }
                     alina:      { password: "%env(ALINA_ADMIN_PASSWORD)%", roles: [ 'ROLE_ADMIN' ] }
+                    Luda_boss:  { password: "%env(LUDA_ADMIN_PASSWORD)%", roles: [ 'ROLE_ADMIN' ] }
     firewalls:
         dev:
             pattern: ^/(_(profiler|wdt)|css|images|js)/
