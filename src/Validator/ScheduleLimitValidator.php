@@ -76,11 +76,11 @@ class ScheduleLimitValidator extends ConstraintValidator
                 ->addViolation();
         }
 
-        // Forbid 1-hour orphans: a new booking at distance 2 from any existing booking
-        // by the same account on the same pavilion/day would leave a single free hour
-        // trapped between two of the account's bookings — used to squat extra time.
-        // If the middle hour is already booked by the same account, it's just a
-        // 3-in-a-row, not an orphan.
+        // Bookings on the same pavilion/day must form one unbroken run — no gaps.
+        // A new hour is only allowed if it extends the existing block (sits directly
+        // before its earliest or after its latest hour). Scattered bookings spread
+        // across the day (e.g. 14:00, 16:00, 19:00) are forbidden — hours must be
+        // contiguous.
         $pavilionHours = $this->repository->getBookedHoursForOwnerGroupPavilion(
             $value->getPavilion(),
             $value->getYear(),
@@ -89,30 +89,24 @@ class ScheduleLimitValidator extends ConstraintValidator
             $account,
             $value->getId()
         );
-        $conflicts = [];
-        foreach ($pavilionHours as $h) {
-            if (abs($value->getHour() - $h) !== 2) {
-                continue;
+        if (count($pavilionHours) > 0) {
+            $combined = array_values(array_unique([...$pavilionHours, $value->getHour()]));
+            sort($combined);
+            $isContiguous = (end($combined) - $combined[0] + 1) === count($combined);
+            if (!$isContiguous) {
+                sort($pavilionHours);
+                $existing = implode(', ', array_map(
+                    static fn(int $h) => str_pad((string)$h, 2, '0', STR_PAD_LEFT) . ':00',
+                    $pavilionHours
+                ));
+                $this->context
+                    ->buildViolation($constraint->messageGap)
+                    ->setParameters([
+                        '%hour%' => str_pad((string)$value->getHour(), 2, '0', STR_PAD_LEFT) . ':00',
+                        '%existing%' => $existing,
+                    ])
+                    ->addViolation();
             }
-            $middle = (int)(($value->getHour() + $h) / 2);
-            if (in_array($middle, $pavilionHours, true)) {
-                continue;
-            }
-            $conflicts[] = $h;
-        }
-        if (count($conflicts) > 0) {
-            sort($conflicts);
-            $existing = implode(', ', array_map(
-                static fn(int $h) => str_pad((string)$h, 2, '0', STR_PAD_LEFT) . ':00',
-                $conflicts
-            ));
-            $this->context
-                ->buildViolation($constraint->messageOrphan)
-                ->setParameters([
-                    '%hour%' => str_pad((string)$value->getHour(), 2, '0', STR_PAD_LEFT) . ':00',
-                    '%existing%' => $existing,
-                ])
-                ->addViolation();
         }
     }
 

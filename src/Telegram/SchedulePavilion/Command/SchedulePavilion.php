@@ -495,21 +495,15 @@ class SchedulePavilion extends Conversation
 
         $kb = InlineKeyboardMarkup::make();
         $row = [];
+        // Hours must be booked as one contiguous run: only the slot directly before
+        // the earliest or directly after the latest existing booking extends the
+        // block. Everything else would leave a gap — mark it with a warning.
+        $blockMin = $accountPavilionHours ? min($accountPavilionHours) : null;
+        $blockMax = $accountPavilionHours ? max($accountPavilionHours) : null;
         foreach ($availableHours as $h) {
             $format = UkDateFormatter::hourEmoji($h) . $chosenDate->setTime($h, 0)->format('H:i');
-            $isOrphan = false;
-            foreach ($accountPavilionHours as $existing) {
-                if (abs($h - $existing) !== 2) {
-                    continue;
-                }
-                $middle = (int)(($h + $existing) / 2);
-                if (in_array($middle, $accountPavilionHours, true)) {
-                    continue;
-                }
-                $isOrphan = true;
-                break;
-            }
-            $label = $isOrphan ? '⚠️ ' . $format : $format;
+            $isGap = $blockMin !== null && $h !== $blockMin - 1 && $h !== $blockMax + 1;
+            $label = $isGap ? '⚠️ ' . $format : $format;
             $row[] = InlineKeyboardButton::make(text: $label, callback_data: 'hour_' . $chosenDate->format('H'));
             if (count($row) == 3) {
                 $kb->addRow(...$row);
