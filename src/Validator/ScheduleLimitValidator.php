@@ -4,6 +4,7 @@ namespace App\Validator;
 
 use App\Entity\ScheduledSet;
 use App\Repository\ScheduledSetRepository;
+use App\Service\SchedulePavilionService;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\ConstraintValidator;
 use Symfony\Component\Validator\Exception\UnexpectedTypeException;
@@ -23,6 +24,13 @@ class ScheduleLimitValidator extends ConstraintValidator
         }
 
         $account = $value->getTelegramUserId()->getAccount();
+
+        // Working hours: both pavilions are bookable only from 09:00, last slot
+        // starts at 22:00 (ends 23:00). No night bookings.
+        if ($value->getHour() < SchedulePavilionService::OPEN_HOUR
+            || $value->getHour() >= SchedulePavilionService::CLOSE_HOUR) {
+            $this->context->buildViolation($constraint->messageHours)->addViolation();
+        }
 
         $dayBookings = $this->repository->findByDayForOwnerGroup(
             $value->getYear(),

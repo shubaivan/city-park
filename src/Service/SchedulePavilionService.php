@@ -9,6 +9,10 @@ use App\Repository\ScheduledSetRepository;
 
 class SchedulePavilionService
 {
+    /** First bookable hour of the day (inclusive). Both pavilions open at 09:00. */
+    public const OPEN_HOUR = 9;
+    /** Closing hour (exclusive as a start hour): the last bookable slot is 22:00–23:00. No night bookings. */
+    public const CLOSE_HOUR = 23;
 
     public function __construct(
         private ScheduledSetRepository $repository

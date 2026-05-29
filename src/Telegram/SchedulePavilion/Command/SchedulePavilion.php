@@ -484,8 +484,11 @@ class SchedulePavilion extends Conversation
             );
         }
 
+        // Both pavilions are bookable only within working hours (09:00–23:00); no
+        // night bookings. The last selectable start hour is 22:00 (slot ends 23:00).
+        $from = max($currentHour, SchedulePavilionService::OPEN_HOUR);
         $availableHours = [];
-        for ($i = $currentHour; $i < 24; $i++) {
+        for ($i = $from; $i < SchedulePavilionService::CLOSE_HOUR; $i++) {
             if (!array_key_exists($i, $scheduledSets) && !in_array($i, $accountBookedHours, true)) {
                 $availableHours[] = $i;
             }

@@ -11,6 +11,7 @@ class ScheduleLimit extends Constraint
     public string $messageMonth = "⚠️ <b>Місячний ліміт вичерпано</b>\n\nЗа поточний місяць — не більше 12 годин на обох павільйонах сумарно.\n\nЦього місяця у вас вже %count% бронювань:\n%list%";
     public string $messageOverlap = "⚠️ <b>Перетин по часу</b>\n\nНа %hour%:00 у вас вже є бронювання на Альтанці %pavilion% (%who%).\n\nНе можна бронювати обидва павільйони одночасно.";
     public string $messageGap = "⚠️ <b>Тільки години підряд</b>\n\nБронювання о %hour% не межує з вашими бронюваннями на цьому павільйоні (%existing%).\n\nГодини потрібно бронювати лише підряд, без пропусків — наприклад 14:00, 15:00, 16:00.";
+    public string $messageHours = "⚠️ <b>Поза робочими годинами</b>\n\nБронювати можна лише з 9:00 до 23:00. Вночі бронювання недоступні.";
 
     public function getTargets(): string|array
     {
