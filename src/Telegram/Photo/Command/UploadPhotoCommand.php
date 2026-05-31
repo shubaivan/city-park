@@ -23,6 +23,7 @@ class UploadPhotoCommand extends Command
         private PhotoUploadRequestRepository $requestRepository,
         private PavilionPhotoService $photoService,
         private LoggerInterface $logger,
+        private LoggerInterface $photoLogger,
         $callable = null,
         ?string $command = null,
     ) {
@@ -31,10 +32,18 @@ class UploadPhotoCommand extends Command
 
     public function handle(Nutgram $bot): void
     {
+        $chatId = $bot->chatId();
         $user = $this->telegramUserService->getCurrentUser();
         $account = $user?->getAccount();
 
+        $this->photoLogger->info('photoEvent received', [
+            'chat_id' => $chatId,
+            'telegram_user_id' => $user?->getId(),
+            'account_id' => $account?->getId(),
+        ]);
+
         if (!$account) {
+            $this->photoLogger->info('photoEvent ignored: no linked account', ['chat_id' => $chatId]);
             $bot->sendMessage(
                 text: '📷 Дякуємо, але у вас немає прив\'язаного аккаунту, тож завантаження зараз не потрібне.',
             );
@@ -45,6 +54,9 @@ class UploadPhotoCommand extends Command
         $open = array_values(array_filter($open, fn(PhotoUploadRequest $r) => $r->isOpen()));
 
         if (!$open) {
+            $this->photoLogger->info('photoEvent: no open requests to attach', [
+                'account_id' => $account->getId(),
+            ]);
             $bot->sendMessage(
                 text: '📷 <b>Фото вже отримано.</b> Достатньо одного фото на сесію — наступне фото знадобиться лише після нового бронювання.',
                 parse_mode: ParseMode::HTML,
@@ -59,6 +71,10 @@ class UploadPhotoCommand extends Command
         ));
 
         if (!$active) {
+            $this->photoLogger->warning('photoEvent rejected: all open requests past upload cutoff', [
+                'account_id' => $account->getId(),
+                'open_request_ids' => array_map(fn(PhotoUploadRequest $r) => $r->getId(), $open),
+            ]);
             $bot->sendMessage(
                 text: '⏰ <b>Час на завантаження фото минув.</b>' . "\n\n"
                     . sprintf(
@@ -81,6 +97,10 @@ class UploadPhotoCommand extends Command
             $this->saveLargestPhoto($bot, $request);
         } catch (\Doctrine\DBAL\Exception\UniqueConstraintViolationException $t) {
             // Race: another photo for this session arrived between our request lookup and save.
+            $this->photoLogger->info('photoEvent: duplicate (photo already attached this session)', [
+                'account_id' => $account->getId(),
+                'request_id' => $request->getId(),
+            ]);
             $bot->sendMessage(
                 text: '📷 <b>Фото вже отримано.</b> Достатньо одного фото на сесію.',
                 parse_mode: ParseMode::HTML,
@@ -91,11 +111,24 @@ class UploadPhotoCommand extends Command
                 'exception' => $t,
                 'request_id' => $request->getId(),
             ]);
+            $this->photoLogger->error('photoEvent: save failed', [
+                'account_id' => $account->getId(),
+                'request_id' => $request->getId(),
+                'error' => $t->getMessage(),
+            ]);
             $bot->sendMessage(
                 text: '⚠️ Не вдалося зберегти фото. Спробуйте надіслати ще раз.',
             );
             return;
         }
+
+        $this->photoLogger->info('photoEvent: photo saved', [
+            'account_id' => $account->getId(),
+            'request_id' => $request->getId(),
+            'pavilion' => $request->getPavilion(),
+            'session_start' => $request->getSessionStartAt()->format('Y-m-d H:i'),
+            'auto_unblocked' => $wasBlocked && $account->isActive() === true,
+        ]);
 
         $start = $request->getSessionStartAt();
         $bot->sendMessage(
