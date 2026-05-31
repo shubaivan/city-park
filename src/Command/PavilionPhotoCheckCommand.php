@@ -33,6 +33,7 @@ class PavilionPhotoCheckCommand extends Command
         private Nutgram $bot,
         private EntityManagerInterface $em,
         private AccountStatusAuditor $auditor,
+        private LoggerInterface $photoLogger,
     ) {
         parent::__construct();
     }
@@ -186,6 +187,11 @@ class PavilionPhotoCheckCommand extends Command
         foreach ($account->getUsers() as $user) {
             /** @var TelegramUser $user */
             if (!$user->getChatId()) {
+                $this->photoLogger->warning('reminder not delivered: user has no chat_id', [
+                    'request_id' => $req->getId(),
+                    'account_id' => $account->getId(),
+                    'user_id' => $user->getId(),
+                ]);
                 continue;
             }
             try {
@@ -195,10 +201,23 @@ class PavilionPhotoCheckCommand extends Command
                     parse_mode: ParseMode::HTML,
                 );
                 $any = true;
+                $this->photoLogger->info('reminder delivered', [
+                    'request_id' => $req->getId(),
+                    'account_id' => $account->getId(),
+                    'chat_id' => $user->getChatId(),
+                    'reminder' => $reminderNumber,
+                ]);
             } catch (\Throwable $t) {
                 $this->logger->warning('photo reminder send failed', [
                     'user_id' => $user->getId(),
                     'chat_id' => $user->getChatId(),
+                    'error' => $t->getMessage(),
+                ]);
+                $this->photoLogger->error('reminder NOT delivered (Telegram error)', [
+                    'request_id' => $req->getId(),
+                    'account_id' => $account->getId(),
+                    'chat_id' => $user->getChatId(),
+                    'reminder' => $reminderNumber,
                     'error' => $t->getMessage(),
                 ]);
             }
@@ -241,6 +260,11 @@ class PavilionPhotoCheckCommand extends Command
         foreach ($account->getUsers() as $user) {
             /** @var TelegramUser $user */
             if (!$user->getChatId()) {
+                $this->photoLogger->warning('block-notice not delivered: user has no chat_id', [
+                    'request_id' => $req->getId(),
+                    'account_id' => $account->getId(),
+                    'user_id' => $user->getId(),
+                ]);
                 continue;
             }
             try {
@@ -249,9 +273,20 @@ class PavilionPhotoCheckCommand extends Command
                     chat_id: $user->getChatId(),
                     parse_mode: ParseMode::HTML,
                 );
+                $this->photoLogger->info('block-notice delivered', [
+                    'request_id' => $req->getId(),
+                    'account_id' => $account->getId(),
+                    'chat_id' => $user->getChatId(),
+                ]);
             } catch (\Throwable $t) {
                 $this->logger->warning('photo block-notice send failed', [
                     'user_id' => $user->getId(),
+                    'error' => $t->getMessage(),
+                ]);
+                $this->photoLogger->error('block-notice NOT delivered (Telegram error)', [
+                    'request_id' => $req->getId(),
+                    'account_id' => $account->getId(),
+                    'chat_id' => $user->getChatId(),
                     'error' => $t->getMessage(),
                 ]);
             }

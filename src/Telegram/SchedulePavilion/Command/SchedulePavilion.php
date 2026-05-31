@@ -10,6 +10,7 @@ use App\Service\UkDateFormatter;
 use App\Service\WeatherService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
@@ -36,9 +37,41 @@ class SchedulePavilion extends Conversation
         private ValidatorInterface $validator,
         private WeatherService $weatherService,
         private DebtPolicy $debtPolicy,
+        private ?LoggerInterface $photoLogger = null,
         private string $pavilion1PhotoFileId = '',
         private string $pavilion2PhotoFileId = '',
     ) {}
+
+    /**
+     * Guard against a known blind spot: while a user has an active (or stale/stuck)
+     * booking conversation, EVERY update from them — including a photo — is routed to
+     * this conversation's step handler instead of the global onPhoto handler. A photo
+     * sent to fulfil a pavilion-photo obligation would therefore be silently swallowed
+     * by the booking step and never saved (this is what stopped photos appearing after
+     * the 29.05 rules deploy). Detect a photo here, log it, end the conversation, and
+     * ask the user to resend — so the resend reaches UploadPhotoCommand and is saved.
+     */
+    public function __invoke(Nutgram $bot, ...$parameters): mixed
+    {
+        if ($bot->message()?->photo) {
+            $this->photoLogger?->warning('photo received during active booking conversation — ending it so a resend reaches onPhoto', [
+                'chat_id' => $bot->chatId(),
+                'telegram_user_id' => $bot->userId(),
+                'step' => $this->step,
+            ]);
+            $this->end();
+            $bot->sendMessage(
+                text: "📷 Здається, ви надіслали фото під час оформлення бронювання.\n\n"
+                    . "Бронювання призупинено. Будь ласка, <b>надішліть фото ще раз</b> — "
+                    . "тепер ми зможемо прикріпити його до вашої сесії.",
+                parse_mode: ParseMode::HTML,
+            );
+
+            return null;
+        }
+
+        return parent::__invoke($bot, ...$parameters);
+    }
 
     public function choosePavilion(Nutgram $bot)
     {

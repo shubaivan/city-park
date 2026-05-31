@@ -1,6 +1,7 @@
 monolog:
     channels:
         - deprecation # Deprecations are logged in the dedicated "deprecation" channel when it exists
+        - photo # Pavilion photo-upload + reminder audit trail (see var/log/photo-upload.log)
 
 when@dev:
     monolog:
@@ -9,7 +10,12 @@ when@dev:
                 type: stream
                 path: "%kernel.logs_dir%/%kernel.environment%.log"
                 level: debug
-                channels: ["!event"]
+                channels: ["!event", "!photo"]
+            photo_upload:
+                type: stream
+                path: "%kernel.logs_dir%/photo-upload.log"
+                level: info
+                channels: ["photo"]
             # uncomment to get logging in your browser
             # you may have to allow bigger header sizes in your Web server configuration
             #firephp:
@@ -46,11 +52,20 @@ when@prod:
                 handler: nested
                 excluded_http_codes: [404, 405]
                 buffer_size: 50 # How many messages should be saved? Prevent memory leaks
+                channels: ["!photo"] # photo audit trail must NOT be buffered by fingers_crossed (would be dropped unless an error follows)
             nested:
                 type: stream
                 path: php://stderr
                 level: debug
                 formatter: monolog.formatter.json
+            # Persistent, greppable audit trail for photo uploads + reminder/block delivery.
+            # Written unconditionally at info level to a real file (not stderr/fingers_crossed),
+            # so we can always answer "did the photo arrive, and what happened to it?".
+            photo_upload:
+                type: stream
+                path: "%kernel.logs_dir%/photo-upload.log"
+                level: info
+                channels: ["photo"]
             console:
                 type: console
                 process_psr_3_messages: false
