@@ -100,18 +100,19 @@ class PhotoBulkUnblockCommand extends Command
                 continue;
             }
 
-            $forgiven = $this->photoService->forgiveBlockingRequests($account, $now);
-
             if ($dryRun) {
+                // NB: must NOT call forgiveBlockingRequests() here — it flushes
+                // resolved_at, so a "dry" run would mutate the DB. Preview only.
                 $io->writeln(sprintf(
-                    '  [DRY] acc=%d (%s, кв.%s) — буде розблоковано, forgive=%d запит(ів).',
+                    '  [DRY] acc=%d (%s, кв.%s) — буде розблоковано (відкриті блокуючі запити будуть закриті).',
                     $account->getId(),
                     $account->getAccountNumber(),
                     $account->getApartmentNumber(),
-                    $forgiven,
                 ));
                 continue;
             }
+
+            $forgiven = $this->photoService->forgiveBlockingRequests($account, $now);
 
             $account->setIsActive(true);
             $this->auditor->log(
@@ -135,11 +136,12 @@ class PhotoBulkUnblockCommand extends Command
                 }
                 try {
                     $this->bot->sendMessage(
-                        text: "✅ <b>Доступ до бронювання відновлено.</b>\n\n"
-                            . "ОСББ розблокувало ваш акаунт після пропущеного фото 24.05. "
-                            . "Будь ласка, надалі надсилайте фото протягом 20 хв після завершення кожної сесії — "
-                            . "якщо забудете знову, акаунт знову заблокується автоматично.\n\n"
-                            . "Дякуємо за розуміння!",
+                        text: "✅ <b>Доступ до бронювання відновлено — і вибачте за незручності.</b>\n\n"
+                            . "Через технічну помилку в боті ваші фото альтанки могли не зберігатися після надсилання, "
+                            . "тому акаунт було помилково заблоковано. Це наша провина, а не ваша.\n\n"
+                            . "Ми виправили помилку та розблокували ваш акаунт. Робити нічого не потрібно — "
+                            . "надалі, як і раніше, просто надсилайте одне фото після завершення бронювання.\n\n"
+                            . "Дякуємо за розуміння та ще раз вибачте! 🙏",
                         chat_id: $user->getChatId(),
                         parse_mode: ParseMode::HTML,
                     );
