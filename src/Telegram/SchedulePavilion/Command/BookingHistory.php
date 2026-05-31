@@ -12,6 +12,7 @@ use App\Service\SchedulePavilionService;
 use App\Service\UkDateFormatter;
 use App\Telegram\Start\Command\StartCommand;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Cache\CacheItemPoolInterface;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
@@ -41,6 +42,7 @@ class BookingHistory
         private PhotoUploadRequestRepository $requestRepository,
         private PavilionPhotoService $photoService,
         private EntityManagerInterface $em,
+        private CacheItemPoolInterface $cache,
     ) {}
 
     public function __invoke(Nutgram $bot): void
@@ -61,19 +63,110 @@ class BookingHistory
         $history = $this->schedulePavilionService->getHistoryRange($weekStart, $weekEnd);
         $this->preloadStatusIndex($weekStart, $weekEnd);
 
-        $text = $this->renderText($history, $weekStart, $weekEnd);
+        $chunks = $this->renderChunks($history, $weekStart, $weekEnd);
         $markup = $this->buildNavigation($weekStart, $now);
 
-        $isCallback = $bot->isCallbackQuery();
-        if ($isCallback) {
+        if (count($chunks) === 1) {
+            $this->renderSingle($bot, $chunks[0], $markup);
+        } else {
+            $this->renderMultiple($bot, $chunks, $markup);
+        }
+
+        if ($bot->isCallbackQuery()) {
+            $bot->answerCallbackQuery();
+        }
+    }
+
+    /**
+     * Fits in one message: keep the original edit-in-place behaviour (no flicker,
+     * message stays put). Clean up any leftover overflow messages from a prior
+     * multi-message render of this chat.
+     */
+    private function renderSingle(Nutgram $bot, string $text, InlineKeyboardMarkup $markup): void
+    {
+        $chatId = $bot->chatId();
+        $callbackMsgId = $bot->isCallbackQuery() ? ($bot->callbackQuery()->message?->message_id) : null;
+
+        // Remove any previously-sent batch messages except the one we'll edit.
+        $this->deleteBatch($bot, $chatId, $callbackMsgId);
+
+        if ($callbackMsgId !== null) {
             try {
                 $bot->editMessageText(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
+                $this->saveBatch($chatId, [$callbackMsgId]);
                 return;
             } catch (\Throwable) {
-                // fall through
+                // fall through to a fresh send
             }
         }
-        $bot->sendMessage(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
+
+        $msg = $bot->sendMessage(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
+        $this->saveBatch($chatId, $msg?->message_id !== null ? [$msg->message_id] : []);
+    }
+
+    /**
+     * Too big for one message: send the week as a sequence of messages (split on
+     * day boundaries), navigation on the last one. The previous batch is deleted
+     * first so views don't pile up as the user navigates weeks.
+     */
+    private function renderMultiple(Nutgram $bot, array $chunks, InlineKeyboardMarkup $markup): void
+    {
+        $chatId = $bot->chatId();
+        $this->deleteBatch($bot, $chatId, null);
+
+        $sentIds = [];
+        $last = count($chunks) - 1;
+        foreach ($chunks as $i => $text) {
+            $msg = $bot->sendMessage(
+                text: $text,
+                parse_mode: ParseMode::HTML,
+                reply_markup: $i === $last ? $markup : null,
+            );
+            if ($msg?->message_id !== null) {
+                $sentIds[] = $msg->message_id;
+            }
+        }
+        $this->saveBatch($chatId, $sentIds);
+    }
+
+    private function batchKey(int|string $chatId): string
+    {
+        return 'bh_batch_' . $chatId;
+    }
+
+    /** Delete the previously-tracked batch messages for this chat, optionally keeping one. */
+    private function deleteBatch(Nutgram $bot, int|string|null $chatId, ?int $keepMessageId): void
+    {
+        if ($chatId === null) {
+            return;
+        }
+        $item = $this->cache->getItem($this->batchKey($chatId));
+        if (!$item->isHit()) {
+            return;
+        }
+        foreach ((array)$item->get() as $mid) {
+            $mid = (int)$mid;
+            if ($mid === $keepMessageId) {
+                continue;
+            }
+            try {
+                $bot->deleteMessage($chatId, $mid);
+            } catch (\Throwable) {
+                // message too old / already gone — ignore
+            }
+        }
+        $this->cache->deleteItem($this->batchKey($chatId));
+    }
+
+    private function saveBatch(int|string|null $chatId, array $messageIds): void
+    {
+        if ($chatId === null || !$messageIds) {
+            return;
+        }
+        $item = $this->cache->getItem($this->batchKey($chatId));
+        $item->set(array_values($messageIds));
+        $item->expiresAfter(3600);
+        $this->cache->save($item);
     }
 
     private function sendPhoto(Nutgram $bot, int $photoId): void
@@ -299,9 +392,15 @@ class BookingHistory
     }
 
     /**
+     * Render the week into one or more message-sized chunks. Whole days are kept
+     * together and packed greedily up to MESSAGE_CHAR_LIMIT; a single day larger
+     * than the limit is split between its entries (day header repeated) so no
+     * booking is ever dropped. Returns a single chunk for a normal week.
+     *
      * @param array<string, ScheduledSet[]> $history
+     * @return string[]
      */
-    private function renderText(array $history, \DateTime $weekStart, \DateTime $weekEnd): string
+    private function renderChunks(array $history, \DateTime $weekStart, \DateTime $weekEnd): array
     {
         $weekEndDisplay = (clone $weekEnd)->modify('-1 day');
         $header = sprintf(
@@ -311,26 +410,57 @@ class BookingHistory
         );
 
         if (!$history) {
-            return $header . "\n<i>Цього тижня бронювань не було.</i>";
+            return [$header . "\n<i>Цього тижня бронювань не було.</i>"];
         }
 
-        $body = '';
+        $days = [];
         foreach ($history as $sets) {
             $first = $sets[0]->getScheduledDateTime();
-            $section = "\n📅 <b>" . UkDateFormatter::dayDate($first) . "</b>\n";
-            foreach ($sets as $set) {
-                $section .= $this->formatEntry($set);
+            $dayHeader = "\n📅 <b>" . UkDateFormatter::dayDate($first) . "</b>\n";
+            $entries = array_map(fn(ScheduledSet $set) => $this->formatEntry($set), $sets);
+            $days[] = ['header' => $dayHeader, 'entries' => $entries];
+        }
+
+        $chunks = [];
+        $current = $header;
+
+        foreach ($days as $day) {
+            $dayText = $day['header'] . implode('', $day['entries']);
+
+            if (mb_strlen($current . $dayText, 'UTF-8') <= self::MESSAGE_CHAR_LIMIT) {
+                $current .= $dayText;
+                continue;
             }
-            $body .= $section;
+
+            // The day won't fit in the current message — close it out.
+            if (trim($current) !== '') {
+                $chunks[] = $current;
+            }
+            $current = '';
+
+            if (mb_strlen($dayText, 'UTF-8') <= self::MESSAGE_CHAR_LIMIT) {
+                $current = $dayText;
+                continue;
+            }
+
+            // A single day exceeds the limit: split it between entries.
+            $piece = $day['header'];
+            foreach ($day['entries'] as $entry) {
+                if ($piece !== $day['header']
+                    && mb_strlen($piece . $entry, 'UTF-8') > self::MESSAGE_CHAR_LIMIT) {
+                    $chunks[] = $piece;
+                    $piece = $day['header'];
+                }
+                $piece .= $entry;
+            }
+            $current = $piece;
         }
 
-        $text = $header . $body;
-        if (mb_strlen($text, 'UTF-8') > self::MESSAGE_CHAR_LIMIT) {
-            $text = mb_substr($text, 0, self::MESSAGE_CHAR_LIMIT - 80, 'UTF-8')
-                . "\n\n<i>… забагато записів, скорочено. Використайте навігацію по днях у іншому тижні.</i>";
+        if (trim($current) !== '') {
+            $chunks[] = $current;
         }
 
-        return $text;
+        return $chunks ?: [$header];
     }
 
     private function preloadStatusIndex(\DateTime $weekStart, \DateTime $weekEnd): void
