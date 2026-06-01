@@ -38,6 +38,7 @@ document.addEventListener("DOMContentLoaded", function () {
             switch (row.photo_status) {
                 case 'pending': return '<span class="badge bg-warning text-dark">⏳ Очікує</span>';
                 case 'blocked': return '<span class="badge bg-danger">⛔ Прострочено</span>';
+                case 'forgiven': return '<span class="badge bg-light text-dark border" title="Було прострочено, потім розблоковано без фото">✅ Закрито без фото</span>';
                 case 'future':  return '<span class="text-muted">🕓</span>';
                 case 'legacy':
                 default:        return '<span class="text-muted" title="Бронювання до запуску фото-вимоги">📜</span>';
