@@ -295,6 +295,9 @@ class ScheduledSetRepository extends ServiceEntityRepository
             $existsPendingReq = '(SELECT 1 FROM App\Entity\PhotoUploadRequest r WHERE r.account = a AND r.pavilion = b.pavilion'
                 . ' AND r.blocked_at IS NULL AND r.resolved_at IS NULL'
                 . ' AND r.session_start_at <= b.scheduled_at AND r.session_end_at > b.scheduled_at)';
+            $existsResolvedReq = '(SELECT 1 FROM App\Entity\PhotoUploadRequest r WHERE r.account = a AND r.pavilion = b.pavilion'
+                . ' AND r.resolved_at IS NOT NULL'
+                . ' AND r.session_start_at <= b.scheduled_at AND r.session_end_at > b.scheduled_at)';
 
             switch ($status) {
                 case 'uploaded':
@@ -305,6 +308,11 @@ class ScheduledSetRepository extends ServiceEntityRepository
                     break;
                 case 'pending':
                     $conditions[] = 'EXISTS ' . $existsPendingReq;
+                    $conditions[] = 'NOT EXISTS ' . $existsPhoto;
+                    break;
+                case 'forgiven':
+                    // Closed without a photo: resolved request exists, but no photo on file.
+                    $conditions[] = 'EXISTS ' . $existsResolvedReq;
                     $conditions[] = 'NOT EXISTS ' . $existsPhoto;
                     break;
                 case 'legacy':

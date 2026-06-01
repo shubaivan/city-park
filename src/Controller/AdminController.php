@@ -119,13 +119,16 @@ class AdminController extends AbstractController
         $obligationStart = $photoService->obligationStartAt();
 
         // We don't have account_id in the result rows (just account_number).
-        // Fetch all PavilionPhoto + open requests once and match by account_number+pavilion+window.
+        // Fetch all PavilionPhoto + all requests once and match by account_number+pavilion+window.
+        // Both open and resolved requests are loaded: a resolved request with no photo on file
+        // (blocked then forgiven / bulk-unblocked) must render distinctly from a session still
+        // awaiting a photo — otherwise both look like "⏳ Очікує".
         $em = $photoRepository->createQueryBuilder('p')->getEntityManager();
         $photos = $em->createQuery(
             'SELECT p, a FROM App\Entity\PavilionPhoto p JOIN p.account a'
         )->getResult();
         $requests = $em->createQuery(
-            'SELECT r, a FROM App\Entity\PhotoUploadRequest r JOIN r.account a WHERE r.resolved_at IS NULL'
+            'SELECT r, a FROM App\Entity\PhotoUploadRequest r JOIN r.account a'
         )->getResult();
 
         $photosByKey = [];
@@ -184,7 +187,13 @@ class AdminController extends AbstractController
                 }
             }
             if ($matchedReq) {
-                $row['photo_status'] = $matchedReq->getBlockedAt() ? 'blocked' : 'pending';
+                if ($matchedReq->getResolvedAt() !== null) {
+                    // Request closed but no photo on file (the photo case is handled above):
+                    // session was blocked then forgiven / bulk-unblocked without an upload.
+                    $row['photo_status'] = 'forgiven';
+                } else {
+                    $row['photo_status'] = $matchedReq->getBlockedAt() ? 'blocked' : 'pending';
+                }
                 continue;
             }
 
