@@ -29,10 +29,27 @@ class PavilionPhotoService
      * Grace window AFTER auto-block during which the user can still upload a photo
      * via the bot and trigger auto-unblock. Past this window the photo upload is
      * rejected — the obligation must be resolved by an admin. Counted from the
-     * actual block instant (so night-deferred sessions get a fair 15 min after
-     * the morning block fires, not 35 min from the literal session end at night).
+     * actual block instant (so night-deferred sessions get a fair window after
+     * the morning block fires, not from the literal session end at night).
      */
-    public const UPLOAD_GRACE_AFTER_BLOCK_MIN = 15;
+    public const UPLOAD_GRACE_AFTER_BLOCK_MIN = 120;
+
+    /**
+     * Human-readable Ukrainian label for the self-upload grace window
+     * (e.g. "2 години", "30 хв"). Keeps user-facing copy correct if the
+     * constant above changes.
+     */
+    public static function uploadGraceLabel(): string
+    {
+        $min = self::UPLOAD_GRACE_AFTER_BLOCK_MIN;
+        if ($min % 60 !== 0) {
+            return $min . ' хв';
+        }
+        $h = intdiv($min, 60);
+        $word = $h === 1 ? 'годину' : ($h < 5 ? 'години' : 'годин');
+
+        return $h . ' ' . $word;
+    }
 
     /** Reminders that would fire between 23:00 and 09:00 Kyiv time are deferred to 09:00. */
     public const NIGHT_START_HOUR = 23;
