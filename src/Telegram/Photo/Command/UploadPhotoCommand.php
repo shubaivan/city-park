@@ -78,9 +78,9 @@ class UploadPhotoCommand extends Command
             $bot->sendMessage(
                 text: '⏰ <b>Час на завантаження фото минув.</b>' . "\n\n"
                     . sprintf(
-                        'Фото приймається лише протягом %d хв після блокування. '
+                        'Фото приймається лише протягом %s після блокування. '
                         . 'Для розблокування зверніться до Аліни Бухгалтера — +380 93 658 32 02.',
-                        PavilionPhotoService::UPLOAD_GRACE_AFTER_BLOCK_MIN,
+                        PavilionPhotoService::uploadGraceLabel(),
                     ),
                 parse_mode: ParseMode::HTML,
             );

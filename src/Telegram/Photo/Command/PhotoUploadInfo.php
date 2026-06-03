@@ -71,8 +71,8 @@ class PhotoUploadInfo
         }
         if ($hasExpired) {
             $lines[] = sprintf(
-                '❌ — прострочено (минув %d-хвилинний час після блокування). Для розблокування зверніться до Аліни Бухгалтера — +380 93 658 32 02.',
-                PavilionPhotoService::UPLOAD_GRACE_AFTER_BLOCK_MIN,
+                '❌ — прострочено (минув час на завантаження — %s після блокування). Для розблокування зверніться до Аліни Бухгалтера — +380 93 658 32 02.',
+                PavilionPhotoService::uploadGraceLabel(),
             );
         }
 
