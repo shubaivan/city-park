@@ -35,6 +35,12 @@ class PavilionPhotoService
     public const UPLOAD_GRACE_AFTER_BLOCK_MIN = 120;
 
     /**
+     * How long before uploadCutoffAt to send the final "grace window almost over"
+     * warning to a blocked user. Sent once per request.
+     */
+    public const GRACE_WARNING_BEFORE_CUTOFF_MIN = 30;
+
+    /**
      * Human-readable Ukrainian label for the self-upload grace window
      * (e.g. "2 години", "30 хв"). Keeps user-facing copy correct if the
      * constant above changes.
@@ -288,6 +294,36 @@ class PavilionPhotoService
     public function isUploadStillAllowed(PhotoUploadRequest $req, \DateTime $now): bool
     {
         return $now < $this->uploadCutoffAt($req);
+    }
+
+    /**
+     * Instant at which we warn a blocked user that the self-upload grace window is
+     * about to close — GRACE_WARNING_BEFORE_CUTOFF_MIN before uploadCutoffAt.
+     */
+    public function graceWarnAt(PhotoUploadRequest $req): \DateTime
+    {
+        return (clone $this->uploadCutoffAt($req))
+            ->modify('-' . self::GRACE_WARNING_BEFORE_CUTOFF_MIN . ' minutes');
+    }
+
+    /**
+     * True when a still-blocked request has entered the final stretch of its
+     * self-upload window and hasn't been warned yet. Fires once; auto-moot once
+     * the user uploads (request resolves) or the cutoff passes.
+     */
+    public function shouldGraceWarn(PhotoUploadRequest $req, \DateTime $now): bool
+    {
+        if (!$req->isBlocked() || $req->getGraceWarningSentAt() !== null) {
+            return false;
+        }
+
+        return $now >= $this->graceWarnAt($req) && $now < $this->uploadCutoffAt($req);
+    }
+
+    public function markGraceWarningSent(PhotoUploadRequest $req, \DateTime $now): void
+    {
+        $req->setGraceWarningSentAt($now);
+        $this->em->flush();
     }
 
     public function markBlocked(PhotoUploadRequest $req, \DateTime $now): void

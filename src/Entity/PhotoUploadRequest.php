@@ -42,6 +42,13 @@ class PhotoUploadRequest
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTime $blocked_at = null;
 
+    /**
+     * When the "self-upload grace window is almost over" warning was sent (once),
+     * fired ~30 min before uploadCutoffAt. Null = not yet warned.
+     */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTime $grace_warning_sent_at = null;
+
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTime $resolved_at = null;
 
@@ -124,6 +131,17 @@ class PhotoUploadRequest
     public function setBlockedAt(?\DateTime $blocked_at): self
     {
         $this->blocked_at = $blocked_at;
+        return $this;
+    }
+
+    public function getGraceWarningSentAt(): ?\DateTime
+    {
+        return $this->grace_warning_sent_at;
+    }
+
+    public function setGraceWarningSentAt(?\DateTime $grace_warning_sent_at): self
+    {
+        $this->grace_warning_sent_at = $grace_warning_sent_at;
         return $this;
     }
 

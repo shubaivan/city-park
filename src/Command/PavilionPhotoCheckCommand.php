@@ -109,6 +109,7 @@ class PavilionPhotoCheckCommand extends Command
         $open = $this->requestRepository->findOpen();
         $reminded = 0;
         $blocked = 0;
+        $graceWarned = 0;
 
         foreach ($open as $req) {
             $dueReminder = $this->photoService->dueReminderNumber($req, $now);
@@ -138,14 +139,33 @@ class PavilionPhotoCheckCommand extends Command
                     $req->getSessionStartAt()->format('Y-m-d H:i'),
                     $req->getPavilion(),
                 ));
+                continue;
+            }
+
+            // Final nudge for an already-blocked user whose self-upload window is
+            // about to close. Sent once; auto-moot once they upload (request resolves).
+            if ($this->photoService->shouldGraceWarn($req, $now)) {
+                if ($this->sendGraceWarning($req)) {
+                    $this->photoService->markGraceWarningSent($req, $now);
+                    $graceWarned++;
+                    $this->log($io, sprintf(
+                        '  GRACE-WARN: req#%d acc=%d session=%s pav=%d (cutoff %s)',
+                        $req->getId(),
+                        $req->getAccount()->getId(),
+                        $req->getSessionStartAt()->format('Y-m-d H:i'),
+                        $req->getPavilion(),
+                        $this->photoService->uploadCutoffAt($req)->format('Y-m-d H:i'),
+                    ));
+                }
             }
         }
 
         $this->log($io, sprintf(
-            'Process summary: %d open requests — %d reminded, %d blocked',
+            'Process summary: %d open requests — %d reminded, %d blocked, %d grace-warned',
             count($open),
             $reminded,
             $blocked,
+            $graceWarned,
         ));
     }
 
@@ -298,5 +318,66 @@ class PavilionPhotoCheckCommand extends Command
             $req->getId(),
             $start->format('Y-m-d H:i'),
         ));
+    }
+
+    /**
+     * Final "self-upload window is almost over" nudge for an already-blocked
+     * account. Sent to every linked user once. Returns true if at least one
+     * message was delivered (so the caller marks it sent and won't repeat).
+     */
+    private function sendGraceWarning(PhotoUploadRequest $req): bool
+    {
+        $account = $req->getAccount();
+        $start = $req->getSessionStartAt();
+
+        $text = sprintf(
+            "⏳ <b>Залишилось мало часу, щоб розблокуватися самостійно</b>\n\n"
+            . "Фото за бронювання ще не надіслано:\n📅 <b>%s</b>\n⏰ <b>%s</b>\n🏠 Альт. <b>%d</b>\n\n"
+            . "📸 Надішліть фото в цей чат протягом <b>менше ніж %d хв</b> — блокування зніметься автоматично.\n\n"
+            . "⛔ Після цього самостійне завантаження буде вимкнено, і розблокувати акаунт можна буде лише через Аліну Бухгалтера: +380 93 658 32 02.",
+            UkDateFormatter::dayDate($start),
+            UkDateFormatter::time($start),
+            $req->getPavilion(),
+            PavilionPhotoService::GRACE_WARNING_BEFORE_CUTOFF_MIN,
+        );
+
+        $any = false;
+        foreach ($account->getUsers() as $user) {
+            /** @var TelegramUser $user */
+            if (!$user->getChatId()) {
+                $this->photoLogger->warning('grace-warning not delivered: user has no chat_id', [
+                    'request_id' => $req->getId(),
+                    'account_id' => $account->getId(),
+                    'user_id' => $user->getId(),
+                ]);
+                continue;
+            }
+            try {
+                $this->bot->sendMessage(
+                    text: $text,
+                    chat_id: $user->getChatId(),
+                    parse_mode: ParseMode::HTML,
+                );
+                $any = true;
+                $this->photoLogger->info('grace-warning delivered', [
+                    'request_id' => $req->getId(),
+                    'account_id' => $account->getId(),
+                    'chat_id' => $user->getChatId(),
+                ]);
+            } catch (\Throwable $t) {
+                $this->logger->warning('photo grace-warning send failed', [
+                    'user_id' => $user->getId(),
+                    'error' => $t->getMessage(),
+                ]);
+                $this->photoLogger->error('grace-warning NOT delivered (Telegram error)', [
+                    'request_id' => $req->getId(),
+                    'account_id' => $account->getId(),
+                    'chat_id' => $user->getChatId(),
+                    'error' => $t->getMessage(),
+                ]);
+            }
+        }
+
+        return $any;
     }
 }
