@@ -3,6 +3,7 @@
 namespace App\Telegram\SchedulePavilion\Command;
 
 use App\Entity\ScheduledSet;
+use App\Service\BlockReasonResolver;
 use App\Service\DebtPolicy;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
@@ -37,6 +38,7 @@ class SchedulePavilion extends Conversation
         private ValidatorInterface $validator,
         private WeatherService $weatherService,
         private DebtPolicy $debtPolicy,
+        private BlockReasonResolver $blockReasonResolver,
         private ?LoggerInterface $photoLogger = null,
         private string $pavilion1PhotoFileId = '',
         private string $pavilion2PhotoFileId = '',
@@ -113,7 +115,8 @@ class SchedulePavilion extends Conversation
 
         if (!$account->isActive()) {
             $bot->sendMessage(
-                text: 'Ви не можете бронювати! Ваш Аккаунт не активний. Зв\'яжітся з Аліною Бухгалтером - +380 93 658 32 02'
+                text: $this->blockReasonResolver->botMessage($account, SchedulePavilionService::createNewDate()),
+                parse_mode: ParseMode::HTML,
             );
             return;
         }
