@@ -38,7 +38,12 @@ class WarmWeatherCommand extends Command
                 return Command::SUCCESS;
             }
 
-            $io->success('Weather cache warmed: ' . $line);
+            // Plain writeln, NOT $io->success(): the forecast line contains emoji
+            // (☀️ ⛅ …) and SymfonyStyle's success block pads its box via wcswidth(),
+            // which probes '/\p{Emoji}/u'. Some prod libpcre2 builds report PCRE >= 10.40
+            // but lack the Emoji property, so that preg_match throws an ERROR-level
+            // warning on every successful run. writeln() does no width calculation.
+            $output->writeln('<info>Weather cache warmed:</info> ' . $line);
             $this->logger->info('WarmWeatherCommand: ' . $line);
         } catch (\Throwable $t) {
             $io->error($t->getMessage());

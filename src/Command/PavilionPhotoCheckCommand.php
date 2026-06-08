@@ -267,14 +267,16 @@ class PavilionPhotoCheckCommand extends Command
         $this->em->flush();
 
         $start = $req->getSessionStartAt();
+        $cutoff = $this->photoService->uploadCutoffAt($req);
         $text = sprintf(
             "⛔ <b>Ваш аккаунт заблоковано</b>\n\nПричина: не завантажено фото альтанки після бронювання:\n📅 <b>%s</b>\n⏰ <b>%s</b>\n🏠 Альт. <b>%d</b>\n\n"
-            . "📸 <i>У вас ще є <b>%s</b>, щоб надіслати фото в цей чат — блокування зніметься автоматично.</i>\n\n"
+            . "📸 <i>У вас ще є <b>%s</b> — до <b>%s</b> — щоб надіслати фото в цей чат, і блокування зніметься автоматично.</i>\n\n"
             . "Після цього — лише через Аліну Бухгалтера: +380 93 658 32 02.",
             UkDateFormatter::dayDate($start),
             UkDateFormatter::time($start),
             $req->getPavilion(),
             PavilionPhotoService::uploadGraceLabel(),
+            $cutoff->format('H:i'),
         );
 
         foreach ($account->getUsers() as $user) {
@@ -329,15 +331,17 @@ class PavilionPhotoCheckCommand extends Command
     {
         $account = $req->getAccount();
         $start = $req->getSessionStartAt();
+        $cutoff = $this->photoService->uploadCutoffAt($req);
 
         $text = sprintf(
             "⏳ <b>Залишилось мало часу, щоб розблокуватися самостійно</b>\n\n"
             . "Фото за бронювання ще не надіслано:\n📅 <b>%s</b>\n⏰ <b>%s</b>\n🏠 Альт. <b>%d</b>\n\n"
-            . "📸 Надішліть фото в цей чат протягом <b>менше ніж %d хв</b> — блокування зніметься автоматично.\n\n"
+            . "📸 Надішліть фото в цей чат до <b>%s</b> (залишилось менше ніж %d хв) — блокування зніметься автоматично.\n\n"
             . "⛔ Після цього самостійне завантаження буде вимкнено, і розблокувати акаунт можна буде лише через Аліну Бухгалтера: +380 93 658 32 02.",
             UkDateFormatter::dayDate($start),
             UkDateFormatter::time($start),
             $req->getPavilion(),
+            $cutoff->format('H:i'),
             PavilionPhotoService::GRACE_WARNING_BEFORE_CUTOFF_MIN,
         );
 

@@ -281,13 +281,21 @@ class PavilionPhotoService
     /**
      * Latest instant at which a user-initiated photo upload is still accepted for
      * auto-unblock. Past this cutoff the bot refuses the upload and points the
-     * user at the accountant. Computed from the actual (deferred) block instant
-     * + UPLOAD_GRACE_AFTER_BLOCK_MIN, so night-deferred sessions get a fair
-     * grace window after the morning block fires.
+     * user at the accountant.
+     *
+     * Counted from when the block notice was actually DELIVERED (blocked_at), not
+     * from the logical block instant (sessionEnd + BLOCK_AFTER). The cron advances
+     * only one action per 20-min tick, so the notice can land up to ~40 min after
+     * the logical instant; anchoring on blocked_at guarantees the user gets the
+     * full UPLOAD_GRACE_AFTER_BLOCK_MIN window we promise them in the message.
+     * Falls back to the logical blockAt() before the block has fired (blocked_at
+     * still null), which keeps graceWarnAt() defined for not-yet-blocked requests.
      */
     public function uploadCutoffAt(PhotoUploadRequest $req): \DateTime
     {
-        return (clone $this->blockAt($req))
+        $base = $req->getBlockedAt() ?? $this->blockAt($req);
+
+        return (clone $base)
             ->modify('+' . self::UPLOAD_GRACE_AFTER_BLOCK_MIN . ' minutes');
     }
 
