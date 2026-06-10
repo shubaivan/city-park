@@ -114,18 +114,25 @@ class PavilionPhotoCheckCommand extends Command
         foreach ($open as $req) {
             $dueReminder = $this->photoService->dueReminderNumber($req, $now);
             if ($dueReminder !== null) {
-                if ($this->sendReminder($req, $dueReminder)) {
-                    $this->photoService->markReminderSent($req, $now);
+                // Advance the escalation clock whether or not the reminder was
+                // delivered. If we can't reach the user (no chat_id / bot blocked),
+                // the photo obligation still stands — burning the reminder slot lets
+                // the block eventually fire instead of this request looping here
+                // forever. Enforcement must not depend on our ability to nudge.
+                $delivered = $this->sendReminder($req, $dueReminder);
+                $this->photoService->markReminderSent($req, $now);
+                if ($delivered) {
                     $reminded++;
-                    $this->log($io, sprintf(
-                        '  reminder %d/%d sent: req#%d acc=%d session=%s',
-                        $dueReminder,
-                        count(PavilionPhotoService::REMINDER_OFFSETS_MIN),
-                        $req->getId(),
-                        $req->getAccount()->getId(),
-                        $req->getSessionStartAt()->format('Y-m-d H:i'),
-                    ));
                 }
+                $this->log($io, sprintf(
+                    '  reminder %d/%d %s: req#%d acc=%d session=%s',
+                    $dueReminder,
+                    count(PavilionPhotoService::REMINDER_OFFSETS_MIN),
+                    $delivered ? 'sent' : 'undeliverable (slot advanced)',
+                    $req->getId(),
+                    $req->getAccount()->getId(),
+                    $req->getSessionStartAt()->format('Y-m-d H:i'),
+                ));
                 continue;
             }
 
