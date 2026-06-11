@@ -7,6 +7,7 @@ use App\Entity\AccountStatusLog;
 use App\Repository\AccountRepository;
 use App\Service\AccountStatusAuditor;
 use App\Service\DebtPolicy;
+use App\Service\PavilionPhotoService;
 use Doctrine\ORM\EntityManagerInterface;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Psr\Log\LoggerInterface;
@@ -33,6 +34,7 @@ class DebtImportFileCommand extends Command
         private EntityManagerInterface $em,
         private Nutgram $bot,
         private AccountStatusAuditor $auditor,
+        private PavilionPhotoService $photoService,
     ) {
         parent::__construct();
     }
@@ -166,7 +168,13 @@ class DebtImportFileCommand extends Command
                     }
                 }
             } else {
-                if (!$wasActive) {
+                if (!$wasActive && $this->photoService->hasOpenBlockingRequest($account)) {
+                    // Debt within threshold, but a standing photo block keeps the account
+                    // down until an admin clears it. Update the debt, leave is_active=false.
+                    $this->logger->info('debt:import-file: debt OK but kept blocked by open photo request', [
+                        'account_id' => $account->getId(),
+                    ]);
+                } elseif (!$wasActive) {
                     $account->setIsActive(true);
                     $this->auditor->log(
                         $account, false, true,
@@ -205,19 +213,28 @@ class DebtImportFileCommand extends Command
         foreach ($resetCandidates as $account) {
             $wasInactive = !$account->isActive();
             $account->setDebt('0');
-            $account->setIsActive(true);
-            if ($wasInactive) {
-                $this->auditor->log(
-                    $account, false, true,
-                    AccountStatusLog::SOURCE_DEBT_IMPORT,
-                    'debt',
-                    sprintf('reset (not in file %s)', basename($path)),
-                );
+
+            // Reset the debt, but a standing photo block survives the reset (admin-only release).
+            $keepBlockedByPhoto = $wasInactive && $this->photoService->hasOpenBlockingRequest($account);
+            if (!$keepBlockedByPhoto) {
+                $account->setIsActive(true);
+                if ($wasInactive) {
+                    $this->auditor->log(
+                        $account, false, true,
+                        AccountStatusLog::SOURCE_DEBT_IMPORT,
+                        'debt',
+                        sprintf('reset (not in file %s)', basename($path)),
+                    );
+                }
+            } else {
+                $this->logger->info('debt:import-file: debt reset but kept blocked by open photo request', [
+                    'account_id' => $account->getId(),
+                ]);
             }
             $this->em->persist($account);
             $reset++;
 
-            if ($wasInactive) {
+            if ($wasInactive && !$keepBlockedByPhoto) {
                 foreach ($account->getUsers() as $user) {
                     if (!$user->getChatId()) continue;
                     try {

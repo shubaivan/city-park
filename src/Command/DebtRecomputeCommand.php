@@ -7,6 +7,7 @@ use App\Entity\AccountStatusLog;
 use App\Repository\AccountRepository;
 use App\Service\AccountStatusAuditor;
 use App\Service\DebtPolicy;
+use App\Service\PavilionPhotoService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
@@ -31,6 +32,7 @@ class DebtRecomputeCommand extends Command
         private EntityManagerInterface $em,
         private Nutgram $bot,
         private AccountStatusAuditor $auditor,
+        private PavilionPhotoService $photoService,
     ) {
         parent::__construct();
     }
@@ -128,6 +130,16 @@ class DebtRecomputeCommand extends Command
 
         foreach ($toUnblock as $r) {
             $account = $r['account'];
+
+            // Debt now within threshold, but a standing photo block keeps the account down
+            // until an admin clears it (is_active is shared between debt and photo blocks).
+            if ($this->photoService->hasOpenBlockingRequest($account)) {
+                $this->logger->info('debt:recompute: debt OK but kept blocked by open photo request', [
+                    'account_id' => $account->getId(),
+                ]);
+                continue;
+            }
+
             $account->setIsActive(true);
             $this->auditor->log(
                 $account, false, true,

@@ -964,7 +964,8 @@ class AdminController extends AbstractController
         EntityManagerInterface $em,
         LoggerInterface $logger,
         Nutgram $bot,
-        DebtPolicy $debtPolicy
+        DebtPolicy $debtPolicy,
+        PavilionPhotoService $photoService
     ): Response
     {
         /** @var UploadedFile|null $file */
@@ -1049,8 +1050,19 @@ class AdminController extends AbstractController
                         }
                     }
                 } else {
-                    // Debt within threshold: ensure account stays active.
-                    $account->setIsActive(true);
+                    // Debt within threshold: reactivate — UNLESS a standing photo block
+                    // must keep the account down. is_active is shared between debt and photo
+                    // blocks, so clearing a debt must never lift a photo block: that stays
+                    // until an admin clears it explicitly.
+                    if (!$wasActive && !$photoService->hasOpenBlockingRequest($account)) {
+                        $account->setIsActive(true);
+                        $this->statusAuditor->log(
+                            $account, false, true,
+                            AccountStatusLog::SOURCE_DEBT_IMPORT,
+                            'debt',
+                            'web debt upload: debt within threshold',
+                        );
+                    }
                     $em->persist($account);
                 }
 
@@ -1083,11 +1095,29 @@ class AdminController extends AbstractController
             $wasInactive = !$account->isActive();
 
             $account->setDebt('0');
-            $account->setIsActive(true);
+
+            // Clear the debt unconditionally, but only restore access if no standing photo
+            // block remains — a photo block must outlive the debt reset (admin-only release).
+            $keepBlockedByPhoto = $wasInactive && $photoService->hasOpenBlockingRequest($account);
+            if (!$keepBlockedByPhoto) {
+                if ($wasInactive) {
+                    $account->setIsActive(true);
+                    $this->statusAuditor->log(
+                        $account, false, true,
+                        AccountStatusLog::SOURCE_DEBT_IMPORT,
+                        'debt',
+                        'web debt upload: reset (not in file)',
+                    );
+                }
+            } else {
+                $logger->info('Debt reset but account kept blocked by open photo request', [
+                    'account_id' => $account->getId(),
+                ]);
+            }
             $em->persist($account);
             $reset++;
 
-            if ($wasInactive) {
+            if ($wasInactive && !$keepBlockedByPhoto) {
                 foreach ($account->getUsers() as $user) {
                     if ($user->getChatId()) {
                         try {

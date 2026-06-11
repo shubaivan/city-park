@@ -481,6 +481,25 @@ class PavilionPhotoService
     }
 
     /**
+     * True when the account currently carries a standing photo block — i.e. an open
+     * (unresolved) request that already flipped is_active to false.
+     *
+     * Debt-side reactivation (file upload, debt:import-file, debt:recompute) MUST consult
+     * this before setting is_active back to true: is_active is a single shared flag, so
+     * clearing a debt would otherwise silently lift a photo block. A photo block must
+     * survive until an admin clears it explicitly (/admin/users or /admin/photo-requests).
+     */
+    public function hasOpenBlockingRequest(Account $account): bool
+    {
+        foreach ($this->requestRepository->findOpenForAccount($account) as $req) {
+            if ($req->getBlockedAt() !== null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Cutoff before which sessions don't need a photo (grandfathered legacy bookings).
      */
     public function obligationStartAt(): \DateTime
