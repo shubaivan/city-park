@@ -23,7 +23,13 @@ class PavilionPhotoService
     public const LOOKBACK_HOURS = 26;
 
     public const REMINDER_OFFSETS_MIN = [5, 15];
-    public const BLOCK_AFTER_MIN = 20;
+
+    /**
+     * Hour (Kyiv) on the morning AFTER the session at which the account is blocked
+     * if the photo is still missing. Gentle policy: the user has the whole rest of
+     * the booking day + evening to upload; the block only fires next morning.
+     */
+    public const BLOCK_HOUR = 9;
 
     /**
      * Grace window AFTER auto-block during which the user can still upload a photo
@@ -270,12 +276,20 @@ class PavilionPhotoService
     }
 
     /**
-     * Wall-clock instant at which auto-block fires for a given request, with night-deferral.
+     * Wall-clock instant at which auto-block fires for a given request.
+     *
+     * Gentle policy (since 2026-06-12): the photo can be sent any time during the
+     * booking day and the evening; the account is only blocked at BLOCK_HOUR (09:00)
+     * the NEXT morning if it's still missing. This replaces the old session-end +
+     * 20 min trigger, which could block within the hour. Reminders still fire shortly
+     * after the session (REMINDER_OFFSETS_MIN) — only the block is deferred to the
+     * morning. The 2-hour post-block self-upload grace (uploadCutoffAt) is unchanged.
      */
     public function blockAt(PhotoUploadRequest $req): \DateTime
     {
-        $blockAt = $this->sessionEndKyiv($req)->modify('+' . self::BLOCK_AFTER_MIN . ' minutes');
-        return $this->deferIfNight($blockAt);
+        return $this->sessionEndKyiv($req)
+            ->modify('+1 day')
+            ->setTime(self::BLOCK_HOUR, 0, 0);
     }
 
     /**

@@ -48,6 +48,7 @@ class PavilionPhotoCheckCommand extends Command
         $this->log($io, sprintf('=== photo:check tick @ %s ===', $now->format('Y-m-d H:i:s P')));
 
         try {
+            $this->logCensus($io);
             $this->materializeRequests($io, $now);
             $this->processOpenRequests($io, $now);
             $this->log($io, 'tick complete');
@@ -165,6 +166,23 @@ class PavilionPhotoCheckCommand extends Command
                     ));
                 }
             }
+
+            // No escalation action this tick — record where the obligation sits so a
+            // future "why is req#X (not) blocked?" is answerable from any single tick:
+            // reminders fired so far, the instant the block will/did fire, and (once
+            // blocked) the self-upload cutoff. All times are Kyiv wall-clock.
+            $this->log($io, sprintf(
+                '  waiting: req#%d acc=%d session=%s pav=%d reminders=%d/%d blockAt=%s blocked_at=%s cutoff=%s',
+                $req->getId(),
+                $req->getAccount()->getId(),
+                $req->getSessionStartAt()->format('Y-m-d H:i'),
+                $req->getPavilion(),
+                $req->getRemindersSent(),
+                count(PavilionPhotoService::REMINDER_OFFSETS_MIN),
+                $this->photoService->blockAt($req)->format('Y-m-d H:i'),
+                $req->getBlockedAt() ? $req->getBlockedAt()->format('Y-m-d H:i') : '—',
+                $req->isBlocked() ? $this->photoService->uploadCutoffAt($req)->format('Y-m-d H:i') : '—',
+            ));
         }
 
         $this->log($io, sprintf(
@@ -181,13 +199,47 @@ class PavilionPhotoCheckCommand extends Command
         $io->writeln(sprintf('[%s] %s', (new \DateTime())->format('Y-m-d H:i:s'), $line));
     }
 
+    /**
+     * One-line snapshot of the global block state at the start of every tick.
+     * Greppable over time (`grep census var/log/photo-check.log`) so a genuine
+     * mass-block — or a sudden jump in inactive accounts — is visible at a glance
+     * instead of having to reconstruct it from the live DB after the fact.
+     */
+    private function logCensus(SymfonyStyle $io): void
+    {
+        $count = fn(string $dql): int => (int) $this->em->createQuery($dql)->getSingleScalarResult();
+
+        $total = $count('SELECT COUNT(a.id) FROM ' . \App\Entity\Account::class . ' a');
+        // is_active false OR NULL both mean "cannot book"; count them together.
+        $inactive = $count(
+            'SELECT COUNT(a.id) FROM ' . \App\Entity\Account::class . ' a'
+            . ' WHERE a.is_active = false OR a.is_active IS NULL'
+        );
+        $openTotal = $count(
+            'SELECT COUNT(r.id) FROM ' . PhotoUploadRequest::class . ' r WHERE r.resolved_at IS NULL'
+        );
+        $openBlocked = $count(
+            'SELECT COUNT(r.id) FROM ' . PhotoUploadRequest::class . ' r'
+            . ' WHERE r.resolved_at IS NULL AND r.blocked_at IS NOT NULL'
+        );
+
+        $this->log($io, sprintf(
+            'census: accounts %d total — %d active, %d inactive; open photo requests %d (%d already blocked, in self-upload window)',
+            $total,
+            $total - $inactive,
+            $inactive,
+            $openTotal,
+            $openBlocked,
+        ));
+    }
+
     private function sendReminder(PhotoUploadRequest $req, int $reminderNumber): bool
     {
         $account = $req->getAccount();
         $start = $req->getSessionStartAt();
         $pavilionName = $req->getPavilion() === 1 ? 'Перша' : 'Друга';
         $totalReminders = count(PavilionPhotoService::REMINDER_OFFSETS_MIN);
-        $blockAfterMin = PavilionPhotoService::BLOCK_AFTER_MIN;
+        $blockAt = $this->photoService->blockAt($req);
 
         $heading = $reminderNumber === 1
             ? "📸 <b>Потрібне фото альтанки після бронювання</b>"
@@ -201,13 +253,15 @@ class PavilionPhotoCheckCommand extends Command
             . "вказаного вище.\n\n"
             . "📝 <i>Якщо сьогодні у вас було кілька окремих сесій (наприклад, вранці і ввечері або у різних альтанках), "
             . "фото потрібно надіслати окремо для кожної сесії — переходьте в меню «📸 Завантажити фото», там видно усі відкриті запити.</i>\n\n"
-            . "⛔ Якщо фото не буде надіслано протягом <b>%d хв</b> після завершення бронювання, "
-            . "акаунт буде тимчасово заблоковано до зʼясування.",
+            . "⏳ Фото можна надіслати протягом усього дня. Будь ласка, зробіть це до "
+            . "<b>%s, %s</b> (ранок наступного дня) — інакше акаунт буде тимчасово "
+            . "заблоковано до зʼясування.",
             $heading,
             $pavilionName,
             UkDateFormatter::dayDate($start),
             UkDateFormatter::time($start),
-            $blockAfterMin,
+            UkDateFormatter::time($blockAt),
+            UkDateFormatter::dayDate($blockAt),
         );
 
         $any = false;
