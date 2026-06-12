@@ -209,7 +209,11 @@ class PavilionPhotoCheckCommand extends Command
 
     private function log(SymfonyStyle $io, string $line): void
     {
-        $io->writeln(sprintf('[%s] %s', (new \DateTime())->format('Y-m-d H:i:s'), $line));
+        // Kyiv, NOT server UTC: session times, blockAt and the tick header are all
+        // Kyiv wall-clock, so the line timestamp must match or the log reads with a
+        // confusing ~3h skew (prod runs on UTC). Keeps the whole chain on one clock.
+        $stamp = (new \DateTime('now', new \DateTimeZone('Europe/Kyiv')))->format('Y-m-d H:i:s');
+        $io->writeln(sprintf('[%s] %s', $stamp, $line));
     }
 
     /**
