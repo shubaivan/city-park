@@ -22,14 +22,20 @@ class PavilionPhotoService
      */
     public const LOOKBACK_HOURS = 26;
 
-    public const REMINDER_OFFSETS_MIN = [5, 15];
+    /**
+     * Reminders fire at these offsets (minutes) after the session ends. Aligned to
+     * the 20-min cron cadence so each lands on its own tick: +20 → reminder 1,
+     * +40 → reminder 2, +60 → block.
+     */
+    public const REMINDER_OFFSETS_MIN = [20, 40];
 
     /**
-     * Hour (Kyiv) on the morning AFTER the session at which the account is blocked
-     * if the photo is still missing. Gentle policy: the user has the whole rest of
-     * the booking day + evening to upload; the block only fires next morning.
+     * Block fires this many minutes after the session ends if the photo is still
+     * missing — within the hour, so the photo stays fresh evidence of who left the
+     * pavilion in what state (a later upload could show the state after the NEXT
+     * booker used it). Deferred to 09:00 if it would land in night hours.
      */
-    public const BLOCK_HOUR = 9;
+    public const BLOCK_AFTER_MIN = 60;
 
     /**
      * Grace window AFTER auto-block during which the user can still upload a photo
@@ -276,20 +282,15 @@ class PavilionPhotoService
     }
 
     /**
-     * Wall-clock instant at which auto-block fires for a given request.
-     *
-     * Gentle policy (since 2026-06-12): the photo can be sent any time during the
-     * booking day and the evening; the account is only blocked at BLOCK_HOUR (09:00)
-     * the NEXT morning if it's still missing. This replaces the old session-end +
-     * 20 min trigger, which could block within the hour. Reminders still fire shortly
-     * after the session (REMINDER_OFFSETS_MIN) — only the block is deferred to the
-     * morning. The 2-hour post-block self-upload grace (uploadCutoffAt) is unchanged.
+     * Wall-clock instant at which auto-block fires for a given request:
+     * session end + BLOCK_AFTER_MIN (60), deferred to 09:00 if it lands in night
+     * hours. Prompt by design — the photo must be sent within the hour so it still
+     * proves the pavilion's condition before the next booker can change it.
      */
     public function blockAt(PhotoUploadRequest $req): \DateTime
     {
-        return $this->sessionEndKyiv($req)
-            ->modify('+1 day')
-            ->setTime(self::BLOCK_HOUR, 0, 0);
+        $blockAt = $this->sessionEndKyiv($req)->modify('+' . self::BLOCK_AFTER_MIN . ' minutes');
+        return $this->deferIfNight($blockAt);
     }
 
     /**

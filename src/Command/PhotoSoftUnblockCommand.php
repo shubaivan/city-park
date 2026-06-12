@@ -33,7 +33,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 #[AsCommand(
     name: 'pavilion:photo:soft-unblock',
-    description: 'Unblock accounts photo-blocked under the old strict timing, restore is_active (debt-permitting), and notify them about the gentler rule.',
+    description: 'Forgive accounts with an open photo-block, restore is_active (debt-permitting), and notify them with a neutral apology + reminder to send the photo promptly.',
 )]
 class PhotoSoftUnblockCommand extends Command
 {
@@ -137,9 +137,10 @@ class PhotoSoftUnblockCommand extends Command
                 try {
                     $this->bot->sendMessage(
                         text: "✅ <b>Доступ до бронювання відновлено — вибачте за незручності.</b>\n\n"
-                            . "Ми зробили правило про фото мʼякшим: тепер фото можна надіслати протягом "
-                            . "усього дня, а блокування — лише якщо фото немає до <b>09:00 наступного ранку</b>.\n\n"
-                            . "Ваш акаунт розблоковано, робити нічого не потрібно. Дякуємо! 🙏",
+                            . "Ваш акаунт розблоковано, робити нічого не потрібно.\n\n"
+                            . "Нагадуємо: після кожного бронювання надсилайте одне фото альтанки в цей чат "
+                            . "найближчим часом після завершення (протягом години) — і блокування не виникатиме. "
+                            . "Дякуємо! 🙏",
                         chat_id: $user->getChatId(),
                         parse_mode: ParseMode::HTML,
                     );

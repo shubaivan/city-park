@@ -81,6 +81,19 @@ class PavilionPhotoCheckCommand extends Command
             if ($result['created']) {
                 $tag = $result['preResolvedByPhoto'] ? 'created+auto-resolved' : 'created';
                 $result['preResolvedByPhoto'] ? $autoResolved++ : $created++;
+
+                // Structured chain event #1: obligation born. Lets photo-upload.log
+                // alone tell the full per-request story when grepped by request_id
+                // (materialized -> reminder1/2 -> blocked -> grace -> saved/unblocked).
+                $this->photoLogger->info('request materialized', [
+                    'request_id' => $req->getId(),
+                    'account_id' => $s['account']->getId(),
+                    'pavilion' => $s['pavilion'],
+                    'session_start' => $s['start']->format('Y-m-d H:i'),
+                    'session_end' => $s['end']->format('Y-m-d H:i'),
+                    'block_at' => $this->photoService->blockAt($req)->format('Y-m-d H:i'),
+                    'pre_resolved_by_photo' => $result['preResolvedByPhoto'],
+                ]);
             } else {
                 $reused++;
             }
@@ -253,9 +266,8 @@ class PavilionPhotoCheckCommand extends Command
             . "вказаного вище.\n\n"
             . "📝 <i>Якщо сьогодні у вас було кілька окремих сесій (наприклад, вранці і ввечері або у різних альтанках), "
             . "фото потрібно надіслати окремо для кожної сесії — переходьте в меню «📸 Завантажити фото», там видно усі відкриті запити.</i>\n\n"
-            . "⏳ Фото можна надіслати протягом усього дня. Будь ласка, зробіть це до "
-            . "<b>%s, %s</b> (ранок наступного дня) — інакше акаунт буде тимчасово "
-            . "заблоковано до зʼясування.",
+            . "⏳ Будь ласка, надішліть фото найближчим часом — орієнтовно до "
+            . "<b>%s</b> (%s). Інакше акаунт буде тимчасово заблоковано до зʼясування.",
             $heading,
             $pavilionName,
             UkDateFormatter::dayDate($start),
@@ -326,6 +338,23 @@ class PavilionPhotoCheckCommand extends Command
         }
         $this->photoService->markBlocked($req, $now);
         $this->em->flush();
+
+        // Structured chain event #2: the block itself — logged here (before the
+        // notice loop) so it lands even when the user has no chat_id and never gets
+        // a block notice. 'was_active' shows whether this flipped is_active or the
+        // account was already inactive (e.g. debt). Pairs with 'request materialized'
+        // and the upload events under the same request_id.
+        $this->photoLogger->warning('account blocked (photo missing)', [
+            'request_id' => $req->getId(),
+            'account_id' => $account->getId(),
+            'pavilion' => $req->getPavilion(),
+            'session_start' => $req->getSessionStartAt()->format('Y-m-d H:i'),
+            'session_end' => $req->getSessionEndAt()->format('Y-m-d H:i'),
+            'reminders_sent' => $req->getRemindersSent(),
+            'blocked_at' => $now->format('Y-m-d H:i:s'),
+            'upload_cutoff' => $this->photoService->uploadCutoffAt($req)->format('Y-m-d H:i'),
+            'was_active' => (bool)$wasActive,
+        ]);
 
         $start = $req->getSessionStartAt();
         $cutoff = $this->photoService->uploadCutoffAt($req);
