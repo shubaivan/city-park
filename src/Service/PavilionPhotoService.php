@@ -308,7 +308,16 @@ class PavilionPhotoService
      */
     public function uploadCutoffAt(PhotoUploadRequest $req): \DateTime
     {
-        $base = $req->getBlockedAt() ?? $this->blockAt($req);
+        // blocked_at is persisted as Kyiv wall-clock but Doctrine rehydrates it in
+        // the PHP default TZ (UTC) — the same gotcha sessionEndKyiv() guards against.
+        // Reinterpret its wall-clock as Kyiv so the grace window (and the "almost
+        // over" warning derived from it) line up with real Kyiv time instead of
+        // drifting 3h late. blockAt() is already Kyiv-aware, so only the persisted
+        // value needs the reinterpretation.
+        $blockedAt = $req->getBlockedAt();
+        $base = $blockedAt !== null
+            ? new \DateTime($blockedAt->format('Y-m-d H:i:s'), new \DateTimeZone('Europe/Kyiv'))
+            : $this->blockAt($req);
 
         return (clone $base)
             ->modify('+' . self::UPLOAD_GRACE_AFTER_BLOCK_MIN . ' minutes');
