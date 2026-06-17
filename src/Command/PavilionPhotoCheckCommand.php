@@ -48,7 +48,7 @@ class PavilionPhotoCheckCommand extends Command
         $this->log($io, sprintf('=== photo:check tick @ %s ===', $now->format('Y-m-d H:i:s P')));
 
         try {
-            $this->logCensus($io);
+            $this->logCensus($io, $now);
             $this->materializeRequests($io, $now);
             $this->processOpenRequests($io, $now);
             $this->log($io, 'tick complete');
@@ -124,6 +124,7 @@ class PavilionPhotoCheckCommand extends Command
         $reminded = 0;
         $blocked = 0;
         $graceWarned = 0;
+        $awaitingAdmin = 0;
 
         foreach ($open as $req) {
             $dueReminder = $this->photoService->dueReminderNumber($req, $now);
@@ -184,10 +185,26 @@ class PavilionPhotoCheckCommand extends Command
             // future "why is req#X (not) blocked?" is answerable from any single tick:
             // reminders fired so far, the instant the block will/did fire, and (once
             // blocked) the self-upload cutoff. All times are Kyiv wall-clock.
+            //
+            // phase= names the lifecycle stage explicitly so the log is self-evident
+            // without re-deriving it from the timestamps. EXPIRED-awaiting-admin is the
+            // terminal stuck state (blocked, cutoff passed): the cron will never touch
+            // it again, so it's the one to grep for. Uppercased to stand out.
+            $phase = match (true) {
+                !$req->isBlocked() && $req->getRemindersSent() < count(PavilionPhotoService::REMINDER_OFFSETS_MIN)
+                    => 'awaiting-reminder',
+                !$req->isBlocked() => 'awaiting-block',
+                $this->photoService->isUploadStillAllowed($req, $now) => 'self-upload-window',
+                default => 'EXPIRED-awaiting-admin',
+            };
+            if ($phase === 'EXPIRED-awaiting-admin') {
+                $awaitingAdmin++;
+            }
             $this->log($io, sprintf(
-                '  waiting: req#%d acc=%d session=%s pav=%d reminders=%d/%d blockAt=%s blocked_at=%s cutoff=%s',
+                '  waiting: req#%d acc=%d phase=%s session=%s pav=%d reminders=%d/%d blockAt=%s blocked_at=%s cutoff=%s',
                 $req->getId(),
                 $req->getAccount()->getId(),
+                $phase,
                 $req->getSessionStartAt()->format('Y-m-d H:i'),
                 $req->getPavilion(),
                 $req->getRemindersSent(),
@@ -199,11 +216,12 @@ class PavilionPhotoCheckCommand extends Command
         }
 
         $this->log($io, sprintf(
-            'Process summary: %d open requests — %d reminded, %d blocked, %d grace-warned',
+            'Process summary: %d open requests — %d reminded, %d blocked, %d grace-warned, %d past cutoff awaiting admin',
             count($open),
             $reminded,
             $blocked,
             $graceWarned,
+            $awaitingAdmin,
         ));
     }
 
@@ -222,7 +240,7 @@ class PavilionPhotoCheckCommand extends Command
      * mass-block — or a sudden jump in inactive accounts — is visible at a glance
      * instead of having to reconstruct it from the live DB after the fact.
      */
-    private function logCensus(SymfonyStyle $io): void
+    private function logCensus(SymfonyStyle $io, \DateTime $now): void
     {
         $count = fn(string $dql): int => (int) $this->em->createQuery($dql)->getSingleScalarResult();
 
@@ -235,18 +253,34 @@ class PavilionPhotoCheckCommand extends Command
         $openTotal = $count(
             'SELECT COUNT(r.id) FROM ' . PhotoUploadRequest::class . ' r WHERE r.resolved_at IS NULL'
         );
-        $openBlocked = $count(
-            'SELECT COUNT(r.id) FROM ' . PhotoUploadRequest::class . ' r'
-            . ' WHERE r.resolved_at IS NULL AND r.blocked_at IS NOT NULL'
+
+        // Split the blocked-but-open requests by whether the self-upload grace window
+        // is still open. A blocked request past its cutoff will NEVER resolve on its
+        // own — the cron takes no further action and the bot refuses late uploads — so
+        // it sits here until an admin acts. Lumping both states under one "in
+        // self-upload window" label (the old wording) hid exactly the cohort that needs
+        // human attention. Partitioned in PHP because uploadCutoffAt() carries
+        // night-deferral logic that DQL can't express.
+        $blockedOpen = array_filter(
+            $this->requestRepository->findOpen(),
+            fn(PhotoUploadRequest $r) => $r->isBlocked(),
         );
+        $inWindow = 0;
+        $awaitingAdmin = 0;
+        foreach ($blockedOpen as $r) {
+            $this->photoService->isUploadStillAllowed($r, $now) ? $inWindow++ : $awaitingAdmin++;
+        }
 
         $this->log($io, sprintf(
-            'census: accounts %d total — %d active, %d inactive; open photo requests %d (%d already blocked, in self-upload window)',
+            'census: accounts %d total — %d active, %d inactive; open photo requests %d'
+            . ' (%d blocked: %d in self-upload window, %d past cutoff awaiting admin)',
             $total,
             $total - $inactive,
             $inactive,
             $openTotal,
-            $openBlocked,
+            count($blockedOpen),
+            $inWindow,
+            $awaitingAdmin,
         ));
     }
 
