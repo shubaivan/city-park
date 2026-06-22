@@ -19,7 +19,7 @@ final class BlockReasonResolver
     ) {
     }
 
-    private const ACCOUNTANT_CONTACT = "Зв'яжіться з Аліною Бухгалтером — +380 93 658 32 02";
+    private const ACCOUNTANT_CONTACT = "Зв'яжіться з Аліною Бухгалтером (+380 93 658 32 02) або головою ОСББ Людою (+380 67 470 46 24)";
 
     /**
      * @return array{code:string, label:string, details:?string}|null null when the account is active.
