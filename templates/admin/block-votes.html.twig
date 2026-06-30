@@ -44,6 +44,7 @@
                             <tr><th style="width:220px">Кандидат</th><td><b>{{ preview.label }}</b></td></tr>
                             <tr><th>Особовий рахунок</th><td>{{ preview.account_number }}</td></tr>
                             <tr><th>Адреса</th><td>{{ preview.street }}, буд. {{ preview.house_number }}, кв. {{ preview.apartment_number }}</td></tr>
+                            <tr><th>Остання бронь альтанки</th><td>{{ preview.last_booking ?? '—' }}</td></tr>
                             <tr><th>Жильці (Telegram)</th><td>
                                 {% if preview.names is empty %}
                                     <span class="text-muted">немає прив'язаних користувачів бота</span>
@@ -112,6 +113,11 @@
                         <td>{{ c.deadline|date('d.m.Y') }}</td>
                         <td>{{ c.created_by ?? '—' }}</td>
                         <td>
+                            <form method="post" action="{{ path('app_admin_block_vote_remind') }}" class="mb-1"
+                                  onsubmit="return confirm('Надіслати нагадування всім, хто ще не проголосував?');">
+                                <input type="hidden" name="campaign_id" value="{{ c.id }}">
+                                <button type="submit" class="btn btn-sm btn-outline-primary">📣 Нагадати тим, хто не голосував</button>
+                            </form>
                             <form method="post" action="{{ path('app_admin_block_vote_cancel') }}"
                                   onsubmit="return confirm('Скасувати це голосування?');">
                                 <input type="hidden" name="campaign_id" value="{{ c.id }}">

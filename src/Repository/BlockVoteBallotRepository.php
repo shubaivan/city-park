@@ -51,4 +51,21 @@ class BlockVoteBallotRepository extends ServiceEntityRepository
 
         return ['yes' => $yes, 'no' => $total - $yes];
     }
+
+    /**
+     * Account ids that have already cast a ballot in this campaign.
+     *
+     * @return int[]
+     */
+    public function votedAccountIds(BlockVoteCampaign $campaign): array
+    {
+        $rows = $this->createQueryBuilder('b')
+            ->select('IDENTITY(b.voterAccount) AS aid')
+            ->andWhere('b.campaign = :c')
+            ->setParameter('c', $campaign)
+            ->getQuery()
+            ->getResult();
+
+        return array_map(static fn($r) => (int)$r['aid'], $rows);
+    }
 }

@@ -384,7 +384,7 @@ class BlockVoteService
      * VoteBroadcastMessage handler (one message per voter). Skips silently if the campaign
      * was cancelled/closed before delivery, or the account vanished.
      */
-    public function deliverOpenedNotice(int $campaignId, int $accountId): void
+    public function deliverOpenedNotice(int $campaignId, int $accountId, bool $reminder = false): void
     {
         $campaign = $this->campaignRepository->find($campaignId);
         if ($campaign === null || !$campaign->isOpen()) {
@@ -394,18 +394,71 @@ class BlockVoteService
         if ($account === null) {
             return;
         }
-        $this->broadcastToAccount($account, $this->openedText($campaign));
+        $this->broadcastToAccount($account, $reminder ? $this->reminderText($campaign) : $this->openedText($campaign));
+    }
+
+    /**
+     * Re-dispatch the notice to every eligible voter who has NOT voted yet — catches anyone
+     * the original broadcast missed and nudges procrastinators, without re-pinging those who
+     * already voted. Goes through the async worker (one retryable message per recipient).
+     *
+     * @return int number of reminder messages dispatched
+     */
+    public function dispatchReminders(BlockVoteCampaign $campaign): int
+    {
+        if (!$campaign->isOpen()) {
+            return 0;
+        }
+        $voted = array_flip($this->ballotRepository->votedAccountIds($campaign));
+        $count = 0;
+        foreach ($this->eligibleVoters($campaign->getCandidate()) as $voter) {
+            /** @var Account $voter */
+            if (isset($voted[(int)$voter->getId()])) {
+                continue;
+            }
+            $this->bus->dispatch(new VoteBroadcastMessage($campaign->getId(), (int)$voter->getId(), true));
+            $count++;
+        }
+        $this->logger->info('block-vote: reminders dispatched', [
+            'campaign_id' => $campaign->getId(),
+            'dispatched' => $count,
+        ]);
+        return $count;
     }
 
     private function openedText(BlockVoteCampaign $campaign): string
     {
+        return "🗳️ <b>Відкрито голосування спільноти</b>\n\n" . $this->noticeBody($campaign);
+    }
+
+    private function reminderText(BlockVoteCampaign $campaign): string
+    {
+        return "📣 <b>Нагадування: триває голосування спільноти</b>\nВи ще <b>не проголосували</b>.\n\n"
+            . $this->noticeBody($campaign);
+    }
+
+    /**
+     * Shared detailed body for the opened/reminder notices: who, current tally, how many "За"
+     * are needed, the deadline, and what happens to the candidate if it passes.
+     */
+    private function noticeBody(BlockVoteCampaign $campaign): string
+    {
+        $tally = $this->ballotRepository->tally($campaign);
         return sprintf(
-            "🗳️ <b>Відкрито голосування спільноти</b>\n\n"
-            . "Пропонується тимчасово заблокувати: <b>%s</b>.\n\n"
-            . "Проголосуйте до <b>%s</b> у меню «🗳️ Голосування» (/vote).\n\n"
-            . "Рішення ухвалюється, якщо «За» проголосує понад половину активних квартир.",
+            "Пропонується тимчасово заблокувати: <b>%s</b>.\n\n"
+            . "📊 Зараз: «За» <b>%d</b> · «Проти» <b>%d</b>\n"
+            . "✅ Щоб ухвалити рішення, потрібно «За»: <b>%d</b> з %d активних квартир (понад половину).\n"
+            . "⏳ Голосування триває до <b>%s</b>.\n\n"
+            . "Якщо «За» набере більшість, аккаунт буде <b>заблоковано на %d днів</b> — бронювання альтанок стане недоступним. Після цього строку доступ відновиться <b>автоматично</b>.\n\n"
+            . "Один аккаунт — один голос; свій вибір можна змінити до завершення.\n"
+            . "👉 Проголосувати: меню «🗳️ Голосування» або команда /vote.",
             $this->candidateLabel($campaign->getCandidate()),
-            $campaign->getDeadlineAt()->format('d.m.Y')
+            $tally['yes'],
+            $tally['no'],
+            $campaign->yesNeeded(),
+            $campaign->getEligibleCount(),
+            $campaign->getDeadlineAt()->format('d.m.Y'),
+            self::BLOCK_DAYS,
         );
     }
 

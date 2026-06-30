@@ -71,6 +71,7 @@ class AdminController extends AbstractController
         AccountRepository $accountRepository,
         BlockVoteCampaignRepository $campaignRepository,
         BlockVoteBallotRepository $ballotRepository,
+        ScheduledSetRepository $scheduledSetRepository,
         BlockVoteService $voteService,
     ): Response {
         // Optional ?candidate=<особовий рахунок> → show a confirmation preview of WHO is about
@@ -94,9 +95,17 @@ class AdminController extends AbstractController
                     $names[] = $label !== '' ? $label : ('Telegram ID ' . $u->getTelegramId());
                 }
                 $eligible = count($voteService->eligibleVoters($cand));
+                $lastBooking = $scheduledSetRepository->lastBookingForAccount($cand);
                 $preview = [
                     'found' => true,
                     'label' => $voteService->candidateLabel($cand),
+                    'last_booking' => $lastBooking
+                        ? sprintf(
+                            'Альтанка %s · %s',
+                            $lastBooking->getPavilion() == 1 ? 'Перша' : 'Друга',
+                            $lastBooking->getScheduledDateTime()->format('d.m.Y H:i')
+                        )
+                        : null,
                     'account_number' => $cand->getAccountNumber(),
                     'apartment_number' => $cand->getApartmentNumber(),
                     'street' => $cand->getStreet(),
@@ -207,6 +216,27 @@ class AdminController extends AbstractController
 
         $voteService->cancelCampaign($campaign);
         $this->addFlash('success', 'Голосування скасовано.');
+        return $this->redirectToRoute('app_admin_block_votes');
+    }
+
+    #[Route('/admin/block-vote/remind', name: 'app_admin_block_vote_remind', methods: [Request::METHOD_POST])]
+    public function blockVoteRemind(
+        Request $request,
+        BlockVoteCampaignRepository $campaignRepository,
+        BlockVoteService $voteService,
+    ): Response {
+        $id = (int)$request->request->get('campaign_id');
+        $campaign = $id > 0 ? $campaignRepository->find($id) : null;
+        if (!$campaign || !$campaign->isOpen()) {
+            $this->addFlash('error', 'Голосування не знайдено або вже завершене.');
+            return $this->redirectToRoute('app_admin_block_votes');
+        }
+
+        $n = $voteService->dispatchReminders($campaign);
+        $this->addFlash('success', sprintf(
+            'Нагадування поставлено в чергу для %d мешканців, які ще не проголосували. Розсилка йде у фоні.',
+            $n,
+        ));
         return $this->redirectToRoute('app_admin_block_votes');
     }
 

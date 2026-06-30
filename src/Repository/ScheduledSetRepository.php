@@ -21,6 +21,19 @@ class ScheduledSetRepository extends ServiceEntityRepository
         parent::__construct($registry, ScheduledSet::class);
     }
 
+    /** Most recent pavilion booking made by any TelegramUser of the given account, or null. */
+    public function lastBookingForAccount(Account $account): ?ScheduledSet
+    {
+        return $this->createQueryBuilder('ss')
+            ->join('ss.telegramUserId', 'tu')
+            ->andWhere('tu.account = :acc')
+            ->setParameter('acc', $account)
+            ->orderBy('ss.scheduled_at', 'DESC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
+
     /**
      * @param string $pavilion
      * @param int $year

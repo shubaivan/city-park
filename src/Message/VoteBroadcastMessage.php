@@ -13,5 +13,6 @@ final class VoteBroadcastMessage
     public function __construct(
         public readonly int $campaignId,
         public readonly int $recipientAccountId,
+        public readonly bool $reminder = false,
     ) {}
 }

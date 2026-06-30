@@ -13,6 +13,10 @@ final class VoteBroadcastMessageHandler
 
     public function __invoke(VoteBroadcastMessage $message): void
     {
-        $this->voteService->deliverOpenedNotice($message->campaignId, $message->recipientAccountId);
+        $this->voteService->deliverOpenedNotice(
+            $message->campaignId,
+            $message->recipientAccountId,
+            $message->reminder,
+        );
     }
 }
