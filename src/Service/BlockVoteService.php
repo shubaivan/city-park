@@ -52,8 +52,9 @@ class BlockVoteService
     }
 
     /**
-     * Accounts entitled to vote: active apartments only. Parking/storage and blocked
-     * accounts neither vote nor count toward the threshold.
+     * Accounts entitled to vote: everyone who may book the pavilion — apartments AND parking,
+     * regardless of is_active (debt/photo-blocked residents still get a voice). Only кладові
+     * (storage) are excluded. The candidate is excluded. One account = one vote (DB constraint).
      *
      * @return Account[]
      */
@@ -62,7 +63,7 @@ class BlockVoteService
         $out = [];
         foreach ($this->accountRepository->findAll() as $account) {
             /** @var Account $account */
-            if (!$account->isActive() || !$account->isApartment()) {
+            if (!$account->canBookPavilion()) {
                 continue;
             }
             if ($exclude !== null && $account->getId() === $exclude->getId()) {
@@ -75,7 +76,7 @@ class BlockVoteService
 
     public function isEligibleVoter(Account $voter, BlockVoteCampaign $campaign): bool
     {
-        if (!$voter->isActive() || !$voter->isApartment()) {
+        if (!$voter->canBookPavilion()) {
             return false;
         }
         return $voter->getId() !== $campaign->getCandidate()->getId();
@@ -453,7 +454,7 @@ class BlockVoteService
         return sprintf(
             "Пропонується тимчасово заблокувати: <b>%s</b>.\n\n"
             . "📊 Зараз: «За» <b>%d</b> · «Проти» <b>%d</b>\n"
-            . "✅ Щоб ухвалити рішення, потрібно «За»: <b>%d</b> з %d активних квартир (понад половину).\n"
+            . "✅ Щоб ухвалити рішення, потрібно «За»: <b>%d</b> з %d квартир та паркомісць (понад половину).\n"
             . "⏳ Голосування триває до <b>%s</b>.\n\n"
             . "Якщо «За» набере більшість, аккаунт буде <b>заблоковано на %d днів</b> — бронювання альтанок стане недоступним. Після цього строку доступ відновиться <b>автоматично</b>.\n\n"
             . "Один аккаунт — один голос; свій вибір можна змінити до завершення.\n"

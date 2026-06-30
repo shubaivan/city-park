@@ -67,11 +67,11 @@ class VotingMenuCommand
             return;
         }
 
-        if (!$account->isActive() || !$account->isApartment()) {
+        if (!$account->canBookPavilion()) {
             $this->respond(
                 $bot,
                 $edit,
-                "🗳️ <b>Голосування</b>\n\nГолосувати можуть лише власники квартир з активним аккаунтом.",
+                "🗳️ <b>Голосування</b>\n\nГолосувати можуть власники квартир та паркомісць. Для кладових голосування недоступне.",
                 InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton())
             );
             return;
