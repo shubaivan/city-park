@@ -8,12 +8,14 @@ use App\Entity\BlockVoteBallot;
 use App\Entity\BlockVoteCampaign;
 use App\Repository\AccountRepository;
 use App\Repository\BlockVoteBallotRepository;
+use App\Message\VoteBroadcastMessage;
 use App\Repository\BlockVoteCampaignRepository;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * Community vote-to-block: admins open a campaign per candidate; every eligible voter
@@ -41,6 +43,7 @@ class BlockVoteService
         private LoggerInterface $logger,
         private DebtPolicy $debtPolicy,
         private PavilionPhotoService $photoService,
+        private MessageBusInterface $bus,
     ) {}
 
     private function now(): \DateTime
@@ -111,7 +114,14 @@ class BlockVoteService
         $this->em->persist($campaign);
         $this->em->flush();
 
-        $this->notifyVotersOpened($campaign, $voters);
+        // Hand the broadcast off to the async (Doctrine) transport — one message per voter,
+        // each independently retryable — so the admin's "open vote" request returns instantly
+        // instead of blocking on ~hundreds of sequential Telegram sends. The city-park-messenger
+        // systemd worker delivers them.
+        foreach ($voters as $voter) {
+            /** @var Account $voter */
+            $this->bus->dispatch(new VoteBroadcastMessage($campaign->getId(), (int)$voter->getId()));
+        }
 
         $this->logger->info('block-vote: campaign opened', [
             'campaign_id' => $campaign->getId(),
@@ -369,9 +379,27 @@ class BlockVoteService
         return $num !== '' ? 'кв. ' . $num : ('аккаунт ' . $account->getAccountNumber());
     }
 
-    private function notifyVotersOpened(BlockVoteCampaign $campaign, array $voters): void
+    /**
+     * Deliver the "campaign opened" notice to one voter account. Called by the async
+     * VoteBroadcastMessage handler (one message per voter). Skips silently if the campaign
+     * was cancelled/closed before delivery, or the account vanished.
+     */
+    public function deliverOpenedNotice(int $campaignId, int $accountId): void
     {
-        $text = sprintf(
+        $campaign = $this->campaignRepository->find($campaignId);
+        if ($campaign === null || !$campaign->isOpen()) {
+            return;
+        }
+        $account = $this->accountRepository->find($accountId);
+        if ($account === null) {
+            return;
+        }
+        $this->broadcastToAccount($account, $this->openedText($campaign));
+    }
+
+    private function openedText(BlockVoteCampaign $campaign): string
+    {
+        return sprintf(
             "🗳️ <b>Відкрито голосування спільноти</b>\n\n"
             . "Пропонується тимчасово заблокувати: <b>%s</b>.\n\n"
             . "Проголосуйте до <b>%s</b> у меню «🗳️ Голосування» (/vote).\n\n"
@@ -379,11 +407,6 @@ class BlockVoteService
             $this->candidateLabel($campaign->getCandidate()),
             $campaign->getDeadlineAt()->format('d.m.Y')
         );
-
-        foreach ($voters as $account) {
-            /** @var Account $account */
-            $this->broadcastToAccount($account, $text);
-        }
     }
 
     /**
