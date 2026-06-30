@@ -296,6 +296,9 @@ document.addEventListener("DOMContentLoaded", function () {
                     form.find('#area').val(data.area || '')
                     form.find('#is_active').prop('checked', data.is_active)
 
+                    // How many times the community has voted to block this account.
+                    form.find('#vote_block_count_display').html('<b>' + (data.vote_block_count || 0) + '</b>');
+
                     // Personal debt threshold — initial value from server, plus
                     // live recompute as admin edits area in the modal.
                     const tariffPrice = parseFloat(data.tariff_price_per_meter || 0);

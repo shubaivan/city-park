@@ -42,6 +42,7 @@
                 <tr>
                     <th>Кандидат</th>
                     <th>Рахунок</th>
+                    <th>Блок. голосуванням</th>
                     <th>За</th>
                     <th>Проти</th>
                     <th>Треба «За»</th>
@@ -56,6 +57,7 @@
                     <tr>
                         <td>{{ c.label }}</td>
                         <td>{{ c.account_number }}</td>
+                        <td>{% if c.blocks > 0 %}<span class="badge bg-warning text-dark">{{ c.blocks }}×</span>{% else %}—{% endif %}</td>
                         <td><b>{{ c.yes }}</b></td>
                         <td>{{ c.no }}</td>
                         <td>{{ c.needed }}</td>
@@ -84,6 +86,7 @@
                 <tr>
                     <th>Кандидат</th>
                     <th>Рахунок</th>
+                    <th>Блок. голосуванням</th>
                     <th>Результат</th>
                     <th>За</th>
                     <th>Проти</th>
@@ -96,6 +99,7 @@
                     <tr>
                         <td>{{ c.label }}</td>
                         <td>{{ c.account_number }}</td>
+                        <td>{% if c.blocks > 0 %}<span class="badge bg-warning text-dark">{{ c.blocks }}×</span>{% else %}—{% endif %}</td>
                         <td>
                             {% if c.status == 'passed' %}<span class="badge bg-danger">Заблоковано</span>
                             {% elseif c.status == 'failed' %}<span class="badge bg-success">Не пройшло</span>

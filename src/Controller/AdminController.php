@@ -78,6 +78,7 @@ class AdminController extends AbstractController
                 'id' => $campaign->getId(),
                 'label' => $voteService->candidateLabel($campaign->getCandidate()),
                 'account_number' => $campaign->getCandidate()->getAccountNumber(),
+                'blocks' => $campaign->getCandidate()->getVoteBlockCount(),
                 'eligible' => $campaign->getEligibleCount(),
                 'yes' => $tally['yes'],
                 'no' => $tally['no'],
@@ -95,6 +96,7 @@ class AdminController extends AbstractController
             $recent[] = [
                 'label' => $voteService->candidateLabel($campaign->getCandidate()),
                 'account_number' => $campaign->getCandidate()->getAccountNumber(),
+                'blocks' => $campaign->getCandidate()->getVoteBlockCount(),
                 'status' => $campaign->getStatus(),
                 'eligible' => $campaign->getEligibleCount(),
                 'yes' => $campaign->getResultYes(),
@@ -190,12 +192,14 @@ class AdminController extends AbstractController
         PavilionPhotoRepository $photoRepository,
         PhotoUploadRequestRepository $requestRepository,
         PavilionPhotoService $photoService,
+        AccountRepository $accountRepository,
         Request $request,
     ) {
         $dataTable = $repository
             ->getDataTablesData($request->request->all());
 
         $this->attachPhotoInfo($dataTable, $photoRepository, $requestRepository, $photoService);
+        $this->attachVoteBlockCount($dataTable, $accountRepository);
 
         return $this->json(
             array_merge(
@@ -209,6 +213,30 @@ class AdminController extends AbstractController
                 ['data' => $dataTable]
             )
         );
+    }
+
+    /**
+     * Decorate schedule rows with the booker's community-vote-block tally. Rows carry only
+     * account_number, so we map counts by that in one query rather than per-row lookups.
+     */
+    private function attachVoteBlockCount(array &$rows, AccountRepository $accountRepository): void
+    {
+        if (!$rows) {
+            return;
+        }
+
+        $counts = [];
+        foreach ($accountRepository->createQueryBuilder('a')
+                     ->select('a.account_number AS an', 'a.vote_block_count AS c')
+                     ->andWhere('a.vote_block_count > 0')
+                     ->getQuery()->getResult() as $r) {
+            $counts[(string)$r['an']] = (int)$r['c'];
+        }
+
+        foreach ($rows as &$row) {
+            $row['vote_blocks'] = $counts[(string)($row['account_number'] ?? '')] ?? 0;
+        }
+        unset($row);
     }
 
     /**
@@ -392,6 +420,9 @@ class AdminController extends AbstractController
     {
         $fieldNames = TelegramUser::$dataTableFields;
         $fieldNames[] = 'action';
+        // Appended LAST on purpose: telegram_users.js columnDefs target columns by index
+        // (5,6,7,8,10,16), so a new column must not shift those — it goes after `action`.
+        $fieldNames[] = 'vote_blocks';
 
         array_map(function ($k) use (&$dataTableColumnData) {
             $dataTableColumnData[] = ['data' => $k];
@@ -427,12 +458,14 @@ class AdminController extends AbstractController
                 $row['debt_threshold'] = null;
                 $row['block_reason_label'] = null;
                 $row['block_reason_details'] = null;
+                $row['vote_blocks'] = 0;
                 continue;
             }
             $account = $accountRepository->findOneBy(['account_number' => $accNum]);
             $row['debt_threshold'] = $account
                 ? number_format($debtPolicy->getThresholdFor($account), 2, '.', '')
                 : null;
+            $row['vote_blocks'] = $account ? $account->getVoteBlockCount() : 0;
             $reason = $blockReasonResolver->resolve($account);
             $row['block_reason_label'] = $reason['label'] ?? null;
             $row['block_reason_details'] = $reason['details'] ?? null;
@@ -475,10 +508,12 @@ class AdminController extends AbstractController
         $telegramUser['block_reason_label'] = null;
         $telegramUser['block_reason_details'] = null;
         $telegramUser['status_history'] = [];
+        $telegramUser['vote_block_count'] = 0;
 
         if (!empty($telegramUser['account_id'])) {
             $account = $accountRepository->find($telegramUser['account_id']);
             if ($account) {
+                $telegramUser['vote_block_count'] = $account->getVoteBlockCount();
                 $telegramUser['debt_threshold'] = number_format($debtPolicy->getThresholdFor($account), 2, '.', '');
                 $reason = $blockReasonResolver->resolve($account);
                 $telegramUser['block_reason_label'] = $reason['label'] ?? null;

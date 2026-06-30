@@ -112,9 +112,11 @@ class VotingMenuCommand
             $ballot = $this->ballotRepository->findOneByCampaignAndVoter($campaign, $account);
             $mine = $ballot === null ? null : $ballot->getValue();
 
+            $priorBlocks = $campaign->getCandidate()->getVoteBlockCount();
             $lines[] = sprintf(
-                "👤 <b>%s</b>\nЗа: <b>%d</b> · Проти: <b>%d</b> · Треба «За»: <b>%d</b> з %d\nДо: <b>%s</b>%s",
+                "👤 <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b> · Треба «За»: <b>%d</b> з %d\nДо: <b>%s</b>%s",
                 $this->voteService->candidateLabel($campaign->getCandidate()),
+                $priorBlocks > 0 ? sprintf("\n<i>раніше блокувався за рішенням спільноти: %d раз(и)</i>", $priorBlocks) : '',
                 $tally['yes'],
                 $tally['no'],
                 $campaign->yesNeeded(),

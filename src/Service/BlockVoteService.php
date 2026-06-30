@@ -227,6 +227,11 @@ class BlockVoteService
         $account = $campaign->getCandidate();
         $until = (clone $this->now())->modify('+' . self::BLOCK_DAYS . ' days');
 
+        // Every passed campaign counts as a community-block decision against this account,
+        // even if it was already blocked for another reason at the time.
+        $account->incrementVoteBlockCount();
+        $count = $account->getVoteBlockCount();
+
         if (!$account->isActive()) {
             // Already blocked by another path (debt / photo / admin). Still stamp the 30-day
             // vote window so the block can't evaporate the moment that other reason clears
@@ -238,8 +243,9 @@ class BlockVoteService
                 'campaign_id' => $campaign->getId(),
                 'account_id' => $account->getId(),
                 'blocked_until' => $until->format('Y-m-d H:i'),
+                'vote_block_count' => $count,
             ]);
-            $this->broadcastToAccount($account, $this->blockText($until));
+            $this->broadcastToAccount($account, $this->blockText($until, $count));
             return;
         }
 
@@ -251,12 +257,13 @@ class BlockVoteService
             AccountStatusLog::SOURCE_COMMUNITY_VOTE,
             'vote',
             sprintf(
-                'campaign=%d yes=%d/%d eligible=%d until=%s',
+                'campaign=%d yes=%d/%d eligible=%d until=%s count=%d',
                 $campaign->getId(),
                 $campaign->getResultYes() ?? 0,
                 $campaign->yesNeeded(),
                 $campaign->getEligibleCount(),
-                $until->format('Y-m-d')
+                $until->format('Y-m-d'),
+                $count
             ),
             'system',
         );
@@ -266,19 +273,22 @@ class BlockVoteService
             'campaign_id' => $campaign->getId(),
             'account_id' => $account->getId(),
             'blocked_until' => $until->format('Y-m-d H:i'),
+            'vote_block_count' => $count,
         ]);
 
-        $this->broadcastToAccount($account, $this->blockText($until));
+        $this->broadcastToAccount($account, $this->blockText($until, $count));
     }
 
-    private function blockText(\DateTime $until): string
+    private function blockText(\DateTime $until, int $count): string
     {
         return sprintf(
             "⛔ <b>Ваш аккаунт заблоковано рішенням спільноти</b>\n\n"
             . "Сусіди проголосували за тимчасове блокування. Доступ до бронювання припинено до <b>%s</b> (30 днів).\n\n"
+            . "Це вже <b>%d-е</b> блокування вашого аккаунта за рішенням спільноти.\n\n"
             . "Після цієї дати доступ відновиться автоматично.\n\n"
             . "Питання — Аліна Бухгалтер (+380 93 658 32 02) або голова ОСББ Люда (+380 67 470 46 24).",
-            $until->format('d.m.Y')
+            $until->format('d.m.Y'),
+            $count
         );
     }
 
@@ -330,8 +340,12 @@ class BlockVoteService
                 $unblocked++;
                 $this->broadcastToAccount(
                     $account,
-                    "✅ <b>Доступ до бронювання відновлено.</b>\n\n"
-                    . "Термін блокування за рішенням спільноти завершився. Можна знову бронювати."
+                    sprintf(
+                        "✅ <b>Доступ до бронювання відновлено.</b>\n\n"
+                        . "Термін блокування за рішенням спільноти завершився. Можна знову бронювати.\n\n"
+                        . "<i>Всього блокувань за рішенням спільноти: %d. Будь ласка, дотримуйтесь правил, щоб уникнути повторних голосувань.</i>",
+                        $account->getVoteBlockCount()
+                    )
                 );
             }
 

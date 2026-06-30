@@ -49,6 +49,14 @@ class Account
     private ?\DateTime $blocked_until = null;
 
     /**
+     * How many times the community has voted to block this account (every passed
+     * BlockVoteCampaign increments it, even if the account was already blocked at the
+     * time). A repeat-offender tally surfaced across the admin panel and the bot.
+     */
+    #[ORM\Column(type: 'integer', nullable: false, options: ['default' => 0])]
+    private int $vote_block_count = 0;
+
+    /**
      * Admin-linked owner group: when set, this account shares booking limits and
      * debt aggregation with every other account having the same `owner_group_id`.
      * NULL means "ungrouped" (treated as a group of one via getEffectiveGroupId()).
@@ -175,6 +183,25 @@ class Account
     public function isUnderVoteBlock(): bool
     {
         return $this->blocked_until !== null && $this->blocked_until > new \DateTime();
+    }
+
+    public function getVoteBlockCount(): int
+    {
+        return $this->vote_block_count;
+    }
+
+    public function setVoteBlockCount(int $vote_block_count): static
+    {
+        $this->vote_block_count = $vote_block_count;
+
+        return $this;
+    }
+
+    public function incrementVoteBlockCount(): static
+    {
+        $this->vote_block_count++;
+
+        return $this;
     }
 
     public function getUsers(): Collection
