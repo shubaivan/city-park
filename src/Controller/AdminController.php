@@ -67,10 +67,52 @@ class AdminController extends AbstractController
 
     #[Route('/admin/block-votes', name: 'app_admin_block_votes', methods: [Request::METHOD_GET])]
     public function blockVotes(
+        Request $request,
+        AccountRepository $accountRepository,
         BlockVoteCampaignRepository $campaignRepository,
         BlockVoteBallotRepository $ballotRepository,
         BlockVoteService $voteService,
     ): Response {
+        // Optional ?candidate=<особовий рахунок> → show a confirmation preview of WHO is about
+        // to be put up for a vote (apartment, residents, status) before the mass broadcast.
+        $preview = null;
+        $candidateNumber = trim((string)$request->query->get('candidate', ''));
+        if ($candidateNumber !== '') {
+            $cand = $accountRepository->findOneBy(['account_number' => $candidateNumber]);
+            if (!$cand) {
+                $preview = ['found' => false, 'account_number' => $candidateNumber];
+            } else {
+                $names = [];
+                foreach ($cand->getUsers() as $u) {
+                    $label = trim(implode(' ', array_filter([$u->getFirstName(), $u->getLastName()])));
+                    if ($u->getUsername()) {
+                        $label .= ($label !== '' ? ' ' : '') . '@' . $u->getUsername();
+                    }
+                    if ($u->getPhoneNumber()) {
+                        $label .= ($label !== '' ? ' · ' : '') . $u->getPhoneNumber();
+                    }
+                    $names[] = $label !== '' ? $label : ('Telegram ID ' . $u->getTelegramId());
+                }
+                $eligible = count($voteService->eligibleVoters($cand));
+                $preview = [
+                    'found' => true,
+                    'label' => $voteService->candidateLabel($cand),
+                    'account_number' => $cand->getAccountNumber(),
+                    'apartment_number' => $cand->getApartmentNumber(),
+                    'street' => $cand->getStreet(),
+                    'house_number' => $cand->getHouseNumber(),
+                    'is_active' => $cand->isActive(),
+                    'is_apartment' => $cand->isApartment(),
+                    'vote_block_count' => $cand->getVoteBlockCount(),
+                    'debt' => $cand->getDebt(),
+                    'names' => $names,
+                    'eligible' => $eligible,
+                    'needed' => intdiv($eligible, 2) + 1,
+                    'already_open' => $campaignRepository->findOpenForCandidate($cand) !== null,
+                ];
+            }
+        }
+
         $open = [];
         foreach ($campaignRepository->findOpen() as $campaign) {
             $tally = $ballotRepository->tally($campaign);
@@ -109,6 +151,7 @@ class AdminController extends AbstractController
         return $this->render('admin/block-votes.html.twig', [
             'open' => $open,
             'recent' => $recent,
+            'preview' => $preview,
             'vote_days' => BlockVoteService::VOTE_DAYS,
             'block_days' => BlockVoteService::BLOCK_DAYS,
         ]);

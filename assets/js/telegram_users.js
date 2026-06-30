@@ -81,11 +81,12 @@ document.addEventListener("DOMContentLoaded", function () {
         "targets": 16,
         data: 'action',
         render: function (data, type, row, meta) {
-            return '    <!-- Button trigger modal -->\n' +
-                '    <button type="button" class="btn btn-primary" data-user-id="' + row.id + '" data-toggle="modal" data-target="#exampleModal">\n' +
-                '        Редагувати\n' +
-                '    </button>'
-                ;
+            var html = '<button type="button" class="btn btn-primary btn-sm" data-user-id="' + row.id + '" data-toggle="modal" data-target="#exampleModal">Редагувати</button>';
+            // Start a community block-vote for this account (opens the confirmation preview).
+            if (row.account_number) {
+                html += ' <a class="btn btn-outline-danger btn-sm" href="/admin/block-votes?candidate=' + encodeURIComponent(row.account_number) + '">🗳️ Голосування</a>';
+            }
+            return html;
         }
     });
 

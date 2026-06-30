@@ -17,21 +17,68 @@
         <div class="card my-3">
             <div class="card-header">Відкрити нове голосування</div>
             <div class="card-body">
-                <form method="post" action="{{ path('app_admin_block_vote_create') }}" class="row g-2 align-items-end">
+                <form method="get" action="{{ path('app_admin_block_votes') }}" class="row g-2 align-items-end">
                     <div class="col-auto">
-                        <label class="form-label" for="account_number">Особовий рахунок кандидата</label>
-                        <input type="text" class="form-control" id="account_number" name="account_number"
-                               placeholder="напр. 1234567" required>
+                        <label class="form-label" for="candidate">Особовий рахунок кандидата</label>
+                        <input type="text" class="form-control" id="candidate" name="candidate"
+                               value="{{ preview.account_number ?? '' }}" placeholder="напр. 230109" required>
                     </div>
                     <div class="col-auto">
-                        <button type="submit" class="btn btn-danger"
-                                onclick="return confirm('Відкрити голосування за блокування цього аккаунта? Усі активні квартири отримають повідомлення.');">
-                            Відкрити голосування
-                        </button>
+                        <button type="submit" class="btn btn-primary">Переглянути кандидата →</button>
                     </div>
                 </form>
+                <small class="form-text text-muted">Спочатку перевірте, кого саме виносите на голосування, і лише потім підтвердьте.</small>
             </div>
         </div>
+
+        {% if preview %}
+            {% if not preview.found %}
+                <div class="alert alert-danger">
+                    Аккаунт з особовим рахунком «<b>{{ preview.account_number }}</b>» не знайдено. Перевірте номер.
+                </div>
+            {% else %}
+                <div class="card my-3 border-danger">
+                    <div class="card-header bg-danger text-white">Підтвердження: кого виносимо на голосування</div>
+                    <div class="card-body">
+                        <table class="table table-sm mb-3" style="max-width:680px">
+                            <tr><th style="width:220px">Кандидат</th><td><b>{{ preview.label }}</b></td></tr>
+                            <tr><th>Особовий рахунок</th><td>{{ preview.account_number }}</td></tr>
+                            <tr><th>Адреса</th><td>{{ preview.street }}, буд. {{ preview.house_number }}, кв. {{ preview.apartment_number }}</td></tr>
+                            <tr><th>Жильці (Telegram)</th><td>
+                                {% if preview.names is empty %}
+                                    <span class="text-muted">немає прив'язаних користувачів бота</span>
+                                {% else %}
+                                    {% for n in preview.names %}{{ n }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                                {% endif %}
+                            </td></tr>
+                            <tr><th>Поточний статус</th><td>
+                                {% if preview.is_active %}<span class="badge bg-success">Активний</span>
+                                {% else %}<span class="badge bg-secondary">Заблокований</span>{% endif %}
+                            </td></tr>
+                            <tr><th>Блокувань голосуванням</th><td>
+                                {% if preview.vote_block_count > 0 %}<span class="badge bg-warning text-dark">{{ preview.vote_block_count }}×</span>{% else %}0{% endif %}
+                            </td></tr>
+                            <tr><th>Голосуватимуть</th><td><b>{{ preview.eligible }}</b> активних квартир · потрібно «За»: <b>{{ preview.needed }}</b></td></tr>
+                        </table>
+
+                        {% if not preview.is_apartment %}
+                            <div class="alert alert-warning py-2">Увага: це не квартира (паркомісце/кладова). Голосувати за нього зможуть лише квартири.</div>
+                        {% endif %}
+
+                        {% if preview.already_open %}
+                            <div class="alert alert-warning py-2 mb-0">Для цього аккаунта вже відкрите голосування — нове відкрити не можна.</div>
+                        {% else %}
+                            <form method="post" action="{{ path('app_admin_block_vote_create') }}"
+                                  onsubmit="return confirm('Відкрити голосування за блокування: {{ preview.label }}? Усі активні квартири ({{ preview.eligible }}) одразу отримають повідомлення.');">
+                                <input type="hidden" name="account_number" value="{{ preview.account_number }}">
+                                <button type="submit" class="btn btn-danger">✅ Так, відкрити голосування</button>
+                                <a href="{{ path('app_admin_block_votes') }}" class="btn btn-link">Скасувати</a>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
+        {% endif %}
 
         <h5>Активні голосування</h5>
         {% if open is empty %}
