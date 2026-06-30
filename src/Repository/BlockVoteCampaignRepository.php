@@ -49,6 +49,26 @@ class BlockVoteCampaignRepository extends ServiceEntityRepository
     }
 
     /**
+     * Open campaigns entering the final stretch (deadline within (now, soon]) that haven't
+     * had their one-shot last-day reminder sent yet.
+     *
+     * @return BlockVoteCampaign[]
+     */
+    public function findDueFinalReminder(\DateTime $now, \DateTime $soon): array
+    {
+        return $this->createQueryBuilder('c')
+            ->andWhere('c.status = :open')
+            ->andWhere('c.final_reminder_sent_at IS NULL')
+            ->andWhere('c.deadline_at > :now')
+            ->andWhere('c.deadline_at <= :soon')
+            ->setParameter('open', BlockVoteCampaign::STATUS_OPEN)
+            ->setParameter('now', $now)
+            ->setParameter('soon', $soon)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
      * Is there already an open campaign for this candidate? Prevents duplicates.
      */
     public function findOpenForCandidate(Account $candidate): ?BlockVoteCampaign

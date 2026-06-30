@@ -64,6 +64,10 @@ class BlockVoteCampaign
     #[ORM\Column(type: 'string', length: 64, nullable: true)]
     private ?string $created_by = null;
 
+    /** When the one-shot final-day reminder (to non-voters) was sent. NULL = not yet sent. */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTime $final_reminder_sent_at = null;
+
     #[ORM\OneToMany(targetEntity: BlockVoteBallot::class, mappedBy: 'campaign', cascade: ['persist', 'remove'])]
     private Collection $ballots;
 
@@ -173,6 +177,17 @@ class BlockVoteCampaign
     public function setCreatedBy(?string $created_by): self
     {
         $this->created_by = $created_by;
+        return $this;
+    }
+
+    public function getFinalReminderSentAt(): ?\DateTime
+    {
+        return $this->final_reminder_sent_at;
+    }
+
+    public function setFinalReminderSentAt(?\DateTime $at): self
+    {
+        $this->final_reminder_sent_at = $at;
         return $this;
     }
 

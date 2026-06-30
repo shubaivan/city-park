@@ -27,15 +27,20 @@ class BlockVoteTallyCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
+        $reminded = $this->voteService->sendDueFinalReminders();
         $blocked = $this->voteService->closeExpiredCampaigns();
         $unblocked = $this->voteService->autoUnblockExpired();
 
         $this->logger->info('block-vote:tally done', [
+            'final_reminders' => $reminded,
             'blocked' => $blocked,
             'unblocked' => $unblocked,
         ]);
 
-        $io->success(sprintf('Готово. Заблоковано за голосуванням: %d, авто-розблоковано: %d', $blocked, $unblocked));
+        $io->success(sprintf(
+            'Готово. Нагадувань (останній день): %d, заблоковано за голосуванням: %d, авто-розблоковано: %d',
+            $reminded, $blocked, $unblocked
+        ));
         return Command::SUCCESS;
     }
 }

@@ -33,6 +33,9 @@ class BlockVoteService
     /** Duration of the block a passed campaign applies. */
     public const BLOCK_DAYS = 30;
 
+    /** How long before the deadline the one-shot last-day reminder fires (to non-voters). */
+    public const FINAL_REMINDER_BEFORE_HOURS = 24;
+
     public function __construct(
         private EntityManagerInterface $em,
         private AccountRepository $accountRepository,
@@ -431,6 +434,33 @@ class BlockVoteService
             'dispatched' => $count,
         ]);
         return $count;
+    }
+
+    /**
+     * One-shot last-day reminder: for every open campaign whose deadline is within the next
+     * FINAL_REMINDER_BEFORE_HOURS, re-send (async) to non-voters once and stamp
+     * final_reminder_sent_at so the hourly cron never repeats it. Residents thus see at most
+     * two notices total: at open, and on the final day if they still haven't voted.
+     *
+     * @return int total reminder messages dispatched across campaigns
+     */
+    public function sendDueFinalReminders(): int
+    {
+        $now = $this->now();
+        $soon = (clone $now)->modify('+' . self::FINAL_REMINDER_BEFORE_HOURS . ' hours');
+
+        $sent = 0;
+        foreach ($this->campaignRepository->findDueFinalReminder($now, $soon) as $campaign) {
+            $n = $this->dispatchReminders($campaign);
+            $campaign->setFinalReminderSentAt($now);
+            $this->em->flush();
+            $sent += $n;
+            $this->logger->info('block-vote: final-day reminder sent', [
+                'campaign_id' => $campaign->getId(),
+                'dispatched' => $n,
+            ]);
+        }
+        return $sent;
     }
 
     private function openedText(BlockVoteCampaign $campaign): string
