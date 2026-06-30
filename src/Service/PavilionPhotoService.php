@@ -465,6 +465,11 @@ class PavilionPhotoService
         if ($this->debtPolicy->isAccountBlocked($account)) {
             return;
         }
+        // A community vote-block is time-boxed (block-vote:tally lifts it); a photo upload
+        // must not short-circuit the 30-day window the neighbours voted for.
+        if ($account->isUnderVoteBlock()) {
+            return;
+        }
 
         $remainingBlocked = $this->requestRepository->createQueryBuilder('r')
             ->andWhere('r.account = :a')->setParameter('a', $account)

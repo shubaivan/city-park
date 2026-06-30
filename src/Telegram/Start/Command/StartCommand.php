@@ -63,6 +63,7 @@ class StartCommand extends Command
             )
             ->addRow(
                 InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'),
+                InlineKeyboardButton::make('🗳️ Голосування', callback_data: 'voting-menu'),
             );
     }
 }

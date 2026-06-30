@@ -168,10 +168,10 @@ class DebtImportFileCommand extends Command
                     }
                 }
             } else {
-                if (!$wasActive && $this->photoService->hasOpenBlockingRequest($account)) {
-                    // Debt within threshold, but a standing photo block keeps the account
-                    // down until an admin clears it. Update the debt, leave is_active=false.
-                    $this->logger->info('debt:import-file: debt OK but kept blocked by open photo request', [
+                if (!$wasActive && ($this->photoService->hasOpenBlockingRequest($account) || $account->isUnderVoteBlock())) {
+                    // Debt within threshold, but a standing photo block or an active community
+                    // vote-block keeps the account down. Update the debt, leave is_active=false.
+                    $this->logger->info('debt:import-file: debt OK but kept blocked by photo/vote', [
                         'account_id' => $account->getId(),
                     ]);
                 } elseif (!$wasActive) {
@@ -215,7 +215,7 @@ class DebtImportFileCommand extends Command
             $account->setDebt('0');
 
             // Reset the debt, but a standing photo block survives the reset (admin-only release).
-            $keepBlockedByPhoto = $wasInactive && $this->photoService->hasOpenBlockingRequest($account);
+            $keepBlockedByPhoto = $wasInactive && ($this->photoService->hasOpenBlockingRequest($account) || $account->isUnderVoteBlock());
             if (!$keepBlockedByPhoto) {
                 $account->setIsActive(true);
                 if ($wasInactive) {

@@ -18,6 +18,8 @@ class AccountStatusLog
     public const SOURCE_PHOTO_ATTACH       = 'photo_attach';
     public const SOURCE_PHOTO_FORGIVE      = 'photo_forgive';
     public const SOURCE_PHOTO_BULK_UNBLOCK = 'photo_bulk_unblock';
+    public const SOURCE_COMMUNITY_VOTE     = 'community_vote';
+    public const SOURCE_VOTE_AUTO_UNBLOCK  = 'vote_auto_unblock';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]

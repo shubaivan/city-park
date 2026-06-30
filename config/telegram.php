@@ -36,3 +36,7 @@ $bot->onCommand('photo', \App\Telegram\Photo\Command\PhotoUploadInfo::class);
 $bot->onCallbackQueryData('info-menu', \App\Telegram\Info\Command\InfoCommand::class);
 $bot->onCallbackQueryData('^info-topic:.+$', \App\Telegram\Info\Command\InfoCommand::class);
 $bot->onCommand('info', \App\Telegram\Info\Command\InfoCommand::class);
+
+$bot->onCallbackQueryData(\App\Telegram\Voting\Command\VotingMenuCommand::MENU_CALLBACK, \App\Telegram\Voting\Command\VotingMenuCommand::class);
+$bot->onCallbackQueryData('^bvote:\d+:(yes|no)$', \App\Telegram\Voting\Command\VotingMenuCommand::class);
+$bot->onCommand('vote', \App\Telegram\Voting\Command\VotingMenuCommand::class);

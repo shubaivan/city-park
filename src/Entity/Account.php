@@ -41,6 +41,22 @@ class Account
     private ?string $area = null;
 
     /**
+     * When set in the future, this account is under a time-boxed community vote-block
+     * (BlockVoteCampaign). The block-vote:tally cron auto-restores is_active once this
+     * instant passes. NULL means no active vote-block.
+     */
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTime $blocked_until = null;
+
+    /**
+     * How many times the community has voted to block this account (every passed
+     * BlockVoteCampaign increments it, even if the account was already blocked at the
+     * time). A repeat-offender tally surfaced across the admin panel and the bot.
+     */
+    #[ORM\Column(type: 'integer', nullable: false, options: ['default' => 0])]
+    private int $vote_block_count = 0;
+
+    /**
      * Admin-linked owner group: when set, this account shares booking limits and
      * debt aggregation with every other account having the same `owner_group_id`.
      * NULL means "ungrouped" (treated as a group of one via getEffectiveGroupId()).
@@ -144,6 +160,46 @@ class Account
     public function setArea(?string $area): static
     {
         $this->area = $area;
+
+        return $this;
+    }
+
+    public function getBlockedUntil(): ?\DateTime
+    {
+        return $this->blocked_until;
+    }
+
+    public function setBlockedUntil(?\DateTime $blocked_until): static
+    {
+        $this->blocked_until = $blocked_until;
+
+        return $this;
+    }
+
+    /**
+     * True while a community vote-block is still in force (blocked_until is in the future).
+     * Used by debt/photo unblock paths to avoid prematurely lifting a vote-block.
+     */
+    public function isUnderVoteBlock(): bool
+    {
+        return $this->blocked_until !== null && $this->blocked_until > new \DateTime();
+    }
+
+    public function getVoteBlockCount(): int
+    {
+        return $this->vote_block_count;
+    }
+
+    public function setVoteBlockCount(int $vote_block_count): static
+    {
+        $this->vote_block_count = $vote_block_count;
+
+        return $this;
+    }
+
+    public function incrementVoteBlockCount(): static
+    {
+        $this->vote_block_count++;
 
         return $this;
     }

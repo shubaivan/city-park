@@ -32,6 +32,9 @@ class ScheduledSet
         'scheduled_at',
         'pavilion',
         'photo_status',
+        // Appended LAST: schedule.js columnDefs target columns by index (5, 10); a new
+        // column must go after them so it renders generically without shifting those.
+        'vote_blocks',
     ];
 
     #[ORM\Id]

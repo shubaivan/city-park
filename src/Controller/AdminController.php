@@ -13,8 +13,12 @@ use App\Repository\PhotoUploadRequestRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Repository\TariffRepository;
 use App\Repository\TelegramUserRepository;
+use App\Entity\BlockVoteCampaign;
+use App\Repository\BlockVoteBallotRepository;
+use App\Repository\BlockVoteCampaignRepository;
 use App\Service\AccountStatusAuditor;
 use App\Service\BlockReasonResolver;
+use App\Service\BlockVoteService;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
 use App\Service\SchedulePavilionService;
@@ -58,6 +62,112 @@ class AdminController extends AbstractController
     }
 
     #############
+    # Community vote-to-block
+    #############
+
+    #[Route('/admin/block-votes', name: 'app_admin_block_votes', methods: [Request::METHOD_GET])]
+    public function blockVotes(
+        BlockVoteCampaignRepository $campaignRepository,
+        BlockVoteBallotRepository $ballotRepository,
+        BlockVoteService $voteService,
+    ): Response {
+        $open = [];
+        foreach ($campaignRepository->findOpen() as $campaign) {
+            $tally = $ballotRepository->tally($campaign);
+            $open[] = [
+                'id' => $campaign->getId(),
+                'label' => $voteService->candidateLabel($campaign->getCandidate()),
+                'account_number' => $campaign->getCandidate()->getAccountNumber(),
+                'blocks' => $campaign->getCandidate()->getVoteBlockCount(),
+                'eligible' => $campaign->getEligibleCount(),
+                'yes' => $tally['yes'],
+                'no' => $tally['no'],
+                'needed' => $campaign->yesNeeded(),
+                'deadline' => $campaign->getDeadlineAt(),
+                'created_by' => $campaign->getCreatedBy(),
+            ];
+        }
+
+        $recent = [];
+        foreach ($campaignRepository->findRecent(50) as $campaign) {
+            if ($campaign->isOpen()) {
+                continue;
+            }
+            $recent[] = [
+                'label' => $voteService->candidateLabel($campaign->getCandidate()),
+                'account_number' => $campaign->getCandidate()->getAccountNumber(),
+                'blocks' => $campaign->getCandidate()->getVoteBlockCount(),
+                'status' => $campaign->getStatus(),
+                'eligible' => $campaign->getEligibleCount(),
+                'yes' => $campaign->getResultYes(),
+                'no' => $campaign->getResultNo(),
+                'needed' => $campaign->yesNeeded(),
+                'closed_at' => $campaign->getClosedAt(),
+            ];
+        }
+
+        return $this->render('admin/block-votes.html.twig', [
+            'open' => $open,
+            'recent' => $recent,
+            'vote_days' => BlockVoteService::VOTE_DAYS,
+            'block_days' => BlockVoteService::BLOCK_DAYS,
+        ]);
+    }
+
+    #[Route('/admin/block-vote/create', name: 'app_admin_block_vote_create', methods: [Request::METHOD_POST])]
+    public function blockVoteCreate(
+        Request $request,
+        AccountRepository $accountRepository,
+        BlockVoteService $voteService,
+    ): Response {
+        $accountNumber = trim((string)$request->request->get('account_number'));
+        if ($accountNumber === '') {
+            $this->addFlash('error', 'Вкажіть особовий рахунок кандидата.');
+            return $this->redirectToRoute('app_admin_block_votes');
+        }
+
+        $account = $accountRepository->findOneBy(['account_number' => $accountNumber]);
+        if (!$account) {
+            $this->addFlash('error', sprintf('Аккаунт з особовим рахунком «%s» не знайдено.', $accountNumber));
+            return $this->redirectToRoute('app_admin_block_votes');
+        }
+
+        try {
+            $actor = $this->getUser()?->getUserIdentifier();
+            $campaign = $voteService->openCampaign($account, $actor);
+        } catch (\RuntimeException $e) {
+            $this->addFlash('error', $e->getMessage());
+            return $this->redirectToRoute('app_admin_block_votes');
+        }
+
+        $this->addFlash('success', sprintf(
+            'Голосування відкрито: %s. Потрібно «За»: %d з %d. Сповіщено мешканців.',
+            $voteService->candidateLabel($account),
+            $campaign->yesNeeded(),
+            $campaign->getEligibleCount(),
+        ));
+        return $this->redirectToRoute('app_admin_block_votes');
+    }
+
+    #[Route('/admin/block-vote/cancel', name: 'app_admin_block_vote_cancel', methods: [Request::METHOD_POST])]
+    public function blockVoteCancel(
+        Request $request,
+        BlockVoteCampaignRepository $campaignRepository,
+        BlockVoteService $voteService,
+    ): Response {
+        $id = (int)$request->request->get('campaign_id');
+        $campaign = $id > 0 ? $campaignRepository->find($id) : null;
+        if (!$campaign) {
+            $this->addFlash('error', 'Голосування не знайдено.');
+            return $this->redirectToRoute('app_admin_block_votes');
+        }
+
+        $voteService->cancelCampaign($campaign);
+        $this->addFlash('success', 'Голосування скасовано.');
+        return $this->redirectToRoute('app_admin_block_votes');
+    }
+
+    #############
     # Schedule
     #############
 
@@ -82,12 +192,14 @@ class AdminController extends AbstractController
         PavilionPhotoRepository $photoRepository,
         PhotoUploadRequestRepository $requestRepository,
         PavilionPhotoService $photoService,
+        AccountRepository $accountRepository,
         Request $request,
     ) {
         $dataTable = $repository
             ->getDataTablesData($request->request->all());
 
         $this->attachPhotoInfo($dataTable, $photoRepository, $requestRepository, $photoService);
+        $this->attachVoteBlockCount($dataTable, $accountRepository);
 
         return $this->json(
             array_merge(
@@ -101,6 +213,30 @@ class AdminController extends AbstractController
                 ['data' => $dataTable]
             )
         );
+    }
+
+    /**
+     * Decorate schedule rows with the booker's community-vote-block tally. Rows carry only
+     * account_number, so we map counts by that in one query rather than per-row lookups.
+     */
+    private function attachVoteBlockCount(array &$rows, AccountRepository $accountRepository): void
+    {
+        if (!$rows) {
+            return;
+        }
+
+        $counts = [];
+        foreach ($accountRepository->createQueryBuilder('a')
+                     ->select('a.account_number AS an', 'a.vote_block_count AS c')
+                     ->andWhere('a.vote_block_count > 0')
+                     ->getQuery()->getResult() as $r) {
+            $counts[(string)$r['an']] = (int)$r['c'];
+        }
+
+        foreach ($rows as &$row) {
+            $row['vote_blocks'] = $counts[(string)($row['account_number'] ?? '')] ?? 0;
+        }
+        unset($row);
     }
 
     /**
@@ -284,6 +420,9 @@ class AdminController extends AbstractController
     {
         $fieldNames = TelegramUser::$dataTableFields;
         $fieldNames[] = 'action';
+        // Appended LAST on purpose: telegram_users.js columnDefs target columns by index
+        // (5,6,7,8,10,16), so a new column must not shift those — it goes after `action`.
+        $fieldNames[] = 'vote_blocks';
 
         array_map(function ($k) use (&$dataTableColumnData) {
             $dataTableColumnData[] = ['data' => $k];
@@ -319,12 +458,14 @@ class AdminController extends AbstractController
                 $row['debt_threshold'] = null;
                 $row['block_reason_label'] = null;
                 $row['block_reason_details'] = null;
+                $row['vote_blocks'] = 0;
                 continue;
             }
             $account = $accountRepository->findOneBy(['account_number' => $accNum]);
             $row['debt_threshold'] = $account
                 ? number_format($debtPolicy->getThresholdFor($account), 2, '.', '')
                 : null;
+            $row['vote_blocks'] = $account ? $account->getVoteBlockCount() : 0;
             $reason = $blockReasonResolver->resolve($account);
             $row['block_reason_label'] = $reason['label'] ?? null;
             $row['block_reason_details'] = $reason['details'] ?? null;
@@ -367,10 +508,12 @@ class AdminController extends AbstractController
         $telegramUser['block_reason_label'] = null;
         $telegramUser['block_reason_details'] = null;
         $telegramUser['status_history'] = [];
+        $telegramUser['vote_block_count'] = 0;
 
         if (!empty($telegramUser['account_id'])) {
             $account = $accountRepository->find($telegramUser['account_id']);
             if ($account) {
+                $telegramUser['vote_block_count'] = $account->getVoteBlockCount();
                 $telegramUser['debt_threshold'] = number_format($debtPolicy->getThresholdFor($account), 2, '.', '');
                 $reason = $blockReasonResolver->resolve($account);
                 $telegramUser['block_reason_label'] = $reason['label'] ?? null;
@@ -631,6 +774,9 @@ class AdminController extends AbstractController
         $em->flush();
 
         if (isset($isWasInActive) && $isWasInActive && $updatedUser->getAccount() && $updatedUser->getAccount()->isActive()) {
+            // An explicit admin unblock overrides any active community vote-block too, so the
+            // 30-day window doesn't linger and re-gate later debt/photo unblocks.
+            $updatedUser->getAccount()->setBlockedUntil(null);
             $forgiven = $photoService->forgiveBlockingRequests(
                 $updatedUser->getAccount(),
                 SchedulePavilionService::createNewDate()
@@ -1054,7 +1200,7 @@ class AdminController extends AbstractController
                     // must keep the account down. is_active is shared between debt and photo
                     // blocks, so clearing a debt must never lift a photo block: that stays
                     // until an admin clears it explicitly.
-                    if (!$wasActive && !$photoService->hasOpenBlockingRequest($account)) {
+                    if (!$wasActive && !$photoService->hasOpenBlockingRequest($account) && !$account->isUnderVoteBlock()) {
                         $account->setIsActive(true);
                         $this->statusAuditor->log(
                             $account, false, true,
@@ -1098,7 +1244,7 @@ class AdminController extends AbstractController
 
             // Clear the debt unconditionally, but only restore access if no standing photo
             // block remains — a photo block must outlive the debt reset (admin-only release).
-            $keepBlockedByPhoto = $wasInactive && $photoService->hasOpenBlockingRequest($account);
+            $keepBlockedByPhoto = $wasInactive && ($photoService->hasOpenBlockingRequest($account) || $account->isUnderVoteBlock());
             if (!$keepBlockedByPhoto) {
                 if ($wasInactive) {
                     $account->setIsActive(true);
