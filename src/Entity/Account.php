@@ -41,6 +41,14 @@ class Account
     private ?string $area = null;
 
     /**
+     * When set in the future, this account is under a time-boxed community vote-block
+     * (BlockVoteCampaign). The block-vote:tally cron auto-restores is_active once this
+     * instant passes. NULL means no active vote-block.
+     */
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTime $blocked_until = null;
+
+    /**
      * Admin-linked owner group: when set, this account shares booking limits and
      * debt aggregation with every other account having the same `owner_group_id`.
      * NULL means "ungrouped" (treated as a group of one via getEffectiveGroupId()).
@@ -146,6 +154,27 @@ class Account
         $this->area = $area;
 
         return $this;
+    }
+
+    public function getBlockedUntil(): ?\DateTime
+    {
+        return $this->blocked_until;
+    }
+
+    public function setBlockedUntil(?\DateTime $blocked_until): static
+    {
+        $this->blocked_until = $blocked_until;
+
+        return $this;
+    }
+
+    /**
+     * True while a community vote-block is still in force (blocked_until is in the future).
+     * Used by debt/photo unblock paths to avoid prematurely lifting a vote-block.
+     */
+    public function isUnderVoteBlock(): bool
+    {
+        return $this->blocked_until !== null && $this->blocked_until > new \DateTime();
     }
 
     public function getUsers(): Collection

@@ -23,6 +23,7 @@ class BotMenuUpdateCommand extends Command
         ['history', '📜 Історія бронювань'],
         ['photo', '📸 Завантажити фото'],
         ['info', 'ℹ️ Інструкція та FAQ'],
+        ['vote', '🗳️ Голосування'],
     ];
 
     public function __construct(

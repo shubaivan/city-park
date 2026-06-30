@@ -140,6 +140,15 @@ class DebtRecomputeCommand extends Command
                 continue;
             }
 
+            // A community vote-block is time-boxed (block-vote:tally lifts it). Don't let a
+            // debt change short-circuit the 30-day window the neighbours voted for.
+            if ($account->isUnderVoteBlock()) {
+                $this->logger->info('debt:recompute: debt OK but kept blocked by active vote-block', [
+                    'account_id' => $account->getId(),
+                ]);
+                continue;
+            }
+
             $account->setIsActive(true);
             $this->auditor->log(
                 $account, false, true,
