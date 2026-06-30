@@ -369,14 +369,20 @@ class BlockVoteService
         return $unblocked;
     }
 
-    /** Human label for a candidate, kept to the unit (privacy: no personal name). */
+    /**
+     * Human label for a candidate: street + house + unit (privacy: no personal name).
+     * The house matters — "кв. 109" alone is ambiguous across буд., so voters must see which.
+     */
     public function candidateLabel(Account $account): string
     {
         $num = trim((string)$account->getApartmentNumber());
-        if ($account->isParking()) {
-            return $num !== '' ? 'паркомісце ' . $num : 'паркомісце';
-        }
-        return $num !== '' ? 'кв. ' . $num : ('аккаунт ' . $account->getAccountNumber());
+        $unit = $account->isParking()
+            ? ($num !== '' ? 'паркомісце ' . $num : 'паркомісце')
+            : ($num !== '' ? 'кв. ' . $num : ('аккаунт ' . $account->getAccountNumber()));
+
+        $addr = trim(trim((string)$account->getStreet()) . ' ' . trim((string)$account->getHouseNumber()));
+
+        return $addr !== '' ? $addr . ', ' . $unit : $unit;
     }
 
     /**
