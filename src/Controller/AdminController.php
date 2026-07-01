@@ -116,7 +116,7 @@ class AdminController extends AbstractController
                     'debt' => $cand->getDebt(),
                     'names' => $names,
                     'eligible' => $eligible,
-                    'needed' => intdiv($eligible, 2) + 1,
+                    'needed' => (int) floor($eligible * \App\Entity\BlockVoteCampaign::PASS_FRACTION) + 1,
                     'already_open' => $campaignRepository->findOpenForCandidate($cand) !== null,
                 ];
             }

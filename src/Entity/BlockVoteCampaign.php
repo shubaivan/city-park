@@ -12,7 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
 /**
  * A community vote-to-block campaign: admins (Alina / Luda / main_admin) open one
  * per candidate Account. Every eligible voter (active apartment account, the candidate
- * excluded) may cast a single ballot. When YES > 50% of the eligible count snapshotted
+ * excluded) may cast a single ballot. When YES > 30% of the eligible count snapshotted
  * at creation, the candidate is auto-blocked for 30 days. Tallied either the instant the
  * threshold is crossed or when the 7-day deadline passes (block-vote:tally cron).
  */
@@ -119,10 +119,13 @@ class BlockVoteCampaign
         return $this;
     }
 
-    /** Strict majority of the eligible snapshot: YES must exceed half. */
+    /** Fraction of the eligible snapshot YES must exceed for the campaign to pass. */
+    public const PASS_FRACTION = 0.30;
+
+    /** Smallest YES count that strictly exceeds PASS_FRACTION of the eligible snapshot. */
     public function yesNeeded(): int
     {
-        return intdiv($this->eligible_count, 2) + 1;
+        return (int) floor($this->eligible_count * self::PASS_FRACTION) + 1;
     }
 
     public function getDeadlineAt(): \DateTime

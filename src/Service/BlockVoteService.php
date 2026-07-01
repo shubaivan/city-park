@@ -19,7 +19,7 @@ use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * Community vote-to-block: admins open a campaign per candidate; every eligible voter
- * (active apartment account, candidate excluded) casts one ballot. YES > 50% of the
+ * (active apartment account, candidate excluded) casts one ballot. YES > 30% of the
  * eligible snapshot blocks the candidate for 30 days (auto-unblock afterwards).
  *
  * Threshold denominator is frozen at campaign creation so a vote can't become
@@ -484,9 +484,9 @@ class BlockVoteService
         return sprintf(
             "Пропонується тимчасово заблокувати: <b>%s</b>.\n\n"
             . "📊 Зараз: «За» <b>%d</b> · «Проти» <b>%d</b>\n"
-            . "✅ Щоб ухвалити рішення, потрібно «За»: <b>%d</b> з %d квартир та паркомісць (понад половину).\n"
+            . "✅ Щоб ухвалити рішення, потрібно «За»: <b>%d</b> з %d квартир та паркомісць (понад 30%%).\n"
             . "⏳ Голосування триває до <b>%s</b>.\n\n"
-            . "Якщо «За» набере більшість, аккаунт буде <b>заблоковано на %d днів</b> — бронювання альтанок стане недоступним. Після цього строку доступ відновиться <b>автоматично</b>.\n\n"
+            . "Якщо «За» набере понад 30%%, аккаунт буде <b>заблоковано на %d днів</b> — бронювання альтанок стане недоступним. Після цього строку доступ відновиться <b>автоматично</b>.\n\n"
             . "Один аккаунт — один голос; свій вибір можна змінити до завершення.\n"
             . "👉 Проголосувати: меню «🗳️ Голосування» або команда /vote.",
             $this->candidateLabel($campaign->getCandidate()),

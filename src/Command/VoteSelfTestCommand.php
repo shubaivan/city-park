@@ -61,13 +61,13 @@ class VoteSelfTestCommand extends Command
         $campaign = (new BlockVoteCampaign())
             ->setCandidate($cand)
             ->setStatus(BlockVoteCampaign::STATUS_OPEN)
-            ->setEligibleCount(2)               // yesNeeded = intdiv(2,2)+1 = 2
+            ->setEligibleCount(5)               // yesNeeded = floor(5*0.30)+1 = 2 (>30%)
             ->setDeadlineAt((new \DateTime('now', new \DateTimeZone('Europe/Kyiv')))->modify('+7 days'));
         $this->em->persist($campaign);
         $this->em->flush();
         $cid = $campaign->getId();
 
-        $check('yesNeeded is strict majority (2 of 2)', $campaign->yesNeeded() === 2);
+        $check('yesNeeded is >30% threshold (2 of 5)', $campaign->yesNeeded() === 2);
 
         $r1 = $this->voteService->recordVote($campaign, $v1, true);
         $check('first YES does not pass yet (1/2)', $r1['passed'] === false && $r1['yes'] === 1);
