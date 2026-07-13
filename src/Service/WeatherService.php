@@ -14,6 +14,9 @@ class WeatherService
     private const TZ = 'Europe/Kyiv';
     private const URL = 'https://api.open-meteo.com/v1/forecast';
     private const FORECAST_DAYS = 16;
+    private const HTTP_TIMEOUT = 8;      // idle timeout (s); 4s was too tight for the 16-day payload
+    private const OK_TTL = 3600;         // cache a good forecast for an hour
+    private const FAIL_TTL = 300;        // negative-cache a failure only briefly so it self-heals
 
     /** @var array<string, array{line: string, emoji: string}>|null */
     private ?array $memo = null;
@@ -49,22 +52,43 @@ class WeatherService
 
         try {
             $this->memo = $this->cache->get($cacheKey, function (ItemInterface $item) {
-                $item->expiresAfter(3600);
+                // Assume failure: a transient Open-Meteo hiccup (429 rate-limit, 5xx,
+                // idle timeout) is negative-cached for only FAIL_TTL so it self-heals
+                // within minutes instead of sticking for an hour, while still sparing
+                // Open-Meteo a live call on every picker view during the outage. The TTL
+                // is promoted to OK_TTL only once we actually hold a forecast.
+                $item->expiresAfter(self::FAIL_TTL);
 
-                $response = $this->httpClient->request('GET', self::URL, [
-                    'query' => [
-                        'latitude' => self::LAT,
-                        'longitude' => self::LNG,
-                        'daily' => 'temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code',
-                        'timezone' => self::TZ,
-                        'forecast_days' => self::FORECAST_DAYS,
-                    ],
-                    'timeout' => 4,
-                ]);
+                try {
+                    $response = $this->httpClient->request('GET', self::URL, [
+                        'query' => [
+                            'latitude' => self::LAT,
+                            'longitude' => self::LNG,
+                            'daily' => 'temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code',
+                            'timezone' => self::TZ,
+                            'forecast_days' => self::FORECAST_DAYS,
+                        ],
+                        'timeout' => self::HTTP_TIMEOUT,
+                    ]);
 
-                $data = $response->toArray(false);
-                $times = $data['daily']['time'] ?? [];
-                if (!$times) {
+                    // getStatusCode() throws on a transport error (idle timeout, DNS, TLS).
+                    // Guard the status explicitly: toArray(false) would otherwise swallow a
+                    // 429/5xx and hand back a body with no `daily`, cached as empty.
+                    $status = $response->getStatusCode();
+                    if ($status < 200 || $status >= 300) {
+                        throw new \RuntimeException('Open-Meteo returned HTTP ' . $status);
+                    }
+
+                    $data = $response->toArray();
+                    $times = $data['daily']['time'] ?? [];
+                    if (!$times) {
+                        throw new \RuntimeException('Open-Meteo response had no daily.time');
+                    }
+                } catch (\Throwable $e) {
+                    // Negative-cache (FAIL_TTL, set above) and surface the real reason.
+                    // In cron this WARNING reaches warm-weather.log via the console handler.
+                    $this->logger->warning('WeatherService: forecast fetch failed: ' . $e->getMessage());
+
                     return [];
                 }
 
@@ -87,10 +111,15 @@ class WeatherService
                     ];
                 }
 
+                // Real forecast in hand — safe to keep it for the full hour.
+                $item->expiresAfter(self::OK_TTL);
+
                 return $out;
             });
         } catch (\Throwable $e) {
-            $this->logger->warning('WeatherService: forecast fetch failed: ' . $e->getMessage());
+            // Safety net for a failure of the cache backend itself (not the fetch, which
+            // is handled inside the callback). Never let a missing weather line bubble up.
+            $this->logger->warning('WeatherService: cache lookup failed: ' . $e->getMessage());
             $this->memo = [];
         }
 
