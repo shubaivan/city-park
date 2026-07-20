@@ -45,6 +45,9 @@
                         <div class="form-group">
                             <label for="account_number" class="col-form-label">Особовий рахунок</label>
                             <input type="text" id="account_number" class="form-control" name="account[account_number]"/>
+                            {# Shown by telegram_users.js when the number is edited: changing it moves
+                               the user to another rahunok instead of renaming the current one. #}
+                            <small id="account_reassign_hint" class="form-text text-warning" style="display:none"></small>
                         </div>
                         <div class="form-group">
                             <label for="apartment_number" class="col-form-label">Номер квартири</label>

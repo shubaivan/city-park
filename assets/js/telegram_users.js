@@ -262,6 +262,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
         form.find('input[type=text]').val('');
         form.find('.invalid-feedback').remove();
+        // Stale value from a previously edited user would mislabel this one's number as a move.
+        form.removeData('loaded_account_number');
+        $('#account_reassign_hint').hide().text('');
         form.find('input[type=hidden]').remove()
 
         var divPropConf = $('<div/>', {'class': "prop_conf"});
@@ -291,6 +294,9 @@ document.addEventListener("DOMContentLoaded", function () {
                     console.log(data);
                     modal.find('#exampleModalLabel').text('Редагувати Користувача')
                     form.find('#account_number').val(data.account_number)
+                    // Remembered so save-time can tell an edit of this account apart from a
+                    // move to a different one — see the confirm in the submit handler.
+                    form.data('loaded_account_number', data.account_number || '')
                     form.find('#apartment_number').val(data.apartment_number)
                     form.find('#house_number').val(data.house_number)
                     form.find('#street').val(data.street)
@@ -532,6 +538,27 @@ document.addEventListener("DOMContentLoaded", function () {
                     table.ajax.reload(null, false);
                 }
             });
+        });
+
+        // One Account can hold several TelegramUsers (family). Editing the number of an account
+        // that already has one is a MOVE of this user to another rahunok — the current row and
+        // everyone else on it stay untouched. Spell that out, it used to be silent.
+        $(document).on('input', '#account_number', function () {
+            let form = $('#telegramUserForm');
+            let loaded = form.data('loaded_account_number') || '';
+            let hint = $('#account_reassign_hint');
+            let typed = $.trim($(this).val());
+
+            if (!loaded || !typed || typed === loaded) {
+                hint.hide().text('');
+                return;
+            }
+
+            hint.text(
+                'Увага: користувача буде ПЕРЕНЕСЕНО з рахунку ' + loaded + ' на ' + typed + '. '
+                + 'Рахунок ' + loaded + ' та інші його мешканці не зміняться. '
+                + 'Якщо рахунку ' + typed + ' ще немає — його буде створено з полів нижче.'
+            ).show();
         });
 
         function renderGroupSiblings(accountId, siblings) {

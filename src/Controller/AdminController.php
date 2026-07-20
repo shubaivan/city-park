@@ -790,37 +790,78 @@ class AdminController extends AbstractController
             $accountContext = [];
             $isWasInActive = true;
             $accountEntity = $currentUser->getAccount() ?: null;
-            if (!$accountEntity) {
+
+            // Reassignment: the submitted особовий рахунок differs from the one the user is
+            // currently linked to. Without this branch the number would be denormalized ONTO
+            // the existing row — renaming a shared Account (one Account ↔ many TelegramUser)
+            // and dragging every family member along with it. Re-point the FK instead.
+            $submittedNumber = trim((string)($account['account_number'] ?? ''));
+            if ($accountEntity && $submittedNumber !== '' && $submittedNumber !== $accountEntity->getAccountNumber()) {
+                $target = $accountRepository->findOneBy(['account_number' => $submittedNumber]);
+                $logger->info('Admin account reassignment', [
+                    'user_id' => $currentUser->getId(),
+                    'from_account_id' => $accountEntity->getId(),
+                    'from_account_number' => $accountEntity->getAccountNumber(),
+                    'to_account_number' => $submittedNumber,
+                    'to_account_id' => $target?->getId(),
+                ]);
+
+                if ($target) {
+                    // Pure move onto an existing rahunok: re-point the FK and leave the target
+                    // row exactly as it is. The submitted address/area/is_active describe the
+                    // account the user is LEAVING, so applying them here would corrupt the
+                    // destination (and its other family members).
+                    $currentUser->setAccount($target);
+                    $reassignedTo = $target;
+                } else {
+                    // No such rahunok yet → build a fresh Account from the submitted fields,
+                    // same as first-time onboarding. The old row stays intact.
+                    $accountEntity = null;
+                }
+            }
+
+            if (!$accountEntity && !isset($reassignedTo)) {
                 $accountEntity = $accountRepository->findOneBy(['account_number' => $account['account_number']]);
             }
 
-            if ($accountEntity) {
+            if ($accountEntity && !isset($reassignedTo)) {
                 $accountContext += [
                     AbstractNormalizer::OBJECT_TO_POPULATE => $accountEntity
                 ];
                 $isWasInActive = !$accountEntity->isActive();
             }
 
-            // Block reason is mandatory on active → blocked transition so the audit log,
-            // bot notification, and admin UI all have a non-empty cause to display.
-            $isCurrentlyActive = $accountEntity ? $accountEntity->isActive() : true;
-            $willBeBlocked = $account['is_active'] === false;
-            if ($isCurrentlyActive && $willBeBlocked && !in_array($blockReason, ['debt', 'photo', 'other'], true)) {
-                return $this->json(
-                    ['Оберіть причину блокування (борг / фото / інша)'],
-                    Response::HTTP_BAD_REQUEST,
-                );
+            // Never treat a move as an unblock: the "was inactive" flag describes the account
+            // being left, while the post-flush hook reads the destination — that mismatch would
+            // fire a bogus unblock notice and forgive the destination's photo requests.
+            if (isset($reassignedTo)) {
+                $isWasInActive = false;
             }
 
-            $accountEntity = $this->denormalizer->denormalize(
-                $account,
-                Account::class,
-                null,
-                $accountContext
-            );
+            // A pure reassignment carries no account edits, so skip the block-reason gate and
+            // the denormalize entirely — the destination row must survive untouched.
+            if (!isset($reassignedTo)) {
+                // Block reason is mandatory on active → blocked transition so the audit log,
+                // bot notification, and admin UI all have a non-empty cause to display.
+                $isCurrentlyActive = $accountEntity ? $accountEntity->isActive() : true;
+                $willBeBlocked = $account['is_active'] === false;
+                if ($isCurrentlyActive && $willBeBlocked && !in_array($blockReason, ['debt', 'photo', 'other'], true)) {
+                    return $this->json(
+                        ['Оберіть причину блокування (борг / фото / інша)'],
+                        Response::HTTP_BAD_REQUEST,
+                    );
+                }
 
-            $em->persist($accountEntity);
-            $currentUser->setAccount($accountEntity);
+                $accountEntity = $this->denormalizer->denormalize(
+                    $account,
+                    Account::class,
+                    null,
+                    $accountContext
+                );
+
+                $em->persist($accountEntity);
+                $currentUser->setAccount($accountEntity);
+            }
         }
 
         $context = [
@@ -846,7 +887,9 @@ class AdminController extends AbstractController
         $em->persist($updatedUser);
         $em->flush();
 
-        if (isset($isWasInActive) && $isWasInActive && $updatedUser->getAccount() && $updatedUser->getAccount()->isActive()) {
+        // A reassignment changes WHICH account the user belongs to, not that account's status —
+        // both status hooks below compare against the account being left, so they must not run.
+        if (!isset($reassignedTo) && isset($isWasInActive) && $isWasInActive && $updatedUser->getAccount() && $updatedUser->getAccount()->isActive()) {
             // An explicit admin unblock overrides any active community vote-block too, so the
             // 30-day window doesn't linger and re-gate later debt/photo unblocks.
             $updatedUser->getAccount()->setBlockedUntil(null);
@@ -887,7 +930,7 @@ class AdminController extends AbstractController
             $this->notifyAccountUsers($bot, $logger, $updatedUser->getAccount(), $unblockText, 'unblock');
         }
 
-        if (isset($isWasInActive) && !$isWasInActive && $updatedUser->getAccount() && !$updatedUser->getAccount()->isActive()) {
+        if (!isset($reassignedTo) && isset($isWasInActive) && !$isWasInActive && $updatedUser->getAccount() && !$updatedUser->getAccount()->isActive()) {
             $logger->info('Admin block', [
                 'account_id' => $updatedUser->getAccount()->getId(),
                 'account_number' => $updatedUser->getAccount()->getAccountNumber(),
