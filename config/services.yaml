@@ -33,6 +33,13 @@ services:
         arguments:
             $threshold: '%app.debt_block_threshold%'
 
+    # StartCommand resolves this at render time via $bot->getContainer(), which
+    # delegates to '@service_container' — and that only exposes PUBLIC services.
+    # It must be the same shared instance RequestSubscriber called initUser() on,
+    # otherwise the resolved instance has no current user.
+    App\Service\TelegramUserService:
+        public: true
+
     # Nutgram handlers
     App\Telegram\:
         public: true
