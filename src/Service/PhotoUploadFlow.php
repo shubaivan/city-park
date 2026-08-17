@@ -29,6 +29,64 @@ class PhotoUploadFlow
         private LoggerInterface $photoLogger,
     ) {}
 
+    /**
+     * Entry point for a Nutgram conversation that got a photo instead of the input its
+     * current step expected. Nutgram routes EVERY update from a user with an active
+     * conversation into that conversation, so without this the photo is swallowed and
+     * the resident is blocked for a photo they did send.
+     *
+     * Ends the conversation, then saves the photo right away — the obligation window is
+     * only ~1 hour wide, so "please resend" is not good enough (and the resend used to
+     * land in the very same stuck conversation).
+     *
+     * Guarantees it never throws: an exception here would make /hook answer 500 and
+     * Telegram would retry the same photo update for an hour (incidents 02–03.08
+     * and 16.08.2026, ~950 failed deliveries, 3 residents wrongly blocked).
+     */
+    public function interceptConversationPhoto(Nutgram $bot, ?string $step, string $pausedNotice): void
+    {
+        $this->photoLogger->warning('photo received during active booking conversation — ending it and saving the photo inline', [
+            'chat_id' => $bot->chatId(),
+            'telegram_user_id' => $bot->userId(),
+            'step' => $step,
+        ]);
+
+        // NB: $bot->endConversation() and NOT Conversation::end() — end() reads
+        // $this->bot, which Conversation initialises only inside parent::__invoke()
+        // and strips in __serialize(), so on a cache-restored conversation it threw.
+        try {
+            $bot->endConversation();
+        } catch (\Throwable $e) {
+            $this->photoLogger->error('failed to end conversation on incoming photo', [
+                'chat_id' => $bot->chatId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $bot->sendMessage(text: $pausedNotice, parse_mode: ParseMode::HTML);
+        } catch (\Throwable $e) {
+            $this->photoLogger->error('failed to send paused-conversation notice', [
+                'chat_id' => $bot->chatId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $this->process($bot);
+        } catch (\Throwable $e) {
+            $this->photoLogger->error('inline photo processing failed', [
+                'chat_id' => $bot->chatId(),
+                'error' => $e->getMessage(),
+            ]);
+            try {
+                $bot->sendMessage(text: '⚠️ Не вдалося зберегти фото. Будь ласка, надішліть його ще раз.');
+            } catch (\Throwable) {
+                // nothing left to do — must never bubble up into a webhook 500
+            }
+        }
+    }
+
     public function process(Nutgram $bot): void
     {
         $chatId = $bot->chatId();

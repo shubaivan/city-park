@@ -59,55 +59,19 @@ class SchedulePavilion extends Conversation
     public function __invoke(Nutgram $bot, ...$parameters): mixed
     {
         if ($bot->message()?->photo) {
-            $this->photoLogger?->warning('photo received during active booking conversation — ending it and saving the photo inline', [
-                'chat_id' => $bot->chatId(),
-                'telegram_user_id' => $bot->userId(),
-                'step' => $this->step,
-            ]);
-
-            // Nothing in this branch may throw: an exception here makes /hook answer 500,
-            // Telegram then retries the very same photo update for an hour and the resident
-            // gets no answer at all. That is exactly what $this->end() used to do — end()
-            // reads $this->bot, which Conversation initialises only inside
-            // parent::__invoke() and strips in __serialize(), so on a restored (cached)
-            // conversation it threw "must not be accessed before initialization".
-            // Incidents: 02–03.08.2026 and 16.08.2026, ~950 failed webhook deliveries.
+            // Must never throw — see PhotoUploadFlow::interceptConversationPhoto().
             try {
-                $bot->endConversation();
-            } catch (\Throwable $e) {
-                $this->photoLogger?->error('failed to end booking conversation on incoming photo', [
-                    'chat_id' => $bot->chatId(),
-                    'error' => $e->getMessage(),
-                ]);
-            }
-
-            try {
-                $bot->sendMessage(
-                    text: "📷 Ви надіслали фото під час оформлення бронювання — бронювання призупинено, "
+                $this->photoUploadFlow->interceptConversationPhoto(
+                    $bot,
+                    $this->step,
+                    "📷 Ви надіслали фото під час оформлення бронювання — бронювання призупинено, "
                         . "обробляємо фото. Щоб забронювати, натисніть «Бронювання» ще раз.",
-                    parse_mode: ParseMode::HTML,
                 );
             } catch (\Throwable $e) {
-                $this->photoLogger?->error('failed to notify about paused booking', [
+                $this->photoLogger?->error('photo interception failed outright', [
                     'chat_id' => $bot->chatId(),
                     'error' => $e->getMessage(),
                 ]);
-            }
-
-            try {
-                $this->photoUploadFlow->process($bot);
-            } catch (\Throwable $e) {
-                $this->photoLogger?->error('inline photo processing failed', [
-                    'chat_id' => $bot->chatId(),
-                    'error' => $e->getMessage(),
-                ]);
-                try {
-                    $bot->sendMessage(
-                        text: '⚠️ Не вдалося зберегти фото. Будь ласка, надішліть його ще раз.',
-                    );
-                } catch (\Throwable) {
-                    // nothing left to do — never bubble up into a webhook 500
-                }
             }
 
             return null;
