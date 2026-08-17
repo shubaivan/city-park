@@ -5,6 +5,7 @@ namespace App\Telegram\SchedulePavilion\Command;
 use App\Entity\ScheduledSet;
 use App\Service\BlockReasonResolver;
 use App\Service\DebtPolicy;
+use App\Service\PhotoUploadFlow;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use App\Service\UkDateFormatter;
@@ -39,6 +40,7 @@ class SchedulePavilion extends Conversation
         private WeatherService $weatherService,
         private DebtPolicy $debtPolicy,
         private BlockReasonResolver $blockReasonResolver,
+        private PhotoUploadFlow $photoUploadFlow,
         private ?LoggerInterface $photoLogger = null,
         private string $pavilion1PhotoFileId = '',
         private string $pavilion2PhotoFileId = '',
@@ -50,24 +52,27 @@ class SchedulePavilion extends Conversation
      * this conversation's step handler instead of the global onPhoto handler. A photo
      * sent to fulfil a pavilion-photo obligation would therefore be silently swallowed
      * by the booking step and never saved (this is what stopped photos appearing after
-     * the 29.05 rules deploy). Detect a photo here, log it, end the conversation, and
-     * ask the user to resend — so the resend reaches UploadPhotoCommand and is saved.
+     * the 29.05 rules deploy). Detect a photo here, end the conversation, and run the
+     * upload flow inline — the photo must be saved on the FIRST send, because the
+     * obligation window is only ~1 hour wide.
      */
     public function __invoke(Nutgram $bot, ...$parameters): mixed
     {
         if ($bot->message()?->photo) {
-            $this->photoLogger?->warning('photo received during active booking conversation — ending it so a resend reaches onPhoto', [
-                'chat_id' => $bot->chatId(),
-                'telegram_user_id' => $bot->userId(),
-                'step' => $this->step,
-            ]);
-            $this->end();
-            $bot->sendMessage(
-                text: "📷 Здається, ви надіслали фото під час оформлення бронювання.\n\n"
-                    . "Бронювання призупинено. Будь ласка, <b>надішліть фото ще раз</b> — "
-                    . "тепер ми зможемо прикріпити його до вашої сесії.",
-                parse_mode: ParseMode::HTML,
-            );
+            // Must never throw — see PhotoUploadFlow::interceptConversationPhoto().
+            try {
+                $this->photoUploadFlow->interceptConversationPhoto(
+                    $bot,
+                    $this->step,
+                    "📷 Ви надіслали фото під час оформлення бронювання — бронювання призупинено, "
+                        . "обробляємо фото. Щоб забронювати, натисніть «Бронювання» ще раз.",
+                );
+            } catch (\Throwable $e) {
+                $this->photoLogger?->error('photo interception failed outright', [
+                    'chat_id' => $bot->chatId(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             return null;
         }

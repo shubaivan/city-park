@@ -3,10 +3,12 @@
 namespace App\Telegram\SchedulePavilion\Command;
 
 use App\Entity\ScheduledSet;
+use App\Service\PhotoUploadFlow;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use App\Service\UkDateFormatter;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
@@ -25,8 +27,40 @@ class OwnSchedule extends Conversation
         protected string $projectDir,
         private SchedulePavilionService $schedulePavilionService,
         private EntityManagerInterface $em,
-        private TelegramUserService $telegramUserService
+        private TelegramUserService $telegramUserService,
+        private PhotoUploadFlow $photoUploadFlow,
+        private ?LoggerInterface $photoLogger = null,
     ) {}
+
+    /**
+     * Same blind spot SchedulePavilion guards against: while this conversation is active
+     * (or left stale), every update from the user lands in its steps — a pavilion photo
+     * included, which would be dropped without a trace and the account blocked for a
+     * "missing" photo. Hand it to the upload flow instead.
+     */
+    public function __invoke(Nutgram $bot, ...$parameters): mixed
+    {
+        if ($bot->message()?->photo) {
+            // Must never throw — see PhotoUploadFlow::interceptConversationPhoto().
+            try {
+                $this->photoUploadFlow->interceptConversationPhoto(
+                    $bot,
+                    $this->step,
+                    '📷 Ви надіслали фото — обробляємо його, попередню дію скасовано. '
+                        . 'Щоб повернутися до бронювань, натисніть «Переглянути свої».',
+                );
+            } catch (\Throwable $e) {
+                $this->photoLogger?->error('photo interception failed outright', [
+                    'chat_id' => $bot->chatId(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return null;
+        }
+
+        return parent::__invoke($bot, ...$parameters);
+    }
 
     public function own(Nutgram $bot)
     {

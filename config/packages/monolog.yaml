@@ -58,6 +58,16 @@ when@prod:
                 path: php://stderr
                 level: debug
                 formatter: monolog.formatter.json
+            # php-fpm runs without catch_workers_output, so everything the handlers above
+            # write to stderr is discarded: a hard 500 on /hook (Telegram then retries the
+            # same update for an hour) left no trace anywhere for two weeks — see the
+            # 02.08/16.08.2026 swallowed-photo incident. Keep errors in a real file.
+            errors_file:
+                type: stream
+                path: "%kernel.logs_dir%/prod_errors.log"
+                level: error
+                channels: ["!photo", "!event"]
+                formatter: monolog.formatter.json
             # Persistent, greppable audit trail for photo uploads + reminder/block delivery.
             # Written unconditionally at info level to a real file (not stderr/fingers_crossed),
             # so we can always answer "did the photo arrive, and what happened to it?".
