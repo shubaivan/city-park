@@ -5,6 +5,7 @@ namespace App\Telegram\SchedulePavilion\Command;
 use App\Entity\ScheduledSet;
 use App\Service\BlockReasonResolver;
 use App\Service\DebtPolicy;
+use App\Service\PhotoUploadFlow;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use App\Service\UkDateFormatter;
@@ -39,6 +40,7 @@ class SchedulePavilion extends Conversation
         private WeatherService $weatherService,
         private DebtPolicy $debtPolicy,
         private BlockReasonResolver $blockReasonResolver,
+        private PhotoUploadFlow $photoUploadFlow,
         private ?LoggerInterface $photoLogger = null,
         private string $pavilion1PhotoFileId = '',
         private string $pavilion2PhotoFileId = '',
@@ -50,24 +52,63 @@ class SchedulePavilion extends Conversation
      * this conversation's step handler instead of the global onPhoto handler. A photo
      * sent to fulfil a pavilion-photo obligation would therefore be silently swallowed
      * by the booking step and never saved (this is what stopped photos appearing after
-     * the 29.05 rules deploy). Detect a photo here, log it, end the conversation, and
-     * ask the user to resend — so the resend reaches UploadPhotoCommand and is saved.
+     * the 29.05 rules deploy). Detect a photo here, end the conversation, and run the
+     * upload flow inline — the photo must be saved on the FIRST send, because the
+     * obligation window is only ~1 hour wide.
      */
     public function __invoke(Nutgram $bot, ...$parameters): mixed
     {
         if ($bot->message()?->photo) {
-            $this->photoLogger?->warning('photo received during active booking conversation — ending it so a resend reaches onPhoto', [
+            $this->photoLogger?->warning('photo received during active booking conversation — ending it and saving the photo inline', [
                 'chat_id' => $bot->chatId(),
                 'telegram_user_id' => $bot->userId(),
                 'step' => $this->step,
             ]);
-            $this->end();
-            $bot->sendMessage(
-                text: "📷 Здається, ви надіслали фото під час оформлення бронювання.\n\n"
-                    . "Бронювання призупинено. Будь ласка, <b>надішліть фото ще раз</b> — "
-                    . "тепер ми зможемо прикріпити його до вашої сесії.",
-                parse_mode: ParseMode::HTML,
-            );
+
+            // Nothing in this branch may throw: an exception here makes /hook answer 500,
+            // Telegram then retries the very same photo update for an hour and the resident
+            // gets no answer at all. That is exactly what $this->end() used to do — end()
+            // reads $this->bot, which Conversation initialises only inside
+            // parent::__invoke() and strips in __serialize(), so on a restored (cached)
+            // conversation it threw "must not be accessed before initialization".
+            // Incidents: 02–03.08.2026 and 16.08.2026, ~950 failed webhook deliveries.
+            try {
+                $bot->endConversation();
+            } catch (\Throwable $e) {
+                $this->photoLogger?->error('failed to end booking conversation on incoming photo', [
+                    'chat_id' => $bot->chatId(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            try {
+                $bot->sendMessage(
+                    text: "📷 Ви надіслали фото під час оформлення бронювання — бронювання призупинено, "
+                        . "обробляємо фото. Щоб забронювати, натисніть «Бронювання» ще раз.",
+                    parse_mode: ParseMode::HTML,
+                );
+            } catch (\Throwable $e) {
+                $this->photoLogger?->error('failed to notify about paused booking', [
+                    'chat_id' => $bot->chatId(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            try {
+                $this->photoUploadFlow->process($bot);
+            } catch (\Throwable $e) {
+                $this->photoLogger?->error('inline photo processing failed', [
+                    'chat_id' => $bot->chatId(),
+                    'error' => $e->getMessage(),
+                ]);
+                try {
+                    $bot->sendMessage(
+                        text: '⚠️ Не вдалося зберегти фото. Будь ласка, надішліть його ще раз.',
+                    );
+                } catch (\Throwable) {
+                    // nothing left to do — never bubble up into a webhook 500
+                }
+            }
 
             return null;
         }
