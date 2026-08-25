@@ -150,6 +150,14 @@ class RentalPhotoService
         $this->deleteFile($publicPath);
     }
 
+    /** The owner pressed "Готово" — the link has served its purpose, retire it. */
+    public function burnToken(RentalListing $listing): void
+    {
+        $listing->setPhotoToken(null);
+        $listing->setPhotoTokenExpiresAt(null);
+        $this->em->flush();
+    }
+
     /** Called when a listing is closed for good, so files don't outlive the listing. */
     public function purge(RentalListing $listing): void
     {

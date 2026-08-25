@@ -7,13 +7,15 @@ use App\Entity\RentalListing;
 use App\Repository\RentalListingRepository;
 use App\Service\RentalListingService;
 use App\Service\RentalPhotoService;
+use Psr\Log\LoggerInterface;
 use App\Service\TelegramUserService;
 use App\Telegram\Start\Command\StartCommand;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
-use SergiX44\Nutgram\Telegram\Types\Media\InputFile;
+use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
+use SergiX44\Nutgram\Telegram\Types\WebApp\WebAppInfo;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
@@ -47,6 +49,7 @@ class RentalMenuCommand
         private RentalListingRepository $listingRepository,
         private RentalPhotoService $photoService,
         private UrlGeneratorInterface $urlGenerator,
+        private LoggerInterface $logger,
     ) {}
 
     public function __invoke(Nutgram $bot): void
@@ -270,7 +273,15 @@ class RentalMenuCommand
                 parse_mode: ParseMode::HTML,
                 reply_markup: $markup,
             );
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            // Falling back silently is how a wrong InputFile import shipped unnoticed:
+            // the card kept rendering as text and nothing said why. Log, then degrade.
+            $this->logger->error('rental photo card failed, falling back to text', [
+                'listing_id' => $listing->getId(),
+                'path' => $abs,
+                'error' => $e->getMessage(),
+            ]);
+
             return false;
         }
 
@@ -313,8 +324,16 @@ class RentalMenuCommand
                 . " фото з галереї телефону — вони одразу з'являться в оголошенні.\n\n"
                 . '<i>Посилання діє ' . RentalListing::PHOTO_TOKEN_TTL_HOURS . ' години і лише для вашого оголошення. '
                 . "Фото альтанки сюди не вантажте — їх, як і раніше, надсилайте прямо в бот.</i>",
+            // web_app, not a plain url: opened this way the page runs inside Telegram and
+            // can call Telegram.WebApp.close() when the owner is done, dropping them back
+            // in the chat instead of leaving a browser tab open. A plain link cannot close
+            // itself. The page still works if it is opened outside Telegram — it just
+            // shows a "back to the bot" link instead of closing.
             markup: InlineKeyboardMarkup::make()
-                ->addRow(InlineKeyboardButton::make('📷 Відкрити сторінку', url: $url))
+                ->addRow(InlineKeyboardButton::make(
+                    '📷 Відкрити сторінку',
+                    web_app: WebAppInfo::make($url),
+                ))
                 ->addRow(InlineKeyboardButton::make('⬅️ До оголошення', callback_data: 'rent:view:' . $listing->getId()))
                 ->addRow(StartCommand::homeButton()),
         );

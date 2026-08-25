@@ -409,6 +409,66 @@ class RentalListingService
      *
      * @return string[]
      */
+    /**
+     * Send the owner their updated card after they finish on the photo page.
+     *
+     * The Web App closes itself, so the resident lands back in the chat — this is what
+     * they land on: the listing exactly as neighbours now see it, picture included. The
+     * message that opened the page still shows the old count, and editing it from an HTTP
+     * request would mean carrying its message_id around for no real gain.
+     */
+    public function notifyPhotosUpdated(RentalListing $listing): void
+    {
+        $recipients = $this->recipients($listing);
+
+        if (!$recipients) {
+            return;
+        }
+
+        $caption = "📷 <b>Фото оновлено</b>\n\n" . $this->describe($listing);
+
+        $markup = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
+            ->addRow(InlineKeyboardButton::make(
+                '🔑 Моє оголошення',
+                callback_data: 'rent:view:' . $listing->getId(),
+            ));
+
+        $cover = $listing->coverPhoto();
+        $abs = $cover ? $this->photoService->absolutePath($cover) : null;
+
+        foreach ($recipients as $chatId) {
+            try {
+                $stream = $abs && is_readable($abs) ? @fopen($abs, 'rb') : false;
+
+                if ($stream !== false) {
+                    $this->bot->sendPhoto(
+                        photo: \SergiX44\Nutgram\Telegram\Types\Internal\InputFile::make($stream, basename((string)$abs)),
+                        chat_id: $chatId,
+                        caption: $caption,
+                        parse_mode: ParseMode::HTML,
+                        reply_markup: $markup,
+                    );
+                    continue;
+                }
+
+                // All photos removed, or the file vanished — the text card still tells
+                // them where they stand.
+                $this->bot->sendMessage(
+                    text: $caption,
+                    chat_id: $chatId,
+                    parse_mode: ParseMode::HTML,
+                    reply_markup: $markup,
+                );
+            } catch (\Throwable $e) {
+                $this->logger->error('rental photo notice failed', [
+                    'listing_id' => $listing->getId(),
+                    'chat_id' => $chatId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
     private function recipients(RentalListing $listing): array
     {
         $ids = [];
