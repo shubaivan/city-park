@@ -128,6 +128,12 @@ class StartCommand extends Command
     private static function mainMenuMarkup(): InlineKeyboardMarkup
     {
         return InlineKeyboardMarkup::make()
+            // Оренда sits first on purpose: it is the newest section and residents were
+            // not finding it at the bottom of the menu, under three rows they already
+            // know by heart. Booking is the everyday action and stays one tap away.
+            ->addRow(
+                InlineKeyboardButton::make('🔑 Оренда квартир', callback_data: 'rental-menu'),
+            )
             ->addRow(
                 InlineKeyboardButton::make('Бронювання', callback_data: 'schedule-pavilion'),
                 InlineKeyboardButton::make('Переглянути свої', callback_data: 'own-schedule'),
@@ -140,9 +146,6 @@ class StartCommand extends Command
             ->addRow(
                 InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'),
                 InlineKeyboardButton::make('🗳️ Голосування', callback_data: 'voting-menu'),
-            )
-            ->addRow(
-                InlineKeyboardButton::make('🔑 Оренда квартир', callback_data: 'rental-menu'),
             );
     }
 }
