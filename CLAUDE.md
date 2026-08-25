@@ -20,6 +20,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 
 | Button | Callback | Slash | Handler |
 |---|---|---|---|
+| 🔑 Оренда квартир | `rental-menu` / `rent:new` / `rent:{contact,phone,extend,remove}:<id>` | `/rent` | `RentalMenuCommand` + `RentalPublish` (conversation) |
 | Бронювання | `schedule-pavilion` | `/schedule` | `SchedulePavilion` (conversation) |
 | Переглянути свої | `own-schedule` | — | `OwnSchedule` |
 | Як доїхати? | `type:route` | — | `RouteCommand` |
@@ -27,11 +28,10 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 | 📸 Завантажити фото | `photo-upload-info` | `/photo` | `PhotoUploadInfo` (lists open requests) |
 | ℹ️ Інструкція та FAQ | `info-menu` / `info-topic:*` | `/info` | `InfoCommand` (edit `TOPICS` const) |
 | 🗳️ Голосування | `voting-menu` / `bvote:<id>:yes\|no` | `/vote` | `VotingMenuCommand` (community vote-to-block) |
-| 🔑 Оренда квартир | `rental-menu` / `rent:new` / `rent:{contact,phone,extend,remove}:<id>` | `/rent` | `RentalMenuCommand` + `RentalPublish` (conversation) |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
 | (auto) photo upload | `onPhoto` event | — | `UploadPhotoCommand` |
 
-**Slash menu must be pushed via `bin/console bot:menu:update --env=prod` after editing `BotMenuUpdateCommand::MENU`.** Nutgram's `setMyCommands()` has a null-scope bug; the command uses raw `sendRequest()` instead.
+**Slash menu must be pushed via `bin/console bot:menu:update --env=prod` after editing `BotMenuUpdateCommand::MENU`.** Its array order is what Telegram renders, and it is kept in sync with the inline menu in `StartCommand::mainMenuMarkup()` — 🔑 Оренда is first in both (residents were not finding it at the bottom). Nutgram's `setMyCommands()` has a null-scope bug; the command uses raw `sendRequest()` instead.
 
 ## Photo-obligation lifecycle
 

@@ -17,14 +17,15 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 class BotMenuUpdateCommand extends Command
 {
     /** [command, description] pairs. Keep <= 32 chars per description (Telegram limit). */
+    /** Order here is the order Telegram shows in the slash menu — first line is the most visible. */
     private const MENU = [
+        ['rent', '🔑 Оренда квартир'],
         ['start', 'Головне меню'],
         ['schedule', '📅 Бронювання альтанки'],
         ['history', '📜 Історія бронювань'],
         ['photo', '📸 Завантажити фото'],
         ['info', 'ℹ️ Інструкція та FAQ'],
         ['vote', '🗳️ Голосування'],
-        ['rent', '🔑 Оренда квартир'],
     ];
 
     public function __construct(
