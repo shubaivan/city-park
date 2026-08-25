@@ -76,21 +76,16 @@ class RentalMenuCommand
 
     private function renderMenu(Nutgram $bot, bool $edit, ?string $notice = null): void
     {
+        // Reading the list is open to everyone who opens the bot, confirmed by the
+        // accountant or not. A listing is an advertisement — hiding it from someone who
+        // has not been linked to an особовий рахунок yet only costs the owner readers,
+        // and the newcomer is often exactly the person looking for a flat here.
+        // Publishing still needs a confirmed account: apartment, address and area are
+        // read from it, so RentalPublish refuses and explains (see askRooms).
         $account = $this->currentAccount($bot);
 
-        if (!$account) {
-            $this->respond(
-                $bot,
-                $edit,
-                "🔑 <b>Оренда</b>\n\nВаш аккаунт не підтверджений ОСББ — розділ недоступний.\n"
-                . "Зв'яжіться з Аліною Бухгалтером (+380 93 658 32 02).",
-                InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton())
-            );
-            return;
-        }
-
         $listings = $this->rentalService->activeListings();
-        $mine = $this->rentalService->activeForAccount($account);
+        $mine = $account ? $this->rentalService->activeForAccount($account) : null;
 
         $lines = [];
         if ($notice) {
@@ -139,6 +134,11 @@ class RentalMenuCommand
                 InlineKeyboardButton::make('✏️ Змінити', callback_data: RentalPublish::START_CALLBACK),
                 InlineKeyboardButton::make('🚫 Зняти', callback_data: 'rent:remove:' . $mine->getId()),
             );
+        } elseif (!$account) {
+            $lines[] = '— — —';
+            $lines[] = 'ℹ️ Щоб <b>опублікувати</b> своє оголошення, аккаунт має бути підтверджений ОСББ — '
+                . 'квартиру та адресу бот бере з особового рахунку.';
+            $lines[] = "Зв'яжіться з Аліною Бухгалтером (+380 93 658 32 02).";
         } elseif ($this->rentalService->canPublish($account)) {
             $markup->addRow(
                 InlineKeyboardButton::make('➕ Здаю квартиру', callback_data: RentalPublish::START_CALLBACK),

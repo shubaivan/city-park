@@ -239,6 +239,11 @@ class RentalListingService
         $who = $name !== '' ? self::esc($name) : 'Мешканець';
         if ($apartment) {
             $who .= ' (кв. ' . self::esc((string)$apartment) . ')';
+        } else {
+            // Reading the list is open to anyone who opens the bot, so the person asking
+            // may not be linked to an особовий рахунок. Say so plainly instead of implying
+            // a neighbour — the owner decides who they answer.
+            $who .= ' (не підтверджений ОСББ)';
         }
         if ($interested->getUsername()) {
             $who .= ' · @' . self::esc($interested->getUsername());
