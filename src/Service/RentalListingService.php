@@ -187,6 +187,25 @@ class RentalListingService
     }
 
     /**
+     * The owner never sees their own contact button — their listing carries edit/remove
+     * controls instead — so spell out how neighbours will actually reach them. Without
+     * this the author sees a card with no visible way to be contacted and assumes the
+     * listing is useless.
+     */
+    public function contactHint(RentalListing $listing): string
+    {
+        $username = $listing->getAuthor()?->getUsername();
+
+        if ($username) {
+            return '👤 Сусіди бачать кнопку «✍️ Написати» — вона веде у ваш Telegram (@'
+                . self::esc($username) . '). Номер телефону в оголошенні не показується.';
+        }
+
+        return '👤 У вас не вказаний @username, тому бот перешле вам контакт того, хто зацікавився, '
+            . 'і ви напишете йому першим. Номер телефону в оголошенні не показується.';
+    }
+
+    /**
      * Push an interested resident's contact to the listing's owner.
      *
      * @return bool false when nobody on the owner's side has a chat_id to receive it.
