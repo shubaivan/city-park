@@ -28,8 +28,14 @@ class RentalMenuCommand
 {
     public const MENU_CALLBACK = 'rental-menu';
 
-    /** Above this the list is trimmed — a Telegram message and an inline keyboard both have limits. */
-    private const RENDER_LIMIT = 15;
+    /**
+     * Listings per page in the index.
+     *
+     * The index is one button per listing rather than a wall of descriptions: with five
+     * flats on offer the old render was a screen of text you had to scroll past to reach
+     * the buttons underneath. Details live in the listing's own card (rent:view:<id>).
+     */
+    private const PAGE_SIZE = 10;
 
     public function __construct(
         private TelegramUserService $telegramUserService,
@@ -40,6 +46,16 @@ class RentalMenuCommand
     public function __invoke(Nutgram $bot): void
     {
         $data = $bot->isCallbackQuery() ? ($bot->callbackQuery()->data ?? '') : '';
+
+        if (str_starts_with($data, 'rent:view:')) {
+            $this->renderCard($bot, (int)substr($data, strlen('rent:view:')));
+            return;
+        }
+
+        if (str_starts_with($data, 'rent:page:')) {
+            $this->renderMenu($bot, edit: true, page: (int)substr($data, strlen('rent:page:')));
+            return;
+        }
 
         if (str_starts_with($data, 'rent:contact:')) {
             $this->contact($bot, (int)substr($data, strlen('rent:contact:')));
@@ -74,7 +90,7 @@ class RentalMenuCommand
         return $this->telegramUserService->resolveAccount($user);
     }
 
-    private function renderMenu(Nutgram $bot, bool $edit, ?string $notice = null): void
+    private function renderMenu(Nutgram $bot, bool $edit, ?string $notice = null, int $page = 1): void
     {
         // Reading the list is open to everyone who opens the bot, confirmed by the
         // accountant or not. A listing is an advertisement — hiding it from someone who
@@ -109,38 +125,47 @@ class RentalMenuCommand
                     . 'замість того щоб шукати охочих у чаті.</i>';
             }
         } else {
-            $shown = array_slice($listings, 0, self::RENDER_LIMIT);
+            $pages = max(1, (int)ceil(count($listings) / self::PAGE_SIZE));
+            $page = max(1, min($page, $pages));
+            $shown = array_slice($listings, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE);
+
+            $lines[] = 'Оберіть квартиру, щоб побачити деталі та контакт.';
 
             foreach ($shown as $listing) {
-                $lines[] = $this->rentalService->describe($listing);
-                $lines[] = '';
+                $own = $mine && $listing->getId() === $mine->getId();
 
-                // Own listing needs controls, not a "write to me" button.
-                if ($mine && $listing->getId() === $mine->getId()) {
-                    continue;
-                }
-
-                $markup->addRow($this->rentalService->contactButton($listing));
+                $markup->addRow(InlineKeyboardButton::make(
+                    $this->rentalService->buttonLabel($listing, $own),
+                    callback_data: 'rent:view:' . $listing->getId(),
+                ));
             }
 
-            if (count($listings) > self::RENDER_LIMIT) {
-                $lines[] = sprintf(
-                    '<i>… та ще %d оголошень. Показані найновіші.</i>',
-                    count($listings) - self::RENDER_LIMIT
-                );
+            if ($mine) {
                 $lines[] = '';
+                $lines[] = '<i>📌 — ваше оголошення.</i>';
+            }
+
+            if ($pages > 1) {
+                $nav = [];
+
+                if ($page > 1) {
+                    $nav[] = InlineKeyboardButton::make('⬅️', callback_data: 'rent:page:' . ($page - 1));
+                }
+
+                $nav[] = InlineKeyboardButton::make(
+                    sprintf('%d/%d', $page, $pages),
+                    callback_data: 'rent:page:' . $page,
+                );
+
+                if ($page < $pages) {
+                    $nav[] = InlineKeyboardButton::make('➡️', callback_data: 'rent:page:' . ($page + 1));
+                }
+
+                $markup->addRow(...$nav);
             }
         }
 
-        if ($mine) {
-            $lines[] = '— — —';
-            $lines[] = '📌 <b>Ваше оголошення</b> діє до ' . $mine->getExpiresAt()->format('d.m.Y') . '.';
-            $lines[] = $this->rentalService->contactHint($mine);
-            $markup->addRow(
-                InlineKeyboardButton::make('✏️ Змінити', callback_data: RentalPublish::START_CALLBACK),
-                InlineKeyboardButton::make('🚫 Зняти', callback_data: 'rent:remove:' . $mine->getId()),
-            );
-        } elseif ($account && $this->rentalService->canPublish($account)) {
+        if (!$mine && $account && $this->rentalService->canPublish($account)) {
             $markup->addRow(
                 InlineKeyboardButton::make('➕ Здаю квартиру', callback_data: RentalPublish::START_CALLBACK),
             );
@@ -149,6 +174,47 @@ class RentalMenuCommand
         $markup->addRow(StartCommand::homeButton());
 
         $this->respond($bot, $edit, implode("\n", $lines), $markup);
+    }
+
+    /**
+     * One listing, in full: everything that used to be dumped into the index.
+     *
+     * The owner's own card carries the management controls instead of a "write to me"
+     * button — they cannot be interested in their own flat.
+     */
+    private function renderCard(Nutgram $bot, int $listingId): void
+    {
+        $listing = $this->liveListing($listingId);
+
+        if (!$listing) {
+            $this->renderMenu($bot, edit: true, notice: '⚠️ Це оголошення вже неактуальне.');
+            return;
+        }
+
+        $own = $this->ownsListing($bot, $listing);
+
+        $lines = [$this->rentalService->describe($listing)];
+        $markup = InlineKeyboardMarkup::make();
+
+        if ($own) {
+            $lines[] = '';
+            $lines[] = $this->rentalService->contactHint($listing);
+            $markup->addRow(
+                InlineKeyboardButton::make('✏️ Змінити', callback_data: RentalPublish::START_CALLBACK),
+                InlineKeyboardButton::make('🚫 Зняти', callback_data: 'rent:remove:' . $listing->getId()),
+            );
+        } else {
+            $markup->addRow($this->rentalService->contactButton($listing));
+        }
+
+        // Back always lands on page 1: the card does not know which page it was opened
+        // from, and with a house this size a second page is rare.
+        $markup->addRow(
+            InlineKeyboardButton::make('⬅️ До списку', callback_data: self::MENU_CALLBACK),
+            StartCommand::homeButton(),
+        );
+
+        $this->respond($bot, edit: true, text: implode("\n", $lines), markup: $markup);
     }
 
     /**

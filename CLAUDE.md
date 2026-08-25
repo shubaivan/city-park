@@ -20,7 +20,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 
 | Button | Callback | Slash | Handler |
 |---|---|---|---|
-| 🔑 Оренда квартир | `rental-menu` / `rent:new` / `rent:{contact,phone,extend,remove}:<id>` | `/rent` | `RentalMenuCommand` + `RentalPublish` (conversation) |
+| 🔑 Оренда квартир | `rental-menu` / `rent:new` / `rent:{view,page,contact,phone,extend,remove}:<id>` | `/rent` | `RentalMenuCommand` + `RentalPublish` (conversation) |
 | Бронювання | `schedule-pavilion` | `/schedule` | `SchedulePavilion` (conversation) |
 | Переглянути свої | `own-schedule` | — | `OwnSchedule` |
 | Як доїхати? | `type:route` | — | `RouteCommand` |
@@ -63,6 +63,7 @@ Admins open a `BlockVoteCampaign` per candidate via `/admin/block-votes` (by о�
 
 Deliberate rules, each of which someone will be tempted to "fix" later:
 
+- **The list is an index of buttons, not a wall of text.** One button per listing (`кв. 85 · 1-кімн. · 20 000 грн/міс`, `📌` marks your own), tapped to open that listing's card (`rent:view:<id>`) where the description, contact and owner controls live; 10 per page with `rent:page:<n>`. Rendering every description in the index meant scrolling a screen of text to reach the buttons under it. This also leaves room for photos later: a caption + inline keyboard is one editable message, so a card can become a photo card without breaking edit-in-place navigation, whereas a media group cannot carry a keyboard at all.
 - **Reading the list needs no confirmed account; publishing does.** Anyone who opens the bot sees the listings, linked to an особовий рахунок or not — a listing is an advertisement, and hiding it from an unlinked newcomer only costs the owner the reader most likely to be flat-hunting. An unlinked reader gets **the list and nothing else**: no publish button, no explanation of the restriction, and *not* the accountant's phone — deliberately, don't "helpfully" add a note there (the usual mark-and-explain rule doesn't apply: they are not being denied anything they could otherwise do, and Alina's number isn't for unlinked strangers). Publishing needs the Account because apartment/address/area are read from it; `RentalPublish::askRooms` refuses and explains for anyone who reaches it. When an unlinked person uses the relay, the owner sees `(не підтверджений ОСББ)` instead of an apartment number and judges for themselves.
 - **`is_active` is NOT checked.** A debt or a missed pavilion photo blocks *booking*; it must not block an owner from advertising their own property. `RentalListingService::canPublish()` only excludes storage and parking units (their listing line is written for flats). Regression test: `tests/Service/RentalListingRulesTest`.
 - **No photo step in the conversation.** An active conversation swallows every photo the user sends, and telling "фото квартири" apart from "фото альтанки" inside the ~1h obligation window isn't worth blocking a resident who did send evidence. `RentalPublish` still carries the mandatory `PhotoUploadFlow::interceptConversationPhoto()` guard (covered by the shared provider in `BookingConversationPhotoGuardTest`).
