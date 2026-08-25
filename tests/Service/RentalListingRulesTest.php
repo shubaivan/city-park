@@ -119,6 +119,49 @@ class RentalListingRulesTest extends KernelTestCase
         $this->assertSame('кв. 12 · ціна договірна', $service->buttonLabel($open), 'rooms may be absent');
     }
 
+    /**
+     * Photos are optional and capped. The cap is enforced on the entity rather than only
+     * in the upload endpoint, so a listing can never render a card with more pictures
+     * than the card was designed for.
+     */
+    public function testPhotosAreOptionalAndCapped(): void
+    {
+        $listing = new RentalListing();
+
+        $this->assertFalse($listing->hasPhotos(), 'a listing without photos is normal');
+        $this->assertNull($listing->coverPhoto());
+        $this->assertSame([], $listing->getPhotos());
+
+        $listing->setPhotos([
+            '/uploads/rental-photos/2026/08/a.jpg',
+            '/uploads/rental-photos/2026/08/b.jpg',
+            '/uploads/rental-photos/2026/08/c.jpg',
+            '/uploads/rental-photos/2026/08/d.jpg',
+        ]);
+
+        $this->assertCount(RentalListing::PHOTOS_MAX, $listing->getPhotos());
+        $this->assertSame('/uploads/rental-photos/2026/08/a.jpg', $listing->coverPhoto());
+    }
+
+    /**
+     * The upload link is the only authorisation on the photo page, so an expired or
+     * missing one must never resolve.
+     */
+    public function testPhotoTokenValidity(): void
+    {
+        $now = new \DateTime('2026-08-26 12:00:00');
+        $listing = new RentalListing();
+
+        $this->assertFalse($listing->isPhotoTokenValid($now), 'no token issued yet');
+
+        $listing->setPhotoToken(str_repeat('a', 32));
+        $listing->setPhotoTokenExpiresAt(new \DateTime('2026-08-26 11:59:00'));
+        $this->assertFalse($listing->isPhotoTokenValid($now), 'expired a minute ago');
+
+        $listing->setPhotoTokenExpiresAt(new \DateTime('2026-08-27 11:00:00'));
+        $this->assertTrue($listing->isPhotoTokenValid($now));
+    }
+
     public function testLabels(): void
     {
         $listing = (new RentalListing())->setRooms(2)->setPrice(12000);

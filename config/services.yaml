@@ -14,6 +14,7 @@ services:
         autoconfigure: true # Automatically registers your services as commands, event subscribers, etc.
         bind:
             $projectDir: '%kernel.project_dir%'
+            $publicDir: '%kernel.project_dir%/public'
             $pavilion1PhotoFileId: '%env(string:PAVILION1_PHOTO_FILE_ID)%'
             $pavilion2PhotoFileId: '%env(string:PAVILION2_PHOTO_FILE_ID)%'
 

@@ -92,6 +92,39 @@ class RentalListing
     #[ORM\Column(type: 'string', length: 64, nullable: true)]
     private ?string $closed_by = null;
 
+    /** Max photos per listing — enough to show a flat, few enough to keep the card fast. */
+    public const PHOTOS_MAX = 3;
+
+    /** How long an upload link stays valid. */
+    public const PHOTO_TOKEN_TTL_HOURS = 24;
+
+    /**
+     * Public paths of the apartment photos, e.g. "/uploads/rental-photos/2026/08/x.jpg".
+     *
+     * Optional — a listing without photos works exactly as before. They are uploaded from
+     * a tokenised web page, never through Telegram: see the token fields below.
+     *
+     * @var string[]
+     */
+    #[ORM\Column(type: Types::JSON, nullable: false, options: ['default' => '[]'])]
+    private array $photos = [];
+
+    /**
+     * One-shot upload link.
+     *
+     * Photos do NOT arrive as Telegram pictures on purpose. `pavilion:photo:check` only
+     * materialises a PhotoUploadRequest every 20 minutes, so for up to 20 minutes after a
+     * booking ends there is no open request — and a resident who photographs the альтанка
+     * immediately (the most conscientious one) would have that photo taken for a flat
+     * photo by any in-bot rule. Keeping this channel out of Telegram means a picture sent
+     * to the bot is always, unambiguously, pavilion evidence.
+     */
+    #[ORM\Column(type: 'string', length: 32, nullable: true, unique: true)]
+    private ?string $photo_token = null;
+
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTime $photo_token_expires_at = null;
+
     /**
      * Whether the owner agreed to publish their phone number in the listing.
      *
@@ -116,6 +149,61 @@ class RentalListing
     public function getId(): ?int
     {
         return $this->id;
+    }
+
+    /** @return string[] */
+    public function getPhotos(): array
+    {
+        return array_values(array_filter($this->photos ?? []));
+    }
+
+    /** @param string[] $photos */
+    public function setPhotos(array $photos): static
+    {
+        $this->photos = array_values(array_slice(array_filter($photos), 0, self::PHOTOS_MAX));
+
+        return $this;
+    }
+
+    public function hasPhotos(): bool
+    {
+        return $this->getPhotos() !== [];
+    }
+
+    public function coverPhoto(): ?string
+    {
+        return $this->getPhotos()[0] ?? null;
+    }
+
+    public function getPhotoToken(): ?string
+    {
+        return $this->photo_token;
+    }
+
+    public function setPhotoToken(?string $photo_token): static
+    {
+        $this->photo_token = $photo_token;
+
+        return $this;
+    }
+
+    public function getPhotoTokenExpiresAt(): ?\DateTime
+    {
+        return $this->photo_token_expires_at;
+    }
+
+    public function setPhotoTokenExpiresAt(?\DateTime $at): static
+    {
+        $this->photo_token_expires_at = $at;
+
+        return $this;
+    }
+
+    public function isPhotoTokenValid(\DateTime $now): bool
+    {
+        return $this->photo_token !== null
+            && $this->photo_token_expires_at !== null
+            && $this->photo_token_expires_at > $now;
     }
 
     public function isShowPhone(): bool

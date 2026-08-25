@@ -47,6 +47,16 @@
                         </td>
                         <td style="max-width:320px;">
                             <small>{{ listing.description ?? '—' }}</small>
+                            {# Photos are resident-supplied and visible to the whole house — this is where a complaint gets checked. #}
+                            {% if listing.photos %}
+                                <div class="d-flex gap-1 mt-2 flex-wrap">
+                                    {% for path in listing.photos %}
+                                        <a href="{{ path }}" target="_blank" rel="noopener">
+                                            <img src="{{ path }}" alt="" style="height:56px;width:auto;border-radius:4px;">
+                                        </a>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
                         </td>
                         <td>
                             {% if listing.author %}
