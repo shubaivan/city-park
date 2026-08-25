@@ -128,6 +128,7 @@ class RentalMenuCommand
         if ($mine) {
             $lines[] = '— — —';
             $lines[] = '📌 <b>Ваше оголошення</b> діє до ' . $mine->getExpiresAt()->format('d.m.Y') . '.';
+            $lines[] = $this->rentalService->contactHint($mine);
             $markup->addRow(
                 InlineKeyboardButton::make('✏️ Змінити', callback_data: RentalPublish::START_CALLBACK),
                 InlineKeyboardButton::make('🚫 Зняти', callback_data: 'rent:remove:' . $mine->getId()),
