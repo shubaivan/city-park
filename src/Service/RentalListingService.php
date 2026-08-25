@@ -26,6 +26,7 @@ class RentalListingService
         private EntityManagerInterface $em,
         private Nutgram $bot,
         private LoggerInterface $logger,
+        private RentalPhotoService $photoService,
     ) {}
 
     public static function now(): \DateTime
@@ -83,6 +84,7 @@ class RentalListingService
         if ($existing) {
             $existing->setStatus(RentalListing::STATUS_REMOVED);
             $existing->setClosedAt($now);
+            $this->photoService->purge($existing);
         }
 
         $phone = $showPhone ? self::formatPhone($author?->getPhoneNumber()) : null;
@@ -114,6 +116,9 @@ class RentalListingService
     {
         $listing->setStatus(RentalListing::STATUS_REMOVED);
         $listing->setClosedAt(self::now());
+        // Files must not outlive the listing they belonged to. Admin take-downs are the
+        // exception below: there the photo is often the reason it was taken down.
+        $this->photoService->purge($listing);
         $this->em->flush();
     }
 
@@ -182,7 +187,7 @@ class RentalListingService
             $listing->priceLabel(),
         ]);
 
-        return ($own ? '📌 ' : '') . implode(' · ', $parts);
+        return ($own ? '📌 ' : '') . ($listing->hasPhotos() ? '📷 ' : '') . implode(' · ', $parts);
     }
 
     /**
@@ -369,6 +374,7 @@ class RentalListingService
 
         foreach ($this->listingRepository->findExpired($now) as $listing) {
             $listing->setStatus(RentalListing::STATUS_EXPIRED);
+            $this->photoService->purge($listing);
             $listing->setClosedAt($now);
             $closed++;
 

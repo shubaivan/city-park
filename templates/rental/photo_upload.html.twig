@@ -1,0 +1,198 @@
+{#
+    Standalone page — deliberately not extending base.html.twig.
+
+    It is opened inside Telegram's in-app browser on a phone, by a resident who has never
+    seen the admin panel. Pulling in the Encore bundle would mean this page breaks whenever
+    assets aren't rebuilt, for a form that is one file input and a list of thumbnails.
+#}
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Фото квартири — кв. {{ listing.account.apartmentNumber }}</title>
+    <style>
+        :root { color-scheme: light dark; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 20px 16px 40px;
+            font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f6f8; color: #1c1e21;
+        }
+        @media (prefers-color-scheme: dark) {
+            body { background: #17212b; color: #e9edf1; }
+            .card { background: #202b36 !important; }
+            .hint { color: #8b9aa8 !important; }
+        }
+        .wrap { max-width: 520px; margin: 0 auto; }
+        h1 { font-size: 20px; margin: 0 0 4px; }
+        .hint { color: #65676b; font-size: 14px; margin: 0 0 20px; }
+        .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+        .thumb { position: relative; aspect-ratio: 4/3; border-radius: 8px; overflow: hidden; background: #dfe3e8; }
+        .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .thumb button {
+            position: absolute; top: 6px; right: 6px; border: 0; cursor: pointer;
+            width: 30px; height: 30px; border-radius: 50%;
+            background: rgba(0,0,0,.6); color: #fff; font-size: 17px; line-height: 30px; padding: 0;
+        }
+        label.add {
+            display: block; text-align: center; padding: 16px; border-radius: 10px;
+            background: #2f81f7; color: #fff; font-weight: 600; cursor: pointer;
+        }
+        label.add.off { background: #b9bfc7; pointer-events: none; }
+        input[type=file] { display: none; }
+        .msg { margin-top: 12px; font-size: 14px; min-height: 20px; }
+        .msg.err { color: #d63a2f; }
+        .msg.ok { color: #1a7f37; }
+        .done { margin-top: 20px; text-align: center; font-size: 14px; color: #65676b; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <h1>📷 Фото квартири</h1>
+    <p class="hint">
+        кв. {{ listing.account.apartmentNumber }}{% if listing.roomsLabel %} · {{ listing.roomsLabel }}{% endif %} ·
+        {{ listing.priceLabel }}<br>
+        Додайте до {{ max }} фото — їх побачать мешканці в оголошенні.
+    </p>
+
+    <div class="card">
+        <div class="grid" id="grid">
+            {% for path in listing.photos %}
+                <div class="thumb" data-path="{{ path }}">
+                    <img src="{{ path }}" alt="">
+                    <button type="button" title="Видалити">×</button>
+                </div>
+            {% endfor %}
+        </div>
+
+        <div style="margin-top:14px">
+            <label class="add" id="addLabel" for="file">Вибрати фото</label>
+            <input type="file" id="file" accept="image/*" multiple>
+        </div>
+
+        <div class="msg" id="msg"></div>
+    </div>
+
+    <p class="done">Нічого зберігати не треба — фото з'являються в оголошенні одразу.<br>Можна закривати сторінку.</p>
+</div>
+
+<script>
+(function () {
+    var MAX = {{ max }};
+    var EDGE = 1600;
+    var uploadUrl = {{ path('rental_photo_upload', {token: token})|json_encode|raw }};
+    var deleteUrl = {{ path('rental_photo_delete', {token: token})|json_encode|raw }};
+
+    var grid = document.getElementById('grid');
+    var input = document.getElementById('file');
+    var label = document.getElementById('addLabel');
+    var msg = document.getElementById('msg');
+
+    function say(text, cls) { msg.textContent = text || ''; msg.className = 'msg ' + (cls || ''); }
+    function count() { return grid.querySelectorAll('.thumb').length; }
+
+    function refresh() {
+        var full = count() >= MAX;
+        label.classList.toggle('off', full);
+        label.textContent = full ? 'Більше ' + MAX + ' фото не можна' : 'Вибрати фото';
+    }
+
+    /*
+     * Downscale in the browser before sending.
+     *
+     * php.ini on the server allows 2 MB per upload and a phone photo is 3-6 MB, so
+     * without this every upload would be rejected. Re-encoding here also means we never
+     * ship the original EXIF (GPS included) anywhere. The server re-encodes again as a
+     * backstop — this is a convenience, not the security boundary.
+     */
+    function shrink(file) {
+        return new Promise(function (resolve) {
+            var url = URL.createObjectURL(file);
+            var img = new Image();
+
+            img.onload = function () {
+                URL.revokeObjectURL(url);
+
+                var scale = Math.min(1, EDGE / Math.max(img.width, img.height));
+                var canvas = document.createElement('canvas');
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                canvas.toBlob(function (blob) {
+                    resolve(blob || file);
+                }, 'image/jpeg', 0.82);
+            };
+
+            // A format the canvas cannot read (HEIC on some Androids) still gets a try
+            // server-side rather than a silent failure here.
+            img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+            img.src = url;
+        });
+    }
+
+    function addThumb(path) {
+        var div = document.createElement('div');
+        div.className = 'thumb';
+        div.dataset.path = path;
+        div.innerHTML = '<img alt=""><button type="button" title="Видалити">×</button>';
+        div.querySelector('img').src = path;
+        grid.appendChild(div);
+        refresh();
+    }
+
+    grid.addEventListener('click', function (e) {
+        var btn = e.target.closest('button');
+        if (!btn) return;
+
+        var thumb = btn.closest('.thumb');
+        var body = new FormData();
+        body.append('path', thumb.dataset.path);
+
+        say('Видаляємо…');
+        fetch(deleteUrl, {method: 'POST', body: body})
+            .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+            .then(function (res) {
+                if (!res.ok) { say(res.j.error || 'Не вдалося видалити.', 'err'); return; }
+                thumb.remove();
+                refresh();
+                say('Видалено.', 'ok');
+            })
+            .catch(function () { say('Немає зв\'язку.', 'err'); });
+    });
+
+    input.addEventListener('change', function () {
+        var files = Array.prototype.slice.call(input.files, 0, MAX - count());
+        input.value = '';
+        if (!files.length) return;
+
+        say('Завантажуємо…');
+
+        // Sequential on purpose: the server counts photos per request, and a phone on
+        // mobile data handles one upload at a time better than three at once.
+        files.reduce(function (chain, file) {
+            return chain.then(function () {
+                return shrink(file).then(function (blob) {
+                    var body = new FormData();
+                    body.append('photo', blob, 'photo.jpg');
+
+                    return fetch(uploadUrl, {method: 'POST', body: body})
+                        .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+                        .then(function (res) {
+                            if (!res.ok) { say(res.j.error || 'Не вдалося завантажити.', 'err'); return; }
+                            addThumb(res.j.path);
+                            say('Готово ✅', 'ok');
+                        });
+                });
+            });
+        }, Promise.resolve()).catch(function () { say('Немає зв\'язку.', 'err'); });
+    });
+
+    refresh();
+})();
+</script>
+</body>
+</html>

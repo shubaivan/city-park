@@ -6,12 +6,15 @@ use App\Entity\Account;
 use App\Entity\RentalListing;
 use App\Repository\RentalListingRepository;
 use App\Service\RentalListingService;
+use App\Service\RentalPhotoService;
 use App\Service\TelegramUserService;
 use App\Telegram\Start\Command\StartCommand;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
+use SergiX44\Nutgram\Telegram\Types\Media\InputFile;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
  * "🔑 Оренда" — the house's list of apartments currently offered for rent, plus the
@@ -19,6 +22,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
  *   rental-menu           — render the list
  *   rent:contact:<id>     — relay the caller's contact to an owner without a @username
  *   rent:phone:<id>       — same, with the caller's own number attached (they consented)
+ *   rent:photos:<id>      — hand the owner a one-shot link to the photo upload page
  *   rent:extend:<id>      — owner confirms the listing is still current (+30 days)
  *   rent:remove:<id>      — owner takes their listing down
  *
@@ -41,6 +45,8 @@ class RentalMenuCommand
         private TelegramUserService $telegramUserService,
         private RentalListingService $rentalService,
         private RentalListingRepository $listingRepository,
+        private RentalPhotoService $photoService,
+        private UrlGeneratorInterface $urlGenerator,
     ) {}
 
     public function __invoke(Nutgram $bot): void
@@ -49,6 +55,11 @@ class RentalMenuCommand
 
         if (str_starts_with($data, 'rent:view:')) {
             $this->renderCard($bot, (int)substr($data, strlen('rent:view:')));
+            return;
+        }
+
+        if (str_starts_with($data, 'rent:photos:')) {
+            $this->photoLink($bot, (int)substr($data, strlen('rent:photos:')));
             return;
         }
 
@@ -199,6 +210,10 @@ class RentalMenuCommand
         if ($own) {
             $lines[] = '';
             $lines[] = $this->rentalService->contactHint($listing);
+            $markup->addRow(InlineKeyboardButton::make(
+                sprintf('📷 Фото (%d/%d)', count($listing->getPhotos()), RentalListing::PHOTOS_MAX),
+                callback_data: 'rent:photos:' . $listing->getId(),
+            ));
             $markup->addRow(
                 InlineKeyboardButton::make('✏️ Змінити', callback_data: RentalPublish::START_CALLBACK),
                 InlineKeyboardButton::make('🚫 Зняти', callback_data: 'rent:remove:' . $listing->getId()),
@@ -214,7 +229,95 @@ class RentalMenuCommand
             StartCommand::homeButton(),
         );
 
-        $this->respond($bot, edit: true, text: implode("\n", $lines), markup: $markup);
+        $text = implode("\n", $lines);
+
+        if ($listing->hasPhotos() && $this->sendPhotoCard($bot, $listing, $text, $markup)) {
+            return;
+        }
+
+        $this->respond($bot, edit: true, text: $text, markup: $markup);
+    }
+
+    /**
+     * A card with a picture is a different kind of Telegram message: a text message cannot
+     * be edited into a photo message, and a media group cannot carry an inline keyboard at
+     * all. So the index message is deleted and replaced by a photo with the card as its
+     * caption — one message in the chat either way, and the keyboard survives.
+     *
+     * Only the cover photo goes in the card; the rest are behind "📷 Ще фото".
+     *
+     * @return bool false when the picture could not be sent, so the caller falls back to
+     *              the plain text card rather than showing the resident nothing.
+     */
+    private function sendPhotoCard(Nutgram $bot, RentalListing $listing, string $caption, InlineKeyboardMarkup $markup): bool
+    {
+        $cover = $listing->coverPhoto();
+        $abs = $cover ? $this->photoService->absolutePath($cover) : null;
+
+        if (!$abs || !is_readable($abs)) {
+            return false;
+        }
+
+        $stream = @fopen($abs, 'rb');
+        if ($stream === false) {
+            return false;
+        }
+
+        try {
+            $bot->sendPhoto(
+                photo: InputFile::make($stream, basename($abs)),
+                caption: $caption,
+                parse_mode: ParseMode::HTML,
+                reply_markup: $markup,
+            );
+        } catch (\Throwable) {
+            return false;
+        }
+
+        // Only now — if sending failed we still have the message the user was looking at.
+        try {
+            $bot->deleteMessage($bot->chatId(), $bot->messageId());
+        } catch (\Throwable) {
+            // A message older than 48h cannot be deleted; leaving it is harmless.
+        }
+
+        return true;
+    }
+
+    /**
+     * Photos are uploaded on the web, not sent to the bot — see RentalPhotoService for
+     * why. All this does is mint a fresh link and hand it over.
+     */
+    private function photoLink(Nutgram $bot, int $listingId): void
+    {
+        $listing = $this->liveListing($listingId);
+
+        if (!$listing || !$this->ownsListing($bot, $listing)) {
+            $this->renderMenu($bot, edit: true, notice: '⚠️ Оголошення не знайдено.');
+            return;
+        }
+
+        $token = $this->photoService->issueToken($listing);
+
+        $url = $this->urlGenerator->generate(
+            'rental_photo_page',
+            ['token' => $token],
+            UrlGeneratorInterface::ABSOLUTE_URL,
+        );
+
+        $this->respond(
+            $bot,
+            edit: true,
+            text: "📷 <b>Фото квартири</b>\n\n"
+                . 'Відкрийте сторінку і виберіть до ' . RentalListing::PHOTOS_MAX
+                . " фото з галереї телефону — вони одразу з'являться в оголошенні.\n\n"
+                . '<i>Посилання діє ' . RentalListing::PHOTO_TOKEN_TTL_HOURS . ' години і лише для вашого оголошення. '
+                . "Фото альтанки сюди не вантажте — їх, як і раніше, надсилайте прямо в бот.</i>",
+            markup: InlineKeyboardMarkup::make()
+                ->addRow(InlineKeyboardButton::make('📷 Відкрити сторінку', url: $url))
+                ->addRow(InlineKeyboardButton::make('⬅️ До оголошення', callback_data: 'rent:view:' . $listing->getId()))
+                ->addRow(StartCommand::homeButton()),
+        );
     }
 
     /**
