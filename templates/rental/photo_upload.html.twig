@@ -12,6 +12,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title>Фото квартири — кв. {{ listing.account.apartmentNumber }}</title>
+    {# Present only when the page runs as a Telegram Web App; the script is a no-op elsewhere. #}
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         :root { color-scheme: light dark; }
         * { box-sizing: border-box; }
@@ -42,6 +44,13 @@
             background: #2f81f7; color: #fff; font-weight: 600; cursor: pointer;
         }
         label.add.off { background: #b9bfc7; pointer-events: none; }
+        button.done-btn {
+            display: block; width: 100%; margin-top: 12px; padding: 16px; border: 0;
+            border-radius: 10px; background: #1a7f37; color: #fff; font: inherit;
+            font-weight: 600; cursor: pointer;
+        }
+        button.done-btn[disabled] { opacity: .6; cursor: default; }
+        a.back { display: block; margin-top: 12px; text-align: center; color: #2f81f7; }
         input[type=file] { display: none; }
         .msg { margin-top: 12px; font-size: 14px; min-height: 20px; }
         .msg.err { color: #d63a2f; }
@@ -74,9 +83,11 @@
         </div>
 
         <div class="msg" id="msg"></div>
+
+        <button type="button" class="done-btn" id="done">✅ Готово, повернутися в бот</button>
     </div>
 
-    <p class="done">Нічого зберігати не треба — фото з'являються в оголошенні одразу.<br>Можна закривати сторінку.</p>
+    <p class="done">Фото з'являються в оголошенні одразу — окремо зберігати нічого не треба.</p>
 </div>
 
 <script>
@@ -85,6 +96,13 @@
     var EDGE = 1600;
     var uploadUrl = {{ path('rental_photo_upload', {token: token})|json_encode|raw }};
     var deleteUrl = {{ path('rental_photo_delete', {token: token})|json_encode|raw }};
+    var doneUrl = {{ path('rental_photo_done', {token: token})|json_encode|raw }};
+
+    // Present only when Telegram opened this page as a Web App (an inline web_app button).
+    // Opened as an ordinary link — copied to a desktop browser, say — it is undefined and
+    // the page degrades to a link back to the bot.
+    var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) { tg.ready(); tg.expand(); }
 
     var grid = document.getElementById('grid');
     var input = document.getElementById('file');
@@ -189,6 +207,31 @@
                 });
             });
         }, Promise.resolve()).catch(function () { say('Немає зв\'язку.', 'err'); });
+    });
+
+    document.getElementById('done').addEventListener('click', function () {
+        var btn = this;
+        btn.disabled = true;
+        say('Оновлюємо оголошення…');
+
+        fetch(doneUrl, {method: 'POST'})
+            .then(function (r) { return r.ok; })
+            .catch(function () { return false; })
+            .then(function (ok) {
+                if (!ok) { btn.disabled = false; say('Не вдалося. Спробуйте ще раз.', 'err'); return; }
+
+                if (tg) {
+                    // Closes the Web App and drops the owner back into the chat, where the
+                    // updated card is already waiting.
+                    tg.close();
+                    return;
+                }
+
+                // Outside Telegram there is nothing to close, and the bot's @username is
+                // not configured anywhere — just say it worked and let them switch back.
+                say('Готово ✅ Оголошення оновлено — поверніться в бот.', 'ok');
+                btn.remove();
+            });
     });
 
     refresh();

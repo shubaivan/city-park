@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Entity\RentalListing;
+use App\Service\RentalListingService;
 use App\Service\RentalPhotoService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -23,7 +24,10 @@ use Symfony\Component\Routing\Attribute\Route;
  */
 class RentalPhotoController extends AbstractController
 {
-    public function __construct(private RentalPhotoService $photoService) {}
+    public function __construct(
+        private RentalPhotoService $photoService,
+        private RentalListingService $rentalService,
+    ) {}
 
     #[Route('/rent/photo/{token}', name: 'rental_photo_page', methods: ['GET'])]
     public function page(string $token): Response
@@ -68,6 +72,28 @@ class RentalPhotoController extends AbstractController
             'count' => count($listing->getPhotos()),
             'max' => RentalListing::PHOTOS_MAX,
         ]);
+    }
+
+    /**
+     * "Готово" on the page: push the updated card to the owner's chat, then the page
+     * closes itself via Telegram.WebApp.close() and they land back on it.
+     *
+     * The token is also burned here — the link has done its job, and one fewer live link
+     * is one fewer thing to forward by accident.
+     */
+    #[Route('/rent/photo/{token}/done', name: 'rental_photo_done', methods: ['POST'])]
+    public function done(string $token): JsonResponse
+    {
+        $listing = $this->photoService->findByToken($token);
+
+        if (!$listing) {
+            return new JsonResponse(['error' => 'Посилання застаріло.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $this->rentalService->notifyPhotosUpdated($listing);
+        $this->photoService->burnToken($listing);
+
+        return new JsonResponse(['ok' => true]);
     }
 
     #[Route('/rent/photo/{token}/delete', name: 'rental_photo_delete', methods: ['POST'])]
