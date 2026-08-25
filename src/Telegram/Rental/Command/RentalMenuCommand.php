@@ -81,7 +81,10 @@ class RentalMenuCommand
         // has not been linked to an особовий рахунок yet only costs the owner readers,
         // and the newcomer is often exactly the person looking for a flat here.
         // Publishing still needs a confirmed account: apartment, address and area are
-        // read from it, so RentalPublish refuses and explains (see askRooms).
+        // read from it. Such a reader is shown the list and nothing else — no publish
+        // button, no explanation, no accountant's phone number. They came to look at
+        // flats, not to be told about a restriction that does not concern them, and
+        // Alina's number is not something to hand to every unlinked stranger.
         $account = $this->currentAccount($bot);
 
         $listings = $this->rentalService->activeListings();
@@ -99,9 +102,12 @@ class RentalMenuCommand
 
         if (!$listings) {
             $lines[] = 'Зараз оголошень немає.';
-            $lines[] = '';
-            $lines[] = '<i>Якщо ви здаєте свою квартиру — розкажіть про це сусідам тут, '
-                . 'замість того щоб шукати охочих у чаті.</i>';
+
+            if ($account) {
+                $lines[] = '';
+                $lines[] = '<i>Якщо ви здаєте свою квартиру — розкажіть про це сусідам тут, '
+                    . 'замість того щоб шукати охочих у чаті.</i>';
+            }
         } else {
             $shown = array_slice($listings, 0, self::RENDER_LIMIT);
 
@@ -134,12 +140,7 @@ class RentalMenuCommand
                 InlineKeyboardButton::make('✏️ Змінити', callback_data: RentalPublish::START_CALLBACK),
                 InlineKeyboardButton::make('🚫 Зняти', callback_data: 'rent:remove:' . $mine->getId()),
             );
-        } elseif (!$account) {
-            $lines[] = '— — —';
-            $lines[] = 'ℹ️ Щоб <b>опублікувати</b> своє оголошення, аккаунт має бути підтверджений ОСББ — '
-                . 'квартиру та адресу бот бере з особового рахунку.';
-            $lines[] = "Зв'яжіться з Аліною Бухгалтером (+380 93 658 32 02).";
-        } elseif ($this->rentalService->canPublish($account)) {
+        } elseif ($account && $this->rentalService->canPublish($account)) {
             $markup->addRow(
                 InlineKeyboardButton::make('➕ Здаю квартиру', callback_data: RentalPublish::START_CALLBACK),
             );
