@@ -4,12 +4,14 @@ namespace App\Controller;
 
 use App\Entity\Account;
 use App\Entity\AccountStatusLog;
+use App\Entity\RentalListing;
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
 use App\Repository\AccountStatusLogRepository;
 use App\Repository\PavilionPhotoRepository;
 use App\Repository\PhotoUploadRequestRepository;
+use App\Repository\RentalListingRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Repository\TariffRepository;
 use App\Repository\TelegramUserRepository;
@@ -21,6 +23,7 @@ use App\Service\BlockReasonResolver;
 use App\Service\BlockVoteService;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
+use App\Service\RentalListingService;
 use App\Service\SchedulePavilionService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -238,6 +241,54 @@ class AdminController extends AbstractController
             $n,
         ));
         return $this->redirectToRoute('app_admin_block_votes');
+    }
+
+    #############
+    # Rental listings ("здається квартира")
+    #############
+
+    #[Route('/admin/rentals', name: 'app_admin_rentals', methods: [Request::METHOD_GET])]
+    public function rentals(RentalListingRepository $listingRepository, DebtPolicy $debtPolicy): Response
+    {
+        $listings = $listingRepository->findRecent();
+
+        // Debt is shown for context only: a debtor may still advertise their own property
+        // (see RentalListingService::canPublish), but an admin taking a call about a
+        // listing should not have to look the account up in a second tab.
+        $debtByListing = [];
+        foreach ($listings as $listing) {
+            $account = $listing->getAccount();
+            $debtByListing[$listing->getId()] = [
+                'debt' => (float)$account->getDebt(),
+                'over' => (float)$account->getDebt() > $debtPolicy->getThresholdFor($account),
+            ];
+        }
+
+        return $this->render('admin/rentals.html.twig', [
+            'listings' => $listings,
+            'debtByListing' => $debtByListing,
+            'lifetimeDays' => RentalListing::LIFETIME_DAYS,
+        ]);
+    }
+
+    #[Route('/admin/rentals/block', name: 'app_admin_rental_block', methods: [Request::METHOD_POST])]
+    public function rentalBlock(
+        Request $request,
+        RentalListingRepository $listingRepository,
+        RentalListingService $rentalService,
+    ): Response {
+        $id = (int)$request->request->get('listing_id');
+        $listing = $id > 0 ? $listingRepository->find($id) : null;
+
+        if (!$listing || !$listing->isActive()) {
+            $this->addFlash('error', 'Оголошення не знайдено або вже неактивне.');
+            return $this->redirectToRoute('app_admin_rentals');
+        }
+
+        $rentalService->block($listing, (string)$this->getUser()?->getUserIdentifier());
+        $this->addFlash('success', 'Оголошення знято зі списку.');
+
+        return $this->redirectToRoute('app_admin_rentals');
     }
 
     #############

@@ -37,6 +37,11 @@ $bot->onCallbackQueryData('info-menu', \App\Telegram\Info\Command\InfoCommand::c
 $bot->onCallbackQueryData('^info-topic:.+$', \App\Telegram\Info\Command\InfoCommand::class);
 $bot->onCommand('info', \App\Telegram\Info\Command\InfoCommand::class);
 
+$bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalMenuCommand::MENU_CALLBACK, \App\Telegram\Rental\Command\RentalMenuCommand::class);
+$bot->onCallbackQueryData('^rent:(contact|extend|remove):\d+$', \App\Telegram\Rental\Command\RentalMenuCommand::class);
+$bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalPublish::START_CALLBACK, \App\Telegram\Rental\Command\RentalPublish::class);
+$bot->onCommand('rent', \App\Telegram\Rental\Command\RentalMenuCommand::class);
+
 $bot->onCallbackQueryData(\App\Telegram\Voting\Command\VotingMenuCommand::MENU_CALLBACK, \App\Telegram\Voting\Command\VotingMenuCommand::class);
 $bot->onCallbackQueryData('^bvote:\d+:(yes|no)$', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 $bot->onCommand('vote', \App\Telegram\Voting\Command\VotingMenuCommand::class);
