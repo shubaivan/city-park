@@ -93,6 +93,32 @@ class RentalListingRulesTest extends KernelTestCase
         $this->assertSame('+380 63 791 70 11', $listing->publicPhone());
     }
 
+    /**
+     * The index is buttons, not a wall of descriptions, so this caption is all a reader
+     * has to go on when choosing which card to open — apartment, rooms, price, nothing
+     * that Telegram will truncate.
+     */
+    public function testIndexButtonLabel(): void
+    {
+        self::bootKernel();
+        $service = self::getContainer()->get(RentalListingService::class);
+
+        $listing = (new RentalListing())
+            ->setAccount($this->account('1-1-0-085', '85'))
+            ->setRooms(1)
+            ->setPrice(20000);
+
+        $this->assertSame('кв. 85 · 1-кімн. · 20 000 грн/міс', $service->buttonLabel($listing));
+        $this->assertSame('📌 кв. 85 · 1-кімн. · 20 000 грн/міс', $service->buttonLabel($listing, own: true));
+        $this->assertLessThan(64, mb_strlen($service->buttonLabel($listing, own: true)));
+
+        $open = (new RentalListing())
+            ->setAccount($this->account('1-1-0-012', '12'))
+            ->setPrice(null);
+
+        $this->assertSame('кв. 12 · ціна договірна', $service->buttonLabel($open), 'rooms may be absent');
+    }
+
     public function testLabels(): void
     {
         $listing = (new RentalListing())->setRooms(2)->setPrice(12000);

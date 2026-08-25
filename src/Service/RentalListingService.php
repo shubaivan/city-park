@@ -171,6 +171,21 @@ class RentalListingService
     }
 
     /**
+     * One-line label for the index: everything needed to decide whether to open the card.
+     * Telegram truncates long button captions, so keep it to apartment / rooms / price.
+     */
+    public function buttonLabel(RentalListing $listing, bool $own = false): string
+    {
+        $parts = array_filter([
+            'кв. ' . $listing->getAccount()->getApartmentNumber(),
+            $listing->roomsLabel(),
+            $listing->priceLabel(),
+        ]);
+
+        return ($own ? '📌 ' : '') . implode(' · ', $parts);
+    }
+
+    /**
      * The "write to the owner" button.
      *
      * A t.me link when the author has a @username — one tap straight into the chat.
