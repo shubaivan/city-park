@@ -1,0 +1,99 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Оренда | Admin{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    <div class="container-fluid mt-3">
+        <h3>🔑 Оголошення про оренду</h3>
+        <p class="text-muted">
+            Мешканці публікують їх самі через бот («🔑 Оренда»). Оголошення живе {{ lifetimeDays }} днів,
+            потім бот питає власника, чи ще актуально. Публікація не дає орендарю жодних прав в ОСББ —
+            бронювання, голос і відповідальність за фото залишаються за власником рахунку.
+        </p>
+
+        {% if listings|length == 0 %}
+            <div class="alert alert-secondary">Оголошень ще не було.</div>
+        {% else %}
+            <table class="table table-striped table-sm align-middle">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Квартира</th>
+                    <th>Умови</th>
+                    <th>Опис</th>
+                    <th>Автор</th>
+                    <th>Борг</th>
+                    <th>Статус</th>
+                    <th>Дія</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for listing in listings %}
+                    {% set money = debtByListing[listing.id] ?? null %}
+                    <tr>
+                        <td>{{ listing.id }}</td>
+                        <td>
+                            кв. {{ listing.account.apartmentNumber }}<br>
+                            <small class="text-muted">
+                                {{ listing.account.street }} {{ listing.account.houseNumber }} ·
+                                р/н {{ listing.account.accountNumber }}
+                            </small>
+                        </td>
+                        <td>
+                            {{ listing.roomsLabel ?? '—' }}<br>
+                            <small>{{ listing.priceLabel }}</small>
+                        </td>
+                        <td style="max-width:320px;">
+                            <small>{{ listing.description ?? '—' }}</small>
+                        </td>
+                        <td>
+                            {% if listing.author %}
+                                {{ listing.author.firstName }} {{ listing.author.lastName }}
+                                {% if listing.author.username %}<br><small>@{{ listing.author.username }}</small>{% endif %}
+                                {% if listing.author.phoneNumber %}<br><small>{{ listing.author.phoneNumber }}</small>{% endif %}
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if money and money.debt > 0 %}
+                                <span class="badge {{ money.over ? 'bg-danger' : 'bg-warning text-dark' }}">
+                                    {{ money.debt|number_format(2, ',', ' ') }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if listing.status == 'active' %}
+                                <span class="badge bg-success">Активне</span><br>
+                                <small>до {{ listing.expiresAt|date('d.m.Y') }}</small>
+                            {% elseif listing.status == 'removed' %}
+                                <span class="badge bg-secondary">Знято власником</span>
+                            {% elseif listing.status == 'expired' %}
+                                <span class="badge bg-secondary">Строк вийшов</span>
+                            {% else %}
+                                <span class="badge bg-danger">Знято адміном</span>
+                                {% if listing.closedBy %}<br><small>{{ listing.closedBy }}</small>{% endif %}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if listing.status == 'active' %}
+                                <form method="post" action="{{ path('app_admin_rental_block') }}"
+                                      onsubmit="return confirm('Зняти оголошення кв. {{ listing.account.apartmentNumber }} зі списку?');">
+                                    <input type="hidden" name="listing_id" value="{{ listing.id }}">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit">Зняти</button>
+                                </form>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </div>
+{% endblock %}

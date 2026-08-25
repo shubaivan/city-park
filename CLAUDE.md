@@ -27,6 +27,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 | 📸 Завантажити фото | `photo-upload-info` | `/photo` | `PhotoUploadInfo` (lists open requests) |
 | ℹ️ Інструкція та FAQ | `info-menu` / `info-topic:*` | `/info` | `InfoCommand` (edit `TOPICS` const) |
 | 🗳️ Голосування | `voting-menu` / `bvote:<id>:yes\|no` | `/vote` | `VotingMenuCommand` (community vote-to-block) |
+| 🔑 Оренда квартир | `rental-menu` / `rent:new` / `rent:{contact,extend,remove}:<id>` | `/rent` | `RentalMenuCommand` + `RentalPublish` (conversation) |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
 | (auto) photo upload | `onPhoto` event | — | `UploadPhotoCommand` |
 
@@ -56,6 +57,20 @@ Admins open a `BlockVoteCampaign` per candidate via `/admin/block-votes` (by о�
 
 `Account.vote_block_count` is a repeat-offender tally — incremented on every *passed* campaign (even if the account was already blocked). Surfaced in the bot voting menu (under the candidate), the block/unblock messages, `/admin/block-votes`, the `/admin/users` table + edit modal, and the `/admin/schedule` table. New DataTable columns are appended **last** because `telegram_users.js`/`schedule.js` `columnDefs` target by index. Editing those JS files means a deploy must run `npx encore production`.
 
+## Rental listings ("здається квартира")
+
+`RentalListing` is a resident-facing noticeboard, not a tenancy record. An owner publishes one listing per Account through the `RentalPublish` conversation (rooms → price → description → confirm); every resident reads them under 🔑 Оренда. Apartment/address/area come from the Account, so the only inputs are the three above.
+
+Deliberate rules, each of which someone will be tempted to "fix" later:
+
+- **`is_active` is NOT checked.** A debt or a missed pavilion photo blocks *booking*; it must not block an owner from advertising their own property. `RentalListingService::canPublish()` only excludes storage and parking units (their listing line is written for flats). Regression test: `tests/Service/RentalListingRulesTest`.
+- **No photo step in the conversation.** An active conversation swallows every photo the user sends, and telling "фото квартири" apart from "фото альтанки" inside the ~1h obligation window isn't worth blocking a resident who did send evidence. `RentalPublish` still carries the mandatory `PhotoUploadFlow::interceptConversationPhoto()` guard (covered by the shared provider in `BookingConversationPhotoGuardTest`).
+- **Phones are never rendered.** Contact is a `t.me/<username>` button; when the owner has no username the bot relays the interested resident's contact to them instead (`rent:contact:<id>`).
+- Listings expire after `RentalListing::LIFETIME_DAYS` (30). `rental:expire` (daily) sends a one-shot "ще актуально?" prompt `RENEW_PROMPT_BEFORE_DAYS` (3) before that and closes the rest. Queries filter on `expires_at` too, so a stale listing disappears even if the cron hasn't run.
+- Publishing again **replaces** the account's active listing rather than being rejected — that is the edit path.
+
+Admin: `/admin/rentals` lists everything with a take-down button (status `blocked`, stamped with the admin login). Debt is shown for context only.
+
 ## Crons (prod `crontab -l`, **must run as `www-data`**)
 
 ```
@@ -65,6 +80,7 @@ Admins open a `BlockVoteCampaign` per candidate via `/admin/block-votes` (by о�
 */20 * * * * sudo -u www-data php …/city-park/bin/console pavilion:photo:check --env=prod
 30 3 * * * sudo -u www-data php …/city-park/bin/console pavilion:photo:cleanup --env=prod
 0 * * * * sudo -u www-data php …/city-park/bin/console block-vote:tally --env=prod
+0 4 * * * sudo -u www-data php …/city-park/bin/console rental:expire --env=prod
 ```
 
 **The `block-vote:tally` hourly cron is required** — without it, deadline-passed campaigns never close and 30-day vote-blocks never auto-unblock. Install it on deploy.
