@@ -75,6 +75,7 @@ class RentalListingService
         ?int $rooms,
         ?int $price,
         ?string $description,
+        bool $showPhone = false,
     ): RentalListing {
         $now = self::now();
 
@@ -84,12 +85,16 @@ class RentalListingService
             $existing->setClosedAt($now);
         }
 
+        $phone = $showPhone ? self::formatPhone($author?->getPhoneNumber()) : null;
+
         $listing = (new RentalListing())
             ->setAccount($account)
             ->setAuthor($author)
             ->setRooms($rooms)
             ->setPrice($price)
             ->setDescription($description)
+            ->setShowPhone($phone !== null)
+            ->setContactPhone($phone)
             ->setExpiresAt((clone $now)->modify('+' . RentalListing::LIFETIME_DAYS . ' days'));
 
         $this->em->persist($listing);
@@ -155,6 +160,10 @@ class RentalListingService
             $lines[] = self::esc($listing->getDescription());
         }
 
+        if ($phone = $listing->publicPhone()) {
+            $lines[] = '📞 ' . self::esc($phone);
+        }
+
         $lines[] = '<i>Опубліковано ' . $listing->getCreatedAt()->format('d.m.Y')
             . ' · діє до ' . $listing->getExpiresAt()->format('d.m.Y') . '</i>';
 
@@ -195,14 +204,26 @@ class RentalListingService
     public function contactHint(RentalListing $listing): string
     {
         $username = $listing->getAuthor()?->getUsername();
+        $phone = $listing->publicPhone();
+
+        if ($username && $phone) {
+            return '👤 Сусіди бачать ваш номер ' . self::esc($phone) . ' і кнопку «✍️ Написати» '
+                . '(веде у ваш Telegram @' . self::esc($username) . ').';
+        }
 
         if ($username) {
             return '👤 Сусіди бачать кнопку «✍️ Написати» — вона веде у ваш Telegram (@'
-                . self::esc($username) . '). Номер телефону в оголошенні не показується.';
+                . self::esc($username) . '). Номер телефону ви показувати не дозволили.';
         }
 
-        return '👤 У вас не вказаний @username, тому бот перешле вам контакт того, хто зацікавився, '
-            . 'і ви напишете йому першим. Номер телефону в оголошенні не показується.';
+        if ($phone) {
+            return '👤 Сусіди бачать ваш номер ' . self::esc($phone) . ' — за ним і зателефонують. '
+                . 'Кнопки «Написати» немає: у вас не налаштований @username.';
+        }
+
+        return '👤 У вас не вказаний @username і номер ви показувати не дозволили, тому бот '
+            . 'перешле вам контакт того, хто зацікавився, і ви напишете йому першим. '
+            . 'Щоб вас знаходили швидше, опублікуйте оголошення ще раз і дозвольте показати номер.';
     }
 
     /**
@@ -210,7 +231,7 @@ class RentalListingService
      *
      * @return bool false when nobody on the owner's side has a chat_id to receive it.
      */
-    public function relayContact(RentalListing $listing, TelegramUser $interested): bool
+    public function relayContact(RentalListing $listing, TelegramUser $interested, bool $sharePhone = false): bool
     {
         $name = trim(implode(' ', array_filter([$interested->getFirstName(), $interested->getLastName()])));
         $apartment = $interested->getAccount()?->getApartmentNumber();
@@ -223,12 +244,26 @@ class RentalListingService
             $who .= ' · @' . self::esc($interested->getUsername());
         }
 
+        $phone = $sharePhone ? self::formatPhone($interested->getPhoneNumber()) : null;
+        if ($phone) {
+            $who .= "\n📞 " . self::esc($phone);
+        }
+
+        if ($interested->getUsername()) {
+            $how = 'Напишіть у Telegram, якщо пропозиція ще актуальна.';
+        } elseif ($phone) {
+            // The dead end this fixes: neither side has a @username, so before we simply
+            // told the owner to wait for a stranger to reconfigure Telegram. Both phones
+            // are in our database — the missing piece was consent, not data.
+            $how = 'Зателефонуйте, якщо пропозиція ще актуальна.';
+        } else {
+            $how = 'У цієї людини не налаштований @username, тож написати їй у Telegram поки що не вийде — '
+                . 'ми попросили її додати username і звернутися ще раз.';
+        }
+
         $text = "🔑 <b>Цікавляться вашим оголошенням про оренду</b>\n\n"
             . $who . "\n\n"
-            . ($interested->getUsername()
-                ? 'Напишіть у Telegram, якщо пропозиція ще актуальна.'
-                : 'У цієї людини не налаштований @username, тож написати їй у Telegram поки що не вийде — '
-                    . 'ми попросили її додати username і звернутися ще раз.');
+            . $how;
 
         $recipients = $this->recipients($listing);
         if (!$recipients) {
@@ -366,6 +401,34 @@ class RentalListingService
         }
 
         return array_values(array_unique($ids));
+    }
+
+    /**
+     * Phones reach us in whatever shape Telegram or the registry import left them
+     * ("+380936583202", "380988755469"), so normalise before showing one to a neighbour.
+     * Returns NULL for anything that isn't a plausible Ukrainian number rather than
+     * printing a half-number nobody can dial.
+     */
+    public static function formatPhone(?string $raw): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string)$raw);
+
+        if (strlen($digits) === 10 && str_starts_with($digits, '0')) {
+            $digits = '38' . $digits;
+        }
+
+        if (strlen($digits) !== 12 || !str_starts_with($digits, '380')) {
+            return null;
+        }
+
+        return sprintf(
+            '+%s %s %s %s %s',
+            substr($digits, 0, 3),
+            substr($digits, 3, 2),
+            substr($digits, 5, 3),
+            substr($digits, 8, 2),
+            substr($digits, 10, 2),
+        );
     }
 
     private static function esc(string $value): string

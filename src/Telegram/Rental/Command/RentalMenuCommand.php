@@ -18,6 +18,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
  * owner's controls for their own listing. Callbacks:
  *   rental-menu           — render the list
  *   rent:contact:<id>     — relay the caller's contact to an owner without a @username
+ *   rent:phone:<id>       — same, with the caller's own number attached (they consented)
  *   rent:extend:<id>      — owner confirms the listing is still current (+30 days)
  *   rent:remove:<id>      — owner takes their listing down
  *
@@ -42,6 +43,11 @@ class RentalMenuCommand
 
         if (str_starts_with($data, 'rent:contact:')) {
             $this->contact($bot, (int)substr($data, strlen('rent:contact:')));
+            return;
+        }
+
+        if (str_starts_with($data, 'rent:phone:')) {
+            $this->contact($bot, (int)substr($data, strlen('rent:phone:')), sharePhone: true);
             return;
         }
 
@@ -148,7 +154,7 @@ class RentalMenuCommand
      * Owner has no @username, so the interested resident can't be handed a t.me link.
      * Push their contact to the owner instead and say plainly what happens next.
      */
-    private function contact(Nutgram $bot, int $listingId): void
+    private function contact(Nutgram $bot, int $listingId, bool $sharePhone = false): void
     {
         $listing = $this->liveListing($listingId);
         $user = $this->telegramUserService->getCurrentUser();
@@ -163,18 +169,56 @@ class RentalMenuCommand
             return;
         }
 
-        $delivered = $this->rentalService->relayContact($listing, $user);
+        // Neither side has a @username: relaying a name alone leaves the owner unable to
+        // answer, and the old copy sent the interested resident away to reconfigure
+        // Telegram. Offer to pass the number instead — but ask first, this is their data.
+        $ownPhone = RentalListingService::formatPhone($user->getPhoneNumber());
+
+        if (!$sharePhone && !$user->getUsername() && $ownPhone !== null) {
+            $this->askPhoneConsent($bot, $listing, $ownPhone);
+            return;
+        }
+
+        $delivered = $this->rentalService->relayContact($listing, $user, $sharePhone);
 
         if (!$delivered) {
             $this->renderMenu($bot, edit: true, notice: '⚠️ Не вдалося сповістити власника — він не користується ботом.');
             return;
         }
 
-        $notice = $user->getUsername()
-            ? '✅ Власника сповіщено — він напише вам у Telegram.'
-            : '✅ Власника сповіщено. Щоб він міг вам відповісти, додайте @username у налаштуваннях Telegram.';
+        if ($sharePhone) {
+            $notice = '✅ Власнику передано ваш номер ' . self::esc($ownPhone ?? '') . ' — очікуйте дзвінка.';
+        } elseif ($user->getUsername()) {
+            $notice = '✅ Власника сповіщено — він напише вам у Telegram.';
+        } else {
+            $notice = '✅ Власника сповіщено. Щоб він міг вам відповісти, додайте @username у налаштуваннях Telegram.';
+        }
 
         $this->renderMenu($bot, edit: true, notice: $notice);
+    }
+
+    /** Their number, their call — shown in full, with a way out that isn't a dead end. */
+    private function askPhoneConsent(Nutgram $bot, RentalListing $listing, string $phone): void
+    {
+        $this->respond(
+            $bot,
+            edit: true,
+            text: "📞 <b>Як власник з вами зв'яжеться?</b>\n\n"
+                . 'У вас не налаштований @username, тому написати вам у Telegram він не зможе. '
+                . 'Передати йому ваш номер <b>' . self::esc($phone) . "</b>?\n\n"
+                . '<i>Номер побачить лише власник цього оголошення, не весь будинок.</i>',
+            markup: InlineKeyboardMarkup::make()
+                ->addRow(InlineKeyboardButton::make(
+                    '📞 Так, передати номер',
+                    callback_data: 'rent:phone:' . $listing->getId(),
+                ))
+                ->addRow(InlineKeyboardButton::make('⬅️ Назад', callback_data: self::MENU_CALLBACK)),
+        );
+    }
+
+    private static function esc(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 
     private function extend(Nutgram $bot, int $listingId): void

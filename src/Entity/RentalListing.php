@@ -92,9 +92,60 @@ class RentalListing
     #[ORM\Column(type: 'string', length: 64, nullable: true)]
     private ?string $closed_by = null;
 
+    /**
+     * Whether the owner agreed to publish their phone number in the listing.
+     *
+     * Opt-in, never inferred: the number sits in our database because the resident gave
+     * it to the ОСББ for нарахування and booking, not for publication. Asked once, in the
+     * publish conversation, with the number shown in full so the owner sees exactly what
+     * goes out.
+     */
+    #[ORM\Column(type: 'boolean', nullable: false, options: ['default' => false])]
+    private bool $show_phone = false;
+
+    /**
+     * Display-formatted snapshot of the number taken at publish time.
+     *
+     * A snapshot, not a live read of the author's profile: consent was given for THIS
+     * number. If the resident later changes their phone in the registry, the listing keeps
+     * showing what they approved until they republish and are asked again.
+     */
+    #[ORM\Column(type: 'string', length: 32, nullable: true)]
+    private ?string $contact_phone = null;
+
     public function getId(): ?int
     {
         return $this->id;
+    }
+
+    public function isShowPhone(): bool
+    {
+        return $this->show_phone;
+    }
+
+    public function setShowPhone(bool $show_phone): static
+    {
+        $this->show_phone = $show_phone;
+
+        return $this;
+    }
+
+    public function getContactPhone(): ?string
+    {
+        return $this->contact_phone;
+    }
+
+    public function setContactPhone(?string $contact_phone): static
+    {
+        $this->contact_phone = $contact_phone;
+
+        return $this;
+    }
+
+    /** The number to render in the listing, or NULL when the owner kept it private. */
+    public function publicPhone(): ?string
+    {
+        return $this->show_phone ? $this->contact_phone : null;
     }
 
     public function getAccount(): Account

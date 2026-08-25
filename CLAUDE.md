@@ -27,7 +27,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 | 📸 Завантажити фото | `photo-upload-info` | `/photo` | `PhotoUploadInfo` (lists open requests) |
 | ℹ️ Інструкція та FAQ | `info-menu` / `info-topic:*` | `/info` | `InfoCommand` (edit `TOPICS` const) |
 | 🗳️ Голосування | `voting-menu` / `bvote:<id>:yes\|no` | `/vote` | `VotingMenuCommand` (community vote-to-block) |
-| 🔑 Оренда квартир | `rental-menu` / `rent:new` / `rent:{contact,extend,remove}:<id>` | `/rent` | `RentalMenuCommand` + `RentalPublish` (conversation) |
+| 🔑 Оренда квартир | `rental-menu` / `rent:new` / `rent:{contact,phone,extend,remove}:<id>` | `/rent` | `RentalMenuCommand` + `RentalPublish` (conversation) |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
 | (auto) photo upload | `onPhoto` event | — | `UploadPhotoCommand` |
 
@@ -65,7 +65,7 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
 
 - **`is_active` is NOT checked.** A debt or a missed pavilion photo blocks *booking*; it must not block an owner from advertising their own property. `RentalListingService::canPublish()` only excludes storage and parking units (their listing line is written for flats). Regression test: `tests/Service/RentalListingRulesTest`.
 - **No photo step in the conversation.** An active conversation swallows every photo the user sends, and telling "фото квартири" apart from "фото альтанки" inside the ~1h obligation window isn't worth blocking a resident who did send evidence. `RentalPublish` still carries the mandatory `PhotoUploadFlow::interceptConversationPhoto()` guard (covered by the shared provider in `BookingConversationPhotoGuardTest`).
-- **Phones are never rendered.** Contact is a `t.me/<username>` button; when the owner has no username the bot relays the interested resident's contact to them instead (`rent:contact:<id>`).
+- **Phones are opt-in, never automatic.** The number is in the DB because the resident gave it to the ОСББ for нарахування, not for publication, so `RentalPublish` asks once (`askContact` step, number shown in full) and stores the consent as `RentalListing.show_phone` plus a display-formatted `contact_phone` **snapshot** — consent was for *that* number, so a later registry change doesn't silently republish a different one. Default is false, which is what the pre-2026-08-26 listings keep. Contact is otherwise a `t.me/<username>` button. Only ~48% of `telegram_user` rows have a username, so the relay path (`rent:contact:<id>`) is the common one, and when the interested resident has no username either it asks *them* for consent to pass their number (`rent:phone:<id>`) instead of the old dead end that told them to go reconfigure Telegram. `RentalListingService::formatPhone()` is the single normaliser — phones arrive as both `+380…` and `380…`.
 - Listings expire after `RentalListing::LIFETIME_DAYS` (30). `rental:expire` (daily) sends a one-shot "ще актуально?" prompt `RENEW_PROMPT_BEFORE_DAYS` (3) before that and closes the rest. Queries filter on `expires_at` too, so a stale listing disappears even if the cron hasn't run.
 - Publishing again **replaces** the account's active listing rather than being rejected — that is the edit path.
 

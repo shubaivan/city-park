@@ -59,6 +59,40 @@ class RentalListingRulesTest extends KernelTestCase
         $this->assertFalse($service->canPublish($this->account('1-1-5-003', 'кладова 3')));
     }
 
+    /**
+     * The number is opt-in, and half the house has no @username — so the formatter has to
+     * cope with whatever shape the registry import and Telegram left behind, and refuse
+     * anything it can't turn into a dialable number rather than print a stub.
+     */
+    public function testPhoneFormatting(): void
+    {
+        $this->assertSame('+380 93 658 32 02', RentalListingService::formatPhone('+380936583202'));
+        $this->assertSame('+380 98 875 54 69', RentalListingService::formatPhone('380988755469'));
+        $this->assertSame('+380 63 791 70 11', RentalListingService::formatPhone('0637917011'));
+        $this->assertSame('+380 63 791 70 11', RentalListingService::formatPhone('+38 (063) 791-70-11'));
+
+        $this->assertNull(RentalListingService::formatPhone(null));
+        $this->assertNull(RentalListingService::formatPhone(''));
+        $this->assertNull(RentalListingService::formatPhone('12345'), 'too short to dial');
+        $this->assertNull(RentalListingService::formatPhone('491701234567'), 'not a Ukrainian number');
+    }
+
+    /**
+     * A listing published before the opt-in step — and one whose owner declined — must
+     * never render a number. show_phone defaults to false precisely so the migration
+     * cannot retroactively publish phones nobody agreed to share.
+     */
+    public function testPhoneStaysPrivateUnlessOptedIn(): void
+    {
+        $listing = (new RentalListing())->setContactPhone('+380 63 791 70 11');
+
+        $this->assertFalse($listing->isShowPhone(), 'private by default');
+        $this->assertNull($listing->publicPhone());
+
+        $listing->setShowPhone(true);
+        $this->assertSame('+380 63 791 70 11', $listing->publicPhone());
+    }
+
     public function testLabels(): void
     {
         $listing = (new RentalListing())->setRooms(2)->setPrice(12000);

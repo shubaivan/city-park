@@ -15,8 +15,8 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 /**
- * "➕ Здаю квартиру": four short steps — rooms, price, description, confirm — then the
- * listing goes live in the 🔑 Оренда list for RentalListing::LIFETIME_DAYS days.
+ * "➕ Здаю квартиру": five short steps — rooms, price, description, contact, confirm —
+ * then the listing goes live in the 🔑 Оренда list for RentalListing::LIFETIME_DAYS days.
  *
  * No photo step on purpose. A photo here would collide with the pavilion-photo
  * obligation: an active conversation swallows every photo the user sends, and telling
@@ -33,6 +33,7 @@ class RentalPublish extends Conversation
     public ?int $rooms = null;
     public ?int $price = null;
     public ?string $description = null;
+    public bool $showPhone = false;
 
     public function __construct(
         private TelegramUserService $telegramUserService,
@@ -195,29 +196,33 @@ class RentalPublish extends Conversation
         $bot->sendMessage(
             text: "📝 Додайте короткий опис — меблі, техніка, з ким можна (до "
                 . RentalListing::DESCRIPTION_MAX . " символів).\n\n"
-                . '<i>Не пишіть тут номер телефону: список бачить весь будинок, '
-                . 'а охочі напишуть вам у Telegram.</i>',
+                . '<i>Номер телефону сюди писати не треба — про нього спитаємо окремо '
+                . 'на наступному кроці.</i>',
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()
                 ->addRow(InlineKeyboardButton::make('Пропустити', callback_data: 'desc:none'))
                 ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel')),
         );
 
-        $this->next('confirm');
+        $this->next('askContact');
     }
 
-    public function confirm(Nutgram $bot): void
+    /**
+     * The one question that decides whether a neighbour can actually reach this owner.
+     *
+     * Roughly half the residents have no @username, so for them the "✍️ Написати" button
+     * does not exist and the bot falls back to relaying — which used to dead-end when the
+     * interested neighbour had no username either. The number is already in our database;
+     * what was missing is the owner's permission to publish it. Ask once, show the number
+     * in full so nobody is surprised by what goes out, and default to keeping it private.
+     */
+    public function askContact(Nutgram $bot): void
     {
         if ($bot->isCallbackQuery()) {
             $data = $bot->callbackQuery()->data ?? '';
 
             if ($data === 'cancel') {
                 $this->cancel($bot);
-                return;
-            }
-
-            if ($data === 'publish') {
-                $this->publish($bot);
                 return;
             }
 
@@ -236,6 +241,60 @@ class RentalPublish extends Conversation
             $this->description = mb_substr($text, 0, RentalListing::DESCRIPTION_MAX, 'UTF-8');
         }
 
+        $phone = RentalListingService::formatPhone(
+            $this->telegramUserService->getCurrentUser()?->getPhoneNumber()
+        );
+
+        // Nothing to offer — skip the question rather than ask about a number we don't have.
+        if ($phone === null) {
+            $this->showPhone = false;
+            $this->showPreview($bot);
+            return;
+        }
+
+        $bot->sendMessage(
+            text: "📞 <b>Як з вами зв'язуватись?</b>\n\n"
+                . 'Оголошення бачать усі підтверджені мешканці будинку. '
+                . "Показати в ньому ваш номер <b>" . self::esc($phone) . "</b>?\n\n"
+                . '<i>Якщо ні — з вами зв\'яжуться через Telegram.</i>',
+            parse_mode: ParseMode::HTML,
+            reply_markup: InlineKeyboardMarkup::make()
+                ->addRow(InlineKeyboardButton::make('📞 Так, показувати номер', callback_data: 'contact:phone'))
+                ->addRow(InlineKeyboardButton::make('✈️ Ні, тільки Telegram', callback_data: 'contact:tg'))
+                ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel')),
+        );
+
+        $this->next('confirm');
+    }
+
+    public function confirm(Nutgram $bot): void
+    {
+        if (!$bot->isCallbackQuery()) {
+            return;
+        }
+
+        $data = $bot->callbackQuery()->data ?? '';
+
+        if ($data === 'cancel') {
+            $this->cancel($bot);
+            return;
+        }
+
+        if ($data === 'publish') {
+            $this->publish($bot);
+            return;
+        }
+
+        if ($data !== 'contact:phone' && $data !== 'contact:tg') {
+            return;
+        }
+
+        $this->showPhone = $data === 'contact:phone';
+        $this->showPreview($bot);
+    }
+
+    private function showPreview(Nutgram $bot): void
+    {
         $bot->sendMessage(
             text: "Публікуємо?\n\n" . $this->preview(),
             parse_mode: ParseMode::HTML,
@@ -266,6 +325,7 @@ class RentalPublish extends Conversation
             $this->rooms,
             $this->price,
             $this->description,
+            $this->showPhone,
         );
 
         $bot->sendMessage(
@@ -315,6 +375,16 @@ class RentalPublish extends Conversation
 
         if ($this->description) {
             $lines[] = self::esc($this->description);
+        }
+
+        if ($this->showPhone) {
+            $phone = RentalListingService::formatPhone(
+                $this->telegramUserService->getCurrentUser()?->getPhoneNumber()
+            );
+
+            if ($phone) {
+                $lines[] = '📞 ' . self::esc($phone);
+            }
         }
 
         return implode("\n", $lines);

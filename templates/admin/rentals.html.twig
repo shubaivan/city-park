@@ -53,6 +53,10 @@
                                 {{ listing.author.firstName }} {{ listing.author.lastName }}
                                 {% if listing.author.username %}<br><small>@{{ listing.author.username }}</small>{% endif %}
                                 {% if listing.author.phoneNumber %}<br><small>{{ listing.author.phoneNumber }}</small>{% endif %}
+                                {# Whether the number is in the public listing or admin-only — the first question on any "чому мій номер видно?" complaint. #}
+                                <br><small class="badge {{ listing.showPhone ? 'bg-info text-dark' : 'bg-secondary' }}">
+                                    {{ listing.showPhone ? '📞 номер в оголошенні' : '✈️ тільки Telegram' }}
+                                </small>
                             {% else %}
                                 <span class="text-muted">—</span>
                             {% endif %}
