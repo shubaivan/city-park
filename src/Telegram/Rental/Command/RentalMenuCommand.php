@@ -25,6 +25,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  *   rent:contact:<id>     — relay the caller's contact to an owner without a @username
  *   rent:phone:<id>       — same, with the caller's own number attached (they consented)
  *   rent:photos:<id>      — hand the owner a one-shot link to the photo upload page
+ *   rent:pic:<id>:<n>     — send photo #n of the listing as its own message
  *   rent:extend:<id>      — owner confirms the listing is still current (+30 days)
  *   rent:remove:<id>      — owner takes their listing down
  *
@@ -58,6 +59,12 @@ class RentalMenuCommand
 
         if (str_starts_with($data, 'rent:view:')) {
             $this->renderCard($bot, (int)substr($data, strlen('rent:view:')));
+            return;
+        }
+
+        if (str_starts_with($data, 'rent:pic:')) {
+            [$id, $index] = array_pad(explode(':', substr($data, strlen('rent:pic:'))), 2, '0');
+            $this->sendListingPhoto($bot, (int)$id, (int)$index);
             return;
         }
 
@@ -210,11 +217,18 @@ class RentalMenuCommand
         $lines = [$this->rentalService->describe($listing)];
         $markup = InlineKeyboardMarkup::make();
 
+        $this->addPhotoButtons($markup, $listing);
+
         if ($own) {
             $lines[] = '';
             $lines[] = $this->rentalService->contactHint($listing);
+            // Says what it does, now that "🖼 Фото n" above it is how you look at them:
+            // this one opens the upload page, where photos are added and deleted.
+            $photoCount = count($listing->getPhotos());
             $markup->addRow(InlineKeyboardButton::make(
-                sprintf('📷 Фото (%d/%d)', count($listing->getPhotos()), RentalListing::PHOTOS_MAX),
+                $photoCount === 0
+                    ? '📷 Додати фото'
+                    : sprintf('📷 Керувати фото (%d/%d)', $photoCount, RentalListing::PHOTOS_MAX),
                 callback_data: 'rent:photos:' . $listing->getId(),
             ));
             $markup->addRow(
@@ -247,7 +261,8 @@ class RentalMenuCommand
      * all. So the index message is deleted and replaced by a photo with the card as its
      * caption — one message in the chat either way, and the keyboard survives.
      *
-     * Only the cover photo goes in the card; the rest are behind "📷 Ще фото".
+     * Only the cover photo goes in the card — a caption holds one picture. The rest are
+     * one tap away on the "🖼 Фото n" buttons (addPhotoButtons).
      *
      * @return bool false when the picture could not be sent, so the caller falls back to
      *              the plain text card rather than showing the resident nothing.
@@ -293,6 +308,90 @@ class RentalMenuCommand
         }
 
         return true;
+    }
+
+    /**
+     * One button per uploaded photo, exactly like the photo buttons under 📜 Історія
+     * бронювань — residents already know that gesture: tap, the picture arrives as its
+     * own message.
+     *
+     * Only the cover photo can live in the card itself (a media group carries no inline
+     * keyboard, and a caption holds one picture), so without this row the second and
+     * third photos were uploaded and then invisible — the owner had no way to check what
+     * neighbours actually see, and neighbours never saw them at all.
+     *
+     * Skipped for a single photo: it is already the card's own picture, and a button that
+     * re-sends what you are looking at is noise.
+     */
+    private function addPhotoButtons(InlineKeyboardMarkup $markup, RentalListing $listing): void
+    {
+        $photos = $listing->getPhotos();
+
+        if (count($photos) < 2) {
+            return;
+        }
+
+        $row = [];
+        foreach (array_keys($photos) as $i) {
+            $row[] = InlineKeyboardButton::make(
+                sprintf('🖼 Фото %d', $i + 1),
+                callback_data: sprintf('rent:pic:%d:%d', $listing->getId(), $i),
+            );
+        }
+
+        $markup->addRow(...$row);
+    }
+
+    /**
+     * Send one photo of a listing as its own message.
+     *
+     * A new message rather than swapping the card's picture in place: the card is the
+     * thing being navigated from, and leaving it where it is means the owner can open all
+     * three in a row and compare them, then tap "До оголошення" once.
+     */
+    private function sendListingPhoto(Nutgram $bot, int $listingId, int $index): void
+    {
+        $listing = $this->liveListing($listingId);
+        $path = $listing?->getPhotos()[$index] ?? null;
+        $abs = $path ? $this->photoService->absolutePath($path) : null;
+
+        if (!$listing || !$abs || !is_readable($abs)) {
+            $bot->answerCallbackQuery(text: '⚠️ Фото недоступне.', show_alert: true);
+            return;
+        }
+
+        $stream = @fopen($abs, 'rb');
+
+        if ($stream === false) {
+            $bot->answerCallbackQuery(text: '⚠️ Фото недоступне.', show_alert: true);
+            return;
+        }
+
+        $bot->answerCallbackQuery();
+
+        try {
+            $bot->sendPhoto(
+                photo: InputFile::make($stream, basename($abs)),
+                caption: sprintf(
+                    '🖼 <b>кв. %s</b> · фото %d з %d',
+                    self::esc((string)$listing->getAccount()->getApartmentNumber()),
+                    $index + 1,
+                    count($listing->getPhotos()),
+                ),
+                parse_mode: ParseMode::HTML,
+                reply_markup: InlineKeyboardMarkup::make()->addRow(
+                    InlineKeyboardButton::make('⬅️ До оголошення', callback_data: 'rent:view:' . $listing->getId()),
+                ),
+            );
+        } catch (\Throwable $e) {
+            $this->logger->error('rental photo send failed', [
+                'listing_id' => $listing->getId(),
+                'path' => $abs,
+                'error' => $e->getMessage(),
+            ]);
+
+            $bot->sendMessage(text: '⚠️ Не вдалося показати фото.');
+        }
     }
 
     /**
