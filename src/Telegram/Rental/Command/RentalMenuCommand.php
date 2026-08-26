@@ -14,6 +14,7 @@ use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
+use SergiX44\Nutgram\Telegram\Types\Input\InputMediaPhoto;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\WebApp\WebAppInfo;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -25,7 +26,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  *   rent:contact:<id>     — relay the caller's contact to an owner without a @username
  *   rent:phone:<id>       — same, with the caller's own number attached (they consented)
  *   rent:photos:<id>      — hand the owner a one-shot link to the photo upload page
- *   rent:pic:<id>:<n>     — send photo #n of the listing as its own message
+ *   rent:pic:<id>:<n>     — swap the card's picture for photo #n (the ⬅️/➡️ arrows)
  *   rent:extend:<id>      — owner confirms the listing is still current (+30 days)
  *   rent:remove:<id>      — owner takes their listing down
  *
@@ -34,6 +35,9 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 class RentalMenuCommand
 {
     public const MENU_CALLBACK = 'rental-menu';
+
+    /** The "2/3" counter between the arrows is a label, not a button — it does nothing. */
+    private const NOOP_CALLBACK = 'rent:noop';
 
     /**
      * Listings per page in the index.
@@ -62,9 +66,14 @@ class RentalMenuCommand
             return;
         }
 
+        if ($data === self::NOOP_CALLBACK) {
+            $bot->answerCallbackQuery();
+            return;
+        }
+
         if (str_starts_with($data, 'rent:pic:')) {
             [$id, $index] = array_pad(explode(':', substr($data, strlen('rent:pic:'))), 2, '0');
-            $this->sendListingPhoto($bot, (int)$id, (int)$index);
+            $this->showPhoto($bot, (int)$id, (int)$index);
             return;
         }
 
@@ -203,7 +212,7 @@ class RentalMenuCommand
      * The owner's own card carries the management controls instead of a "write to me"
      * button — they cannot be interested in their own flat.
      */
-    private function renderCard(Nutgram $bot, int $listingId): void
+    private function renderCard(Nutgram $bot, int $listingId, int $index = 0): void
     {
         $listing = $this->liveListing($listingId);
 
@@ -212,18 +221,42 @@ class RentalMenuCommand
             return;
         }
 
-        $own = $this->ownsListing($bot, $listing);
+        $index = $this->normaliseIndex($listing, $index);
 
         $lines = [$this->rentalService->describe($listing)];
         $markup = InlineKeyboardMarkup::make();
 
-        $this->addPhotoButtons($markup, $listing);
+        $this->addPhotoNav($markup, $listing, $index);
+        $this->addCardControls($bot, $markup, $listing, $lines);
 
-        if ($own) {
+        $text = implode("\n", $lines);
+
+        if ($listing->hasPhotos() && $this->sendPhotoCard($bot, $listing, $index, $text, $markup)) {
+            return;
+        }
+
+        $this->respond($bot, edit: true, text: $text, markup: $markup);
+    }
+
+    /**
+     * Everything under the picture except the arrows — contact or owner controls, then
+     * the way back. Shared with showPhoto() so leafing through photos cannot quietly
+     * produce a card with a different keyboard than the one you opened.
+     *
+     * @param string[] $lines caption lines, appended to for the owner's contact hint
+     */
+    private function addCardControls(
+        Nutgram $bot,
+        InlineKeyboardMarkup $markup,
+        RentalListing $listing,
+        array &$lines,
+    ): void {
+        if ($this->ownsListing($bot, $listing)) {
             $lines[] = '';
             $lines[] = $this->rentalService->contactHint($listing);
-            // Says what it does, now that "🖼 Фото n" above it is how you look at them:
-            // this one opens the upload page, where photos are added and deleted.
+
+            // Says what it does, now that the arrows above are how you look at the photos:
+            // this one opens the upload page, where they are added and deleted.
             $photoCount = count($listing->getPhotos());
             $markup->addRow(InlineKeyboardButton::make(
                 $photoCount === 0
@@ -245,14 +278,6 @@ class RentalMenuCommand
             InlineKeyboardButton::make('⬅️ До списку', callback_data: self::MENU_CALLBACK),
             StartCommand::homeButton(),
         );
-
-        $text = implode("\n", $lines);
-
-        if ($listing->hasPhotos() && $this->sendPhotoCard($bot, $listing, $text, $markup)) {
-            return;
-        }
-
-        $this->respond($bot, edit: true, text: $text, markup: $markup);
     }
 
     /**
@@ -261,18 +286,22 @@ class RentalMenuCommand
      * all. So the index message is deleted and replaced by a photo with the card as its
      * caption — one message in the chat either way, and the keyboard survives.
      *
-     * Only the cover photo goes in the card — a caption holds one picture. The rest are
-     * one tap away on the "🖼 Фото n" buttons (addPhotoButtons).
+     * One picture at a time — a caption holds one. The others are the ⬅️/➡️ arrows
+     * (addPhotoNav), which swap this same message's media in place.
      *
      * @return bool false when the picture could not be sent, so the caller falls back to
      *              the plain text card rather than showing the resident nothing.
      */
-    private function sendPhotoCard(Nutgram $bot, RentalListing $listing, string $caption, InlineKeyboardMarkup $markup): bool
-    {
-        $cover = $listing->coverPhoto();
-        $abs = $cover ? $this->photoService->absolutePath($cover) : null;
+    private function sendPhotoCard(
+        Nutgram $bot,
+        RentalListing $listing,
+        int $index,
+        string $caption,
+        InlineKeyboardMarkup $markup,
+    ): bool {
+        $abs = $this->photoPath($listing, $index);
 
-        if (!$abs || !is_readable($abs)) {
+        if (!$abs) {
             return false;
         }
 
@@ -311,87 +340,114 @@ class RentalMenuCommand
     }
 
     /**
-     * One button per uploaded photo, exactly like the photo buttons under 📜 Історія
-     * бронювань — residents already know that gesture: tap, the picture arrives as its
-     * own message.
+     * ⬅️ 2/3 ➡️ under the card.
      *
-     * Only the cover photo can live in the card itself (a media group carries no inline
-     * keyboard, and a caption holds one picture), so without this row the second and
-     * third photos were uploaded and then invisible — the owner had no way to check what
-     * neighbours actually see, and neighbours never saw them at all.
+     * A separate message per photo (the first shape this took) buried the card under
+     * pictures: three taps meant three messages to scroll past, and the card with the
+     * price and the contact button ended up somewhere above them. Arrows keep the whole
+     * listing in exactly one message — the picture is swapped in place with
+     * editMessageMedia, which is the one edit a photo message accepts.
      *
-     * Skipped for a single photo: it is already the card's own picture, and a button that
-     * re-sends what you are looking at is noise.
+     * Skipped for a single photo: there is nothing to leaf through.
      */
-    private function addPhotoButtons(InlineKeyboardMarkup $markup, RentalListing $listing): void
+    private function addPhotoNav(InlineKeyboardMarkup $markup, RentalListing $listing, int $index): void
     {
-        $photos = $listing->getPhotos();
+        $total = count($listing->getPhotos());
 
-        if (count($photos) < 2) {
+        if ($total < 2) {
             return;
         }
 
-        $row = [];
-        foreach (array_keys($photos) as $i) {
-            $row[] = InlineKeyboardButton::make(
-                sprintf('🖼 Фото %d', $i + 1),
-                callback_data: sprintf('rent:pic:%d:%d', $listing->getId(), $i),
-            );
-        }
+        // Wrapping around beats greying out the end arrows: with two or three pictures the
+        // owner is flicking back and forth, not navigating a catalogue.
+        $prev = ($index - 1 + $total) % $total;
+        $next = ($index + 1) % $total;
 
-        $markup->addRow(...$row);
+        $markup->addRow(
+            InlineKeyboardButton::make('⬅️', callback_data: sprintf('rent:pic:%d:%d', $listing->getId(), $prev)),
+            InlineKeyboardButton::make(
+                sprintf('🖼 %d/%d', $index + 1, $total),
+                callback_data: self::NOOP_CALLBACK,
+            ),
+            InlineKeyboardButton::make('➡️', callback_data: sprintf('rent:pic:%d:%d', $listing->getId(), $next)),
+        );
     }
 
     /**
-     * Send one photo of a listing as its own message.
+     * An arrow was tapped: put photo #$index into the card that is already on screen.
      *
-     * A new message rather than swapping the card's picture in place: the card is the
-     * thing being navigated from, and leaving it where it is means the owner can open all
-     * three in a row and compare them, then tap "До оголошення" once.
+     * editMessageMedia rather than a fresh message — that is what makes this a carousel
+     * and not another picture in the chat. It fails on a card that was rendered as text
+     * (no photos, or the file had vanished), so that case falls back to a full re-render.
      */
-    private function sendListingPhoto(Nutgram $bot, int $listingId, int $index): void
+    private function showPhoto(Nutgram $bot, int $listingId, int $index): void
     {
         $listing = $this->liveListing($listingId);
-        $path = $listing?->getPhotos()[$index] ?? null;
-        $abs = $path ? $this->photoService->absolutePath($path) : null;
 
-        if (!$listing || !$abs || !is_readable($abs)) {
-            $bot->answerCallbackQuery(text: '⚠️ Фото недоступне.', show_alert: true);
+        if (!$listing) {
+            $this->renderMenu($bot, edit: true, notice: '⚠️ Це оголошення вже неактуальне.');
             return;
         }
 
-        $stream = @fopen($abs, 'rb');
+        $index = $this->normaliseIndex($listing, $index);
+        $abs = $this->photoPath($listing, $index);
+        $stream = $abs ? @fopen($abs, 'rb') : false;
 
         if ($stream === false) {
-            $bot->answerCallbackQuery(text: '⚠️ Фото недоступне.', show_alert: true);
+            // The file is gone but the card is fine: re-render rather than leave the
+            // resident tapping an arrow that does nothing.
+            $bot->answerCallbackQuery(text: '⚠️ Це фото більше недоступне.');
+            $this->renderCard($bot, $listingId);
             return;
         }
+
+        $lines = [$this->rentalService->describe($listing)];
+        $markup = InlineKeyboardMarkup::make();
+
+        $this->addPhotoNav($markup, $listing, $index);
+        $this->addCardControls($bot, $markup, $listing, $lines);
 
         $bot->answerCallbackQuery();
 
         try {
-            $bot->sendPhoto(
-                photo: InputFile::make($stream, basename($abs)),
-                caption: sprintf(
-                    '🖼 <b>кв. %s</b> · фото %d з %d',
-                    self::esc((string)$listing->getAccount()->getApartmentNumber()),
-                    $index + 1,
-                    count($listing->getPhotos()),
+            $bot->editMessageMedia(
+                media: InputMediaPhoto::make(
+                    media: InputFile::make($stream, basename((string)$abs)),
+                    caption: implode("\n", $lines),
+                    parse_mode: ParseMode::HTML,
                 ),
-                parse_mode: ParseMode::HTML,
-                reply_markup: InlineKeyboardMarkup::make()->addRow(
-                    InlineKeyboardButton::make('⬅️ До оголошення', callback_data: 'rent:view:' . $listing->getId()),
-                ),
+                reply_markup: $markup,
             );
         } catch (\Throwable $e) {
-            $this->logger->error('rental photo send failed', [
+            $this->logger->warning('rental photo swap failed, re-rendering the card', [
                 'listing_id' => $listing->getId(),
-                'path' => $abs,
+                'index' => $index,
                 'error' => $e->getMessage(),
             ]);
 
-            $bot->sendMessage(text: '⚠️ Не вдалося показати фото.');
+            $this->renderCard($bot, $listingId, $index);
         }
+    }
+
+    /** Photo index, wrapped into range — a listing can lose a photo while a card is open. */
+    private function normaliseIndex(RentalListing $listing, int $index): int
+    {
+        $total = count($listing->getPhotos());
+
+        if ($total < 1) {
+            return 0;
+        }
+
+        return (($index % $total) + $total) % $total;
+    }
+
+    /** Readable absolute path of photo #$index, or null. */
+    private function photoPath(RentalListing $listing, int $index): ?string
+    {
+        $path = $listing->getPhotos()[$index] ?? null;
+        $abs = $path ? $this->photoService->absolutePath($path) : null;
+
+        return $abs && is_readable($abs) ? $abs : null;
     }
 
     /**
@@ -563,6 +619,11 @@ class RentalMenuCommand
         return $account !== null && $account->getId() === $listing->getAccount()->getId();
     }
 
+    /**
+     * $edit fails when the message on screen is a photo card — Telegram will not turn a
+     * picture back into text. Then the card is deleted and a text message takes its
+     * place, so leaving a listing never leaves its photo hanging in the chat above.
+     */
     private function respond(Nutgram $bot, bool $edit, string $text, InlineKeyboardMarkup $markup): void
     {
         if ($edit) {
@@ -570,7 +631,11 @@ class RentalMenuCommand
                 $bot->editMessageText(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
                 return;
             } catch (\Throwable) {
-                // fall through to a fresh message
+                try {
+                    $bot->deleteMessage($bot->chatId(), $bot->messageId());
+                } catch (\Throwable) {
+                    // Older than 48h, or already gone — the fresh message below still lands.
+                }
             }
         }
 
