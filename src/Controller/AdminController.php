@@ -21,6 +21,7 @@ use App\Repository\BlockVoteCampaignRepository;
 use App\Service\AccountStatusAuditor;
 use App\Service\BlockReasonResolver;
 use App\Service\BlockVoteService;
+use App\Service\DebtAnnouncer;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
 use App\Service\RentalListingService;
@@ -1278,7 +1279,8 @@ class AdminController extends AbstractController
         LoggerInterface $logger,
         Nutgram $bot,
         DebtPolicy $debtPolicy,
-        PavilionPhotoService $photoService
+        PavilionPhotoService $photoService,
+        DebtAnnouncer $announcer
     ): Response
     {
         /** @var UploadedFile|null $file */
@@ -1450,11 +1452,16 @@ class AdminController extends AbstractController
 
         $em->flush();
 
+        // Same tail as debt:import-file: record the new totals and tell the residents'
+        // chat. Non-fatal by construction — the accountant's upload has already landed.
+        $announced = $announcer->afterImport();
+
         $logger->info('Debt upload complete', [
             'updated' => $updated,
             'not_found' => $notFound,
             'blocked' => $blocked,
             'reset' => $reset,
+            'announced' => $announced,
         ]);
 
         return $this->render('admin/debt.html.twig', [
@@ -1466,6 +1473,7 @@ class AdminController extends AbstractController
                 'blocked' => $blocked,
                 'reset' => $reset,
                 'missing' => $missing,
+                'announced' => $announced,
             ],
         ]);
     }

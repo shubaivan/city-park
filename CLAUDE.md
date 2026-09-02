@@ -105,6 +105,20 @@ All the judgement is in `DebtBoardService`; `StartCommand::debtBlock()` and
   shipped, "кв. 76" was one household owing 5 402 грн and another owing 651. Apartment
   alone accuses both of the larger debt. Regression test in `tests/Service/DebtBoardRulesTest`.
 
+**The announcement in the residents' chat** rides on the import, not on a cron: `DebtAnnouncer::afterImport()`
+is the tail of both import paths (`debt:import-file` and `/admin/debt/upload`), so the figures
+are fresh by construction and the post shows movement month to month. It leads with the total,
+the flat count and the trend, then names the top ten (`ANNOUNCE_SIZE`). Guards: once per calendar
+day (a corrected re-upload must not put a second list in front of the house), only when the chat
+is configured, and never fatal — a failed post must not undo an import that already moved 143
+accounts. `debt:announce [--dry-run] [--force] [--snapshot]` previews or re-sends it by hand.
+`DebtSnapshot` is one row per import (total, debtor count, `announced_at`); it exists because the
+debt column is overwritten in place, leaving the house no memory of its own arrears.
+
+The chat post is *push* and forwardable, unlike the pull-only menu board — that difference was
+argued and Иван chose the named top-ten anyway (02.09.2026), so keep the aggregate leading and
+the date in the header.
+
 Apartment + building and nothing else: no names, no phone numbers. `is_active` is not
 consulted — this is about the debt, not about booking rights. The viewer's own line
 («📌 Ваша квартира у списку: … , N місце» / «✅ боргів не має») is the half that makes it

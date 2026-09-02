@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Entity\Account;
+use App\Entity\DebtSnapshot;
 use App\Repository\AccountRepository;
 
 /**
@@ -49,6 +50,11 @@ class DebtBoardService
 
     /** Places 4 and 5 keep the podium's joke register rather than dropping to a bullet. */
     private const PODIUM = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+
+    /** How many are named in the residents'-chat announcement. */
+    public const ANNOUNCE_SIZE = 10;
+
+    private const RANKS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 
     public function __construct(
         private AccountRepository $accountRepository,
@@ -188,6 +194,69 @@ class DebtBoardService
         $foot .= sprintf("📅 <i>Дані станом на %s. Суми округлені до гривні.</i>", $this->asOfLabel());
 
         return $head . $body . $foot;
+    }
+
+    /**
+     * The post for the residents' chat, published after each debt import.
+     *
+     * Unlike the menu board this is *push*: it lands in every member's notifications and
+     * is forwardable in one tap, so it leads with the figures the whole house needs — the
+     * total, the number of flats, and whether that moved since last month — and only then
+     * names the ten largest. The date is in the header for the same reason it is on the
+     * board: a list of debtors without one is an accusation nobody can check.
+     *
+     * $previous is the snapshot before this import, or null on the very first one.
+     */
+    public function chatAnnouncement(DebtSnapshot $current, ?DebtSnapshot $previous): string
+    {
+        $lines = [
+            '📊 <b>Стан розрахунків з ОСББ</b>',
+            sprintf('<i>станом на %s</i>', $this->asOfLabel()),
+            '',
+            sprintf('💸 Борг мешканців: <b>%s грн</b>', $this->money($current->getTotal())),
+            sprintf('🏠 Квартир з боргом: <b>%d</b>', $current->getDebtors()),
+        ];
+
+        if ($previous instanceof DebtSnapshot) {
+            $lines[] = $this->trendLine($current, $previous);
+        }
+
+        $top = $this->accountRepository->findDebtors(self::ANNOUNCE_SIZE);
+
+        if ($top !== []) {
+            $lines[] = '';
+            $lines[] = sprintf('🏆 <b>Десятка «лідерів»</b> — вітаємо! 👏');
+            $lines[] = '';
+
+            foreach ($top as $i => $account) {
+                $lines[] = sprintf(
+                    '%s %s — <b>%s грн</b>%s',
+                    self::RANKS[$i] ?? sprintf('%d.', $i + 1),
+                    $this->place($account),
+                    $this->money((float)$account->getDebt()),
+                    $i === 0 ? ' 👑' : '',
+                );
+            }
+        }
+
+        $lines[] = '';
+        $lines[] = '<i>Свій борг і повний список — у боті, кнопка 💸 Звіт боржників.</i>';
+
+        return implode("\n", $lines);
+    }
+
+    private function trendLine(DebtSnapshot $current, DebtSnapshot $previous): string
+    {
+        $delta = $current->getTotal() - $previous->getTotal();
+        $since = $previous->getTakenAt()->setTimezone(new \DateTimeZone('Europe/Kyiv'))->format('d.m.Y');
+
+        if (abs($delta) < 1) {
+            return sprintf('➖ З %s борг не змінився.', $since);
+        }
+
+        return $delta < 0
+            ? sprintf('📉 З %s борг <b>зменшився на %s грн</b>. Дякуємо тим, хто сплатив!', $since, $this->money(abs($delta)))
+            : sprintf('📈 З %s борг <b>зріс на %s грн</b>.', $since, $this->money($delta));
     }
 
     /**

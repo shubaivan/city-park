@@ -54,6 +54,19 @@
                         <li>Заблоковано (борг більший за персональний поріг квартири): <b style="color:red">{{ result.blocked }}</b></li>
                         <li>Скинуто борг (не в файлі): <b style="color:green">{{ result.reset }}</b></li>
                         <li>Не знайдено в базі: {{ result.not_found }}</li>
+                        {% if result.announced is defined %}
+                            <li>Анонс у чаті мешканців:
+                                {% if result.announced == 'sent' %}
+                                    <b style="color:green">опубліковано</b>
+                                {% elseif result.announced == 'skipped:already-today' %}
+                                    <span style="color:#888">сьогодні вже виходив</span>
+                                {% elseif result.announced == 'skipped:not-configured' %}
+                                    <span style="color:#888">чат не налаштовано</span>
+                                {% else %}
+                                    <b style="color:red">не вдалося — див. лог</b>
+                                {% endif %}
+                            </li>
+                        {% endif %}
                     </ul>
                     {% if result.missing|length > 0 %}
                         <details open>

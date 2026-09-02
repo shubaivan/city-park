@@ -6,6 +6,7 @@ use App\Entity\Account;
 use App\Entity\AccountStatusLog;
 use App\Repository\AccountRepository;
 use App\Service\AccountStatusAuditor;
+use App\Service\DebtAnnouncer;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -35,6 +36,7 @@ class DebtImportFileCommand extends Command
         private Nutgram $bot,
         private AccountStatusAuditor $auditor,
         private PavilionPhotoService $photoService,
+        private DebtAnnouncer $announcer,
     ) {
         parent::__construct();
     }
@@ -263,9 +265,14 @@ class DebtImportFileCommand extends Command
             'source' => $path,
         ]);
 
+        // Snapshot the house's new totals and tell the residents' chat. Deliberately after
+        // the flush and deliberately not fatal: the import has already moved 143 accounts
+        // and messaged everyone it blocked or unblocked, and a failed post must not undo it.
+        $announced = $this->announcer->afterImport();
+
         $io->success(sprintf(
-            'Готово. Опрацьовано: %d, заблоковано: %d, розблоковано: %d, скинуто борг: %d, не знайдено: %d, повідомлень: %d',
-            count($debtData), $blocked, $unblocked, $reset, count($notFound), $notified
+            'Готово. Опрацьовано: %d, заблоковано: %d, розблоковано: %d, скинуто борг: %d, не знайдено: %d, повідомлень: %d, анонс у чаті: %s',
+            count($debtData), $blocked, $unblocked, $reset, count($notFound), $notified, $announced
         ));
         return Command::SUCCESS;
     }

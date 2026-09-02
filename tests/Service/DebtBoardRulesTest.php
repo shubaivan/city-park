@@ -3,6 +3,7 @@
 namespace App\Tests\Service;
 
 use App\Entity\Account;
+use App\Entity\DebtSnapshot;
 use App\Repository\AccountRepository;
 use App\Service\DebtBoardService;
 use PHPUnit\Framework\TestCase;
@@ -150,6 +151,61 @@ class DebtBoardRulesTest extends TestCase
             $this->orderOf($report, ['134', '89', '76', '85', '59', '39']),
         );
         $this->assertStringContainsString('6 квартир', $report);
+    }
+
+    private function snapshot(float $total, int $debtors, string $takenAt): DebtSnapshot
+    {
+        $snapshot = (new DebtSnapshot())->setTotal($total)->setDebtors($debtors);
+
+        $taken = new \ReflectionProperty(DebtSnapshot::class, 'taken_at');
+        $taken->setValue($snapshot, new \DateTimeImmutable($takenAt));
+
+        return $snapshot;
+    }
+
+    public function testChatAnnouncementLeadsWithFiguresAndNamesTen(): void
+    {
+        $debtors = [];
+        for ($i = 1; $i <= 12; $i++) {
+            $debtors[] = $this->account($i, (string)(100 + $i), (string)(1000 - $i * 10));
+        }
+
+        $board = $this->service($debtors, new \DateTimeImmutable('-1 day'));
+        $post = $board->chatAnnouncement(
+            $this->snapshot(11_340, 12, '-1 day'),
+            $this->snapshot(15_540, 15, '-31 days'),
+        );
+
+        $this->assertStringContainsString('Борг мешканців: <b>11 340 грн</b>', $post);
+        $this->assertStringContainsString('Квартир з боргом: <b>12</b>', $post);
+        $this->assertStringContainsString('зменшився на 4 200 грн', $post);
+
+        // Exactly ten named: the tenth is in, the eleventh is not.
+        $this->assertStringContainsString('🔟 буд. 23, кв. 110', $post);
+        $this->assertStringNotContainsString('кв. 111', $post);
+    }
+
+    public function testChatAnnouncementReportsAGrowingDebtToo(): void
+    {
+        $board = $this->service([$this->account(1, '134', '12269.00')], new \DateTimeImmutable('-1 day'));
+
+        $post = $board->chatAnnouncement(
+            $this->snapshot(12_269, 1, '-1 day'),
+            $this->snapshot(10_269, 1, '-31 days'),
+        );
+
+        $this->assertStringContainsString('зріс на 2 000 грн', $post);
+    }
+
+    public function testChatAnnouncementCarriesTheDate(): void
+    {
+        $board = $this->service([$this->account(1, '134', '12269.00')], new \DateTimeImmutable('-1 day'));
+        $asOf = (new \DateTimeImmutable('-1 day'))->setTimezone(new \DateTimeZone('Europe/Kyiv'))->format('d.m.Y');
+
+        $this->assertStringContainsString(
+            $asOf,
+            $board->chatAnnouncement($this->snapshot(12_269, 1, '-1 day'), null),
+        );
     }
 
     /**
