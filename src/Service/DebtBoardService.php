@@ -35,12 +35,20 @@ class DebtBoardService
      */
     public const STALE_AFTER_DAYS = 30;
 
-    public const TOP_SIZE = 3;
+    /**
+     * Three was the first shape; the head of the ОСББ asked for five — a podium of three
+     * lets the fourth-largest debtor feel comfortably out of shot, and on prod the drop
+     * from 3rd to 5th place is 5 402 → 2 500 грн, still real money.
+     */
+    public const TOP_SIZE = 5;
 
     /** Telegram's hard limit is 4096; leave room for the footer we append last. */
     private const MAX_REPORT_CHARS = 3500;
 
     private const MEDALS = ['🥇', '🥈', '🥉'];
+
+    /** Places 4 and 5 keep the podium's joke register rather than dropping to a bullet. */
+    private const PODIUM = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
 
     public function __construct(
         private AccountRepository $accountRepository,
@@ -102,7 +110,7 @@ class DebtBoardService
         foreach ($top as $i => $account) {
             $lines[] = sprintf(
                 '%s %s — <b>%s грн</b>%s',
-                self::MEDALS[$i] ?? '▫️',
+                self::PODIUM[$i] ?? '▫️',
                 $this->place($account),
                 $this->money((float)$account->getDebt()),
                 $i === 0 ? ' 👑' : '',

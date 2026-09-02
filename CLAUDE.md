@@ -83,7 +83,7 @@ Admin: `/admin/rentals` lists everything with a take-down button (status `blocke
 The house's total debt plus the three largest debtors, rendered above the main menu on
 every `/start` / «🏠 На головну», with `💸 Звіт боржників` opening the full list. Asked
 for by the head of the ОСББ as social pressure towards paying, in the joke register of a
-podium (🥇🥈🥉👑) — that framing is deliberate, not decoration to be tidied away.
+podium (🥇🥈🥉4️⃣5️⃣👑, `TOP_SIZE` = 5) — that framing is deliberate, not decoration to be tidied away.
 
 All the judgement is in `DebtBoardService`; `StartCommand::debtBlock()` and
 `DebtBoardCommand` are only the Telegram halves. Three rules keep it defensible:

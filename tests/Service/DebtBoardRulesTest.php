@@ -60,6 +60,8 @@ class DebtBoardRulesTest extends TestCase
                 $this->account(2, '89', '6268.00'),
                 $this->account(3, '76', '5402.00'),
                 $this->account(4, '85', '2732.00'),
+                $this->account(5, '59', '2500.00'),
+                $this->account(6, '39', '2168.00'),
             ],
             new \DateTimeImmutable('-2 days'),
         );
@@ -102,13 +104,15 @@ class DebtBoardRulesTest extends TestCase
     {
         $block = $this->freshBoard()->menuBlock($this->account(9, '5', '0'));
 
-        // 12269 + 6268 + 5402 + 2732
-        $this->assertStringContainsString('26 671 грн', $block);
+        // 12269 + 6268 + 5402 + 2732 + 2500 + 2168
+        $this->assertStringContainsString('31 339 грн', $block);
         $this->assertStringContainsString('🥇 буд. 23, кв. 134', $block);
         $this->assertStringContainsString('🥈 буд. 23, кв. 89', $block);
         $this->assertStringContainsString('🥉 буд. 23, кв. 76', $block);
-        // Fourth place is in the total and the full report, but not on the podium.
-        $this->assertStringNotContainsString('кв. 85', $block);
+        $this->assertStringContainsString('4️⃣ буд. 23, кв. 85', $block);
+        $this->assertStringContainsString('5️⃣ буд. 23, кв. 59', $block);
+        // Sixth place is in the total and the full report, but not on the podium.
+        $this->assertStringNotContainsString('кв. 39', $block);
     }
 
     public function testBoardIsAlwaysDated(): void
@@ -142,10 +146,10 @@ class DebtBoardRulesTest extends TestCase
         $report = $this->freshBoard()->report($this->account(9, '5', '0'));
 
         $this->assertSame(
-            ['134', '89', '76', '85'],
-            $this->orderOf($report, ['134', '89', '76', '85']),
+            ['134', '89', '76', '85', '59', '39'],
+            $this->orderOf($report, ['134', '89', '76', '85', '59', '39']),
         );
-        $this->assertStringContainsString('4 квартир', $report);
+        $this->assertStringContainsString('6 квартир', $report);
     }
 
     /**
