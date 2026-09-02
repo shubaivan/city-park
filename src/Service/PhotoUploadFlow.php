@@ -43,8 +43,44 @@ class PhotoUploadFlow
      * Telegram would retry the same photo update for an hour (incidents 02–03.08
      * and 16.08.2026, ~950 failed deliveries, 3 residents wrongly blocked).
      */
-    public function interceptConversationPhoto(Nutgram $bot, ?string $step, string $pausedNotice): void
-    {
+    public function interceptConversationPhoto(
+        Nutgram $bot,
+        ?string $step,
+        string $pausedNotice,
+        ?string $keptNotice = null,
+    ): void {
+        // A photo can only be pavilion evidence if there is a pavilion booking behind it.
+        // With none, cancelling what the resident was in the middle of writing costs them
+        // their draft and buys nothing — which is exactly what happened on 02.09.2026 to
+        // somebody filing a complaint who attached the photo instead of typing.
+        //
+        // This does not weaken the invariant that a photo sent to the bot is pavilion
+        // evidence. The case that invariant protects — a session that ended before the
+        // 20-minute cron materialised its request — requires a session to exist, and
+        // hasPavilionContext() looks for exactly that, over the same lookback window.
+        if (!$this->hasPavilionContext()) {
+            $this->photoLogger->info('photo during conversation ignored: no pavilion booking to attach it to', [
+                'chat_id' => $bot->chatId(),
+                'telegram_user_id' => $bot->userId(),
+                'step' => $step,
+            ]);
+
+            try {
+                $bot->sendMessage(
+                    text: $keptNotice ?? '📷 Фото тут не потрібне — у вас немає бронювань альтанки, '
+                        . 'до яких його прикріпити. Продовжуйте, будь ласка: надішліть відповідь текстом.',
+                    parse_mode: ParseMode::HTML,
+                );
+            } catch (\Throwable $e) {
+                $this->photoLogger->error('failed to send kept-conversation notice', [
+                    'chat_id' => $bot->chatId(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return;
+        }
+
         $this->photoLogger->warning('photo received during active booking conversation — ending it and saving the photo inline', [
             'chat_id' => $bot->chatId(),
             'telegram_user_id' => $bot->userId(),
@@ -140,13 +176,34 @@ class PhotoUploadFlow
                 return;
             }
 
-            $this->photoLogger->info('photoEvent: no open requests to attach', [
+            // Two very different situations used to share one message. "Фото вже отримано"
+            // is true for somebody who booked and already sent their photo; said to
+            // somebody with no booking at all it answers a question they did not ask —
+            // received *what*? — and tells them nothing about what to do with the picture
+            // they were actually trying to send.
+            if ($this->hasRecentSession($account, $now)) {
+                $this->photoLogger->info('photoEvent: no open requests to attach', [
+                    'account_id' => $account->getId(),
+                ]);
+                $bot->sendMessage(
+                    text: '📷 <b>Фото вже отримано.</b> Достатньо одного фото на сесію — наступне фото знадобиться лише після нового бронювання.',
+                    parse_mode: ParseMode::HTML,
+                );
+
+                return;
+            }
+
+            $this->photoLogger->info('photoEvent: no booking at all — nothing to attach', [
                 'account_id' => $account->getId(),
             ]);
             $bot->sendMessage(
-                text: '📷 <b>Фото вже отримано.</b> Достатньо одного фото на сесію — наступне фото знадобиться лише після нового бронювання.',
+                text: "📷 <b>Це фото нікуди не збережено.</b>\n\n"
+                    . "У вас немає бронювань альтанки, тож фото альтанки зараз не потрібне.\n\n"
+                    . '<i>Якщо ви хотіли додати фото до заявки — відкрийте «🔧 Заявки», '
+                    . 'виберіть свою і натисніть «📷 Додати фото».</i>',
                 parse_mode: ParseMode::HTML,
             );
+
             return;
         }
 
@@ -256,6 +313,56 @@ class PhotoUploadFlow
      *
      * @return array{pavilion:int, start:\DateTime, end:\DateTime}|null
      */
+    /**
+     * Is there any pavilion booking this photo could belong to?
+     *
+     * Open obligation, a session still running, or one that ended inside the lookback
+     * window (the gap in which the 20-minute cron has not yet materialised its request).
+     * Never throws and answers "yes" when unsure: treating a photo as pavilion evidence
+     * by mistake is recoverable, ignoring real evidence is not.
+     */
+    private function hasPavilionContext(): bool
+    {
+        try {
+            $account = $this->telegramUserService->getCurrentUser()?->getAccount();
+
+            if (!$account instanceof Account) {
+                return false;
+            }
+
+            $now = SchedulePavilionService::createNewDate();
+
+            foreach ($this->requestRepository->findOpenForAccount($account) as $request) {
+                if ($request->isOpen()) {
+                    return true;
+                }
+            }
+
+            return $this->hasRecentSession($account, $now)
+                || $this->firstUnfinishedSession($account, $now) !== null;
+        } catch (\Throwable $e) {
+            $this->photoLogger->error('pavilion context check failed — assuming there is one', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return true;
+        }
+    }
+
+    /** A session that ended within the lookback window, i.e. one that may still owe a photo. */
+    private function hasRecentSession(Account $account, \DateTime $now): bool
+    {
+        $from = (clone $now)->modify('-' . PavilionPhotoService::LOOKBACK_HOURS . ' hours');
+
+        foreach ($this->photoService->detectSessions($account, $from, clone $now) as $session) {
+            if ($session['end'] <= $now) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function firstUnfinishedSession(Account $account, \DateTime $now): ?array
     {
         $from = (clone $now)->modify('-' . PavilionPhotoService::LOOKBACK_HOURS . ' hours');
