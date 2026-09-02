@@ -165,7 +165,10 @@ class TelegramUserRepository extends ServiceEntityRepository
             $or[] = 'ILIKE(a.house_number, :var_search) = TRUE';
             $or[] = 'ILIKE(a.street, :var_search) = TRUE';
 
-            $bindParams['var_search'] = '%'.$parameterBag->get('search').'%';
+            // A username is copied out of Telegram with its @, but stored without one.
+            // Pasting "@mi_polina28" into the search box is the obvious thing to do and
+            // used to return nothing at all.
+            $bindParams['var_search'] = '%'.ltrim((string)$parameterBag->get('search'), '@').'%';
             $conditions[] = '(' . implode(' OR ', $or) .')';
 
         }
@@ -227,11 +230,14 @@ class TelegramUserRepository extends ServiceEntityRepository
             'search_last_name'  => 'b.last_name',
             'search_first_name' => 'b.first_name',
             'search_phone'      => 'b.phone_number',
+            'search_username'   => 'b.username',
         ];
         foreach ($ilikeFieldMap as $param => $column) {
             if (!$total && !empty($params[$param])) {
                 $conditions[] = "ILIKE($column, :$param) = TRUE";
-                $bindParams[$param] = '%' . trim((string)$params[$param]) . '%';
+                // ltrim('@') for the same reason as the global search: a username pasted
+                // from Telegram carries one, the column does not.
+                $bindParams[$param] = '%' . ltrim(trim((string)$params[$param]), '@') . '%';
             }
         }
         if (!$total && !empty($params['search_address'])) {

@@ -106,6 +106,7 @@ document.addEventListener("DOMContentLoaded", function () {
         last_name: '',
         first_name: '',
         phone: '',
+        username: '',
         address: '',
     };
 
@@ -124,6 +125,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 d.search_last_name = fieldFilters.last_name;
                 d.search_first_name = fieldFilters.first_name;
                 d.search_phone = fieldFilters.phone;
+                d.search_username = fieldFilters.username;
                 d.search_address = fieldFilters.address;
             }
         },
@@ -145,6 +147,7 @@ document.addEventListener("DOMContentLoaded", function () {
         { key: 'last_name',      label: 'Прізвище',       placeholder: 'Шуба',              width: '160px' },
         { key: 'first_name',     label: "Ім'я",           placeholder: 'Іван',              width: '140px' },
         { key: 'phone',          label: 'Телефон',        placeholder: '380...',            width: '160px' },
+        { key: 'username',       label: 'Telegram',       placeholder: '@mi_polina28',      width: '170px' },
         { key: 'address',        label: 'Адреса',         placeholder: 'вулиця / буд / кв', width: '220px' },
     ];
 
