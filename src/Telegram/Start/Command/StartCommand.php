@@ -3,7 +3,9 @@
 namespace App\Telegram\Start\Command;
 
 use App\Entity\Account;
+use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
+use App\Telegram\ResidentChat\Command\ResidentChatCommand;
 use SergiX44\Nutgram\Handlers\Type\Command;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
@@ -32,7 +34,7 @@ class StartCommand extends Command
     public static function send(Nutgram $bot, bool $edit = false): void
     {
         $text = self::header($bot) . 'Оберіть:';
-        $markup = self::mainMenuMarkup();
+        $markup = self::mainMenuMarkup($bot);
 
         if ($edit) {
             try {
@@ -125,9 +127,9 @@ class StartCommand extends Command
         return InlineKeyboardButton::make('🏠 На головну', callback_data: self::MAIN_MENU_CALLBACK);
     }
 
-    private static function mainMenuMarkup(): InlineKeyboardMarkup
+    private static function mainMenuMarkup(Nutgram $bot): InlineKeyboardMarkup
     {
-        return InlineKeyboardMarkup::make()
+        $markup = InlineKeyboardMarkup::make()
             // Оренда sits first on purpose: it is the newest section and residents were
             // not finding it at the bottom of the menu, under three rows they already
             // know by heart. Booking is the everyday action and stays one tap away.
@@ -147,5 +149,29 @@ class StartCommand extends Command
                 InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'),
                 InlineKeyboardButton::make('🗳️ Голосування', callback_data: 'voting-menu'),
             );
+
+        // Only once the chat actually exists: a button that leads nowhere is worse than
+        // no button, and the group is created by hand in Telegram, not by a migration.
+        if (self::residentChatOpen($bot)) {
+            $markup->addRow(
+                InlineKeyboardButton::make(
+                    '🏘 Чат мешканців',
+                    callback_data: ResidentChatCommand::MENU_CALLBACK,
+                ),
+            );
+        }
+
+        return $markup;
+    }
+
+    private static function residentChatOpen(Nutgram $bot): bool
+    {
+        try {
+            $service = $bot->getContainer()->get(ResidentChatService::class);
+
+            return $service instanceof ResidentChatService && $service->isConfigured();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }
