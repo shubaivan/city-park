@@ -197,6 +197,41 @@ class ComplaintService
         $this->images->delete($publicPath, self::PHOTO_DIR);
     }
 
+    /**
+     * The author withdrawing their own report.
+     *
+     * Allowed at any status, deliberately. The obvious alternative — letting them delete
+     * only while it is still 🆕 — protects a record the ОСББ has started working on, but
+     * the common reasons to withdraw (a typo, a duplicate, the thing fixed itself) do not
+     * politely stop happening the moment Людмила taps «в роботі», and a resident who
+     * cannot remove their own mistaken entry just files a second one saying "ignore the
+     * previous". Retention would delete it within the month anyway.
+     *
+     * Photos go with it: nothing else references them, and orphaned files under
+     * public/uploads are how a disk fills up quietly.
+     */
+    public function delete(Complaint $complaint): void
+    {
+        $id = $complaint->getId();
+
+        foreach ($complaint->getPhotos() as $path) {
+            $this->images->delete($path, self::PHOTO_DIR);
+        }
+
+        $this->em->remove($complaint);
+        $this->em->flush();
+
+        $this->logger->info('complaint deleted by author', ['complaint_id' => $id]);
+    }
+
+    public function updateText(Complaint $complaint, string $text): void
+    {
+        $complaint->setText($this->trimText($text));
+        $this->em->flush();
+
+        $this->logger->info('complaint text edited', ['complaint_id' => $complaint->getId()]);
+    }
+
     public function burnPhotoToken(Complaint $complaint): void
     {
         $complaint->setPhotoToken(null, null);
