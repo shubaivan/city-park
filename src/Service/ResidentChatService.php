@@ -35,7 +35,7 @@ class ResidentChatService
     public function __construct(
         private TelegramUserRepository $telegramUserRepository,
         private TelegramUserService $telegramUserService,
-        private LoggerInterface $logger,
+        private LoggerInterface $chatLogger,
         private string $residentChatId = '',
         private string $residentChatInviteLink = '',
     ) {}
@@ -88,22 +88,35 @@ class ResidentChatService
         $user = $this->telegramUserRepository->getByTelegramId($telegramId);
         $allowed = $user && $this->mayJoin($user);
 
-        $this->logger->info('resident chat join request', [
+        $this->chatLogger->info('resident chat join request', [
             'telegram_id' => $telegramId,
             'username' => $request->from->username,
             'account_id' => $user?->getAccount()?->getId(),
             'allowed' => $allowed,
         ]);
 
-        if ($allowed) {
-            $bot->approveChatJoinRequest($request->chat->id, $request->from->id);
-            $this->say($bot, $request->user_chat_id, $this->welcomeText($user));
+        try {
+            if ($allowed) {
+                $bot->approveChatJoinRequest($request->chat->id, $request->from->id);
+                $this->say($bot, $request->user_chat_id, $this->welcomeText($user));
+            } else {
+                $this->say($bot, $request->user_chat_id, $this->refusalText());
+                $bot->declineChatJoinRequest($request->chat->id, $request->from->id);
+            }
+        } catch (\Throwable $t) {
+            // Usually "USER_ALREADY_PARTICIPANT" or a request another admin answered first.
+            $this->chatLogger->error('resident chat join request failed: ' . $t->getMessage(), [
+                'telegram_id' => $telegramId,
+                'allowed' => $allowed,
+            ]);
 
             return;
         }
 
-        $this->say($bot, $request->user_chat_id, $this->refusalText());
-        $bot->declineChatJoinRequest($request->chat->id, $request->from->id);
+        $this->chatLogger->info($allowed ? 'resident chat: approved' : 'resident chat: declined', [
+            'telegram_id' => $telegramId,
+            'apartment' => $user?->getAccount()?->getApartmentNumber(),
+        ]);
     }
 
     private function welcomeText(TelegramUser $user): string
@@ -143,7 +156,7 @@ class ResidentChatService
         try {
             $bot->sendMessage(text: $text, chat_id: $chatId, parse_mode: ParseMode::HTML);
         } catch (\Throwable $t) {
-            $this->logger->warning('resident chat notice failed: ' . $t->getMessage(), [
+            $this->chatLogger->warning('resident chat notice failed: ' . $t->getMessage(), [
                 'chat_id' => $chatId,
             ]);
         }
