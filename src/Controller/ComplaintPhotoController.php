@@ -70,6 +70,10 @@ class ComplaintPhotoController extends AbstractController
             return new JsonResponse(['error' => $error ?? 'Не вдалося зберегти.'], Response::HTTP_BAD_REQUEST);
         }
 
+        // Rewrite the message that sent them here, now, rather than waiting for a Готово
+        // that many people never press.
+        $this->complaints->confirmPhotoOnPrompt($complaint);
+
         return new JsonResponse([
             'path' => $path,
             'count' => count($complaint->getPhotos()),

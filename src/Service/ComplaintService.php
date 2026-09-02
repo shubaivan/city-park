@@ -146,6 +146,11 @@ class ComplaintService
         return $token;
     }
 
+    public function savePromptMessageId(Complaint $complaint): void
+    {
+        $this->em->flush();
+    }
+
     public function findByToken(?string $token): ?Complaint
     {
         if ($token === null || $token === '') {
@@ -245,12 +250,68 @@ class ComplaintService
     }
 
     /**
-     * Push the complaint back into the author's chat once they are done with the photo page.
+     * Rewrite the «📷 Фото до заявки» message into a confirmation.
      *
-     * Without this, closing the Web App drops them back onto the message that sent them
-     * there — «відкрийте сторінку» — which reads as if nothing happened, and the photo they
-     * just uploaded is nowhere in sight. Sent as a picture when there is one, because the
-     * whole point of the trip was the picture.
+     * Called on every successful upload, not only when Готово is pressed: the Web App
+     * gives the server no "closed" event, and people dismiss it with the ✕ at least as
+     * often. Editing the prompt in place means whichever way they leave, the message they
+     * come back to already says the photo arrived — no second message, nothing to scroll.
+     *
+     * A text message cannot be edited into a photo, so this stays text and the picture
+     * lives on the card the buttons lead to.
+     *
+     * Never throws: the photo is already saved, and a failed edit must not turn a
+     * successful upload into an error on the page.
+     */
+    public function confirmPhotoOnPrompt(Complaint $complaint): void
+    {
+        $messageId = $complaint->getPhotoPromptMessageId();
+        $chatId = $complaint->getAuthor()?->getChatId();
+
+        if ($messageId === null || $chatId === null || $chatId === '') {
+            return;
+        }
+
+        $count = count($complaint->getPhotos());
+
+        try {
+            $this->bot->editMessageText(
+                text: sprintf(
+                    "✅ <b>Дякуємо, фото додано до заявки №%d</b>\n\n%s\n\n"
+                        . "Фото: <b>%d з %d</b>.\n\n"
+                        . '<i>Можна додати ще — просто відкрийте сторінку знову.</i>',
+                    $complaint->getId(),
+                    htmlspecialchars($this->label($complaint), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                    $count,
+                    Complaint::PHOTOS_MAX,
+                ),
+                chat_id: (int)$chatId,
+                message_id: $messageId,
+                parse_mode: ParseMode::HTML,
+                reply_markup: InlineKeyboardMarkup::make()
+                    ->addRow(InlineKeyboardButton::make(
+                        '🔧 Відкрити заявку',
+                        callback_data: 'cmp:view:' . $complaint->getId(),
+                    ))
+                    ->addRow(
+                        InlineKeyboardButton::make('📌 Мої заявки', callback_data: 'cmp:my:1'),
+                        InlineKeyboardButton::make('🏠 На головну', callback_data: 'main-menu'),
+                    ),
+            );
+        } catch (\Throwable $e) {
+            // Most often "message is not modified" on the second photo of a batch.
+            $this->logger->info('complaint photo prompt edit skipped', [
+                'complaint_id' => $complaint->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Push the complaint into the author's chat as a picture when they finish.
+     *
+     * The prompt above has already been rewritten, so this is the richer version — the
+     * photo itself — and only fires for people who actually press Готово.
      *
      * Never throws: the photos are already saved, and a failed notification must not turn
      * a successful upload into an error on the page.

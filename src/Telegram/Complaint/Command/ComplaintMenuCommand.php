@@ -540,6 +540,16 @@ class ComplaintMenuCommand
                 ->addRow(InlineKeyboardButton::make('⬅️ До заявки', callback_data: 'cmp:view:' . $complaint->getId()))
                 ->addRow(StartCommand::homeButton()),
         );
+
+        // Remember which message carries the link, so the upload can rewrite it into a
+        // confirmation. Captured after respond() because that is what put it on screen —
+        // an edit reuses the current message id, a fresh send makes a new one.
+        $messageId = $bot->messageId();
+
+        if ($messageId !== null) {
+            $complaint->setPhotoPromptMessageId($messageId);
+            $this->service->savePromptMessageId($complaint);
+        }
     }
 
     private function sendPhotoCard(
