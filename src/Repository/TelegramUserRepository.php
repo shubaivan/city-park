@@ -124,6 +124,7 @@ class TelegramUserRepository extends ServiceEntityRepository
                 a.debt,
                 a.area,
                 b.phone_number,
+                b.role,
                 b.additional_phones,
                 b.first_name,
                 b.last_name,
@@ -297,6 +298,7 @@ class TelegramUserRepository extends ServiceEntityRepository
         return $this->createQueryBuilder('tu')
             ->select('
                 tu.id,
+                tu.role,
                 a.id as account_id,
                 a.account_number,
                 a.apartment_number,

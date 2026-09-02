@@ -589,6 +589,9 @@ class AdminController extends AbstractController
         // Appended LAST on purpose: telegram_users.js columnDefs target columns by index
         // (5,6,7,8,10,16), so a new column must not shift those — it goes after `action`.
         $fieldNames[] = 'vote_blocks';
+        // Same rule again: appended after vote_blocks so the indexed columnDefs keep
+        // pointing at the columns they were written for.
+        $fieldNames[] = 'role';
 
         array_map(function ($k) use (&$dataTableColumnData) {
             $dataTableColumnData[] = ['data' => $k];
@@ -635,6 +638,13 @@ class AdminController extends AbstractController
             $reason = $blockReasonResolver->resolve($account);
             $row['block_reason_label'] = $reason['label'] ?? null;
             $row['block_reason_details'] = $reason['details'] ?? null;
+        }
+        unset($row);
+
+        // Show the label, not the enum value: the column is read by the accountant and
+        // the head of the ОСББ, neither of whom should have to translate "tenant".
+        foreach ($dataTable as &$row) {
+            $row['role'] = TelegramUser::ROLES[$row['role'] ?? ''] ?? '—';
         }
         unset($row);
 
@@ -853,6 +863,13 @@ class AdminController extends AbstractController
 
         if (!$currentUser) {
             return $this->json([sprintf('User by id: %s was not found', $request->request->get('user_id'))], Response::HTTP_BAD_REQUEST);
+        }
+
+        // Who this person is to the flat. Sent as a plain field, not inside account[]:
+        // it belongs to the person, not the flat — a tenant and the owner share one
+        // rahunok and must not share one label.
+        if (array_key_exists('role', $params)) {
+            $currentUser->setRole($params['role'] === '' ? null : (string)$params['role']);
         }
 
         $unblockReason = null;
