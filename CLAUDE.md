@@ -72,6 +72,14 @@ Admins open a `BlockVoteCampaign` per candidate via `/admin/block-votes` (by о�
 
 `blocked_until` is a time-box layered on the shared `is_active` flag. Every unblock path (debt recompute/import/web-upload, photo auto-unblock, admin manual unblock) now honours `Account::isUnderVoteBlock()` so a debt payment or photo upload can't lift a still-active vote-block; `BlockVoteService::autoUnblockExpired()` clears the window on expiry but **re-checks debt + open photo block** before restoring access (and admin manual unblock clears the window outright). Audit sources: `community_vote`, `vote_auto_unblock`.
 
+**`/admin/users` lists residents, not bot users.** Anyone who has ever pressed /start has a
+`TelegramUser` row — 274 of them on 02.09.2026 against 172 actually linked to a flat — so
+the table filters to `account IS NOT NULL` by default, in the count query too. The rest are
+reachable through the `⏳ Чекають прив'язки` filter (`status_filter=unlinked`), which is the
+one filter that swaps the set of rows rather than narrowing it. Deliberately a button in the
+existing radio group and not a default-on checkbox: a checkbox that hides rows by default is
+how "why can't I find this person" happens.
+
 `Account.vote_block_count` is a repeat-offender tally — incremented on every *passed* campaign (even if the account was already blocked). Surfaced in the bot voting menu (under the candidate), the block/unblock messages, `/admin/block-votes`, the `/admin/users` table + edit modal, and the `/admin/schedule` table. New DataTable columns are appended **last** because `telegram_users.js`/`schedule.js` `columnDefs` target by index. Editing those JS files means a deploy must run `npx encore production`.
 
 ## Rental listings ("здається квартира")
