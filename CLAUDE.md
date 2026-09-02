@@ -38,7 +38,7 @@ linked residents only, the same call already made for the accountant's number: a
 visitor browsing 🔑 Оренда is not owed the officers' phones.
 | (auto) photo upload | `onPhoto` event | — | `UploadPhotoCommand` |
 
-**Slash menu must be pushed via `bin/console bot:menu:update --env=prod` after editing `BotMenuUpdateCommand::MENU`.** Its array order is what Telegram renders, and it is kept in sync with the inline menu in `StartCommand::mainMenuMarkup()` — 🔑 Оренда is first in both (residents were not finding it at the bottom). Nutgram's `setMyCommands()` has a null-scope bug; the command uses raw `sendRequest()` instead.
+**Slash menu must be pushed via `bin/console bot:menu:update --env=prod` after editing `BotMenuUpdateCommand::MENU`.** It is registered for **private chats only** (`scope: all_private_chats`), and the command also clears the default scope — registered without a scope the commands show in the residents' group too, where a tap does nothing because the global middleware drops group updates. Setting the private scope does not empty the default one; both calls are needed. Its array order is what Telegram renders, and it is kept in sync with the inline menu in `StartCommand::mainMenuMarkup()` — 🔑 Оренда is first in both (residents were not finding it at the bottom). Nutgram's `setMyCommands()` has a null-scope bug; the command uses raw `sendRequest()` instead.
 
 ## Photo-obligation lifecycle
 
