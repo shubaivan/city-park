@@ -98,6 +98,18 @@ class Complaint
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?\DateTimeImmutable $photo_token_expires_at = null;
 
+    /**
+     * The «📷 Фото до заявки» message the bot sent to hand over the upload link.
+     *
+     * Kept so that message can be rewritten into a confirmation the moment a photo lands.
+     * The Web App gives the server no "the user closed me" event — people dismiss it with
+     * the ✕ as often as with the Готово button — so a confirmation that depends on Готово
+     * being pressed simply does not arrive, and the resident returns to the chat facing
+     * the same "відкрийте сторінку" message as if nothing had happened.
+     */
+    #[ORM\Column(nullable: true)]
+    private ?int $photo_prompt_message_id = null;
+
     #[ORM\Column(type: 'datetime_immutable')]
     private \DateTimeImmutable $created_at;
 
@@ -217,6 +229,18 @@ class Complaint
     public function getPhotoTokenExpiresAt(): ?\DateTimeImmutable
     {
         return $this->photo_token_expires_at;
+    }
+
+    public function getPhotoPromptMessageId(): ?int
+    {
+        return $this->photo_prompt_message_id;
+    }
+
+    public function setPhotoPromptMessageId(?int $messageId): static
+    {
+        $this->photo_prompt_message_id = $messageId;
+
+        return $this;
     }
 
     public function getCreatedAt(): \DateTimeImmutable

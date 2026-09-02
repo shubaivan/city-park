@@ -177,8 +177,13 @@ the whole house sees every entry and why the open count rides on the menu button
   `cmp:page:<n>`), shown only to somebody who has actually filed something — an empty
   "Мої" is a dead end. Finishing on the photo page pushes the complaint back into the
   author's chat (`notifyPhotosUpdated()`) with buttons to the card, the list and the main
-  menu: closing the Web App otherwise drops them onto the «відкрийте сторінку» message
-  that sent them there, which reads as if nothing happened.
+  menu. **The «📷 Фото до заявки» prompt is also rewritten in place on every upload**
+  (`confirmPhotoOnPrompt()`, using `Complaint.photo_prompt_message_id`) — the Web App gives
+  the server no "closed" event and people dismiss it with the ✕ at least as often as with
+  Готово, so anything that waits for that button simply never arrives and they return to
+  the message that sent them there as if nothing had happened. A text message cannot be
+  edited into a photo, so the prompt becomes a text confirmation and the picture lives on
+  the card its buttons lead to.
 - **Filing is one step.** The person doing it is standing in front of a broken lift, and
   every extra question is a reason to close the bot and write in the chat instead. Photos
   are offered *after* the complaint is saved, so giving up at that point still leaves the
