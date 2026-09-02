@@ -6,6 +6,7 @@ use App\Entity\Account;
 use App\Entity\Complaint;
 use App\Entity\TelegramUser;
 use App\Repository\ComplaintRepository;
+use App\Repository\TelegramUserRepository;
 use App\Service\ComplaintService;
 use App\Service\ImageStore;
 use App\Service\ResidentChatService;
@@ -32,6 +33,7 @@ class ComplaintRulesTest extends TestCase
             new NullLogger(),
             $this->createMock(Nutgram::class),
             $this->residentChat(),
+            $this->createMock(TelegramUserRepository::class),
             $managerIds,
         );
     }

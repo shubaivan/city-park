@@ -184,15 +184,21 @@ the whole house sees every entry and why the open count rides on the menu button
   the message that sent them there as if nothing had happened. A text message cannot be
   edited into a photo, so the prompt becomes a text confirmation and the picture lives on
   the card its buttons lead to.
+- **Filing announces itself.** The residents' chat gets «🆕 Нова заявка №N · буд. 19, кв. 85»
+  **with a notification** — "ліфт не працює" is the one thing a neighbour wants to know
+  before they walk to the lift — and every configured manager gets a DM with a button
+  straight to the card, because a register the head of the ОСББ has to remember to open is
+  a register that fills up. **Group posts carry no inline buttons and cannot**: the global
+  middleware drops every update arriving from a group, so a callback there never reaches a
+  handler.
 - **A status change reaches two audiences, from inside `changeStatus()`.** The author gets
   a DM showing the transition («🆕 Нова → 🔧 В роботі» — the new state alone does not say
   whether it moved a minute ago or has read that way for a week), and the residents' chat
   gets a silent post, so a repair the ОСББ actually did is not indistinguishable from no
   repair. Both live in the service, not the bot handler: while they were in the handler, a
-  status moved from `/admin/complaints` told nobody at all. The chat post carries no
-  apartment number — the register is public inside the bot, but a status update does not
-  need to name the neighbour who reported it — and `disable_notification: true` keeps it
-  out of 140 people's push notifications.
+  status moved from `/admin/complaints` told nobody at all. Silent on purpose —
+  `disable_notification: true` — since progress can wait until the chat is next opened,
+  unlike the arrival of the problem itself.
 - **Filing is one step.** The person doing it is standing in front of a broken lift, and
   every extra question is a reason to close the bot and write in the chat instead. Photos
   are offered *after* the complaint is saved, so giving up at that point still leaves the
