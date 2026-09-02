@@ -100,18 +100,35 @@ class ComplaintMenuCommand
             return;
         }
 
+        if (str_starts_with($data, 'cmp:my:')) {
+            $this->renderMenu($bot, edit: true, page: (int)substr($data, strlen('cmp:my:')), mineOnly: true);
+
+            return;
+        }
+
         $this->renderMenu($bot, edit: $bot->isCallbackQuery());
     }
 
-    private function renderMenu(Nutgram $bot, bool $edit, ?string $notice = null, int $page = 1): void
-    {
+    private function renderMenu(
+        Nutgram $bot,
+        bool $edit,
+        ?string $notice = null,
+        int $page = 1,
+        bool $mineOnly = false,
+    ): void {
         $account = $this->currentAccount($bot);
-        $total = $this->complaints->countAll();
-        $open = $this->complaints->countOpen();
+
+        // "Мої" without an account would silently mean "everything" — fall back to the
+        // full list rather than show a personal view that is not personal.
+        $mineOnly = $mineOnly && $account instanceof Account;
+        $filter = $mineOnly ? $account : null;
+
+        $total = $this->complaints->countAll($filter);
+        $open = $this->complaints->countOpen($filter);
 
         $page = max(1, $page);
         $offset = ($page - 1) * ComplaintService::PAGE_SIZE;
-        $items = $this->complaints->findForList(ComplaintService::PAGE_SIZE, $offset);
+        $items = $this->complaints->findForList(ComplaintService::PAGE_SIZE, $offset, $filter);
 
         $lines = [];
 
@@ -120,12 +137,16 @@ class ComplaintMenuCommand
             $lines[] = '';
         }
 
-        $lines[] = '🔧 <b>Заявки та скарги</b>';
-        $lines[] = '<i>Що в будинку зламалось і що з цим робиться.</i>';
+        $lines[] = $mineOnly ? '📌 <b>Мої заявки</b>' : '🔧 <b>Заявки та скарги</b>';
+        $lines[] = $mineOnly
+            ? '<i>Те, про що повідомили ви.</i>'
+            : '<i>Що в будинку зламалось і що з цим робиться.</i>';
         $lines[] = '';
 
         if ($total === 0) {
-            $lines[] = 'Поки що жодної заявки. Якщо щось не працює — напишіть, і це побачать усі мешканці та голова ОСББ.';
+            $lines[] = $mineOnly
+                ? 'Ви ще не подавали заявок.'
+                : 'Поки що жодної заявки. Якщо щось не працює — напишіть, і це побачать усі мешканці та голова ОСББ.';
         } else {
             $lines[] = sprintf('Відкритих: <b>%d</b> · усього: %d', $open, $total);
             $lines[] = '';
@@ -141,7 +162,16 @@ class ComplaintMenuCommand
             ));
         }
 
-        $this->addPagination($markup, $page, $total);
+        $this->addPagination($markup, $page, $total, $mineOnly);
+
+        // The toggle only appears for someone who has an account to filter by, and only
+        // once they have actually filed something — an empty "Мої" is a dead end.
+        if ($account instanceof Account && ($mineOnly || $this->complaints->countAll($account) > 0)) {
+            $markup->addRow(InlineKeyboardButton::make(
+                $mineOnly ? '📋 Усі заявки' : '📌 Мої заявки',
+                callback_data: $mineOnly ? 'cmp:page:1' : 'cmp:my:1',
+            ));
+        }
 
         // The report button sits under the list, not above it: somebody who came to check
         // whether the lift is already reported should read the list first. That is the
@@ -158,7 +188,7 @@ class ComplaintMenuCommand
         $this->respond($bot, $edit, implode("\n", $lines), $markup);
     }
 
-    private function addPagination(InlineKeyboardMarkup $markup, int $page, int $total): void
+    private function addPagination(InlineKeyboardMarkup $markup, int $page, int $total, bool $mineOnly): void
     {
         $pages = (int)ceil($total / ComplaintService::PAGE_SIZE);
 
@@ -166,16 +196,17 @@ class ComplaintMenuCommand
             return;
         }
 
+        $prefix = $mineOnly ? 'cmp:my:' : 'cmp:page:';
         $row = [];
 
         if ($page > 1) {
-            $row[] = InlineKeyboardButton::make('⬅️', callback_data: 'cmp:page:' . ($page - 1));
+            $row[] = InlineKeyboardButton::make('⬅️', callback_data: $prefix . ($page - 1));
         }
 
         $row[] = InlineKeyboardButton::make(sprintf('%d/%d', $page, $pages), callback_data: self::NOOP_CALLBACK);
 
         if ($page < $pages) {
-            $row[] = InlineKeyboardButton::make('➡️', callback_data: 'cmp:page:' . ($page + 1));
+            $row[] = InlineKeyboardButton::make('➡️', callback_data: $prefix . ($page + 1));
         }
 
         $markup->addRow(...$row);

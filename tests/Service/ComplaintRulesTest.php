@@ -11,6 +11,7 @@ use App\Service\ImageStore;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use SergiX44\Nutgram\Nutgram;
 
 /**
  * Who may report a house problem, and who may say it is fixed.
@@ -28,6 +29,7 @@ class ComplaintRulesTest extends TestCase
             $this->createMock(ImageStore::class),
             $this->createMock(EntityManagerInterface::class),
             new NullLogger(),
+            $this->createMock(Nutgram::class),
             $managerIds,
         );
     }
