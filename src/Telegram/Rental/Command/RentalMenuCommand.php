@@ -161,8 +161,11 @@ class RentalMenuCommand
 
             $lines[] = 'Оберіть квартиру, щоб побачити деталі та контакт.';
 
+            $anyPhotos = false;
+
             foreach ($shown as $listing) {
                 $own = $mine && $listing->getId() === $mine->getId();
+                $anyPhotos = $anyPhotos || $listing->hasPhotos();
 
                 $markup->addRow(InlineKeyboardButton::make(
                     $this->rentalService->buttonLabel($listing, $own),
@@ -170,9 +173,22 @@ class RentalMenuCommand
                 ));
             }
 
+            // Written as sentences, not as a "📌 — ..." glossary: a dash after an emoji
+            // reads as part of the button label above it rather than as an explanation
+            // of the badge.
+            $legend = [];
+
             if ($mine) {
+                $legend[] = '<i>Ваше оголошення позначене 📌.</i>';
+            }
+
+            if ($anyPhotos) {
+                $legend[] = '<i>Оголошення з фото позначені 📷.</i>';
+            }
+
+            if ($legend) {
                 $lines[] = '';
-                $lines[] = '<i>📌 — ваше оголошення.</i>';
+                $lines = array_merge($lines, $legend);
             }
 
             if ($pages > 1) {
