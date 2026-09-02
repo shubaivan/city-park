@@ -139,6 +139,22 @@ class TelegramUserRepository extends ServiceEntityRepository
         $bindParams = [];
         $condition = ' WHERE ';
         $conditions = [];
+
+        // Anyone who has ever pressed /start has a TelegramUser row — 274 of them by
+        // 02.09.2026, against 172 people actually linked to a flat. The rest are
+        // neighbours the accountant has not added yet, and strangers who were forwarded
+        // the bot's link; on the admin table they show as rows with no о/р, no address
+        // and a red "Заблокований", which reads as "who are these people?".
+        //
+        // So the table is a list of RESIDENTS by default, and the unlinked are a filter
+        // you ask for. Applied to the count query too — otherwise the pager promises
+        // hundreds of rows the table will never show.
+        if (($params['status_filter'] ?? null) === 'unlinked') {
+            $conditions[] = 'a.id IS NULL';
+        } else {
+            $conditions[] = 'a.id IS NOT NULL';
+        }
+
         if ($parameterBag->get('search') && !$total) {
             $or[] = 'ILIKE(b.username, :var_search) = TRUE';
             $or[] = 'ILIKE(b.first_name, :var_search) = TRUE';
@@ -160,6 +176,10 @@ class TelegramUserRepository extends ServiceEntityRepository
         // debt / photo_blocked / debt_blocked / blocked.
         if (!$total && !empty($params['status_filter']) && $params['status_filter'] !== 'all') {
             switch ($params['status_filter']) {
+                case 'unlinked':
+                    // Already handled above, before the search block: it is the one filter
+                    // that changes which rows exist at all rather than narrowing them.
+                    break;
                 case 'debt':
                     $conditions[] = 'a.debt > 0';
                     break;

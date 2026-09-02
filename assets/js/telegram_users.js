@@ -186,12 +186,18 @@ document.addEventListener("DOMContentLoaded", function () {
         { value: 'photo_blocked', label: '📸 Заблоковані за фото',  idleClass: 'btn-outline-danger',    activeClass: 'btn-danger' },
         { value: 'debt_blocked',  label: '💸 Заблоковані за борг',  idleClass: 'btn-outline-dark',      activeClass: 'btn-dark' },
         { value: 'blocked',       label: '🚫 Усі заблоковані',      idleClass: 'btn-outline-secondary', activeClass: 'btn-secondary' },
+        // The odd one out: every other button narrows the list of residents, this one
+        // swaps it for the people who are NOT residents yet — those who opened the bot
+        // and whose phone matched nothing in the registry. They are hidden by default
+        // (see TelegramUserRepository::getDataTablesData) because otherwise the table
+        // reads as "who are all these people with no flat?".
+        { value: 'unlinked',      label: '⏳ Чекають прив’язки',    idleClass: 'btn-outline-info',      activeClass: 'btn-info' },
     ];
 
     var $filterLabel = $('<span/>', {
         'class': 'ml-3 mb-2 text-muted',
         'style': 'font-size:0.9em;align-self:center;',
-        'text': 'Фільтр:'
+        'text': 'Мешканці · фільтр:'
     });
     filterContainer.append($filterLabel);
 
