@@ -6,6 +6,7 @@ use App\Entity\Account;
 use App\Entity\Complaint;
 use App\Entity\TelegramUser;
 use App\Repository\ComplaintRepository;
+use App\Repository\TelegramUserRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
@@ -41,6 +42,7 @@ class ComplaintService
         private LoggerInterface $logger,
         private Nutgram $bot,
         private ResidentChatService $residentChat,
+        private TelegramUserRepository $telegramUsers,
         private string $managerIds = '',
     ) {}
 
@@ -90,6 +92,9 @@ class ComplaintService
             'apartment' => $account->getApartmentNumber(),
         ]);
 
+        $this->announceNew($complaint);
+        $this->notifyManagers($complaint);
+
         return $complaint;
     }
 
@@ -127,6 +132,110 @@ class ComplaintService
 
         $this->notifyAuthor($complaint, $from, $actor);
         $this->announceToChat($complaint, $from);
+    }
+
+    /**
+     * The house hears that something was reported.
+     *
+     * Not silenced, unlike a status update: "ліфт не працює" is the one thing a neighbour
+     * genuinely wants to know *now*, before they walk to the lift. Progress on it can wait
+     * until they next open the chat.
+     *
+     * No inline buttons here, and there cannot be any: the global middleware in
+     * config/telegram.php drops every update that arrives from a group, so a callback
+     * button posted in the chat would simply never reach a handler.
+     */
+    private function announceNew(Complaint $complaint): void
+    {
+        if (!$this->residentChat->isConfigured()) {
+            return;
+        }
+
+        try {
+            $this->bot->sendMessage(
+                text: sprintf(
+                    "🆕 <b>Нова заявка №%d</b> · %s\n\n%s\n\n"
+                        . '<i>Стежити за нею — у боті, «🔧 Заявки».</i>',
+                    $complaint->getId(),
+                    $this->where($complaint),
+                    htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                ),
+                chat_id: (int)$this->residentChat->chatId(),
+                parse_mode: ParseMode::HTML,
+            );
+        } catch (\Throwable $e) {
+            $this->logger->warning('new complaint chat announcement failed', [
+                'complaint_id' => $complaint->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * And the head of the ОСББ hears it personally.
+     *
+     * She is the only person who can move a status, so a register she has to remember to
+     * open is a register that fills up. Skipped when she is the one who filed it.
+     */
+    private function notifyManagers(Complaint $complaint): void
+    {
+        foreach ($this->managerTelegramIds() as $telegramId) {
+            $manager = $this->telegramUsers->getByTelegramId($telegramId);
+            $chatId = $manager?->getChatId();
+
+            if ($chatId === null || $chatId === '') {
+                continue;
+            }
+
+            if ($manager->getId() === $complaint->getAuthor()?->getId()) {
+                continue;
+            }
+
+            try {
+                $this->bot->sendMessage(
+                    text: sprintf(
+                        "🆕 <b>Нова заявка №%d</b>\n\n%s\n\nВід: %s",
+                        $complaint->getId(),
+                        htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                        $this->where($complaint),
+                    ),
+                    chat_id: (int)$chatId,
+                    parse_mode: ParseMode::HTML,
+                    reply_markup: InlineKeyboardMarkup::make()->addRow(
+                        InlineKeyboardButton::make(
+                            '🔧 Відкрити заявку',
+                            callback_data: 'cmp:view:' . $complaint->getId(),
+                        ),
+                    ),
+                );
+            } catch (\Throwable $e) {
+                $this->logger->warning('new complaint manager notify failed', [
+                    'complaint_id' => $complaint->getId(),
+                    'telegram_id' => $telegramId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /** "буд. 19, кв. 85" — the building matters, apartment numbers repeat across the five. */
+    private function where(Complaint $complaint): string
+    {
+        $account = $complaint->getAccount();
+        $apartment = trim((string)$account?->getApartmentNumber());
+        $house = trim((string)$account?->getHouseNumber());
+
+        if ($apartment === '') {
+            return 'мешканець';
+        }
+
+        $unit = preg_match('/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/u', $apartment) === 1
+            ? 'кв. ' . htmlspecialchars($apartment, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            : htmlspecialchars($apartment, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        return $house === ''
+            ? $unit
+            : sprintf('буд. %s, %s', htmlspecialchars($house, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), $unit);
     }
 
     /**
@@ -183,8 +292,12 @@ class ComplaintService
      *
      * A repair nobody is told about is, from the outside, indistinguishable from no repair
      * — which is how the ОСББ ends up doing the work and still being asked when somebody
-     * will finally fix the lift. No apartment number: the register is public inside the
-     * bot, but a status update does not need to name the neighbour who reported it.
+     * will finally fix the lift. Carries the flat, like the "нова заявка" post: it is
+     * already on the card inside the bot, and having it in the chat is what lets anyone
+     * see at a glance which parts of the house generate the work.
+     *
+     * Silent, unlike the "нова заявка" post — a new problem is news you want now, progress
+     * on it can wait until the chat is next opened.
      */
     private function announceToChat(Complaint $complaint, string $from): void
     {
@@ -193,9 +306,10 @@ class ComplaintService
         }
 
         $text = sprintf(
-            "%s <b>Заявка №%d</b>\n\n%s\n\n%s → <b>%s</b>",
+            "%s <b>Заявка №%d</b> · %s\n\n%s\n\n%s → <b>%s</b>",
             $complaint->isDone() ? '✅' : '🔧',
             $complaint->getId(),
+            $this->where($complaint),
             htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
             $this->statusLabel($from),
             $this->statusLabel($complaint->getStatus()),
