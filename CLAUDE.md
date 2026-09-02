@@ -78,6 +78,38 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
 
 Admin: `/admin/rentals` lists everything with a take-down button (status `blocked`, stamped with the admin login). Debt is shown for context only.
 
+## Debtors' board («дошка пошани»)
+
+The house's total debt plus the three largest debtors, rendered above the main menu on
+every `/start` / «🏠 На головну», with `💸 Звіт боржників` opening the full list. Asked
+for by the head of the ОСББ as social pressure towards paying, in the joke register of a
+podium (🥇🥈🥉👑) — that framing is deliberate, not decoration to be tidied away.
+
+All the judgement is in `DebtBoardService`; `StartCommand::debtBlock()` and
+`DebtBoardCommand` are only the Telegram halves. Three rules keep it defensible:
+
+- **Verified residents only.** The viewer's `Account` is resolved by the caller and passed
+  in; `menuBlock(null)` is `''` and `report(null)` explains `/phone`. Someone who opened
+  the bot through 🔑 Оренда to browse flats is not part of the house and sees neither the
+  board nor the button. (This is the opposite call to the rental noticeboard, and on
+  purpose: an advertisement wants readers, a debt list does not.)
+- **Never published without a date, and silent once stale.** `Account.debt_updated_at` is
+  stamped inside `setDebt()` — not at the call sites, because there are four of them
+  (`debt:import-file` and `/admin/debt/upload`, each with a main loop and a not-in-file
+  reset loop) and a forgotten stamp is a silent lie on a public board. Every render carries
+  «станом на …», and past `DebtBoardService::STALE_AFTER_DAYS` (30) the board hides itself
+  rather than naming somebody over numbers nobody can vouch for. Debts only move when the
+  accountant uploads a file; there is no live feed.
+- **`place()` must always print the building.** The ЖК is five buildings on one street
+  (Козацька 17, 19, 21, 23, 27) and apartment numbers repeat across them — when this
+  shipped, "кв. 76" was one household owing 5 402 грн and another owing 651. Apartment
+  alone accuses both of the larger debt. Regression test in `tests/Service/DebtBoardRulesTest`.
+
+Apartment + building and nothing else: no names, no phone numbers. `is_active` is not
+consulted — this is about the debt, not about booking rights. The viewer's own line
+(«📌 Ваша квартира у списку: … , N місце» / «✅ боргів не має») is the half that makes it
+readable by the 86 residents who owe nothing.
+
 ## Residents' Telegram group («ЖК City Park • Черкаси»)
 
 A closed group whose door is the bot. The house already had the only verified list of

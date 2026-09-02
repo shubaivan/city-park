@@ -3,8 +3,10 @@
 namespace App\Telegram\Start\Command;
 
 use App\Entity\Account;
+use App\Service\DebtBoardService;
 use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
+use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\ResidentChat\Command\ResidentChatCommand;
 use SergiX44\Nutgram\Handlers\Type\Command;
 use SergiX44\Nutgram\Nutgram;
@@ -33,8 +35,12 @@ class StartCommand extends Command
 
     public static function send(Nutgram $bot, bool $edit = false): void
     {
-        $text = self::header($bot) . 'Оберіть:';
-        $markup = self::mainMenuMarkup($bot);
+        // Resolved once and passed down: the header, the debtors' board and the menu
+        // all need it, and each lookup is a DB round-trip on every menu render.
+        $account = self::currentAccount($bot);
+
+        $text = self::header($account) . self::debtBlock($bot, $account) . 'Оберіть:';
+        $markup = self::mainMenuMarkup($bot, $account);
 
         if ($edit) {
             try {
@@ -58,10 +64,8 @@ class StartCommand extends Command
      * Renders nothing when the account can't be resolved (unconfirmed phone, or a
      * family member not yet linked) so the menu never breaks.
      */
-    private static function header(Nutgram $bot): string
+    private static function header(?Account $account): string
     {
-        $account = self::currentAccount($bot);
-
         if (!$account instanceof Account || !$account->getAccountNumber()) {
             return '';
         }
@@ -94,6 +98,36 @@ class StartCommand extends Command
      * is therefore declared public in config/services.yaml so the delegated Symfony
      * container hands back the same shared instance RequestSubscriber init'd.
      */
+    /**
+     * The house's total debt and the three largest debtors, above the menu.
+     *
+     * Asked for by the head of the ОСББ as a nudge towards paying: the total is there so
+     * every resident knows what the house is short of, and the top three are named by
+     * apartment — no names, no phone numbers. Verified residents only, and the service
+     * itself falls silent when the figures are too old to stand behind.
+     *
+     * Wrapped in a catch-all for the same reason header() is: a debtors' board is a
+     * decoration on the menu, and no decoration may ever stop /start from rendering.
+     */
+    private static function debtBlock(Nutgram $bot, ?Account $account): string
+    {
+        if (!$account instanceof Account) {
+            return '';
+        }
+
+        try {
+            $board = $bot->getContainer()->get(DebtBoardService::class);
+
+            if (!$board instanceof DebtBoardService) {
+                return '';
+            }
+
+            return $board->menuBlock($account);
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
     private static function currentAccount(Nutgram $bot): ?Account
     {
         try {
@@ -127,7 +161,7 @@ class StartCommand extends Command
         return InlineKeyboardButton::make('🏠 На головну', callback_data: self::MAIN_MENU_CALLBACK);
     }
 
-    private static function mainMenuMarkup(Nutgram $bot): InlineKeyboardMarkup
+    private static function mainMenuMarkup(Nutgram $bot, ?Account $account = null): InlineKeyboardMarkup
     {
         $markup = InlineKeyboardMarkup::make()
             // Оренда sits first on purpose: it is the newest section and residents were
@@ -165,6 +199,19 @@ class StartCommand extends Command
                 InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'),
                 InlineKeyboardButton::make('🗳️ Голосування', callback_data: 'voting-menu'),
             );
+
+        // Last row, and only for a verified resident: the full debtors' list is
+        // house-internal, and somebody who opened the bot to browse 🔑 Оренда is not
+        // part of the house. Shown even when the board above is hidden as stale — the
+        // report then explains the silence instead of leaving a dead button.
+        if ($account instanceof Account) {
+            $markup->addRow(
+                InlineKeyboardButton::make(
+                    '💸 Звіт боржників',
+                    callback_data: DebtBoardCommand::MENU_CALLBACK,
+                ),
+            );
+        }
 
         return $markup;
     }
