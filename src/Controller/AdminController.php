@@ -3,11 +3,13 @@
 namespace App\Controller;
 
 use App\Entity\Account;
+use App\Entity\Complaint;
 use App\Entity\AccountStatusLog;
 use App\Entity\RentalListing;
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
+use App\Repository\ComplaintRepository;
 use App\Repository\AccountStatusLogRepository;
 use App\Repository\PavilionPhotoRepository;
 use App\Repository\PhotoUploadRequestRepository;
@@ -22,6 +24,7 @@ use App\Service\AccountStatusAuditor;
 use App\Service\BlockReasonResolver;
 use App\Service\BlockVoteService;
 use App\Service\DebtAnnouncer;
+use App\Service\ComplaintService;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
 use App\Service\RentalListingService;
@@ -247,6 +250,44 @@ class AdminController extends AbstractController
     #############
     # Rental listings ("здається квартира")
     #############
+
+    #[Route('/admin/complaints', name: 'app_admin_complaints', methods: [Request::METHOD_GET])]
+    public function complaints(ComplaintRepository $complaints): Response
+    {
+        return $this->render('admin/complaints.html.twig', [
+            'complaints' => $complaints->findAllNewestFirst(),
+        ]);
+    }
+
+    /**
+     * The desktop half of what the head of the ОСББ can also do from the bot card.
+     *
+     * The bot is where a status actually gets moved — she is on a phone, standing next to
+     * the thing that broke. This exists for the review pass: a table of everything, and a
+     * place to type "що зробили", which is awkward on a phone keyboard.
+     */
+    #[Route('/admin/complaints/status', name: 'app_admin_complaint_status', methods: [Request::METHOD_POST])]
+    public function complaintStatus(
+        Request $request,
+        ComplaintRepository $complaints,
+        ComplaintService $complaintService,
+    ): Response {
+        $complaint = $complaints->find((int)$request->request->get('id'));
+        $status = (string)$request->request->get('status');
+
+        if ($complaint instanceof Complaint && in_array($status, Complaint::STATUSES, true)) {
+            $resolution = trim((string)$request->request->get('resolution'));
+            $complaint->setResolution($resolution !== '' ? $resolution : null);
+
+            $complaintService->changeStatus(
+                $complaint,
+                $status,
+                (string)$this->getUser()?->getUserIdentifier(),
+            );
+        }
+
+        return $this->redirectToRoute('app_admin_complaints');
+    }
 
     #[Route('/admin/rentals', name: 'app_admin_rentals', methods: [Request::METHOD_GET])]
     public function rentals(RentalListingRepository $listingRepository, DebtPolicy $debtPolicy): Response

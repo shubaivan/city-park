@@ -21,6 +21,7 @@ class BotMenuUpdateCommand extends Command
     private const MENU = [
         ['rent', '🔑 Оренда квартир'],
         ['chat', '🏘 Чат мешканців'],
+        ['problem', '🔧 Заявки та скарги'],
         ['start', 'Головне меню'],
         ['schedule', '📅 Бронювання альтанки'],
         ['history', '📜 Історія бронювань'],

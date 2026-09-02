@@ -19,6 +19,9 @@ services:
             $pavilion2PhotoFileId: '%env(string:PAVILION2_PHOTO_FILE_ID)%'
             $residentChatId: '%env(string:RESIDENT_CHAT_ID)%'
             $residentChatInviteLink: '%env(string:RESIDENT_CHAT_INVITE_LINK)%'
+            # Telegram ids allowed to move a complaint's status — the head of the ОСББ.
+            # One or two people who change about never, so this is config, not a column.
+            $managerIds: '%env(string:COMPLAINT_MANAGER_TELEGRAM_IDS)%'
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name
@@ -52,6 +55,16 @@ services:
     # Same reason again: StartCommand renders the debtors' board on every menu draw and
     # can only reach it through the bot container, which exposes public services only.
     App\Service\DebtBoardService:
+        public: true
+
+    # Same reason: the main menu shows the head of the ОСББ and the open-complaint count,
+    # and StartCommand can only reach services the bot container exposes.
+    App\Service\ComplaintService:
+        public: true
+
+    # The menu button carries the open-complaint count, and StartCommand's static helpers
+    # can only reach services the bot container exposes.
+    App\Repository\ComplaintRepository:
         public: true
 
     # Nutgram handlers
