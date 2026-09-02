@@ -64,6 +64,20 @@ class TelegramUser
     #[NotBlank]
     #[ORM\ManyToOne(targetEntity: Account::class, inversedBy: 'users')]
     #[ORM\JoinColumn(name: 'account_id', referencedColumnName: 'id')]
+    /**
+     * How this person relates to the flat: owner, family member, or tenant.
+     *
+     * The bot cannot work this out and never could — it holds no owner names, only a flat
+     * and a phone. It is set by the accountant, who is told it in plain words («у мене
+     * орендатори», «я орендар») and until now had nowhere to write it down.
+     *
+     * NULL means nobody has said, and that is deliberately distinct from "власник":
+     * guessing would put a confident wrong label on most rows and make the field useless
+     * for the one thing it is for — knowing who actually lives behind each door.
+     */
+    #[ORM\Column(length: 16, nullable: true)]
+    private ?string $role = null;
+
     private ?Account $account = null;
 
     public function __construct()
@@ -181,6 +195,33 @@ class TelegramUser
         $this->additional_phones = $additional_phones ?: [];
 
         return $this;
+    }
+
+    public const ROLE_OWNER = 'owner';
+    public const ROLE_FAMILY = 'family';
+    public const ROLE_TENANT = 'tenant';
+
+    public const ROLES = [
+        self::ROLE_OWNER => 'Власник',
+        self::ROLE_FAMILY => 'Член сім\'ї',
+        self::ROLE_TENANT => 'Орендар',
+    ];
+
+    public function getRole(): ?string
+    {
+        return $this->role;
+    }
+
+    public function setRole(?string $role): static
+    {
+        $this->role = isset(self::ROLES[(string)$role]) ? (string)$role : null;
+
+        return $this;
+    }
+
+    public function getRoleLabel(): string
+    {
+        return self::ROLES[$this->role] ?? 'Не вказано';
     }
 
     public function getAccount(): ?Account

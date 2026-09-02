@@ -49,6 +49,20 @@
                                the user to another rahunok instead of renaming the current one. #}
                             <small id="account_reassign_hint" class="form-text text-warning" style="display:none"></small>
                         </div>
+                        {# Set by the accountant from what the resident tells her («у мене
+                           орендатори», «я орендар»); the bot has no way to know it. #}
+                        <div class="form-group">
+                            <label for="resident_role" class="col-form-label">Хто це для квартири</label>
+                            <select id="resident_role" class="form-control" name="role">
+                                <option value="">— не вказано —</option>
+                                <option value="owner">Власник</option>
+                                <option value="family">Член сім'ї</option>
+                                <option value="tenant">Орендар</option>
+                            </select>
+                            <small class="form-text text-muted">
+                                Ставиться вручну: бот цього не знає — у нього є лише квартира й телефон.
+                            </small>
+                        </div>
                         <div class="form-group">
                             <label for="apartment_number" class="col-form-label">Номер квартири</label>
                             <input type="text" id="apartment_number" class="form-control" name="account[apartment_number]"/>

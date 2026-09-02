@@ -310,6 +310,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     form.find('#house_number').val(data.house_number)
                     form.find('#street').val(data.street)
                     form.find('#area').val(data.area || '')
+                    form.find('#resident_role').val(data.role || '')
                     form.find('#is_active').prop('checked', data.is_active)
 
                     // How many times the community has voted to block this account.
