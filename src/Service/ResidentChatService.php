@@ -6,6 +6,7 @@ use App\Entity\TelegramUser;
 use App\Repository\TelegramUserRepository;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Properties\ChatMemberStatus;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Chat\ChatJoinRequest;
 
@@ -77,6 +78,45 @@ class ResidentChatService
      * for 24 hours — but only until the request is processed. Declining first and
      * writing afterwards loses the message, so the text goes out before the decline.
      */
+    /**
+     * Is this resident already inside the group?
+     *
+     * Asked at menu-render time so somebody who is already a member is not offered a
+     * door they are standing behind. Returns null when Telegram could not be asked —
+     * the caller then falls back to the ordinary invitation, because showing the door to
+     * a member is a much smaller mistake than hiding it from someone who needs it.
+     *
+     * RESTRICTED is a member only when is_member is true: a restricted user who left is
+     * still reported with that status.
+     */
+    public function isMember(Nutgram $bot, TelegramUser $user): ?bool
+    {
+        if (!$this->isConfigured() || !$user->getTelegramId()) {
+            return null;
+        }
+
+        try {
+            $member = $bot->getChatMember((int)$this->residentChatId, (int)$user->getTelegramId());
+        } catch (\Throwable $t) {
+            $this->chatLogger->info('resident chat membership check failed: ' . $t->getMessage(), [
+                'telegram_id' => $user->getTelegramId(),
+            ]);
+
+            return null;
+        }
+
+        $status = $member?->status;
+        $status = $status instanceof ChatMemberStatus ? $status : ChatMemberStatus::tryFrom((string)$status);
+
+        return match ($status) {
+            ChatMemberStatus::CREATOR,
+            ChatMemberStatus::ADMINISTRATOR,
+            ChatMemberStatus::MEMBER => true,
+            ChatMemberStatus::RESTRICTED => (bool)($member->is_member ?? false),
+            default => false,
+        };
+    }
+
     public function handleJoinRequest(Nutgram $bot, ChatJoinRequest $request): void
     {
         $telegramId = (string)$request->from->id;

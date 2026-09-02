@@ -8,6 +8,15 @@ use App\Repository\TelegramUserRepository;
 use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
 use PHPUnit\Framework\TestCase;
+use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Properties\ChatMemberStatus;
+use SergiX44\Nutgram\Telegram\Types\Chat\ChatMember;
+use SergiX44\Nutgram\Telegram\Types\Chat\ChatMemberAdministrator;
+use SergiX44\Nutgram\Telegram\Types\Chat\ChatMemberBanned;
+use SergiX44\Nutgram\Telegram\Types\Chat\ChatMemberLeft;
+use SergiX44\Nutgram\Telegram\Types\Chat\ChatMemberMember;
+use SergiX44\Nutgram\Telegram\Types\Chat\ChatMemberOwner;
+use SergiX44\Nutgram\Telegram\Types\Chat\ChatMemberRestricted;
 use Psr\Log\NullLogger;
 
 /**
@@ -98,5 +107,89 @@ class ResidentChatRulesTest extends TestCase
         );
 
         $this->assertFalse($unconfigured->isConfigured());
+    }
+
+    private function memberUser(): TelegramUser
+    {
+        $user = new TelegramUser();
+        $user->setTelegramId('123456');
+        $user->setAccount(new Account());
+
+        return $user;
+    }
+
+    private function botReporting(?string $status, bool $isMember = false): Nutgram
+    {
+        $bot = $this->createMock(Nutgram::class);
+
+        if ($status === null) {
+            $bot->method('getChatMember')->willThrowException(new \RuntimeException('Bad Request'));
+
+            return $bot;
+        }
+
+        // Telegram returns a different concrete class per status; each already carries
+        // its own `status`, so building the real one is closer to production than a stub.
+        $member = match ($status) {
+            'creator' => new ChatMemberOwner(),
+            'administrator' => new ChatMemberAdministrator(),
+            'member' => new ChatMemberMember(),
+            'left' => new ChatMemberLeft(),
+            'kicked' => new ChatMemberBanned(),
+            'restricted' => (function () use ($isMember): ChatMember {
+                $restricted = new ChatMemberRestricted();
+                $restricted->is_member = $isMember;
+
+                return $restricted;
+            })(),
+        };
+
+        $bot->method('getChatMember')->willReturn($member);
+
+        return $bot;
+    }
+
+    /**
+     * Somebody already inside must not be offered a door they are standing behind.
+     */
+    public function testMembersAreRecognised(): void
+    {
+        foreach (['creator', 'administrator', 'member'] as $status) {
+            $this->assertTrue(
+                $this->service()->isMember($this->botReporting($status), $this->memberUser()),
+                $status . ' should count as being in the chat',
+            );
+        }
+    }
+
+    public function testLeftAndKickedAreNotMembers(): void
+    {
+        foreach (['left', 'kicked'] as $status) {
+            $this->assertFalse(
+                $this->service()->isMember($this->botReporting($status), $this->memberUser()),
+                $status . ' should not count as being in the chat',
+            );
+        }
+    }
+
+    /**
+     * A restricted user who has left still comes back with status "restricted" — only
+     * is_member separates the two.
+     */
+    public function testRestrictedCountsOnlyWhileStillInside(): void
+    {
+        $service = $this->service();
+
+        $this->assertTrue($service->isMember($this->botReporting('restricted', isMember: true), $this->memberUser()));
+        $this->assertFalse($service->isMember($this->botReporting('restricted', isMember: false), $this->memberUser()));
+    }
+
+    /**
+     * Telegram unreachable must not hide the door: null makes the caller fall back to the
+     * ordinary invitation, because showing it to a member is the smaller mistake.
+     */
+    public function testUnknownWhenTelegramCannotBeAsked(): void
+    {
+        $this->assertNull($this->service()->isMember($this->botReporting(null), $this->memberUser()));
     }
 }
