@@ -135,7 +135,23 @@ class StartCommand extends Command
             // know by heart. Booking is the everyday action and stays one tap away.
             ->addRow(
                 InlineKeyboardButton::make('🔑 Оренда квартир', callback_data: 'rental-menu'),
-            )
+            );
+
+        // Second, above the everyday buttons, and only once the chat exists: a button
+        // leading nowhere is worse than no button, and the group is made by hand in
+        // Telegram, not by a migration. The position matches the slash menu, because the
+        // announcement to residents tells them where to look — "друга кнопка" has to be
+        // true in both places.
+        if (self::residentChatOpen($bot)) {
+            $markup->addRow(
+                InlineKeyboardButton::make(
+                    '🏘 Чат мешканців',
+                    callback_data: ResidentChatCommand::MENU_CALLBACK,
+                ),
+            );
+        }
+
+        $markup
             ->addRow(
                 InlineKeyboardButton::make('Бронювання', callback_data: 'schedule-pavilion'),
                 InlineKeyboardButton::make('Переглянути свої', callback_data: 'own-schedule'),
@@ -149,17 +165,6 @@ class StartCommand extends Command
                 InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'),
                 InlineKeyboardButton::make('🗳️ Голосування', callback_data: 'voting-menu'),
             );
-
-        // Only once the chat actually exists: a button that leads nowhere is worse than
-        // no button, and the group is created by hand in Telegram, not by a migration.
-        if (self::residentChatOpen($bot)) {
-            $markup->addRow(
-                InlineKeyboardButton::make(
-                    '🏘 Чат мешканців',
-                    callback_data: ResidentChatCommand::MENU_CALLBACK,
-                ),
-            );
-        }
 
         return $markup;
     }
