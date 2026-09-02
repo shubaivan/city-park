@@ -315,8 +315,20 @@ php bin/console doctrine:migrations:migrate --no-interaction --env=prod   # if m
 sudo -u www-data php bin/console bot:menu:update --env=prod          # idempotent; safe every deploy
 mkdir -p public/uploads/pavilion-photos
 chown -R www-data:www-data var/cache var/log public/uploads
-systemctl reload php8.3-fpm
+systemctl restart city-park-messenger.service                        # long-running worker; see above
+# NOTE: php-fpm is deliberately NOT restarted — see below
 ```
+
+**Do not restart php-fpm on deploy.** `opcache.validate_timestamps` is **On** with
+`revalidate_freq=2` on this server, so PHP re-reads a changed file within two seconds by
+itself — a restart picks up nothing a two-second wait would not, and it drops every
+in-flight connection: two real Telegram updates answered **502** on 02.09.2026 for exactly
+this. (An older note in per-machine memory said to prefer `restart` over `reload` because
+OpCache can survive a reload. That was about a reload not picking up new code; with
+validate_timestamps On, neither is needed. Should that setting ever be turned off for
+performance, the restart has to come back — and with it the 502s, so drain traffic first.)
+The **messenger worker is different**: it is a long-running process holding code loaded at
+start, and it must be restarted.
 
 **Never `rm -rf var/cache/prod` on a live server.** php-fpm keeps serving `/hook` while the
 cache is missing, and every Telegram update that lands in that window answers 500. On
