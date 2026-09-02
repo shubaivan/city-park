@@ -21,21 +21,13 @@ use App\Repository\AccountRepository;
  *    nothing. Who owes the ОСББ money is the house's business, not a flat-hunter's.
  * 2. **Never published without a date.** The numbers move only when the accountant
  *    uploads a file, so every render carries "станом на …".
- * 3. **Silence beats a stale accusation.** Past STALE_AFTER_DAYS the board disappears
- *    entirely rather than naming somebody over numbers nobody can vouch for. This is
- *    the whole reason Account::$debt_updated_at exists.
+ * 3. **Tied to the accountant's action, not to a clock.** There is no age limit — the
+ *    board shows the ОСББ's last official statement and stamps it, and a file that was
+ *    never uploaded at all publishes nothing. This is why Account::$debt_updated_at
+ *    exists: not to expire the data, but to date it.
  */
 class DebtBoardService
 {
-    /**
-     * After this many days without an import the board hides itself.
-     *
-     * Charges are monthly, so a file older than a month means at least one full cycle
-     * of payments went unrecorded — by then the board would be naming people who have
-     * since paid, which is exactly the accusation it must not make.
-     */
-    public const STALE_AFTER_DAYS = 30;
-
     /**
      * Three was the first shape; the head of the ОСББ asked for five — a podium of three
      * lets the fourth-largest debtor feel comfortably out of shot, and on prod the drop
@@ -65,23 +57,22 @@ class DebtBoardService
         return $this->accountRepository->lastDebtImportAt();
     }
 
-    public function isStale(): bool
-    {
-        $at = $this->lastImportAt();
-
-        if (!$at instanceof \DateTimeImmutable) {
-            return true;
-        }
-
-        return $at < new \DateTimeImmutable(sprintf('-%d days', self::STALE_AFTER_DAYS));
-    }
-
     /**
-     * Is there anything to show at all? False when the data is stale or nobody owes.
+     * Is there anything to show at all?
+     *
+     * There is deliberately **no age limit**. An earlier version hid the board once the
+     * figures passed 30 days, which was a guess at the accountant's cadence rather than
+     * a fact: she uploads roughly monthly, so the guess blanked the board every cycle
+     * just before the next file, and one late upload would have removed it entirely.
+     * The board is tied to her action instead — it shows the ОСББ's last official
+     * statement, always stamped «станом на …», and the reader judges the age themselves.
+     *
+     * The one thing that is not a guess: if no file was ever imported there is no date
+     * to stamp and nothing to stand behind, so nothing is published.
      */
     public function isAvailable(): bool
     {
-        if ($this->isStale()) {
+        if (!$this->lastImportAt() instanceof \DateTimeImmutable) {
             return false;
         }
 
@@ -142,11 +133,10 @@ class DebtBoardService
                 . "рахунку ОСББ.\n\nНатисніть /phone і поділіться номером телефону.";
         }
 
-        if ($this->isStale()) {
+        if (!$this->lastImportAt() instanceof \DateTimeImmutable) {
             return "💸 <b>Звіт боржників</b>\n\n"
-                . "Дані про борги ще не оновлювались цього місяця, тому список тимчасово приховано — "
-                . "щоб не показувати як боржника того, хто вже сплатив.\n\n"
-                . '<i>Актуальну суму по вашій квартирі підкаже бухгалтер ОСББ.</i>';
+                . "Дані про борги ще не завантажені — список з'явиться після найближчого "
+                . "оновлення від бухгалтерії ОСББ.";
         }
 
         $debtors = $this->accountRepository->findDebtors();

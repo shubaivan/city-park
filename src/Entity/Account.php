@@ -43,8 +43,9 @@ class Account
      * The number itself carries no date, and it only ever moves when the accountant
      * uploads a fresh file (there is no live feed from the ОСББ books). Published
      * unqualified, a stale figure names as a debtor somebody who paid three weeks ago,
-     * so the debtors' board renders this as "станом на …" and hides itself once the
-     * stamp goes cold — see DebtBoardService::STALE_AFTER_DAYS.
+     * so the debtors' board renders this as "станом на …" on every screen. It dates the
+     * figures rather than expiring them: the board follows the accountant's uploads, and
+     * only the complete absence of one keeps it silent.
      *
      * Stamped inside setDebt() rather than at the call sites: two import paths exist
      * (debt:import-file and /admin/debt/upload, each with a main loop and a

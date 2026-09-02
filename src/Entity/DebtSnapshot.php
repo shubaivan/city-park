@@ -77,14 +77,27 @@ class DebtSnapshot
         return $this;
     }
 
+    /**
+     * Telegram message id of the chat announcement, kept so the next month's post can
+     * unpin it. Without this the pinned list grows by one every import.
+     */
+    #[ORM\Column(nullable: true)]
+    private ?int $announced_message_id = null;
+
+    public function getAnnouncedMessageId(): ?int
+    {
+        return $this->announced_message_id;
+    }
+
     public function getAnnouncedAt(): ?\DateTimeImmutable
     {
         return $this->announced_at;
     }
 
-    public function markAnnounced(): static
+    public function markAnnounced(?int $messageId = null): static
     {
         $this->announced_at = new \DateTimeImmutable();
+        $this->announced_message_id = $messageId;
 
         return $this;
     }
