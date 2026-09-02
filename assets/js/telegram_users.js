@@ -107,6 +107,7 @@ document.addEventListener("DOMContentLoaded", function () {
         first_name: '',
         phone: '',
         username: '',
+        role: '',
         address: '',
     };
 
@@ -126,6 +127,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 d.search_first_name = fieldFilters.first_name;
                 d.search_phone = fieldFilters.phone;
                 d.search_username = fieldFilters.username;
+                d.role_filter = fieldFilters.role;
                 d.search_address = fieldFilters.address;
             }
         },
@@ -148,6 +150,19 @@ document.addEventListener("DOMContentLoaded", function () {
         { key: 'first_name',     label: "Ім'я",           placeholder: 'Іван',              width: '140px' },
         { key: 'phone',          label: 'Телефон',        placeholder: '380...',            width: '160px' },
         { key: 'username',       label: 'Telegram',       placeholder: '@mi_polina28',      width: '170px' },
+        // A select, and in this panel rather than the status button row: these fields are
+        // AND'd on the server, so "орендарі з боргом" is askable. In the radio group the
+        // role would have excluded «Боржники», which is not a question anyone has.
+        {
+            key: 'role', label: 'Хто це', width: '150px', type: 'select',
+            options: [
+                { value: '',        text: '— усі —' },
+                { value: 'owner',   text: 'Власник' },
+                { value: 'family',  text: "Член сім'ї" },
+                { value: 'tenant',  text: 'Орендар' },
+                { value: 'none',    text: 'Не вказано' },
+            ],
+        },
         { key: 'address',        label: 'Адреса',         placeholder: 'вулиця / буд / кв', width: '220px' },
     ];
 
@@ -159,15 +174,36 @@ document.addEventListener("DOMContentLoaded", function () {
             'style': 'font-size:0.78em;',
             'text': def.label,
         }));
-        var $input = $('<input/>', {
-            'type': 'text',
-            'data-field': def.key,
-            'placeholder': def.placeholder,
-            'class': 'form-control form-control-sm js-user-field-filter',
-            'style': 'width:' + def.width,
-        });
+        var $input;
+
+        if (def.type === 'select') {
+            $input = $('<select/>', {
+                'data-field': def.key,
+                'class': 'form-control form-control-sm js-user-field-select',
+                'style': 'width:' + def.width,
+            });
+            def.options.forEach(function (o) {
+                $input.append($('<option/>', { 'value': o.value, 'text': o.text }));
+            });
+        } else {
+            $input = $('<input/>', {
+                'type': 'text',
+                'data-field': def.key,
+                'placeholder': def.placeholder,
+                'class': 'form-control form-control-sm js-user-field-filter',
+                'style': 'width:' + def.width,
+            });
+        }
+
         $wrap.append($input);
         $fieldPanel.append($wrap);
+    });
+
+    // A select fires change, not input, and needs no debounce.
+    $fieldPanel.on('change', '.js-user-field-select', function () {
+        fieldFilters[$(this).data('field')] = $(this).val();
+        renderFilterButtons();
+        table.ajax.reload();
     });
 
     $fieldPanel.on('input', '.js-user-field-filter', function () {
@@ -254,6 +290,7 @@ document.addEventListener("DOMContentLoaded", function () {
         statusFilter = 'all';
         Object.keys(fieldFilters).forEach(function (k) { fieldFilters[k] = ''; });
         $fieldPanel.find('.js-user-field-filter').val('');
+        $fieldPanel.find('.js-user-field-select').val('');
         renderFilterButtons();
         table.ajax.reload();
     });

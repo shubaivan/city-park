@@ -219,6 +219,18 @@ class TelegramUserRepository extends ServiceEntityRepository
             }
         }
 
+        // 'none' is a real answer, not the absence of one: "хто ще не розібраний" is the
+        // question the accountant works through, so it needs its own value rather than
+        // being indistinguishable from "фільтр не вибрано".
+        if (!$total && !empty($params['role_filter'])) {
+            if ($params['role_filter'] === 'none') {
+                $conditions[] = 'b.role IS NULL';
+            } else {
+                $conditions[] = 'b.role = :role_filter';
+                $bindParams['role_filter'] = (string)$params['role_filter'];
+            }
+        }
+
         if (!$total && !empty($params['account_number_filter'])) {
             $conditions[] = 'a.account_number = :exact_account_number';
             $bindParams['exact_account_number'] = trim((string)$params['account_number_filter']);
