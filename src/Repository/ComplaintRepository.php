@@ -24,35 +24,46 @@ class ComplaintRepository extends ServiceEntityRepository
      *
      * @return Complaint[]
      */
-    public function findForList(int $limit, int $offset = 0): array
+    public function findForList(int $limit, int $offset = 0, ?Account $only = null): array
     {
-        return $this->createQueryBuilder('c')
+        $qb = $this->createQueryBuilder('c')
             ->addSelect("CASE WHEN c.status = :done THEN 1 ELSE 0 END AS HIDDEN done_sort")
             ->setParameter('done', Complaint::STATUS_DONE)
             ->orderBy('done_sort', 'ASC')
             ->addOrderBy('c.created_at', 'DESC')
             ->setMaxResults($limit)
-            ->setFirstResult($offset)
-            ->getQuery()
-            ->getResult();
+            ->setFirstResult($offset);
+
+        if ($only instanceof Account) {
+            $qb->andWhere('c.account = :only')->setParameter('only', $only);
+        }
+
+        return $qb->getQuery()->getResult();
     }
 
-    public function countAll(): int
+    public function countAll(?Account $only = null): int
     {
-        return (int)$this->createQueryBuilder('c')
-            ->select('COUNT(c.id)')
-            ->getQuery()
-            ->getSingleScalarResult();
+        $qb = $this->createQueryBuilder('c')->select('COUNT(c.id)');
+
+        if ($only instanceof Account) {
+            $qb->andWhere('c.account = :only')->setParameter('only', $only);
+        }
+
+        return (int)$qb->getQuery()->getSingleScalarResult();
     }
 
-    public function countOpen(): int
+    public function countOpen(?Account $only = null): int
     {
-        return (int)$this->createQueryBuilder('c')
+        $qb = $this->createQueryBuilder('c')
             ->select('COUNT(c.id)')
             ->andWhere('c.status <> :done')
-            ->setParameter('done', Complaint::STATUS_DONE)
-            ->getQuery()
-            ->getSingleScalarResult();
+            ->setParameter('done', Complaint::STATUS_DONE);
+
+        if ($only instanceof Account) {
+            $qb->andWhere('c.account = :only')->setParameter('only', $only);
+        }
+
+        return (int)$qb->getQuery()->getSingleScalarResult();
     }
 
     public function findByToken(string $token): ?Complaint

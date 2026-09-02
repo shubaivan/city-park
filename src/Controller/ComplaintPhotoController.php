@@ -109,6 +109,9 @@ class ComplaintPhotoController extends AbstractController
             return new JsonResponse(['error' => 'Посилання застаріло.'], Response::HTTP_NOT_FOUND);
         }
 
+        // Card first, then burn the link: if the push fails the resident at least still
+        // has a working page rather than a dead token and no card.
+        $this->complaints->notifyPhotosUpdated($complaint);
         $this->complaints->burnPhotoToken($complaint);
 
         return new JsonResponse(['ok' => true]);

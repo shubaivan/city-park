@@ -8,6 +8,11 @@ use App\Entity\TelegramUser;
 use App\Repository\ComplaintRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
+use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Properties\ParseMode;
+use SergiX44\Nutgram\Telegram\Types\Input\InputFile;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
@@ -34,6 +39,7 @@ class ComplaintService
         private ImageStore $images,
         private EntityManagerInterface $em,
         private LoggerInterface $logger,
+        private Nutgram $bot,
         private string $managerIds = '',
     ) {}
 
@@ -236,6 +242,74 @@ class ComplaintService
     {
         $complaint->setPhotoToken(null, null);
         $this->em->flush();
+    }
+
+    /**
+     * Push the complaint back into the author's chat once they are done with the photo page.
+     *
+     * Without this, closing the Web App drops them back onto the message that sent them
+     * there — «відкрийте сторінку» — which reads as if nothing happened, and the photo they
+     * just uploaded is nowhere in sight. Sent as a picture when there is one, because the
+     * whole point of the trip was the picture.
+     *
+     * Never throws: the photos are already saved, and a failed notification must not turn
+     * a successful upload into an error on the page.
+     */
+    public function notifyPhotosUpdated(Complaint $complaint): void
+    {
+        $chatId = $complaint->getAuthor()?->getChatId();
+
+        if ($chatId === null || $chatId === '') {
+            return;
+        }
+
+        $caption = sprintf(
+            "📷 <b>Фото додано до заявки №%d</b>\n\n%s\n\nСтатус: <b>%s</b>",
+            $complaint->getId(),
+            htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            $this->statusLabel($complaint->getStatus()),
+        );
+
+        $markup = InlineKeyboardMarkup::make()
+            ->addRow(InlineKeyboardButton::make(
+                '🔧 Відкрити заявку',
+                callback_data: 'cmp:view:' . $complaint->getId(),
+            ))
+            ->addRow(
+                InlineKeyboardButton::make('⬅️ До списку заявок', callback_data: 'complaints-menu'),
+                InlineKeyboardButton::make('🏠 На головну', callback_data: 'main-menu'),
+            );
+
+        $cover = $complaint->getPhotos()[0] ?? null;
+        $abs = $cover !== null ? $this->images->absolutePath($cover, self::PHOTO_DIR) : null;
+
+        try {
+            $stream = $abs !== null && is_readable($abs) ? @fopen($abs, 'rb') : false;
+
+            if ($stream !== false) {
+                $this->bot->sendPhoto(
+                    photo: InputFile::make($stream, basename((string)$abs)),
+                    caption: $caption,
+                    chat_id: (int)$chatId,
+                    parse_mode: ParseMode::HTML,
+                    reply_markup: $markup,
+                );
+
+                return;
+            }
+
+            $this->bot->sendMessage(
+                text: $caption,
+                chat_id: (int)$chatId,
+                parse_mode: ParseMode::HTML,
+                reply_markup: $markup,
+            );
+        } catch (\Throwable $e) {
+            $this->logger->warning('complaint photo notify failed', [
+                'complaint_id' => $complaint->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

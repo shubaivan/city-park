@@ -58,6 +58,14 @@
         input[type=file] { display: none; }
         .msg { margin-top: 12px; font-size: 14px; min-height: 20px; }
         .msg.err { color: #d63a2f; }
+        .msg.busy { color: #d63a2f; font-weight: 600; }
+        .msg.busy::before {
+            content: ''; display: inline-block; vertical-align: -2px;
+            width: 14px; height: 14px; margin-right: 8px; border-radius: 50%;
+            border: 2px solid #d63a2f; border-top-color: transparent;
+            animation: spin .8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .msg.ok { color: #1a7f37; }
         .done { margin-top: 20px; text-align: center; font-size: 14px; color: #65676b; }
     </style>
@@ -113,6 +121,21 @@
     var msg = document.getElementById('msg');
 
     function say(text, cls) { msg.textContent = text || ''; msg.className = 'msg ' + (cls || ''); }
+
+    var doneBtn = document.getElementById('done');
+
+    /**
+     * While a photo is going up, nothing else may be tapped.
+     *
+     * On a phone an upload is seconds of nothing happening, and the first instinct is to
+     * press "Готово" — which closes the Web App and loses the picture mid-flight. So the
+     * button is hidden outright rather than greyed out, and the status line spins in red
+     * so it reads as "wait", not as decoration.
+     */
+    function busy(on) {
+        doneBtn.style.display = on ? 'none' : '';
+        label.classList.toggle('off', on || count() >= MAX);
+    }
     function count() { return grid.querySelectorAll('.thumb').length; }
 
     function refresh() {
@@ -190,7 +213,8 @@
         input.value = '';
         if (!files.length) return;
 
-        say('Завантажуємо…');
+        busy(true);
+        say('Завантажуємо фото… не закривайте сторінку', 'busy');
 
         // Sequential on purpose: the server counts photos per request, and a phone on
         // mobile data handles one upload at a time better than three at once.
@@ -205,7 +229,7 @@
                         .then(function (res) {
                             if (!res.ok) { say(res.j.error || 'Не вдалося завантажити.', 'err'); return; }
                             addThumb(res.j.path);
-                            say('Готово ✅', 'ok');
+                            say('Фото додано ✅', 'ok');
                         });
                 });
             });
@@ -215,7 +239,7 @@
     document.getElementById('done').addEventListener('click', function () {
         var btn = this;
         btn.disabled = true;
-        say('Оновлюємо оголошення…');
+        say('Зберігаємо…', 'busy');
 
         fetch(doneUrl, {method: 'POST'})
             .then(function (r) { return r.ok; })
@@ -224,15 +248,17 @@
                 if (!ok) { btn.disabled = false; say('Не вдалося. Спробуйте ще раз.', 'err'); return; }
 
                 if (tg) {
-                    // Closes the Web App and drops the owner back into the chat, where the
-                    // updated card is already waiting.
+                    // Closes the Web App and drops the resident back into the chat, where
+                    // the bot has just posted the complaint with its new photo — otherwise
+                    // they land on the "відкрийте сторінку" message that sent them here and
+                    // it reads as if nothing happened.
                     tg.close();
                     return;
                 }
 
                 // Outside Telegram there is nothing to close, and the bot's @username is
                 // not configured anywhere — just say it worked and let them switch back.
-                say('Готово ✅ Оголошення оновлено — поверніться в бот.', 'ok');
+                say('Готово ✅ Фото додано — поверніться в бот.', 'ok');
                 btn.remove();
             });
     });

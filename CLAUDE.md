@@ -173,6 +173,12 @@ the whole house sees every entry and why the open count rides on the menu button
   deletion to 🆕 was considered and rejected: typos, duplicates and problems that fix
   themselves do not stop happening the moment Людмила taps «в роботі», and a resident who
   cannot withdraw their own entry simply files a second one saying "ignore the previous".
+- **The list has a «📌 Мої заявки» / «📋 Усі заявки» toggle** (`cmp:my:<page>` vs
+  `cmp:page:<n>`), shown only to somebody who has actually filed something — an empty
+  "Мої" is a dead end. Finishing on the photo page pushes the complaint back into the
+  author's chat (`notifyPhotosUpdated()`) with buttons to the card, the list and the main
+  menu: closing the Web App otherwise drops them onto the «відкрийте сторінку» message
+  that sent them there, which reads as if nothing happened.
 - **Filing is one step.** The person doing it is standing in front of a broken lift, and
   every extra question is a reason to close the bot and write in the chat instead. Photos
   are offered *after* the complaint is saved, so giving up at that point still leaves the
