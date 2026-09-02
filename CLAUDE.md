@@ -121,6 +121,23 @@ Group Info» off for ordinary members, private group → add the bot → promote
 labels it «Invite Users via Link») and `can_restrict_members` → `resident-chat:link` →
 write both values into `.env.local`.
 
+**Live since 02.09.2026.** Verified end-to-end on prod: approve 320 ms, decline 330 ms, the
+decline DM does reach someone the bot has never spoken to, and a declined user may request
+again immediately (no Telegram cooldown — so the refusal text's "надішліть заявку ще раз" is
+honest). The chat id and invite link live in prod `.env.local` only; the link is never
+published, the bot hands it out. Note that `getChat()` on a pre-migration basic-group id
+keeps returning the stale `"group"` card long after Telegram has upgraded the chat — the
+migration only surfaced as `migrate_to_chat_id` in a `createChatInviteLink` error, which is
+how the real supergroup id was found.
+
+**Open follow-up: the gate closes the entry, not the exit.** Someone who sells their flat
+stays in the group until removed by hand. Bot API cannot list members, so this needs our own
+roster: a row per approve, `chat_member` added to `allowed_updates` (it is deliberately not
+there today), and a nightly cron re-running `mayJoin()` and removing those who no longer
+qualify with `banChatMember` **followed immediately by** `unbanChatMember` — a bare ban locks
+them out permanently, which is wrong, since an ex-owner may buy another flat here. Deferred on
+purpose: this matters in a year or two, not at six members.
+
 ### Nothing from a group may reach a private-chat handler
 
 The bot loses Telegram's privacy mode as soon as it is an administrator and receives every
