@@ -28,6 +28,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 | 📸 Завантажити фото | `photo-upload-info` | `/photo` | `PhotoUploadInfo` (lists open requests) |
 | ℹ️ Інструкція та FAQ | `info-menu` / `info-topic:*` | `/info` | `InfoCommand` (edit `TOPICS` const) |
 | 🗳️ Голосування | `voting-menu` / `bvote:<id>:yes\|no` | `/vote` | `VotingMenuCommand` (community vote-to-block) |
+| 🏘 Чат мешканців | `resident-chat` | `/chat` | `ResidentChatCommand` (hands out the join-request link) |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
 | (auto) photo upload | `onPhoto` event | — | `UploadPhotoCommand` |
 
@@ -76,6 +77,72 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
 - Publishing again **replaces** the account's active listing rather than being rejected — that is the edit path.
 
 Admin: `/admin/rentals` lists everything with a take-down button (status `blocked`, stamped with the admin login). Debt is shown for context only.
+
+## Residents' Telegram group («ЖК City Park • Черкаси»)
+
+A closed group whose door is the bot. The house already had the only verified list of
+its own residents — `Account` ↔ `TelegramUser`, built by the accountant against the ОСББ
+registry — and this feature does nothing but let that list decide who gets in. It exists
+because the ЖК's Viber group dates back to construction: ~650 people for 141 flats,
+nobody can say who half of them are, and Viber shows every member's phone number to every
+other member. Cleaning that group from the inside is not possible; a verified one is.
+
+**The gate is one update.** The group's only invite link is created with
+`creates_join_request=true` (`bin/console resident-chat:link`), so Telegram holds every
+newcomer at the door and asks the bot. `JoinRequestCommand` → `ResidentChatService` looks
+the knocking `user_id` up and approves or declines. The link is therefore *not* a secret
+and can be posted anywhere — what is checked is who knocks, not who holds the link. A
+one-shot `member_limit=1` link would have been the weaker design: forwarded, it admits
+whoever taps first.
+
+- **`is_active` is NOT checked**, same call as the rental noticeboard: a debt or a missed
+  pavilion photo blocks *booking*, and the chat is where the ОСББ announces things —
+  including that the person owes money. Parking-only accounts are let in too
+  (`isNonResidential()` bars booking the pavilion, not reading the house chat).
+- A decline is not a ban: it explains the two-tap fix (`/phone` → share number) and the
+  same person can request again. The refusal text goes out **before** `declineChatJoinRequest`
+  — `user_chat_id` is the bot's only way to reach someone it has never spoken to, and that
+  door closes when the request is processed.
+- The menu button appears only when `RESIDENT_CHAT_ID` **and** `RESIDENT_CHAT_INVITE_LINK`
+  are both set (`ResidentChatService::isConfigured()`); the group is made by hand in
+  Telegram, not by a migration.
+
+**`allowed_updates` must include `chat_join_request`** — Telegram's default list leaves it
+out, and the failure is silent: people queue at the door forever while the bot never hears
+them knock. `bin/console bot:webhook:update` re-registers the webhook with the four types
+we handle, reading the URL back from Telegram so it cannot re-point itself.
+
+**Group setup, in this order** (the id changes when Telegram converts a basic group into a
+supergroup, so it is read *last*): permissions — «Add Members», «Pin Messages» and «Change
+Group Info» off for ordinary members, private group → add the bot → promote it with
+`can_invite_users` (Telegram Desktop labels this admin right **«Add members»**, mobile
+labels it «Invite Users via Link») and `can_restrict_members` → `resident-chat:link` →
+write both values into `.env.local`.
+
+### Nothing from a group may reach a private-chat handler
+
+The bot loses Telegram's privacy mode as soon as it is an administrator and receives every
+message posted in the chat. The handlers cannot tell the difference on their own, so the
+rule lives in **one global middleware in `config/telegram.php`** plus
+`RequestSubscriber::privateChatSender()`, and is covered by `tests/Telegram/GroupUpdateGuardTest`
+and `tests/EventSubscriber/PrivateChatGuardTest`.
+
+Two concrete failures it prevents:
+
+- `onPhoto` would file a picture posted in the group as pavilion evidence and close
+  somebody's `PhotoUploadRequest` — most likely the obligation of whoever posted a photo
+  of their cat.
+- `initUser()` overwrites `TelegramUser.chat_id` from whatever chat an update arrived in,
+  and `chat_id` is the address of **every** outgoing notice (debts, photo reminders and
+  blocks, vote notices, the rental phone relay). A group update carries the *group's* id in
+  that field. This is not hypothetical: on 02.09.2026, before a word had been written in
+  the new group, the single service message "Ivan added the bot" re-pointed the owner's own
+  `chat_id` at it (`telegram_user` #1, repaired with
+  `update telegram_user set chat_id = telegram_id where chat_id like '-%'`).
+
+Global middleware is attached in `Nutgram::preflight()`, which runs from `run()` — *not*
+from `processUpdate()`. Tests that fire handlers directly must invoke `preflight()` first
+or they silently exercise a bot with no middleware.
 
 ## Crons (prod `crontab -l`, **must run as `www-data`**)
 

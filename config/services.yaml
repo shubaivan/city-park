@@ -17,6 +17,8 @@ services:
             $publicDir: '%kernel.project_dir%/public'
             $pavilion1PhotoFileId: '%env(string:PAVILION1_PHOTO_FILE_ID)%'
             $pavilion2PhotoFileId: '%env(string:PAVILION2_PHOTO_FILE_ID)%'
+            $residentChatId: '%env(string:RESIDENT_CHAT_ID)%'
+            $residentChatInviteLink: '%env(string:RESIDENT_CHAT_INVITE_LINK)%'
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name
@@ -39,6 +41,12 @@ services:
     # It must be the same shared instance RequestSubscriber called initUser() on,
     # otherwise the resolved instance has no current user.
     App\Service\TelegramUserService:
+        public: true
+
+    # Same reason as above: the main menu asks it, at render time, whether the residents'
+    # chat exists yet — a button leading to a chat that has not been created is worse
+    # than no button.
+    App\Service\ResidentChatService:
         public: true
 
     # Nutgram handlers

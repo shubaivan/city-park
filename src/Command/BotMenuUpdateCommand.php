@@ -20,6 +20,7 @@ class BotMenuUpdateCommand extends Command
     /** Order here is the order Telegram shows in the slash menu — first line is the most visible. */
     private const MENU = [
         ['rent', '🔑 Оренда квартир'],
+        ['chat', '🏘 Чат мешканців'],
         ['start', 'Головне меню'],
         ['schedule', '📅 Бронювання альтанки'],
         ['history', '📜 Історія бронювань'],
