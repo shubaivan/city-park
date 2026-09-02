@@ -13,7 +13,7 @@ use App\Telegram\Start\Command\StartCommand;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
-use SergiX44\Nutgram\Telegram\Types\Input\InputFile;
+use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Input\InputMediaPhoto;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
@@ -407,6 +407,63 @@ class ComplaintMenuCommand
 
         $bot->answerCallbackQuery(text: $this->service->statusLabel($status));
         $this->renderCard($bot, $complaintId);
+    }
+
+    /**
+     * Deleting is irreversible and takes the photos with it, so it asks first — and shows
+     * the text being deleted, because the button was tapped from a list where every entry
+     * looks much like the next.
+     */
+    private function confirmDelete(Nutgram $bot, int $complaintId): void
+    {
+        $complaint = $this->complaints->find($complaintId);
+        $user = $this->telegramUserService->getCurrentUser();
+
+        if (!$complaint instanceof Complaint || !$this->isAuthor($complaint, $user)) {
+            $bot->answerCallbackQuery(text: 'Видалити заявку може лише той, хто її подав.', show_alert: true);
+
+            return;
+        }
+
+        $this->respond(
+            $bot,
+            edit: true,
+            text: sprintf(
+                "🗑 <b>Видалити заявку №%d?</b>\n\n<i>%s</i>\n\n%s"
+                    . 'Її більше не побачить ніхто — ні сусіди, ні голова ОСББ. Це не скасувати.',
+                $complaint->getId(),
+                $this->esc($complaint->getText()),
+                $complaint->getPhotos() !== []
+                    ? sprintf("Разом із нею зникнуть %d фото.\n\n", count($complaint->getPhotos()))
+                    : '',
+            ),
+            markup: InlineKeyboardMarkup::make()
+                ->addRow(InlineKeyboardButton::make(
+                    '🗑 Так, видалити',
+                    callback_data: 'cmp:delok:' . $complaint->getId(),
+                ))
+                ->addRow(InlineKeyboardButton::make(
+                    '⬅️ Ні, залишити',
+                    callback_data: 'cmp:view:' . $complaint->getId(),
+                )),
+        );
+    }
+
+    private function delete(Nutgram $bot, int $complaintId): void
+    {
+        $complaint = $this->complaints->find($complaintId);
+        $user = $this->telegramUserService->getCurrentUser();
+
+        if (!$complaint instanceof Complaint || !$this->isAuthor($complaint, $user)) {
+            $bot->answerCallbackQuery(text: 'Видалити заявку може лише той, хто її подав.', show_alert: true);
+
+            return;
+        }
+
+        $this->service->delete($complaint);
+
+        $bot->answerCallbackQuery(text: 'Заявку видалено.');
+        $this->renderMenu($bot, edit: true, notice: sprintf('🗑 Заявку №%d видалено.', $complaintId));
     }
 
     private function photoLink(Nutgram $bot, int $complaintId): void
