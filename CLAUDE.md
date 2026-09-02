@@ -105,7 +105,9 @@ whoever taps first.
   door closes when the request is processed.
 - The menu button appears only when `RESIDENT_CHAT_ID` **and** `RESIDENT_CHAT_INVITE_LINK`
   are both set (`ResidentChatService::isConfigured()`); the group is made by hand in
-  Telegram, not by a migration.
+  Telegram, not by a migration. It sits **second** in both the inline menu and the slash
+  menu, under 🔑 Оренда — the announcement to residents tells them it is the second
+  button, so the two orders have to stay in step.
 
 **`allowed_updates` must include `chat_join_request`** — Telegram's default list leaves it
 out, and the failure is silent: people queue at the door forever while the bot never hears
