@@ -79,6 +79,12 @@ class ResidentChatLinkCommand extends Command
             return Command::FAILURE;
         }
 
+        // Telegram resolves the old basic-group id to the supergroup it became, so what
+        // was passed in may not be what must be stored: a join request arrives carrying
+        // the *new* id, and the gate compares against the configured one. Always take
+        // the id back from the chat itself.
+        $chatId = (string)$chat->id;
+
         try {
             $link = $this->bot->createChatInviteLink(
                 chat_id: $chatId,
