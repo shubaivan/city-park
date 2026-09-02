@@ -49,9 +49,17 @@ class BotMenuUpdateCommand extends Command
 
         // Nutgram's setMyCommands json-encodes a null scope which Telegram rejects,
         // so we call the raw API endpoint instead with only the fields we need.
+        //
+        // The menu is registered for PRIVATE CHATS ONLY. Registered without a scope it
+        // lands in Telegram's default scope, which also covers groups — so the bot's
+        // commands appeared in the residents' chat autocomplete, a resident tapped
+        // "/problem@che_city_park_bot" there, and nothing happened, because the global
+        // middleware drops every group update by design. Better not to offer the button
+        // than to answer a tap the bot must ignore.
         try {
             $ok = $this->bot->sendRequest('setMyCommands', [
                 'commands' => json_encode($commands, JSON_UNESCAPED_UNICODE),
+                'scope' => json_encode(['type' => 'all_private_chats']),
             ]);
         } catch (\Throwable $t) {
             $this->logger->error('setMyCommands failed: ' . $t->getMessage());
@@ -64,7 +72,18 @@ class BotMenuUpdateCommand extends Command
             return Command::FAILURE;
         }
 
-        $io->success('Bot menu updated: ' . count($commands) . ' commands');
+        // Setting the private scope does not empty the default one: whatever was
+        // registered there before still shows in groups. It has to be cleared explicitly.
+        try {
+            $this->bot->sendRequest('deleteMyCommands', []);
+            $io->writeln('<info>Default scope cleared — commands no longer show in groups.</info>');
+        } catch (\Throwable $t) {
+            // Not fatal: the private menu is already in place, the group list is only noise.
+            $this->logger->warning('deleteMyCommands (default scope) failed: ' . $t->getMessage());
+            $io->warning('Could not clear the default scope: ' . $t->getMessage());
+        }
+
+        $io->success('Bot menu updated (private chats only): ' . count($commands) . ' commands');
         foreach (self::MENU as [$cmd, $desc]) {
             $io->writeln(sprintf('  /%s — %s', $cmd, $desc));
         }
