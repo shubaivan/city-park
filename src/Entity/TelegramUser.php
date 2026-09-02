@@ -61,9 +61,6 @@ class TelegramUser
     #[ORM\OneToMany(targetEntity: ScheduledSet::class, mappedBy: 'telegramUserId', cascade: ["persist"])]
     private Collection $scheduledSet;
 
-    #[NotBlank]
-    #[ORM\ManyToOne(targetEntity: Account::class, inversedBy: 'users')]
-    #[ORM\JoinColumn(name: 'account_id', referencedColumnName: 'id')]
     /**
      * How this person relates to the flat: owner, family member, or tenant.
      *
@@ -78,6 +75,9 @@ class TelegramUser
     #[ORM\Column(length: 16, nullable: true)]
     private ?string $role = null;
 
+    #[NotBlank]
+    #[ORM\ManyToOne(targetEntity: Account::class, inversedBy: 'users')]
+    #[ORM\JoinColumn(name: 'account_id', referencedColumnName: 'id')]
     private ?Account $account = null;
 
     public function __construct()
