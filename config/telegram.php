@@ -93,6 +93,13 @@ $bot->onCallbackQueryData(\App\Telegram\Voting\Command\VotingMenuCommand::MENU_C
 $bot->onCallbackQueryData('^bvote:\d+:(yes|no)$', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 $bot->onCommand('vote', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 
+// The house's problem register. cmp:status is guarded inside the handler, not here:
+// a callback from anyone else has to answer with an explanation, not silence.
+$bot->onCallbackQueryData(\App\Telegram\Complaint\Command\ComplaintMenuCommand::MENU_CALLBACK, \App\Telegram\Complaint\Command\ComplaintMenuCommand::class);
+$bot->onCallbackQueryData('^cmp:(?:(?:view|photos|page):\d+|pic:\d+:\d+|status:\d+:[a-z_]+|noop)$', \App\Telegram\Complaint\Command\ComplaintMenuCommand::class);
+$bot->onCallbackQueryData(\App\Telegram\Complaint\Command\ComplaintCreate::START_CALLBACK, \App\Telegram\Complaint\Command\ComplaintCreate::class);
+$bot->onCommand('problem', \App\Telegram\Complaint\Command\ComplaintMenuCommand::class);
+
 // The debtors' board: the menu block is rendered by StartCommand, this is the full list.
 $bot->onCallbackQueryData(\App\Telegram\Debt\Command\DebtBoardCommand::MENU_CALLBACK, \App\Telegram\Debt\Command\DebtBoardCommand::class);
 $bot->onCommand('debts', \App\Telegram\Debt\Command\DebtBoardCommand::class);

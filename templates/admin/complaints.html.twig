@@ -1,0 +1,98 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Заявки | Admin{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    <div class="container-fluid mt-3">
+        <h3>🔧 Заявки та скарги мешканців</h3>
+        <p class="text-muted">
+            Мешканці подають їх самі через бот («🔧 Заявки»). Реєстр бачать усі мешканці —
+            саме тому про зламаний ліфт більше не пишуть у чат по п'ять разів.
+            Заявка ніколи не видаляється: виконана залишається тут як запис про те,
+            що і коли полагодили.
+        </p>
+
+        {% if complaints|length == 0 %}
+            <div class="alert alert-secondary">Заявок ще не було.</div>
+        {% else %}
+            <table class="table table-striped table-sm align-middle">
+                <thead>
+                <tr>
+                    <th>№</th>
+                    <th>Подано</th>
+                    <th>Квартира</th>
+                    <th>Проблема</th>
+                    <th>Фото</th>
+                    <th>Статус</th>
+                    <th style="min-width:320px">Дія</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for complaint in complaints %}
+                    <tr>
+                        <td>{{ complaint.id }}</td>
+                        <td>
+                            <small>{{ complaint.createdAt|date('d.m.Y H:i') }}</small>
+                        </td>
+                        <td>
+                            {% if complaint.account %}
+                                буд. {{ complaint.account.houseNumber }}, кв. {{ complaint.account.apartmentNumber }}<br>
+                                <small class="text-muted">
+                                    {{ complaint.account.accountNumber }}
+                                    {% if complaint.author %}
+                                        · {{ complaint.author.firstName }} {{ complaint.author.lastName }}
+                                    {% endif %}
+                                </small>
+                            {% endif %}
+                        </td>
+                        <td style="max-width:420px">{{ complaint.text }}</td>
+                        <td>
+                            {% for path in complaint.photos %}
+                                <a href="{{ path }}" target="_blank" rel="noopener">
+                                    <img src="{{ path }}" alt="" style="height:46px;border-radius:4px;margin:1px">
+                                </a>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% if complaint.status == 'done' %}
+                                <span class="badge bg-success">✅ Виконано</span>
+                            {% elseif complaint.status == 'in_progress' %}
+                                <span class="badge bg-warning text-dark">🔧 В роботі</span>
+                            {% else %}
+                                <span class="badge bg-secondary">🆕 Нова</span>
+                            {% endif %}
+                            {% if complaint.statusChangedBy %}
+                                <br><small class="text-muted">
+                                    {{ complaint.statusChangedAt|date('d.m.Y H:i') }}<br>
+                                    {{ complaint.statusChangedBy }}
+                                </small>
+                            {% endif %}
+                            {% if complaint.resolution %}
+                                <br><small>💬 {{ complaint.resolution }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form method="post" action="{{ path('app_admin_complaint_status') }}" class="d-flex gap-1 align-items-start">
+                                <input type="hidden" name="id" value="{{ complaint.id }}">
+                                <input type="text" name="resolution" class="form-control form-control-sm"
+                                       placeholder="що зробили (не обов'язково)"
+                                       value="{{ complaint.resolution }}">
+                                <select name="status" class="form-select form-select-sm" style="width:auto">
+                                    <option value="new" {{ complaint.status == 'new' ? 'selected' }}>🆕 Нова</option>
+                                    <option value="in_progress" {{ complaint.status == 'in_progress' ? 'selected' }}>🔧 В роботі</option>
+                                    <option value="done" {{ complaint.status == 'done' ? 'selected' }}>✅ Виконано</option>
+                                </select>
+                                <button class="btn btn-sm btn-primary">Зберегти</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </div>
+{% endblock %}

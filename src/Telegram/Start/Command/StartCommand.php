@@ -3,9 +3,12 @@
 namespace App\Telegram\Start\Command;
 
 use App\Entity\Account;
+use App\Service\ComplaintService;
 use App\Service\DebtBoardService;
 use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
+use App\Repository\ComplaintRepository;
+use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\ResidentChat\Command\ResidentChatCommand;
 use SergiX44\Nutgram\Handlers\Type\Command;
@@ -39,7 +42,7 @@ class StartCommand extends Command
         // all need it, and each lookup is a DB round-trip on every menu render.
         $account = self::currentAccount($bot);
 
-        $text = self::header($account) . self::debtBlock($bot, $account) . 'Оберіть:';
+        $text = self::header($account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
         $markup = self::mainMenuMarkup($bot, $account);
 
         if ($edit) {
@@ -98,6 +101,29 @@ class StartCommand extends Command
      * is therefore declared public in config/services.yaml so the delegated Symfony
      * container hands back the same shared instance RequestSubscriber init'd.
      */
+    /**
+     * Who runs the ОСББ, and how to reach her.
+     *
+     * Residents kept asking the bot things only a person can answer, so the person is
+     * named on the menu rather than buried in the FAQ. She has no Telegram @username —
+     * checked against the registry, the field is empty — so the link is the phone-number
+     * form, which opens a Telegram chat with her without one, and the number itself is in
+     * <code> for tap-to-copy in case they would rather ring.
+     *
+     * Shown only to a linked resident, the same call already made for the accountant's
+     * number: an unlinked visitor browsing 🔑 Оренда is not owed the officers' phones.
+     */
+    private static function chairBlock(?Account $account): string
+    {
+        if (!$account instanceof Account) {
+            return '';
+        }
+
+        return "👩‍💼 <b>Голова ОСББ</b> — Людмила Осипенко\n"
+            . "📞 <code>+380 67 470 46 24</code> · "
+            . '<a href="https://t.me/+380674704624">написати в Telegram</a>' . "\n\n";
+    }
+
     /**
      * The house's total debt and the three largest debtors, above the menu.
      *
@@ -185,6 +211,18 @@ class StartCommand extends Command
             );
         }
 
+        // Third, with the open count on the label: the number is the whole point — it says
+        // at a glance whether the thing you came to report is already known. Linked
+        // residents only, like the register itself.
+        if ($account instanceof Account) {
+            $markup->addRow(
+                InlineKeyboardButton::make(
+                    self::complaintsLabel($bot),
+                    callback_data: ComplaintMenuCommand::MENU_CALLBACK,
+                ),
+            );
+        }
+
         $markup
             ->addRow(
                 InlineKeyboardButton::make('Бронювання', callback_data: 'schedule-pavilion'),
@@ -214,6 +252,23 @@ class StartCommand extends Command
         }
 
         return $markup;
+    }
+
+    private static function complaintsLabel(Nutgram $bot): string
+    {
+        try {
+            $repo = $bot->getContainer()->get(ComplaintRepository::class);
+
+            if ($repo instanceof ComplaintRepository) {
+                $open = $repo->countOpen();
+
+                return $open > 0 ? sprintf('🔧 Заявки (%d)', $open) : '🔧 Заявки';
+            }
+        } catch (\Throwable) {
+            // A count is decoration; the button must appear either way.
+        }
+
+        return '🔧 Заявки';
     }
 
     private static function residentChatOpen(Nutgram $bot): bool

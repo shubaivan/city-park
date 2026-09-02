@@ -12,7 +12,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 
 - `Account` is the tenant unit. One Account ↔ many `TelegramUser` (family members / conditional owners).
 - `Account.is_active = false` is the single block flag — used by debt blocking AND photo-miss blocking. Toggled via `/admin/users`.
-- `Account::isNonResidential()` blocks parking + storage units from booking *structurally* (checked before `is_active` — admins can't grant booking to a parking account without renaming the unit). Detects `apartment_number` containing паркінг/парковка/кладов/комірчина/parking/storage.
+- `Account::canBookPavilion()` blocks **storage** units from booking *structurally* (checked before `is_active` — admins can't grant booking to a кладова without renaming the unit). Parking **is** allowed: its owners pay the yard fee. The unit type comes from the third digit of `account_number` (`getUnitTypeDigit()`: 0 apartment, 5 storage, 7 parking), with `isStorage()` also matching legacy free-text `apartment_number` (кладов/комірчина/storage). There is no `isNonResidential()` — this file claimed one until 02.09.2026.
 - `ScheduledSet` is one row per booked **hour** (no merging). A "session" = consecutive same-pavilion hours by one account, detected at query time.
 - Booking limits live in `src/Validator/`: ≤ 3h / day, ≤ 12h / month, no cross-pavilion overlap same hour, bookings must be contiguous (one unbroken run per pavilion/day — no scattered hours), working hours 09:00–23:00 both pavilions (no night; last slot starts 22:00), per-account debt threshold computed as `area × tariff.price_per_meter × 1.5` (`DebtPolicy::getThresholdFor`). Fallback to env `DEBT_BLOCK_THRESHOLD` (1300 UAH) when either `Account.area` or `Tariff.price_per_meter` is missing/zero. Tariff is a single-row table set via `/admin/tariff`.
 
@@ -29,7 +29,13 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 | ℹ️ Інструкція та FAQ | `info-menu` / `info-topic:*` | `/info` | `InfoCommand` (edit `TOPICS` const) |
 | 🗳️ Голосування | `voting-menu` / `bvote:<id>:yes\|no` | `/vote` | `VotingMenuCommand` (community vote-to-block) |
 | 🏘 Чат мешканців | `resident-chat` | `/chat` | `ResidentChatCommand` (hands out the join-request link) |
+| 🔧 Заявки | `complaints-menu` / `cmp:{view,photos,page}:<id>` / `cmp:pic:<id>:<n>` / `cmp:status:<id>:<status>` / `cmp:new` | `/problem` | `ComplaintMenuCommand` + `ComplaintCreate` (conversation) |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
+
+The menu header also names the head of the ОСББ (Людмила Осипенко) with her number and a
+`t.me/+<phone>` link — she has no Telegram @username, the registry field is empty. Shown to
+linked residents only, the same call already made for the accountant's number: an unlinked
+visitor browsing 🔑 Оренда is not owed the officers' phones.
 | (auto) photo upload | `onPhoto` event | — | `UploadPhotoCommand` |
 
 **Slash menu must be pushed via `bin/console bot:menu:update --env=prod` after editing `BotMenuUpdateCommand::MENU`.** Its array order is what Telegram renders, and it is kept in sync with the inline menu in `StartCommand::mainMenuMarkup()` — 🔑 Оренда is first in both (residents were not finding it at the bottom). Nutgram's `setMyCommands()` has a null-scope bug; the command uses raw `sendRequest()` instead.
@@ -127,6 +133,54 @@ Apartment + building and nothing else: no names, no phone numbers. `is_active` i
 consulted — this is about the debt, not about booking rights. The viewer's own line
 («📌 Ваша квартира у списку: … , N місце» / «✅ боргів не має») is the half that makes it
 readable by the 86 residents who owe nothing.
+
+## Complaints register («🔧 Заявки»)
+
+What broke in the house and what is being done about it: a dead lift, a burst hose, a
+parking gate that will not open. All of it already happened in the residents' chat, where
+a report is a message that scrolls away — three people report the same lift, nobody knows
+whether the head of the ОСББ saw it, and nobody ever learns when it was fixed.
+
+**The register exists for the status, not for the list.** A resident who opens the bot and
+reads «🔧 Ліфт не працює — в роботі» does not post the fourth message about it. That is why
+the whole house sees every entry and why the open count rides on the menu button itself
+(`🔧 Заявки (3)`), and why the report button sits *under* the list rather than above it.
+
+- **Filing is open to everyone the ОСББ recognises.** `is_active` is not checked — a debt
+  blocks *booking*, and a debtor is still paying for that lift. Unit type is not checked
+  either: "ворота в паркінг не відчиняються" is by definition a parking owner's report.
+  Only an unlinked visitor is out, the same call as the residents' chat.
+- **Statuses are the head of the ОСББ's alone** (🆕 Нова → 🔧 В роботі → ✅ Виконано, and
+  back). "Виконано" is a statement about what the ОСББ did; a register anyone can close
+  records nothing. Managers are Telegram ids in `.env.local`
+  (`COMPLAINT_MANAGER_TELEGRAM_IDS`), same shape as `RESIDENT_CHAT_ID` — one or two people
+  who change about never, so a column and an admin checkbox would be machinery for nothing.
+  **An empty list means nobody can move a status, never everybody**; there is a test for it.
+  She can also work from `/admin/complaints`, which is where the "що зробили" note is
+  typed — awkward on a phone.
+- **Filing is one step.** The person doing it is standing in front of a broken lift, and
+  every extra question is a reason to close the bot and write in the chat instead. Photos
+  are offered *after* the complaint is saved, so giving up at that point still leaves the
+  problem reported.
+- **Photos go through the web, never the bot.** `ComplaintCreate` carries the mandatory
+  `interceptConversationPhoto()` guard and has no photo step — it matters more here than
+  anywhere else, because this conversation is *about* photographing something broken. A
+  picture sent to the bot means pavilion evidence and nothing else; see the rental section
+  for why that invariant cannot be relaxed. The page is a Telegram Web App
+  (`/complaint/photo/{token}`, `WebAppInfo`) that downscales in the browser and closes back
+  into the chat, and the card is the same one-message carousel as a rental listing.
+- **`complaint:cleanup` (daily 04:15) keeps it a list of live problems**: finished entries
+  are purged `DONE_RETENTION_DAYS` (30) after they were *closed* — measured from
+  `status_changed_at`, so something reported in January and fixed in June survives until
+  July — and untouched ones after `STALE_OPEN_DAYS` (180). I argued for auto-closing the
+  stale ones instead of deleting them, since a six-month-old open entry is a record of
+  nobody having done anything; Иван's call (02.09.2026) was that such a problem was not a
+  real one and will be filed again if it still matters. Photos are deleted with the row.
+
+`ImageStore` holds the upload rules shared with the rental noticeboard — size cap, GD
+re-encode (which is what strips EXIF/GPS), 1600px downscale, and the prefix check that
+guards `unlink()` against a path that arrived over HTTP. It was extracted when this
+shipped: two copies of that means the day one is fixed the other silently is not.
 
 ## Residents' Telegram group («ЖК City Park • Черкаси»)
 
@@ -232,6 +286,7 @@ or they silently exercise a bot with no middleware.
 30 3 * * * sudo -u www-data php …/city-park/bin/console pavilion:photo:cleanup --env=prod
 0 * * * * sudo -u www-data php …/city-park/bin/console block-vote:tally --env=prod
 0 4 * * * sudo -u www-data php …/city-park/bin/console rental:expire --env=prod
+15 4 * * * sudo -u www-data php …/city-park/bin/console complaint:cleanup --env=prod
 ```
 
 **The `block-vote:tally` hourly cron is required** — without it, deadline-passed campaigns never close and 30-day vote-blocks never auto-unblock. Install it on deploy.
