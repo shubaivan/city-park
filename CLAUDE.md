@@ -149,6 +149,15 @@ whoever taps first.
   pavilion photo blocks *booking*, and the chat is where the ОСББ announces things —
   including that the person owes money. Parking-only accounts are let in too
   (`isNonResidential()` bars booking the pavilion, not reading the house chat).
+- **A member is not offered the door again.** `ResidentChatService::isMember()` asks
+  `getChatMember` at render time, so somebody already inside sees «✅ Ви вже в чаті» and a
+  «🚪 Відкрити чат» button instead of an invitation. `RESTRICTED` counts as a member only
+  when `is_member` is true — a restricted user who left keeps that status. When Telegram
+  cannot be asked the method returns null and the caller falls back to the invitation:
+  showing the door to a member is a much smaller mistake than hiding it from someone who
+  needs it. (Tapping the link while already a member is harmless in any case — Telegram
+  resolves it to "open the chat" and no join request is created; `handleJoinRequest`
+  catches `USER_ALREADY_PARTICIPANT` anyway.)
 - A decline is not a ban: it explains the two-tap fix (`/phone` → share number) and the
   same person can request again. The refusal text goes out **before** `declineChatJoinRequest`
   — `user_chat_id` is the bot's only way to reach someone it has never spoken to, and that

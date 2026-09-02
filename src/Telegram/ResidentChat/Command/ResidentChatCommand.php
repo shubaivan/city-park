@@ -51,12 +51,30 @@ class ResidentChatCommand
             return;
         }
 
+        // Someone already inside should not be offered a door they are standing behind.
+        // A null answer means Telegram could not be asked — fall back to the invitation,
+        // since showing the door to a member is a far smaller mistake than hiding it from
+        // somebody who still needs it.
+        $inside = $this->residentChat->isMember($bot, $user) === true;
+
         $markup->addRow(
-            InlineKeyboardButton::make('🚪 Увійти в чат', url: $this->residentChat->inviteLink()),
+            InlineKeyboardButton::make(
+                $inside ? '🚪 Відкрити чат' : '🚪 Увійти в чат',
+                url: $this->residentChat->inviteLink(),
+            ),
         );
         $markup->addRow(StartCommand::homeButton());
 
-        $this->respond($bot, $this->doorText(), $markup);
+        $this->respond($bot, $inside ? $this->insideText() : $this->doorText(), $markup);
+    }
+
+    private function insideText(): string
+    {
+        return "🏘 <b>Чат мешканців</b>\n\n"
+            . "✅ Ви вже в чаті — повторно заходити не потрібно.\n\n"
+            . "Кнопка нижче просто відкриє його.\n\n"
+            . '<i>Не бачите чат у списку? Перевірте архів у Telegram — можливо, ви його '
+            . 'туди приховали.</i>';
     }
 
     private function doorText(): string
