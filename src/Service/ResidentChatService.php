@@ -79,18 +79,30 @@ class ResidentChatService
      */
     public function handleJoinRequest(Nutgram $bot, ChatJoinRequest $request): void
     {
+        $telegramId = (string)$request->from->id;
+
+        // Logged before the guard below, and with the chat id, because the first thing
+        // anyone debugging this asks is "did the knock even reach us, and from where?" —
+        // a mismatching id is the difference between a misconfigured gate and a silent
+        // Telegram, and the two look identical from the outside.
+        $this->chatLogger->info('join request received', [
+            'chat_id' => (string)$request->chat->id,
+            'chat_title' => $request->chat->title,
+            'configured_chat_id' => $this->residentChatId,
+            'telegram_id' => $telegramId,
+            'username' => $request->from->username,
+        ]);
+
         // The bot may sit in other chats; only this one is gated.
         if ((string)$request->chat->id !== $this->residentChatId) {
             return;
         }
 
-        $telegramId = (string)$request->from->id;
         $user = $this->telegramUserRepository->getByTelegramId($telegramId);
         $allowed = $user && $this->mayJoin($user);
 
-        $this->chatLogger->info('resident chat join request', [
+        $this->chatLogger->info('gate decision', [
             'telegram_id' => $telegramId,
-            'username' => $request->from->username,
             'account_id' => $user?->getAccount()?->getId(),
             'allowed' => $allowed,
         ]);
