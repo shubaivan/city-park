@@ -250,13 +250,21 @@ cd /var/www/html/city-park
 git pull origin master
 composer install --no-dev --optimize-autoloader --no-interaction   # if composer.lock changed
 NODE_OPTIONS=--openssl-legacy-provider npx encore production       # if assets/twig changed (flag needed for prod Node 17+ vs old webpack/terser)
-rm -rf var/cache/prod && php bin/console cache:warmup --env=prod
+sudo -u www-data php bin/console cache:clear --env=prod       # NOT `rm -rf var/cache/prod` — see below
 php bin/console doctrine:migrations:migrate --no-interaction --env=prod   # if migration added
 sudo -u www-data php bin/console bot:menu:update --env=prod          # idempotent; safe every deploy
 mkdir -p public/uploads/pavilion-photos
 chown -R www-data:www-data var/cache var/log public/uploads
 systemctl reload php8.3-fpm
 ```
+
+**Never `rm -rf var/cache/prod` on a live server.** php-fpm keeps serving `/hook` while the
+cache is missing, and every Telegram update that lands in that window answers 500. On
+02.09.2026 four deploys in one afternoon each cost a real resident's update a 500 (Telegram
+retried a second later, so nothing was lost, but the errors are real and they land in the log
+we grep). `cache:clear` warms into a temporary directory and swaps it in with two renames, so
+the gap is microseconds instead of the seconds a warmup takes. Run it as `www-data`, or the
+new cache is root-owned and conversation state breaks (incident 2026-05-03).
 
 Feature-branch workflow preferred for normal work; direct master only when explicitly approved.
 
