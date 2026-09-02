@@ -111,7 +111,11 @@ are fresh by construction and the post shows movement month to month. It leads w
 the flat count and the trend, then names the top ten (`ANNOUNCE_SIZE`). Guards: once per calendar
 day (a corrected re-upload must not put a second list in front of the house), only when the chat
 is configured, and never fatal — a failed post must not undo an import that already moved 143
-accounts. `debt:announce [--dry-run] [--force] [--snapshot]` previews or re-sends it by hand.
+accounts. The post is **pinned** in the group (`can_pin_messages` is granted), silently — the message
+itself has just notified everyone — and last month's is unpinned right after, so the pinned list
+does not grow by one every import; `DebtSnapshot.announced_message_id` is what remembers which.
+A pin that fails is logged, never reported as a failed announcement.
+`debt:announce [--dry-run] [--force] [--snapshot]` previews or re-sends it by hand.
 `DebtSnapshot` is one row per import (total, debtor count, `announced_at`); it exists because the
 debt column is overwritten in place, leaving the house no memory of its own arrears.
 

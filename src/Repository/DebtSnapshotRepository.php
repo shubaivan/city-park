@@ -40,6 +40,24 @@ class DebtSnapshotRepository extends ServiceEntityRepository
             ->getOneOrNullResult();
     }
 
+    /**
+     * The most recent announcement that is still pinned, so the new post can unpin it.
+     */
+    public function lastAnnounced(?DebtSnapshot $except = null): ?DebtSnapshot
+    {
+        $qb = $this->createQueryBuilder('s')
+            ->andWhere('s.announced_at IS NOT NULL')
+            ->andWhere('s.announced_message_id IS NOT NULL')
+            ->orderBy('s.announced_at', 'DESC')
+            ->setMaxResults(1);
+
+        if ($except?->getId() !== null) {
+            $qb->andWhere('s.id <> :except')->setParameter('except', $except->getId());
+        }
+
+        return $qb->getQuery()->getOneOrNullResult();
+    }
+
     public function announcedSince(\DateTimeImmutable $since): bool
     {
         $count = $this->createQueryBuilder('s')

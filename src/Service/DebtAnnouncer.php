@@ -71,10 +71,12 @@ class DebtAnnouncer
 
         $text = $this->board->chatAnnouncement($snapshot, $this->snapshots->previousTo($snapshot));
 
+        $chatId = (int)$this->residentChat->chatId();
+
         try {
-            $this->bot->sendMessage(
+            $message = $this->bot->sendMessage(
                 text: $text,
-                chat_id: (int)$this->residentChat->chatId(),
+                chat_id: $chatId,
                 parse_mode: ParseMode::HTML,
             );
         } catch (\Throwable $e) {
@@ -86,8 +88,14 @@ class DebtAnnouncer
             return 'failed';
         }
 
-        $snapshot->markAnnounced();
+        $messageId = $message?->message_id;
+
+        $snapshot->markAnnounced($messageId);
         $this->em->flush();
+
+        if ($messageId !== null) {
+            $this->repin($chatId, $messageId, $snapshot);
+        }
 
         $this->logger->info('debt announcement posted', [
             'snapshot_id' => $snapshot->getId(),
@@ -96,6 +104,46 @@ class DebtAnnouncer
         ]);
 
         return 'sent';
+    }
+
+    /**
+     * Pin the new summary and unpin last month's.
+     *
+     * The post is the one thing in the chat worth keeping at the top — it is published
+     * monthly and read all month. Pinned without a notification, because the message
+     * itself has just notified everyone and a second ping for the pin is noise.
+     *
+     * The new one is pinned before the old one is removed, so the chat is never left
+     * without a current summary at the top. Nothing here may throw: the announcement has
+     * already been published, and a pin that fails is a cosmetic problem, not a reason to
+     * report the post as failed.
+     */
+    private function repin(int $chatId, int $messageId, DebtSnapshot $snapshot): void
+    {
+        try {
+            $this->bot->pinChatMessage($chatId, $messageId, disable_notification: true);
+        } catch (\Throwable $e) {
+            $this->logger->warning('debt announcement pin failed', ['error' => $e->getMessage()]);
+
+            return;
+        }
+
+        $previous = $this->snapshots->lastAnnounced(except: $snapshot);
+
+        if (!$previous instanceof DebtSnapshot || $previous->getAnnouncedMessageId() === null) {
+            return;
+        }
+
+        try {
+            $this->bot->unpinChatMessage($chatId, $previous->getAnnouncedMessageId());
+        } catch (\Throwable $e) {
+            // Already unpinned by a resident, or the message was deleted — either way the
+            // new summary is pinned, which is all that matters.
+            $this->logger->info('debt announcement unpin of previous failed', [
+                'message_id' => $previous->getAnnouncedMessageId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

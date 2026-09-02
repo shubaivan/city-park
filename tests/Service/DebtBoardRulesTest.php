@@ -81,24 +81,39 @@ class DebtBoardRulesTest extends TestCase
         $this->assertStringContainsString('/phone', $report);
     }
 
-    public function testStaleFiguresHideTheBoardEntirely(): void
+    /**
+     * There is deliberately no age limit: an earlier version blanked the board after 30
+     * days, which was a guess at the accountant's monthly cadence and would have taken
+     * the board away every cycle just before the next file arrived. Old figures stay up,
+     * dated, until she replaces them.
+     */
+    public function testOldFiguresStayUpAndStayDated(): void
     {
-        $stale = $this->service(
+        $old = $this->service(
             [$this->account(1, '134', '12269.00')],
-            new \DateTimeImmutable('-' . (DebtBoardService::STALE_AFTER_DAYS + 1) . ' days'),
+            new \DateTimeImmutable('-90 days'),
         );
 
-        $this->assertFalse($stale->isAvailable());
-        $this->assertSame('', $stale->menuBlock($this->account(9, '5', '0')));
-        $this->assertStringNotContainsString('кв. 134', $stale->report($this->account(9, '5', '0')));
+        $asOf = (new \DateTimeImmutable('-90 days'))
+            ->setTimezone(new \DateTimeZone('Europe/Kyiv'))
+            ->format('d.m.Y');
+
+        $this->assertTrue($old->isAvailable());
+        $this->assertStringContainsString('кв. 134', $old->menuBlock($this->account(9, '5', '0')));
+        $this->assertStringContainsString($asOf, $old->menuBlock($this->account(9, '5', '0')));
     }
 
-    public function testNeverImportedCountsAsStale(): void
+    /**
+     * The one case that is not a guess: nothing was ever imported, so there is no date to
+     * stamp and no figure to stand behind. Publish nothing.
+     */
+    public function testNeverImportedPublishesNothing(): void
     {
         $never = $this->service([$this->account(1, '134', '12269.00')], null);
 
-        $this->assertTrue($never->isStale());
         $this->assertFalse($never->isAvailable());
+        $this->assertSame('', $never->menuBlock($this->account(9, '5', '0')));
+        $this->assertStringNotContainsString('кв. 134', $never->report($this->account(9, '5', '0')));
     }
 
     public function testMenuBlockLeadsWithTheHouseTotalAndTheTopThree(): void
