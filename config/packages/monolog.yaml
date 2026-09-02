@@ -68,11 +68,24 @@ when@prod:
             # write to stderr is discarded: a hard 500 on /hook (Telegram then retries the
             # same update for an hour) left no trace anywhere for two weeks — see the
             # 02.08/16.08.2026 swallowed-photo incident. Keep errors in a real file.
+            # Wrapped in fingers_crossed purely for its excluded_http_codes: Symfony logs
+            # every unmatched route as ERROR, and this host is scanned around the clock
+            # (/wp-includes/…, *.PhP shells, /autodiscover/…) — ~1000 lines a day that
+            # buried the real errors. nginx's citypark_access.log already records those
+            # requests, so nothing is lost by dropping them here. buffer_size 1 means the
+            # buffer holds only the triggering record: a real error must never arrive with
+            # a replay of the 404s that preceded it.
             errors_file:
+                type: fingers_crossed
+                action_level: error
+                handler: errors_file_nested
+                excluded_http_codes: [404, 405]
+                buffer_size: 1
+                channels: ["!photo", "!chat", "!event"]
+            errors_file_nested:
                 type: stream
                 path: "%kernel.logs_dir%/prod_errors.log"
                 level: error
-                channels: ["!photo", "!chat", "!event"]
                 formatter: monolog.formatter.json
             # Persistent, greppable audit trail for photo uploads + reminder/block delivery.
             # Written unconditionally at info level to a real file (not stderr/fingers_crossed),
