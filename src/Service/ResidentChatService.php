@@ -139,11 +139,32 @@ class ResidentChatService
         }
 
         $user = $this->telegramUserRepository->getByTelegramId($telegramId);
+
+        // Captured before mayJoin(), which resolves an account through the conditional-owner
+        // phone and silently persists the link — after it has run, a user who arrived
+        // unlinked is indistinguishable from one who was linked all along.
+        $linkedBefore = $user?->getAccount()?->getId();
+
         $allowed = $user && $this->mayJoin($user);
 
+        // "Чому мене не пустило?" is a question ~140 residents can ask, and the answer has
+        // to come from this line. Logging the account id alone could not give it: "no such
+        // user", "user with no phone" and "user with a phone that matches no account" all
+        // came out as account_id=null and were indistinguishable from each other.
+        //
+        // The gap showed up on 02.09.2026, when the same telegram_id was approved, refused
+        // and approved again within seven minutes and the log could not explain it. That
+        // one turned out to be benign — the owner was testing the gate while the account
+        // link was still being wired up by hand — but working that out took the nginx log,
+        // the audit table and a read of every code path that touches the link. These
+        // fields answer it directly.
         $this->chatLogger->info('gate decision', [
             'telegram_id' => $telegramId,
+            'user_found' => $user !== null,
+            'user_id' => $user?->getId(),
+            'has_phone' => $user?->getPhoneNumber() !== null,
             'account_id' => $user?->getAccount()?->getId(),
+            'linked_before_resolve' => $linkedBefore,
             'allowed' => $allowed,
         ]);
 
