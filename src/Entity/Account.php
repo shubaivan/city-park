@@ -37,6 +37,23 @@ class Account
     #[ORM\Column(type: 'decimal', precision: 10, scale: 2, nullable: true, options: ['default' => 0])]
     private ?string $debt = '0';
 
+    /**
+     * When `debt` was last written by an import — NOT when it last changed.
+     *
+     * The number itself carries no date, and it only ever moves when the accountant
+     * uploads a fresh file (there is no live feed from the ОСББ books). Published
+     * unqualified, a stale figure names as a debtor somebody who paid three weeks ago,
+     * so the debtors' board renders this as "станом на …" and hides itself once the
+     * stamp goes cold — see DebtBoardService::STALE_AFTER_DAYS.
+     *
+     * Stamped inside setDebt() rather than at the call sites: two import paths exist
+     * (debt:import-file and /admin/debt/upload, each with a main loop and a
+     * not-in-file reset loop), and a forgotten stamp in one of them is a silent lie
+     * on a public board rather than a visible bug.
+     */
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    private ?\DateTimeImmutable $debt_updated_at = null;
+
     #[ORM\Column(type: 'decimal', precision: 6, scale: 2, nullable: true)]
     private ?string $area = null;
 
@@ -148,6 +165,22 @@ class Account
     public function setDebt(?string $debt): static
     {
         $this->debt = $debt;
+        $this->debt_updated_at = new \DateTimeImmutable();
+
+        return $this;
+    }
+
+    public function getDebtUpdatedAt(): ?\DateTimeImmutable
+    {
+        return $this->debt_updated_at;
+    }
+
+    /**
+     * Only for backfilling the column on accounts imported before it existed.
+     */
+    public function setDebtUpdatedAt(?\DateTimeImmutable $at): static
+    {
+        $this->debt_updated_at = $at;
 
         return $this;
     }

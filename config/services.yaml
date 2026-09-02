@@ -49,6 +49,11 @@ services:
     App\Service\ResidentChatService:
         public: true
 
+    # Same reason again: StartCommand renders the debtors' board on every menu draw and
+    # can only reach it through the bot container, which exposes public services only.
+    App\Service\DebtBoardService:
+        public: true
+
     # Nutgram handlers
     App\Telegram\:
         public: true

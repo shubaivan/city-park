@@ -93,6 +93,10 @@ $bot->onCallbackQueryData(\App\Telegram\Voting\Command\VotingMenuCommand::MENU_C
 $bot->onCallbackQueryData('^bvote:\d+:(yes|no)$', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 $bot->onCommand('vote', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 
+// The debtors' board: the menu block is rendered by StartCommand, this is the full list.
+$bot->onCallbackQueryData(\App\Telegram\Debt\Command\DebtBoardCommand::MENU_CALLBACK, \App\Telegram\Debt\Command\DebtBoardCommand::class);
+$bot->onCommand('debts', \App\Telegram\Debt\Command\DebtBoardCommand::class);
+
 // The residents' chat: the gate on the door, and the button that hands out the key.
 $bot->onChatJoinRequest(\App\Telegram\ResidentChat\Command\JoinRequestCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\ResidentChat\Command\ResidentChatCommand::MENU_CALLBACK, \App\Telegram\ResidentChat\Command\ResidentChatCommand::class);
