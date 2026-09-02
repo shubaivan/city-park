@@ -281,7 +281,9 @@ class ComplaintService
                         . "Фото: <b>%d з %d</b>.\n\n"
                         . '<i>Можна додати ще — просто відкрийте сторінку знову.</i>',
                     $complaint->getId(),
-                    htmlspecialchars($this->label($complaint), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                    // The full text, not label(): that truncates to 40 characters because it
+                    // has to fit on a button, and there is no button here.
+                    htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                     $count,
                     Complaint::PHOTOS_MAX,
                 ),
