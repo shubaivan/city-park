@@ -40,6 +40,7 @@ class ComplaintService
         private EntityManagerInterface $em,
         private LoggerInterface $logger,
         private Nutgram $bot,
+        private ResidentChatService $residentChat,
         private string $managerIds = '',
     ) {}
 
@@ -92,9 +93,28 @@ class ComplaintService
         return $complaint;
     }
 
-    public function changeStatus(Complaint $complaint, string $status, string $by): void
-    {
+    /**
+     * Move a complaint, then tell the two audiences that care.
+     *
+     * Both notifications live here rather than in the bot handler because the status can
+     * also be moved from /admin/complaints — and when it was only wired into the handler,
+     * a status changed from the admin panel told nobody at all.
+     *
+     * $actor is the TelegramUser doing it, when there is one: they are looking at the card
+     * that already shows the new status, so they do not need a message about their own tap.
+     */
+    public function changeStatus(
+        Complaint $complaint,
+        string $status,
+        string $by,
+        ?TelegramUser $actor = null,
+    ): void {
         $from = $complaint->getStatus();
+
+        if ($from === $status) {
+            return;
+        }
+
         $complaint->setStatus($status, $by);
         $this->em->flush();
 
@@ -104,6 +124,100 @@ class ComplaintService
             'to' => $status,
             'by' => $by,
         ]);
+
+        $this->notifyAuthor($complaint, $from, $actor);
+        $this->announceToChat($complaint, $from);
+    }
+
+    /**
+     * The person who reported it hears about it without having to come back and check.
+     * That is the difference between a register and the chat it replaces.
+     */
+    private function notifyAuthor(Complaint $complaint, string $from, ?TelegramUser $actor): void
+    {
+        $author = $complaint->getAuthor();
+        $chatId = $author?->getChatId();
+
+        if ($chatId === null || $chatId === '') {
+            return;
+        }
+
+        if ($actor instanceof TelegramUser && $actor->getId() === $author->getId()) {
+            return;
+        }
+
+        // The transition, not just the new state: "🔧 В роботі" alone does not say whether
+        // it changed a minute ago or has read that way for a week, and movement is the
+        // whole reason the message is being sent.
+        $text = sprintf(
+            "🔧 <b>Ваша заявка №%d</b>\n\n%s\n\n%s → <b>%s</b>",
+            $complaint->getId(),
+            htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            $this->statusLabel($from),
+            $this->statusLabel($complaint->getStatus()),
+        );
+
+        if ($complaint->getResolution() !== null && $complaint->getResolution() !== '') {
+            $text .= "\n\n💬 <i>" . htmlspecialchars($complaint->getResolution(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</i>';
+        }
+
+        try {
+            $this->bot->sendMessage(
+                text: $text,
+                chat_id: (int)$chatId,
+                parse_mode: ParseMode::HTML,
+                reply_markup: InlineKeyboardMarkup::make()->addRow(
+                    InlineKeyboardButton::make('🔧 Відкрити заявку', callback_data: 'cmp:view:' . $complaint->getId()),
+                ),
+            );
+        } catch (\Throwable $e) {
+            $this->logger->warning('complaint status notify failed', [
+                'complaint_id' => $complaint->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * And the house hears about it in the chat.
+     *
+     * A repair nobody is told about is, from the outside, indistinguishable from no repair
+     * — which is how the ОСББ ends up doing the work and still being asked when somebody
+     * will finally fix the lift. No apartment number: the register is public inside the
+     * bot, but a status update does not need to name the neighbour who reported it.
+     */
+    private function announceToChat(Complaint $complaint, string $from): void
+    {
+        if (!$this->residentChat->isConfigured()) {
+            return;
+        }
+
+        $text = sprintf(
+            "%s <b>Заявка №%d</b>\n\n%s\n\n%s → <b>%s</b>",
+            $complaint->isDone() ? '✅' : '🔧',
+            $complaint->getId(),
+            htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            $this->statusLabel($from),
+            $this->statusLabel($complaint->getStatus()),
+        );
+
+        if ($complaint->getResolution() !== null && $complaint->getResolution() !== '') {
+            $text .= "\n\n💬 <i>" . htmlspecialchars($complaint->getResolution(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</i>';
+        }
+
+        try {
+            $this->bot->sendMessage(
+                text: $text,
+                chat_id: (int)$this->residentChat->chatId(),
+                parse_mode: ParseMode::HTML,
+                disable_notification: true,
+            );
+        } catch (\Throwable $e) {
+            $this->logger->warning('complaint chat announcement failed', [
+                'complaint_id' => $complaint->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function trimText(string $text): string
