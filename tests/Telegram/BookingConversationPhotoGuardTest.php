@@ -4,6 +4,7 @@ namespace App\Tests\Telegram;
 
 use App\Service\PhotoUploadFlow;
 use App\Telegram\Complaint\Command\ComplaintCreate;
+use App\Telegram\Complaint\Command\ComplaintEdit;
 use App\Telegram\Rental\Command\RentalPublish;
 use App\Telegram\SchedulePavilion\Command\OwnSchedule;
 use App\Telegram\SchedulePavilion\Command\SchedulePavilion;
@@ -36,6 +37,7 @@ class BookingConversationPhotoGuardTest extends KernelTestCase
         yield 'own bookings' => [OwnSchedule::class, 'removeScheduled'];
         yield 'rental listing' => [RentalPublish::class, 'askDescription'];
         yield 'complaint' => [ComplaintCreate::class, 'save'];
+        yield 'complaint edit' => [ComplaintEdit::class, 'save'];
     }
 
     /**

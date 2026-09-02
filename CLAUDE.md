@@ -29,7 +29,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 | ℹ️ Інструкція та FAQ | `info-menu` / `info-topic:*` | `/info` | `InfoCommand` (edit `TOPICS` const) |
 | 🗳️ Голосування | `voting-menu` / `bvote:<id>:yes\|no` | `/vote` | `VotingMenuCommand` (community vote-to-block) |
 | 🏘 Чат мешканців | `resident-chat` | `/chat` | `ResidentChatCommand` (hands out the join-request link) |
-| 🔧 Заявки | `complaints-menu` / `cmp:{view,photos,page}:<id>` / `cmp:pic:<id>:<n>` / `cmp:status:<id>:<status>` / `cmp:new` | `/problem` | `ComplaintMenuCommand` + `ComplaintCreate` (conversation) |
+| 🔧 Заявки | `complaints-menu` / `cmp:{view,photos,page,del,delok,edit}:<id>` / `cmp:pic:<id>:<n>` / `cmp:status:<id>:<status>` / `cmp:new` | `/problem` | `ComplaintMenuCommand` + `ComplaintCreate` / `ComplaintEdit` (conversations) |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
 
 The menu header also names the head of the ОСББ (Людмила Осипенко) with her number and a
@@ -158,6 +158,11 @@ the whole house sees every entry and why the open count rides on the menu button
   **An empty list means nobody can move a status, never everybody**; there is a test for it.
   She can also work from `/admin/complaints`, which is where the "що зробили" note is
   typed — awkward on a phone.
+- **The entry stays the author's.** They can retype the text (`ComplaintEdit`) or delete it
+  outright, at any status — a confirmation step first, and the photos go with it. Restricting
+  deletion to 🆕 was considered and rejected: typos, duplicates and problems that fix
+  themselves do not stop happening the moment Людмила taps «в роботі», and a resident who
+  cannot withdraw their own entry simply files a second one saying "ignore the previous".
 - **Filing is one step.** The person doing it is standing in front of a broken lift, and
   every extra question is a reason to close the bot and write in the chat instead. Photos
   are offered *after* the complaint is saved, so giving up at that point still leaves the

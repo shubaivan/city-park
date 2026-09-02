@@ -75,6 +75,18 @@ class ComplaintMenuCommand
             return;
         }
 
+        if (str_starts_with($data, 'cmp:del:')) {
+            $this->confirmDelete($bot, (int)substr($data, strlen('cmp:del:')));
+
+            return;
+        }
+
+        if (str_starts_with($data, 'cmp:delok:')) {
+            $this->delete($bot, (int)substr($data, strlen('cmp:delok:')));
+
+            return;
+        }
+
         if (str_starts_with($data, 'cmp:status:')) {
             [$id, $status] = array_pad(explode(':', substr($data, strlen('cmp:status:'))), 2, '');
             $this->changeStatus($bot, (int)$id, (string)$status);
@@ -284,6 +296,15 @@ class ComplaintMenuCommand
             ));
         }
 
+        // The author's own entry stays theirs: a typo, a duplicate or a problem that fixed
+        // itself must be fixable by the person who filed it, without going through anyone.
+        if ($this->isAuthor($complaint, $user)) {
+            $markup->addRow(
+                InlineKeyboardButton::make('✏️ Змінити текст', callback_data: 'cmp:edit:' . $complaint->getId()),
+                InlineKeyboardButton::make('🗑 Видалити', callback_data: 'cmp:del:' . $complaint->getId()),
+            );
+        }
+
         // Statuses are the head of the ОСББ's alone. "Виконано" is a statement about what
         // the ОСББ did, and a register anyone can mark done records nothing.
         if ($this->service->isManager($user)) {
@@ -395,6 +416,63 @@ class ComplaintMenuCommand
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Deleting is irreversible and takes the photos with it, so it asks first — and shows
+     * the text being deleted, because the button was tapped from a list where every entry
+     * looks much like the next.
+     */
+    private function confirmDelete(Nutgram $bot, int $complaintId): void
+    {
+        $complaint = $this->complaints->find($complaintId);
+        $user = $this->telegramUserService->getCurrentUser();
+
+        if (!$complaint instanceof Complaint || !$this->isAuthor($complaint, $user)) {
+            $bot->answerCallbackQuery(text: 'Видалити заявку може лише той, хто її подав.', show_alert: true);
+
+            return;
+        }
+
+        $this->respond(
+            $bot,
+            edit: true,
+            text: sprintf(
+                "🗑 <b>Видалити заявку №%d?</b>\n\n<i>%s</i>\n\n%s"
+                    . 'Її більше не побачить ніхто — ні сусіди, ні голова ОСББ. Це не скасувати.',
+                $complaint->getId(),
+                $this->esc($complaint->getText()),
+                $complaint->getPhotos() !== []
+                    ? sprintf("Разом із нею зникнуть %d фото.\n\n", count($complaint->getPhotos()))
+                    : '',
+            ),
+            markup: InlineKeyboardMarkup::make()
+                ->addRow(InlineKeyboardButton::make(
+                    '🗑 Так, видалити',
+                    callback_data: 'cmp:delok:' . $complaint->getId(),
+                ))
+                ->addRow(InlineKeyboardButton::make(
+                    '⬅️ Ні, залишити',
+                    callback_data: 'cmp:view:' . $complaint->getId(),
+                )),
+        );
+    }
+
+    private function delete(Nutgram $bot, int $complaintId): void
+    {
+        $complaint = $this->complaints->find($complaintId);
+        $user = $this->telegramUserService->getCurrentUser();
+
+        if (!$complaint instanceof Complaint || !$this->isAuthor($complaint, $user)) {
+            $bot->answerCallbackQuery(text: 'Видалити заявку може лише той, хто її подав.', show_alert: true);
+
+            return;
+        }
+
+        $this->service->delete($complaint);
+
+        $bot->answerCallbackQuery(text: 'Заявку видалено.');
+        $this->renderMenu($bot, edit: true, notice: sprintf('🗑 Заявку №%d видалено.', $complaintId));
     }
 
     private function photoLink(Nutgram $bot, int $complaintId): void
