@@ -233,10 +233,15 @@
                         });
                 });
             });
-        }, Promise.resolve()).catch(function () { say('Немає зв\'язку.', 'err'); });
+        }, Promise.resolve())
+            // busy(false) on BOTH paths: it un-hides the "Готово" button, and a chain that
+            // only restores it on success leaves the page with no way out the moment one
+            // upload fails.
+            .then(function () { busy(false); })
+            .catch(function () { busy(false); say('Немає зв\'язку.', 'err'); });
     });
 
-    document.getElementById('done').addEventListener('click', function () {
+    doneBtn.addEventListener('click', function () {
         var btn = this;
         btn.disabled = true;
         say('Зберігаємо…', 'busy');
