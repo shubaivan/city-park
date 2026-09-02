@@ -401,109 +401,12 @@ class ComplaintMenuCommand
             return;
         }
 
-        $this->service->changeStatus($complaint, $status, $this->displayName($user));
+        // The author notice and the chat announcement now ride inside changeStatus(), so
+        // that a status moved from /admin/complaints reaches the same two audiences.
+        $this->service->changeStatus($complaint, $status, $this->displayName($user), actor: $user);
 
         $bot->answerCallbackQuery(text: $this->service->statusLabel($status));
-        $this->notifyAuthor($bot, $complaint);
         $this->renderCard($bot, $complaintId);
-    }
-
-    /**
-     * Tell the person who reported it. The whole reason the register beats the chat is
-     * that a report does not vanish — so the author has to hear that something happened,
-     * without having to come back and check.
-     */
-    private function notifyAuthor(Nutgram $bot, Complaint $complaint): void
-    {
-        $author = $complaint->getAuthor();
-        $chatId = $author?->getChatId();
-
-        if ($chatId === null || $chatId === '') {
-            return;
-        }
-
-        // The manager changing the status is often the author's neighbour, not the author;
-        // but when they are the same person the card they are looking at already says it.
-        $current = $this->telegramUserService->getCurrentUser();
-
-        if ($current instanceof TelegramUser && $current->getId() === $author->getId()) {
-            return;
-        }
-
-        try {
-            $bot->sendMessage(
-                text: sprintf(
-                    "🔧 <b>Ваша заявка №%d</b>\n\n%s\n\nНовий статус: <b>%s</b>",
-                    $complaint->getId(),
-                    $this->esc($this->service->label($complaint)),
-                    $this->service->statusLabel($complaint->getStatus()),
-                ),
-                chat_id: $chatId,
-                parse_mode: ParseMode::HTML,
-            );
-        } catch (\Throwable $e) {
-            $this->logger->warning('complaint status notify failed', [
-                'complaint_id' => $complaint->getId(),
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
-     * Deleting is irreversible and takes the photos with it, so it asks first — and shows
-     * the text being deleted, because the button was tapped from a list where every entry
-     * looks much like the next.
-     */
-    private function confirmDelete(Nutgram $bot, int $complaintId): void
-    {
-        $complaint = $this->complaints->find($complaintId);
-        $user = $this->telegramUserService->getCurrentUser();
-
-        if (!$complaint instanceof Complaint || !$this->isAuthor($complaint, $user)) {
-            $bot->answerCallbackQuery(text: 'Видалити заявку може лише той, хто її подав.', show_alert: true);
-
-            return;
-        }
-
-        $this->respond(
-            $bot,
-            edit: true,
-            text: sprintf(
-                "🗑 <b>Видалити заявку №%d?</b>\n\n<i>%s</i>\n\n%s"
-                    . 'Її більше не побачить ніхто — ні сусіди, ні голова ОСББ. Це не скасувати.',
-                $complaint->getId(),
-                $this->esc($complaint->getText()),
-                $complaint->getPhotos() !== []
-                    ? sprintf("Разом із нею зникнуть %d фото.\n\n", count($complaint->getPhotos()))
-                    : '',
-            ),
-            markup: InlineKeyboardMarkup::make()
-                ->addRow(InlineKeyboardButton::make(
-                    '🗑 Так, видалити',
-                    callback_data: 'cmp:delok:' . $complaint->getId(),
-                ))
-                ->addRow(InlineKeyboardButton::make(
-                    '⬅️ Ні, залишити',
-                    callback_data: 'cmp:view:' . $complaint->getId(),
-                )),
-        );
-    }
-
-    private function delete(Nutgram $bot, int $complaintId): void
-    {
-        $complaint = $this->complaints->find($complaintId);
-        $user = $this->telegramUserService->getCurrentUser();
-
-        if (!$complaint instanceof Complaint || !$this->isAuthor($complaint, $user)) {
-            $bot->answerCallbackQuery(text: 'Видалити заявку може лише той, хто її подав.', show_alert: true);
-
-            return;
-        }
-
-        $this->service->delete($complaint);
-
-        $bot->answerCallbackQuery(text: 'Заявку видалено.');
-        $this->renderMenu($bot, edit: true, notice: sprintf('🗑 Заявку №%d видалено.', $complaintId));
     }
 
     private function photoLink(Nutgram $bot, int $complaintId): void

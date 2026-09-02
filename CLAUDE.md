@@ -184,6 +184,15 @@ the whole house sees every entry and why the open count rides on the menu button
   the message that sent them there as if nothing had happened. A text message cannot be
   edited into a photo, so the prompt becomes a text confirmation and the picture lives on
   the card its buttons lead to.
+- **A status change reaches two audiences, from inside `changeStatus()`.** The author gets
+  a DM showing the transition («🆕 Нова → 🔧 В роботі» — the new state alone does not say
+  whether it moved a minute ago or has read that way for a week), and the residents' chat
+  gets a silent post, so a repair the ОСББ actually did is not indistinguishable from no
+  repair. Both live in the service, not the bot handler: while they were in the handler, a
+  status moved from `/admin/complaints` told nobody at all. The chat post carries no
+  apartment number — the register is public inside the bot, but a status update does not
+  need to name the neighbour who reported it — and `disable_notification: true` keeps it
+  out of 140 people's push notifications.
 - **Filing is one step.** The person doing it is standing in front of a broken lift, and
   every extra question is a reason to close the bot and write in the chat instead. Photos
   are offered *after* the complaint is saved, so giving up at that point still leaves the

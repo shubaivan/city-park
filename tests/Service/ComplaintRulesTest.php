@@ -8,6 +8,7 @@ use App\Entity\TelegramUser;
 use App\Repository\ComplaintRepository;
 use App\Service\ComplaintService;
 use App\Service\ImageStore;
+use App\Service\ResidentChatService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -30,8 +31,17 @@ class ComplaintRulesTest extends TestCase
             $this->createMock(EntityManagerInterface::class),
             new NullLogger(),
             $this->createMock(Nutgram::class),
+            $this->residentChat(),
             $managerIds,
         );
+    }
+
+    private function residentChat(): ResidentChatService
+    {
+        $chat = $this->createMock(ResidentChatService::class);
+        $chat->method('isConfigured')->willReturn(false);
+
+        return $chat;
     }
 
     private function account(string $apartment, bool $isActive = true): Account
