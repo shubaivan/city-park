@@ -6,6 +6,20 @@ document.addEventListener("DOMContentLoaded", function () {
     let table;
     var common_defs = [];
 
+    // A repeat-offender tally: how many community block-votes an account has lost. One
+    // account out of 167 has one, and there has been a single campaign ever — so as a
+    // column it printed "0" on 166 rows and pushed something useful off the screen. It
+    // rides along the status instead, appearing only where there is something to say.
+    function voteBlockNote(row) {
+        var count = parseInt(row.vote_blocks, 10) || 0;
+
+        if (count < 1) {
+            return '';
+        }
+
+        return '<br><small style="color:#c00;">🗳️ блокувань голосуванням: ' + count + '</small>';
+    }
+
     // apartment_number (index 2) — renders the whole address, with house_number (3)
     // hidden beside it. The two are never read apart: apartment numbers repeat across
     // the five buildings, so "кв. 76" alone names two different households (this is the
@@ -47,7 +61,7 @@ document.addEventListener("DOMContentLoaded", function () {
         "targets": 5,
         "render": function (data, type, row, meta) {
             if (data === true) {
-                return '<b style="color:#0a7c2f;">Активний</b>';
+                return '<b style="color:#0a7c2f;">Активний</b>' + voteBlockNote(row);
             }
             // No account means no status to report. is_active is NULL for someone who
             // pressed /start and was never linked to a flat, and rendering that as a
@@ -65,7 +79,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
                 html += '</small>';
             }
-            return html;
+            return html + voteBlockNote(row);
         }
     });
 
@@ -225,6 +239,12 @@ document.addEventListener("DOMContentLoaded", function () {
     // start (index 14) — drawn inside the activity column above.
     common_defs.push({
         "targets": 14,
+        "visible": false
+    });
+
+    // vote_blocks (index 17) — hidden; rendered next to the status by voteBlockNote().
+    common_defs.push({
+        "targets": 17,
         "visible": false
     });
 
