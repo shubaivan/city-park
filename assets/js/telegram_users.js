@@ -181,6 +181,53 @@ document.addEventListener("DOMContentLoaded", function () {
         "visible": false
     });
 
+    // last_visit (index 15) — the activity column, with start (14) folded under it.
+    // Two full timestamps side by side took three lines each and answered one question
+    // between them: is this person still using the bot. The last action leads; the join
+    // date is the small grey line, since it matters only as context for the first.
+    common_defs.push({
+        "targets": 15,
+        "render": function (data, type, row, meta) {
+            // Stored as 'YYYY-MM-DD HH:MM:SS'; seconds are noise at this distance.
+            var pretty = function (value, withTime) {
+                if (!value) {
+                    return '';
+                }
+
+                var parts = String(value).split(' ');
+                var date = parts[0].split('-');
+
+                if (date.length !== 3) {
+                    return String(value);
+                }
+
+                var out = date[2] + '.' + date[1] + '.' + date[0];
+
+                return (withTime && parts[1]) ? out + ' ' + parts[1].slice(0, 5) : out;
+            };
+
+            var last = pretty(data, true);
+            var joined = pretty(row.start, false);
+
+            if (!last && !joined) {
+                return '<span class="text-muted">—</span>';
+            }
+
+            var html = last || '<span class="text-muted">—</span>';
+            if (joined) {
+                html += '<br><small class="text-muted">у боті з ' + joined + '</small>';
+            }
+
+            return html;
+        }
+    });
+
+    // start (index 14) — drawn inside the activity column above.
+    common_defs.push({
+        "targets": 14,
+        "visible": false
+    });
+
     // action column (was 14, now 16 with area + threshold added)
     common_defs.push({
         "targets": 16,
@@ -367,6 +414,14 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     filterContainer.append($filterLabel);
 
+    // Says out loud what the row click does — a clickable row nobody knows is clickable
+    // is the same as no clickable row.
+    filterContainer.append($('<div/>', {
+        'class': 'w-100 text-muted mb-2',
+        'style': 'font-size:0.85em;',
+        'text': '💡 Натисніть на будь-який рядок, щоб відкрити картку мешканця.'
+    }));
+
     var $statusGroup = $('<div/>', {
         'class': 'btn-group ml-2 mb-2',
         'role': 'group',
@@ -423,6 +478,34 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     renderFilterButtons();
+
+    // The «Редагувати» button sits in the last column of a table wider than any screen,
+    // so reaching it means scrolling sideways past a dozen columns — the one action the
+    // accountant performs all day was the hardest thing on the page to find. The whole
+    // row now opens it. The click is forwarded to that button rather than opening the
+    // modal directly, because the modal reads the user id off event.relatedTarget.
+    $('#telegramUserTable tbody').on('click', 'td', function (event) {
+        // Anything already interactive keeps its own behaviour: the buttons, the vote
+        // link, and DataTables' own responsive expander.
+        if ($(event.target).closest('a, button, input, select, label, .dtr-control').length) {
+            return;
+        }
+
+        var row = $(this).closest('tr');
+
+        // In responsive mode the hidden columns render in a following tr.child, which
+        // carries no buttons of its own — the parent row above it does.
+        if (row.hasClass('child')) {
+            row = row.prev('tr');
+        }
+
+        row.find('button[data-user-id]').first().trigger('click');
+    });
+
+    $('<style/>').text(
+        '#telegramUserTable tbody tr { cursor: pointer; }'
+        + '#telegramUserTable tbody tr:hover td { background: #eef4ff; }'
+    ).appendTo('head');
 
     let exampleModal = $('#exampleModal');
     exampleModal.on('show.bs.modal', function (event) {
