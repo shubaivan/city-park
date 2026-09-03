@@ -177,6 +177,10 @@
                     </form>
                 </div>
                 <div class="modal-footer">
+                    {# Filled in by telegram_users.js when the resident has an особовий
+                       рахунок — starting a community block-vote is a rare, deliberate act,
+                       so it belongs on the resident's card and not in every table row. #}
+                    <a id="blockVoteLink" class="btn btn-outline-danger mr-auto" style="display:none" href="#">🗳️ Голосування за блокування</a>
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Назад</button>
                 </div>
             </div>

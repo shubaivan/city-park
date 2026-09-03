@@ -253,12 +253,10 @@ document.addEventListener("DOMContentLoaded", function () {
         "targets": 16,
         data: 'action',
         render: function (data, type, row, meta) {
-            var html = '<button type="button" class="btn btn-primary btn-sm" data-user-id="' + row.id + '" data-toggle="modal" data-target="#exampleModal">Редагувати</button>';
-            // Start a community block-vote for this account (opens the confirmation preview).
-            if (row.account_number) {
-                html += ' <a class="btn btn-outline-danger btn-sm" href="/admin/block-votes?candidate=' + encodeURIComponent(row.account_number) + '">🗳️ Голосування</a>';
-            }
-            return html;
+            // One button per row. Starting a community block-vote used to sit here too,
+            // which put the rarest and heaviest action in the table next to the one
+            // performed all day — it lives on the resident's card now.
+            return '<button type="button" class="btn btn-primary btn-sm" data-user-id="' + row.id + '" data-toggle="modal" data-target="#exampleModal">Редагувати</button>';
         }
     });
 
@@ -538,6 +536,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     let exampleModal = $('#exampleModal');
     exampleModal.on('show.bs.modal', function (event) {
+        // Reset before anything is fetched: the modal is reused, so a link left over
+        // from the previous resident would point the block-vote at the wrong flat.
+        $('#blockVoteLink').hide().attr('href', '#');
+
         var modal = $(this);
         let form = modal.find("form");
 
@@ -577,6 +579,18 @@ document.addEventListener("DOMContentLoaded", function () {
                 },
                 success: (data) => {
                     console.log(data);
+                    // Block-vote link: only for a resident with an особовий рахунок —
+                    // the campaign is opened per account, so there is nothing to vote on
+                    // for somebody not linked to a flat yet.
+                    var voteLink = modal.find('#blockVoteLink');
+                    if (data.account_number) {
+                        voteLink
+                            .attr('href', '/admin/block-votes?candidate=' + encodeURIComponent(data.account_number))
+                            .show();
+                    } else {
+                        voteLink.hide();
+                    }
+
                     modal.find('#exampleModalLabel').text('Редагувати Користувача')
                     form.find('#account_number').val(data.account_number)
                     // Remembered so save-time can tell an edit of this account apart from a
