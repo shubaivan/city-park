@@ -43,12 +43,26 @@ document.addEventListener("DOMContentLoaded", function () {
 common_defs.push({
         "targets": 5,
         "render": function (data, type, row, meta) {
-            if (data === true) {
-                return '<b>Активний</b>';
-            } else {
-                return '<b style="color:#c00">Заблокований</b>';
+            var status = data === true
+                ? '<b>Активний</b>'
+                : '<b style="color:#c00">Заблокований</b>';
+
+            // Same call as /admin/users: one account out of 167 has ever lost a
+            // community block-vote, so a column of zeroes earned nothing. It shows up
+            // beside the status only where there is a count to show.
+            var votes = parseInt(row.vote_blocks, 10) || 0;
+            if (votes > 0) {
+                status += '<br><small style="color:#c00;">🗳️ блокувань голосуванням: ' + votes + '</small>';
             }
+
+            return status;
         }
+    });
+
+    // vote_blocks (last column) — hidden; drawn next to the status above.
+    common_defs.push({
+        "targets": 11,
+        "visible": false
     });
 
     common_defs.push({
