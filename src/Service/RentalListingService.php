@@ -151,7 +151,7 @@ class RentalListingService
         $account = $listing->getAccount();
 
         $head = array_filter([
-            'кв. ' . self::esc((string)$account->getApartmentNumber()),
+            self::place($account),
             $listing->roomsLabel(),
             $account->getArea() ? rtrim(rtrim(number_format((float)$account->getArea(), 1, ',', ' '), '0'), ',') . ' м²' : null,
         ]);
@@ -182,7 +182,7 @@ class RentalListingService
     public function buttonLabel(RentalListing $listing, bool $own = false): string
     {
         $parts = array_filter([
-            'кв. ' . $listing->getAccount()->getApartmentNumber(),
+            self::placePlain($listing->getAccount(), true),
             $listing->roomsLabel(),
             $listing->priceLabel(),
         ]);
@@ -204,13 +204,13 @@ class RentalListingService
 
         if ($username) {
             return InlineKeyboardButton::make(
-                '✍️ Написати (кв. ' . $listing->getAccount()->getApartmentNumber() . ')',
+                '✍️ Написати (' . self::placePlain($listing->getAccount(), true) . ')',
                 url: 'https://t.me/' . $username,
             );
         }
 
         return InlineKeyboardButton::make(
-            '✍️ Хочу орендувати (кв. ' . $listing->getAccount()->getApartmentNumber() . ')',
+            '✍️ Хочу орендувати (' . self::placePlain($listing->getAccount(), true) . ')',
             callback_data: 'rent:contact:' . $listing->getId(),
         );
     }
@@ -258,7 +258,7 @@ class RentalListingService
 
         $who = $name !== '' ? self::esc($name) : 'Мешканець';
         if ($apartment) {
-            $who .= ' (кв. ' . self::esc((string)$apartment) . ')';
+            $who .= ' (' . self::place($interested->getAccount()) . ')';
         } else {
             // Reading the list is open to anyone who opens the bot, so the person asking
             // may not be linked to an особовий рахунок. Say so plainly instead of implying
@@ -381,8 +381,8 @@ class RentalListingService
             foreach ($this->recipients($listing) as $chatId) {
                 try {
                     $this->bot->sendMessage(
-                        text: "🔑 Ваше оголошення про оренду (кв. "
-                            . self::esc((string)$listing->getAccount()->getApartmentNumber())
+                        text: "🔑 Ваше оголошення про оренду ("
+                            . self::place($listing->getAccount())
                             . ") знято зі списку через " . RentalListing::LIFETIME_DAYS . " днів.\n"
                             . 'Якщо квартира ще здається — опублікуйте його знову: /rent',
                         chat_id: $chatId,
@@ -515,6 +515,40 @@ class RentalListingService
             substr($digits, 8, 2),
             substr($digits, 10, 2),
         );
+    }
+
+    /**
+     * "буд. 21, кв. 45" — never the apartment on its own.
+     *
+     * The ЖК is five buildings on one street and the numbering repeats across them, so
+     * "кв. 76" names two different flats. On the debtors' board that mistake accuses the
+     * wrong household of a debt (see DebtBoardService::place, which exists for this); here
+     * it is quieter but just as useless — a would-be tenant reads «кв. 85 · 1-кімн.» and
+     * cannot tell which of five buildings to walk to, and an owner receiving «Хочу
+     * орендувати (кв. 45)» cannot tell who is asking.
+     *
+     * The short form is for inline buttons, whose captions Telegram truncates.
+     */
+    public static function place(?Account $account, bool $short = false): string
+    {
+        return self::esc(self::placePlain($account, $short));
+    }
+
+    /** Unescaped — for inline button captions, which are plain text, not HTML. */
+    public static function placePlain(?Account $account, bool $short = false): string
+    {
+        if (!$account instanceof Account) {
+            return '';
+        }
+
+        $flat = 'кв. ' . $account->getApartmentNumber();
+        $house = $account->getHouseNumber();
+
+        if (!$house) {
+            return $flat;
+        }
+
+        return ($short ? 'б. ' : 'буд. ') . $house . ', ' . $flat;
     }
 
     private static function esc(string $value): string
