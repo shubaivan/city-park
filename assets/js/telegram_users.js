@@ -419,7 +419,7 @@ document.addEventListener("DOMContentLoaded", function () {
     filterContainer.append($('<div/>', {
         'class': 'w-100 text-muted mb-2',
         'style': 'font-size:0.85em;',
-        'text': '💡 Натисніть на будь-який рядок, щоб відкрити картку мешканця.'
+        'text': '💡 Натисніть на рядок, щоб відкрити картку мешканця. Стрілка ▶ ліворуч показує колонки, які не помістилися на екран.'
     }));
 
     var $statusGroup = $('<div/>', {
@@ -487,16 +487,25 @@ document.addEventListener("DOMContentLoaded", function () {
     $('#telegramUserTable tbody').on('click', 'td', function (event) {
         // Anything already interactive keeps its own behaviour: the buttons, the vote
         // link, and DataTables' own responsive expander.
-        if ($(event.target).closest('a, button, input, select, label, .dtr-control').length) {
+        if ($(event.target).closest('a, button, input, select, label, .dtr-control, .dtr-details').length) {
+            return;
+        }
+
+        // The expander lives in the first cell. Not every Responsive version puts the
+        // class on the same element, so the cell position is checked too — on a narrow
+        // screen this control is the only way to see the columns that did not fit, and
+        // swallowing its click would hide data with no way back.
+        if ($(this).is(':first-child')) {
             return;
         }
 
         var row = $(this).closest('tr');
 
-        // In responsive mode the hidden columns render in a following tr.child, which
-        // carries no buttons of its own — the parent row above it does.
+        // Clicks inside the expanded panel do nothing: that is where someone reads and
+        // selects the values that did not fit, and a modal opening under their cursor
+        // would undo exactly the thing they just opened.
         if (row.hasClass('child')) {
-            row = row.prev('tr');
+            return;
         }
 
         row.find('button[data-user-id]').first().trigger('click');
