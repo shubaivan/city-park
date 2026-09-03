@@ -6,6 +6,32 @@ document.addEventListener("DOMContentLoaded", function () {
     let table;
     var common_defs = [];
 
+    // apartment_number (index 2) — renders the whole address, with house_number (3)
+    // hidden beside it. The two are never read apart: apartment numbers repeat across
+    // the five buildings, so "кв. 76" alone names two different households (this is the
+    // same trap DebtBoardService::place() guards against — when the debtors' board
+    // shipped, "кв. 76" was one household owing 5 402 грн and another owing 651).
+    common_defs.push({
+        "targets": 2,
+        "render": function (data, type, row, meta) {
+            if (!row.account_number) {
+                return '<span class="text-muted">—</span>';
+            }
+
+            var house = row.house_number ? 'буд. ' + row.house_number : '';
+            var flat = data ? 'кв. ' + data : '';
+
+            return [house, flat].filter(Boolean).join(', ') || '<span class="text-muted">—</span>';
+        }
+    });
+
+    // house_number (index 3) — drawn inside the address column above. Hidden, not
+    // removed: the «Адреса» field filter still searches it server-side.
+    common_defs.push({
+        "targets": 3,
+        "visible": false
+    });
+
     // street (index 4) — the ЖК is five buildings on one street, so the column reads
     // "Козацька" 166 times and says nothing; the building number next to it is what
     // actually distinguishes an address. Hidden rather than removed from
