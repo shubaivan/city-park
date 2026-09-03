@@ -86,77 +86,49 @@ class TelegramUserRepository extends ServiceEntityRepository
     }
 
     /**
-     * @param array $params
-     * @param bool $count
-     * @param bool $total
-     * @return mixed
-     * @throws \Doctrine\ORM\NoResultException
-     * @throws \Doctrine\ORM\NonUniqueResultException
+     * Build the WHERE conditions (and their bound values) for the /admin/users table.
+     *
+     * Extracted from getDataTablesData() so the filter rules can be tested without a
+     * database: the two bugs this guards against were both invisible to every existing
+     * test because they lived inside a method that immediately ran its own query.
+     * See tests/Repository/AdminUserSearchTest.
+     *
+     * @param array<string, mixed> $params
+     * @return array{0: string[], 1: array<string, mixed>} conditions, bound values
      */
-    public function getDataTablesData(
+    public static function buildDataTablesFilters(
         array $params,
-        bool $count = false,
+        ?string $globalSearch = null,
         bool $total = false
-    )
+    ): array
     {
-        $parameterBag = $this->handleDataTablesRequest($params);
-
-        $limit = $parameterBag->get('limit');
-        $offset = $parameterBag->get('offset');
-        $sortBy = $parameterBag->get('sort_by');
-        $sortOrder = $parameterBag->get('sort_order');
-
-        if ($count) {
-            $dql = '
-                SELECT COUNT(DISTINCT b)
-                FROM App\Entity\TelegramUser b
-                LEFT JOIN b.account as a
-            ';
-        } else {
-            $dql = '
-                SELECT
-                b.id,
-                a.account_number,
-                a.apartment_number,
-                a.house_number,
-                a.street,
-                a.is_active,
-                a.debt,
-                a.area,
-                b.phone_number,
-                b.role,
-                b.additional_phones,
-                b.first_name,
-                b.last_name,
-                b.username,
-                date_format(b.created_at, \'%Y-%m-%d %H:%i:%s\') as start,
-                date_format(b.updated_at, \'%Y-%m-%d %H:%i:%s\') as last_visit,
-                \'edit\' as action
-                FROM App\Entity\TelegramUser b
-                LEFT JOIN b.account as a
-            ';
-        }
-
         $bindParams = [];
-        $condition = ' WHERE ';
         $conditions = [];
 
+
         // Anyone who has ever pressed /start has a TelegramUser row — 274 of them by
-        // 02.09.2026, against 172 people actually linked to a flat. The rest are
-        // neighbours the accountant has not added yet, and strangers who were forwarded
-        // the bot's link; on the admin table they show as rows with no о/р, no address
-        // and a red "Заблокований", which reads as "who are these people?".
+        // 02.09.2026, against 175 people actually linked to a flat. Between 02.09 and
+        // 03.09.2026 the table hid the unlinked by default (Людмила asked: rows with no
+        // о/р and no address read as "who are all these people?"), and that default was
+        // reverted after it cost the ОСББ a public argument.
         //
-        // So the table is a list of RESIDENTS by default, and the unlinked are a filter
-        // you ask for. Applied to the count query too — otherwise the pager promises
-        // hundreds of rows the table will never show.
+        // On 03.09.2026 Аліна searched a resident's phone in this table, found nothing
+        // and told him «немає номера в базі». His row had been there for an hour and a
+        // half — unlinked, therefore invisible. She refused to add him without an
+        // identification he would not give, he escalated in the residents' chat, and the
+        // entire dispute was this WHERE clause. A default that hides rows turns "I did
+        // not find him" into "he is not in the system", and nobody can tell the
+        // difference from the outside.
+        //
+        // So the table shows EVERYONE by default. Both halves stay available as explicit
+        // filters — «Підтверджені мешканці» is Людмила's view, kept as one click.
         if (($params['status_filter'] ?? null) === 'unlinked') {
             $conditions[] = 'a.id IS NULL';
-        } else {
+        } elseif (($params['status_filter'] ?? null) === 'linked') {
             $conditions[] = 'a.id IS NOT NULL';
         }
 
-        if ($parameterBag->get('search') && !$total) {
+        if ($globalSearch && !$total) {
             $or[] = 'ILIKE(b.username, :var_search) = TRUE';
             $or[] = 'ILIKE(b.first_name, :var_search) = TRUE';
             $or[] = 'ILIKE(b.last_name, :var_search) = TRUE';
@@ -169,7 +141,7 @@ class TelegramUserRepository extends ServiceEntityRepository
             // A username is copied out of Telegram with its @, but stored without one.
             // Pasting "@mi_polina28" into the search box is the obvious thing to do and
             // used to return nothing at all.
-            $bindParams['var_search'] = '%'.ltrim((string)$parameterBag->get('search'), '@').'%';
+            $bindParams['var_search'] = '%'.ltrim((string)$globalSearch, '@').'%';
             $conditions[] = '(' . implode(' OR ', $or) .')';
 
         }
@@ -181,8 +153,9 @@ class TelegramUserRepository extends ServiceEntityRepository
         if (!$total && !empty($params['status_filter']) && $params['status_filter'] !== 'all') {
             switch ($params['status_filter']) {
                 case 'unlinked':
-                    // Already handled above, before the search block: it is the one filter
-                    // that changes which rows exist at all rather than narrowing them.
+                case 'linked':
+                    // Both handled above, before the search block: they are the two filters
+                    // that change which rows exist at all rather than narrowing them.
                     break;
                 case 'debt':
                     $conditions[] = 'a.debt > 0';
@@ -260,6 +233,68 @@ class TelegramUserRepository extends ServiceEntityRepository
             $bindParams['search_address'] = '%' . trim((string)$params['search_address']) . '%';
         }
 
+        return [array_unique($conditions), $bindParams];
+    }
+
+    /**
+     * @param array $params
+     * @param bool $count
+     * @param bool $total
+     * @return mixed
+     * @throws \Doctrine\ORM\NoResultException
+     * @throws \Doctrine\ORM\NonUniqueResultException
+     */
+    public function getDataTablesData(
+        array $params,
+        bool $count = false,
+        bool $total = false
+    )
+    {
+        $parameterBag = $this->handleDataTablesRequest($params);
+
+        $limit = $parameterBag->get('limit');
+        $offset = $parameterBag->get('offset');
+        $sortBy = $parameterBag->get('sort_by');
+        $sortOrder = $parameterBag->get('sort_order');
+
+        if ($count) {
+            $dql = '
+                SELECT COUNT(DISTINCT b)
+                FROM App\Entity\TelegramUser b
+                LEFT JOIN b.account as a
+            ';
+        } else {
+            $dql = '
+                SELECT
+                b.id,
+                a.account_number,
+                a.apartment_number,
+                a.house_number,
+                a.street,
+                a.is_active,
+                a.debt,
+                a.area,
+                b.phone_number,
+                b.role,
+                b.additional_phones,
+                b.first_name,
+                b.last_name,
+                b.username,
+                date_format(b.created_at, \'%Y-%m-%d %H:%i:%s\') as start,
+                date_format(b.updated_at, \'%Y-%m-%d %H:%i:%s\') as last_visit,
+                \'edit\' as action
+                FROM App\Entity\TelegramUser b
+                LEFT JOIN b.account as a
+            ';
+        }
+
+        [$conditions, $bindParams] = self::buildDataTablesFilters(
+            $params,
+            $parameterBag->get('search'),
+            $total
+        );
+        $condition = ' WHERE ';
+
         if (count($conditions)) {
             $conditions = array_unique($conditions);
             $dql .= $condition . implode(' AND ', $conditions);
@@ -292,7 +327,13 @@ class TelegramUserRepository extends ServiceEntityRepository
         }
 
         if ($bindParams) {
-            $bindParams = array_unique($bindParams);
+            // NOT array_unique(): these are keyed placeholders, and array_unique
+            // deduplicates by VALUE. Typing the same phone into the global "Search:"
+            // box and the «Телефон» column produced two identical values, one of the
+            // two keys was dropped, and the query went to Doctrine with a placeholder
+            // nothing was bound to — an exception, a 500, and "DataTables warning:
+            // Ajax error" in the admin's face (seen 03.09.2026). Duplicate values are
+            // normal here; duplicate keys are impossible.
             $query
                 ->setParameters($bindParams);
         }

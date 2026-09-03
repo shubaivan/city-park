@@ -12,6 +12,14 @@ document.addEventListener("DOMContentLoaded", function () {
             if (data === true) {
                 return '<b style="color:#0a7c2f;">Активний</b>';
             }
+            // No account means no status to report. is_active is NULL for someone who
+            // pressed /start and was never linked to a flat, and rendering that as a
+            // red "Заблокований" accuses the bot of blocking a person it has never
+            // heard of. These rows now turn up in ordinary searches, so the label has
+            // to say what is actually true about them.
+            if (!row.account_number) {
+                return '<span style="color:#666;">⏳ Не прив’язаний</span>';
+            }
             var html = '<b style="color:#c00;">Заблокований</b>';
             if (row.block_reason_label) {
                 html += '<br><small><b>' + row.block_reason_label + '</b>';
@@ -225,11 +233,12 @@ document.addEventListener("DOMContentLoaded", function () {
         { value: 'photo_blocked', label: '📸 Заблоковані за фото',  idleClass: 'btn-outline-danger',    activeClass: 'btn-danger' },
         { value: 'debt_blocked',  label: '💸 Заблоковані за борг',  idleClass: 'btn-outline-dark',      activeClass: 'btn-dark' },
         { value: 'blocked',       label: '🚫 Усі заблоковані',      idleClass: 'btn-outline-secondary', activeClass: 'btn-secondary' },
-        // The odd one out: every other button narrows the list of residents, this one
-        // swaps it for the people who are NOT residents yet — those who opened the bot
-        // and whose phone matched nothing in the registry. They are hidden by default
-        // (see TelegramUserRepository::getDataTablesData) because otherwise the table
-        // reads as "who are all these people with no flat?".
+        // The odd two out: every other button narrows the list, these two swap which
+        // rows exist at all. The table shows everyone by default — hiding the unlinked
+        // was the default for one day and cost the ОСББ a public argument, see
+        // TelegramUserRepository::buildDataTablesFilters — so «Підтверджені мешканці»
+        // is the one-click way back to Людмила's view of just the residents.
+        { value: 'linked',        label: '✅ Підтверджені мешканці', idleClass: 'btn-outline-success',   activeClass: 'btn-success' },
         { value: 'unlinked',      label: '⏳ Чекають прив’язки',    idleClass: 'btn-outline-info',      activeClass: 'btn-info' },
     ];
 

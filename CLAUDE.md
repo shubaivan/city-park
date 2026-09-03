@@ -80,13 +80,31 @@ is right most of the time and confidently wrong wherever a tenant registered fir
 field wrong in an unknown subset is worse than one honestly empty. It lives on the person,
 not the account: a tenant and the owner share one rahunok and must not share one label.
 
-**`/admin/users` lists residents, not bot users.** Anyone who has ever pressed /start has a
-`TelegramUser` row — 274 of them on 02.09.2026 against 172 actually linked to a flat — so
-the table filters to `account IS NOT NULL` by default, in the count query too. The rest are
-reachable through the `⏳ Чекають прив'язки` filter (`status_filter=unlinked`), which is the
-one filter that swaps the set of rows rather than narrowing it. Deliberately a button in the
-existing radio group and not a default-on checkbox: a checkbox that hides rows by default is
-how "why can't I find this person" happens.
+**`/admin/users` shows everyone, and must keep doing so.** Anyone who has ever pressed
+/start has a `TelegramUser` row — 274 of them on 02.09.2026 against 175 actually linked to
+a flat. For one day (02–03.09.2026) the table filtered to `account IS NOT NULL` by default,
+because rows with no о/р and no address read as "who are all these people?". **That default
+is reverted and must not come back.** On 03.09.2026 Аліна searched a resident's phone here,
+found nothing and told him «немає номера в базі» — his row had been in the table for an hour
+and a half, unlinked and therefore invisible. She refused to add him without an
+identification he would not give, and he took it to the residents' chat. A default that
+hides rows turns "I did not find him" into "he is not in the system", and from the outside
+nobody can tell the two apart.
+
+Both halves stay as explicit filters in the radio group: `✅ Підтверджені мешканці`
+(`status_filter=linked`, Людмила's view) and `⏳ Чекають прив'язки` (`status_filter=unlinked`).
+They are the two filters that swap the set of rows rather than narrowing it, and they live in
+`TelegramUserRepository::buildDataTablesFilters()` — a static method precisely so the rules
+are testable without a database (`tests/Repository/AdminUserSearchTest`). A row with no
+account renders as `⏳ Не прив'язаний`, never as a red «Заблокований»: `is_active` is NULL
+for someone the bot has no flat for, and calling that "blocked" accuses it of blocking a
+person it never heard of.
+
+**Never `array_unique()` the bound values.** They are keyed placeholders and `array_unique`
+deduplicates by *value*: the same phone typed into both the global `Search:` box and the
+«Телефон» column dropped one key, and the query reached Doctrine with an unbound placeholder
+— a 500, surfaced as "DataTables warning: Ajax error" (03.09.2026). Duplicate values are
+normal here; duplicate keys are impossible.
 
 `Account.vote_block_count` is a repeat-offender tally — incremented on every *passed* campaign (even if the account was already blocked). Surfaced in the bot voting menu (under the candidate), the block/unblock messages, `/admin/block-votes`, the `/admin/users` table + edit modal, and the `/admin/schedule` table. New DataTable columns are appended **last** because `telegram_users.js`/`schedule.js` `columnDefs` target by index. Editing those JS files means a deploy must run `npx encore production`.
 
