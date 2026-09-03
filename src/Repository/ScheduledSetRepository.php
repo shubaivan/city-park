@@ -378,18 +378,31 @@ class ScheduledSetRepository extends ServiceEntityRepository
         }
 
         if (!$count) {
-            $sortByColumn = '';
-            if (in_array($sortBy, ['phone_number', 'username'])) {
-                $sortByColumn = 'tu.';
-            } else if (in_array($sortBy, ['account_number', 'apartment_number', 'house_number', 'street', 'is_active'])) {
-                $sortByColumn = 'a.';
-            } else if (in_array($sortBy, ['id', 'pavilion', 'scheduled_at'])) {
-                $sortByColumn = 'b.';
-            }
+            // Explicit map for the same reason as TelegramUserRepository: the prefixing
+            // shape let any unlisted column through as a bare `ORDER BY vote_blocks`,
+            // which is not a DQL field — a 500 and "DataTables warning: Ajax error" on
+            // a header click. Unknown columns fall back to the id rather than being
+            // handed to Doctrine as a guess.
+            $sortable = [
+                'id' => 'b.id',
+                'pavilion' => 'b.pavilion',
+                'scheduled_at' => 'b.scheduled_at',
+                'phone_number' => 'tu.phone_number',
+                'username' => 'tu.username',
+                'account_number' => 'a.account_number',
+                'apartment_number' => 'a.apartment_number',
+                'house_number' => 'a.house_number',
+                'street' => 'a.street',
+                'is_active' => 'a.is_active',
+                'vote_blocks' => 'a.vote_block_count',
+                // photo_status is attached after the query from the photo tables, so
+                // there is nothing here to order it by; the booking time is the next
+                // most useful sequence.
+                'photo_status' => 'b.scheduled_at',
+            ];
 
-            $sortByColumn .= $sortBy;
             $dql .= '
-                ORDER BY ' . $sortByColumn . ' ' . $sortOrder;
+                ORDER BY ' . ($sortable[$sortBy] ?? 'b.id') . ' ' . $sortOrder;
         }
 
         $query = $this->getEntityManager()

@@ -139,6 +139,48 @@ class AdminUserSearchTest extends TestCase
     }
 
     /**
+     * The other Ajax error: clicking a sortable header whose column is not a DQL field.
+     * Four of them were live — vote_blocks, role, area, debt_threshold — and each
+     * answered 500. Every column offered in the UI must resolve to something orderable,
+     * and anything unknown must degrade rather than reach Doctrine as a guess.
+     */
+    public function testEveryTableColumnIsSafeToSortBy(): void
+    {
+        $reflection = new \ReflectionMethod(TelegramUserRepository::class, 'getDataTablesData');
+        $source = file(
+            $reflection->getFileName(),
+            FILE_IGNORE_NEW_LINES
+        );
+        $body = implode("\n", array_slice(
+            $source,
+            $reflection->getStartLine() - 1,
+            $reflection->getEndLine() - $reflection->getStartLine() + 1
+        ));
+
+        // The map lives inline in the query builder; the assertion is that no column
+        // rendered by the table is missing from it.
+        foreach (\App\Entity\TelegramUser::$dataTableFields as $field) {
+            if (in_array($field, ['debt', 'additional_phones', 'action'], true)) {
+                // debt has its own NULL-safe ORDER BY branch; the other two are marked
+                // unsortable in telegram_users.js.
+                continue;
+            }
+
+            $this->assertStringContainsString(
+                "'" . $field . "' =>",
+                $body,
+                sprintf('column "%s" is offered for sorting but has no DQL column mapped', $field),
+            );
+        }
+
+        $this->assertStringContainsString(
+            "?? 'b.id'",
+            $body,
+            'an unknown sort column must fall back, not be interpolated into the DQL',
+        );
+    }
+
+    /**
      * The Ajax error: the same phone typed into two different inputs. Both placeholders
      * must survive, or Doctrine throws on the unbound one.
      */

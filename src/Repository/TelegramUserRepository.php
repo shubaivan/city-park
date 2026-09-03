@@ -307,20 +307,43 @@ class TelegramUserRepository extends ServiceEntityRepository
         }
 
         if (!$count) {
-            $sortByColumn = '';
-            if (in_array($sortBy, ['id', 'phone_number', 'first_name', 'last_name', 'username'])) {
-                $sortByColumn = 'b.';
-            } else if (in_array($sortBy, ['account_number', 'apartment_number', 'house_number', 'street', 'is_active', 'debt'])) {
-                $sortByColumn = 'a.';
-            }
+            // An explicit map, because the previous shape — two in_array() lists that
+            // prefixed the column with 'b.' or 'a.' and otherwise left it bare — turned
+            // every unlisted column into `ORDER BY vote_blocks`, which is not a DQL field.
+            // Clicking that header answered 500 and the admin saw "DataTables warning:
+            // Ajax error" (03.09.2026). Four columns were sortable in the UI and fatal on
+            // the server: vote_blocks, role, area, debt_threshold. A map cannot grow that
+            // hole: anything missing from it falls back to the id instead of reaching
+            // Doctrine as a guess.
+            $sortable = [
+                'id' => 'b.id',
+                'phone_number' => 'b.phone_number',
+                'first_name' => 'b.first_name',
+                'last_name' => 'b.last_name',
+                'username' => 'b.username',
+                'role' => 'b.role',
+                'start' => 'b.created_at',
+                'last_visit' => 'b.updated_at',
+                'account_number' => 'a.account_number',
+                'apartment_number' => 'a.apartment_number',
+                'house_number' => 'a.house_number',
+                'street' => 'a.street',
+                'is_active' => 'a.is_active',
+                'area' => 'a.area',
+                // The column is a per-account tally; the табличний value is attached
+                // after the query, but the source column can be ordered on.
+                'vote_blocks' => 'a.vote_block_count',
+                // debt_threshold is computed, not stored — area is what it is
+                // proportional to, so ordering by it gives the same sequence.
+                'debt_threshold' => 'a.area',
+            ];
 
-            $sortByColumn .= $sortBy;
             if ($sortBy === 'debt') {
                 $dql .= '
                 ORDER BY CASE WHEN a.debt IS NULL THEN 0 ELSE a.debt END ' . $sortOrder;
             } else {
                 $dql .= '
-                ORDER BY ' . $sortByColumn . ' ' . $sortOrder;
+                ORDER BY ' . ($sortable[$sortBy] ?? 'b.id') . ' ' . $sortOrder;
             }
         }
 
