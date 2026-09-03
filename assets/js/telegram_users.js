@@ -43,13 +43,29 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
+    // debt (index 6) — carries the threshold under it, because the number alone means
+    // nothing: 94.50 грн blocks a 3.5 m² кладова and 900 грн does not touch a large
+    // flat. Two adjacent columns saying "2732.40" and "1024.65" made the reader do that
+    // comparison themselves, on a table already too wide to fit a screen.
     common_defs.push({
         "targets": 6,
         "render": function (data, type, row, meta) {
-            if (data && parseFloat(data) > 0) {
-                return '<b style="color:red;">' + parseFloat(data).toFixed(2) + ' грн</b>';
+            var debt = parseFloat(data) || 0;
+            var threshold = parseFloat(row.debt_threshold) || 0;
+
+            var html = debt > 0
+                ? '<b style="color:red;">' + debt.toFixed(2) + ' грн</b>'
+                : '<span style="color:green;">0</span>';
+
+            if (threshold > 0) {
+                // The comparison is the whole point of showing them together, so it is
+                // stated rather than left to be worked out from two numbers.
+                html += '<br><small class="text-muted">поріг ' + threshold.toFixed(2)
+                    + (debt > threshold ? ' · <b style="color:#c00;">перевищено</b>' : '')
+                    + '</small>';
             }
-            return '<span style="color:green;">0</span>';
+
+            return html;
         }
     });
 
@@ -64,16 +80,13 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
-    // debt_threshold column (index 8) — computed server-side
+    // debt_threshold (index 8) — hidden, not removed: it is rendered inside the debt
+    // column above, and it must stay in the column list because every def here targets
+    // its column by index. The server still computes and sends it.
     common_defs.push({
         "targets": 8,
         "orderable": false,
-        "render": function (data, type, row, meta) {
-            if (data && parseFloat(data) > 0) {
-                return '<b>' + parseFloat(data).toFixed(2) + ' грн</b>';
-            }
-            return '<span class="text-muted">—</span>';
-        }
+        "visible": false
     });
 
     // additional_phones column (index 10 after area/threshold insertion)
