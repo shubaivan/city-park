@@ -96,7 +96,7 @@
                         <td>
                             {% if listing.status == 'active' %}
                                 <form method="post" action="{{ path('app_admin_rental_block') }}"
-                                      onsubmit="return confirm('Зняти оголошення кв. {{ listing.account.apartmentNumber }} зі списку?');">
+                                      onsubmit="return confirm('Зняти оголошення буд. {{ listing.account.houseNumber }}, кв. {{ listing.account.apartmentNumber }} зі списку?');">
                                     <input type="hidden" name="listing_id" value="{{ listing.id }}">
                                     <button class="btn btn-sm btn-outline-danger" type="submit">Зняти</button>
                                 </form>

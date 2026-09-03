@@ -95,8 +95,14 @@ class RentalListingRulesTest extends KernelTestCase
 
     /**
      * The index is buttons, not a wall of descriptions, so this caption is all a reader
-     * has to go on when choosing which card to open — apartment, rooms, price, nothing
-     * that Telegram will truncate.
+     * has to go on when choosing which card to open — building, apartment, rooms, price,
+     * nothing that Telegram will truncate.
+     *
+     * The building is not optional. Apartment numbers repeat across the ЖК's five
+     * buildings, so «кв. 85» names two different flats and a reader cannot tell which one
+     * to walk to. Same rule as DebtBoardService::place(); it reached the rental listings
+     * on 03.09.2026, having been missed when they shipped. The short «б.» form is used
+     * because Telegram truncates long button captions.
      */
     public function testIndexButtonLabel(): void
     {
@@ -108,15 +114,51 @@ class RentalListingRulesTest extends KernelTestCase
             ->setRooms(1)
             ->setPrice(20000);
 
-        $this->assertSame('кв. 85 · 1-кімн. · 20 000 грн/міс', $service->buttonLabel($listing));
-        $this->assertSame('📌 кв. 85 · 1-кімн. · 20 000 грн/міс', $service->buttonLabel($listing, own: true));
+        $this->assertSame('б. 1, кв. 85 · 1-кімн. · 20 000 грн/міс', $service->buttonLabel($listing));
+        $this->assertSame('📌 б. 1, кв. 85 · 1-кімн. · 20 000 грн/міс', $service->buttonLabel($listing, own: true));
         $this->assertLessThan(64, mb_strlen($service->buttonLabel($listing, own: true)));
 
         $open = (new RentalListing())
             ->setAccount($this->account('1-1-0-012', '12'))
             ->setPrice(null);
 
-        $this->assertSame('кв. 12 · ціна договірна', $service->buttonLabel($open), 'rooms may be absent');
+        $this->assertSame('б. 1, кв. 12 · ціна договірна', $service->buttonLabel($open), 'rooms may be absent');
+    }
+
+    /**
+     * Every label a resident or an owner reads must name the building — the listing card,
+     * the index button, the contact button and the relay line that tells an owner who is
+     * asking. This is the regression guard for all four at once.
+     */
+    public function testEveryRentalLabelNamesTheBuilding(): void
+    {
+        self::bootKernel();
+        $service = self::getContainer()->get(RentalListingService::class);
+
+        $listing = (new RentalListing())
+            ->setAccount($this->account('1-1-0-085', '85'))
+            ->setRooms(1)
+            ->setPrice(20000);
+        // describe() prints the publication and expiry dates, which Doctrine would have
+        // stamped on persist — this listing never reaches the database.
+        $listing->setCreatedAt(new \DateTime());
+        $listing->setExpiresAt((new \DateTime())->modify('+30 days'));
+
+        foreach ([
+            'картка' => $service->describe($listing),
+            'кнопка списку' => $service->buttonLabel($listing),
+            'кнопка контакту' => $service->contactButton($listing)->text,
+        ] as $what => $label) {
+            $this->assertMatchesRegularExpression(
+                '/б(уд)?\. 1, кв\. 85/u',
+                $label,
+                sprintf('%s must name the building: apartment numbers repeat across the five buildings', $what),
+            );
+        }
+
+        $this->assertSame('буд. 1, кв. 85', RentalListingService::place($this->account('1-1-0-085', '85')));
+        $this->assertSame('б. 1, кв. 85', RentalListingService::placePlain($this->account('1-1-0-085', '85'), true));
+        $this->assertSame('', RentalListingService::place(null), 'an unlinked reader has no place to name');
     }
 
     /**

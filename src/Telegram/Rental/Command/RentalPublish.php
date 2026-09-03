@@ -362,7 +362,7 @@ class RentalPublish extends Conversation
         $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
 
         $head = array_filter([
-            $account ? 'кв. ' . self::esc((string)$account->getApartmentNumber()) : null,
+            $account ? RentalListingService::place($account) : null,
             $this->rooms === null ? null : ($this->rooms >= 4 ? '4+ кімн.' : $this->rooms . '-кімн.'),
         ]);
 

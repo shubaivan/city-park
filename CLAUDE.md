@@ -125,6 +125,14 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
 
   **Why not just accept a photo in the bot:** `pavilion:photo:check` materialises a `PhotoUploadRequest` only every 20 minutes, so for up to 20 minutes after a booking ends there is no open request. Any in-bot rule of the shape "no open obligation ⇒ this must be a flat photo" would swallow the pavilion photo of the resident who sent it *immediately* — the most conscientious one — and the cron would then block them for evidence already sent. Keeping this channel on the web means a picture sent to the bot is always pavilion evidence, with no rule to get wrong. `PhotoUploadFlow` is untouched by this feature; `RentalPublish` still carries the mandatory `interceptConversationPhoto()` guard (covered by the shared provider in `BookingConversationPhotoGuardTest`), and has no photo step of its own.
 - **Phones are opt-in, never automatic.** The number is in the DB because the resident gave it to the ОСББ for нарахування, not for publication, so `RentalPublish` asks once (`askContact` step, number shown in full) and stores the consent as `RentalListing.show_phone` plus a display-formatted `contact_phone` **snapshot** — consent was for *that* number, so a later registry change doesn't silently republish a different one. Default is false, which is what the pre-2026-08-26 listings keep. Contact is otherwise a `t.me/<username>` button. Only ~48% of `telegram_user` rows have a username, so the relay path (`rent:contact:<id>`) is the common one, and when the interested resident has no username either it asks *them* for consent to pass their number (`rent:phone:<id>`) instead of the old dead end that told them to go reconfigure Telegram. `RentalListingService::formatPhone()` is the single normaliser — phones arrive as both `+380…` and `380…`.
+- **Every label names the building, never the apartment alone.** `RentalListingService::place()`
+  / `placePlain()` (short «б.» form for inline buttons, whose captions Telegram truncates)
+  render «буд. 21, кв. 45» for the card, the index button, the contact button, the relay line
+  that tells an owner who is asking, and the expiry notice. The five buildings repeat their
+  apartment numbers, so «кв. 85» names two flats: a reader cannot tell which one to walk to
+  and an owner cannot tell who wrote. Same rule as `DebtBoardService::place()`, which this
+  feature was missing until 03.09.2026. Regression test:
+  `RentalListingRulesTest::testEveryRentalLabelNamesTheBuilding`.
 - Listings expire after `RentalListing::LIFETIME_DAYS` (30). `rental:expire` (daily) sends a one-shot "ще актуально?" prompt `RENEW_PROMPT_BEFORE_DAYS` (3) before that and closes the rest. Queries filter on `expires_at` too, so a stale listing disappears even if the cron hasn't run.
 - Publishing again **replaces** the account's active listing rather than being rejected — that is the edit path.
 
