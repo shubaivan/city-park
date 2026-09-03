@@ -116,6 +116,29 @@ class AdminUserSearchTest extends TestCase
     }
 
     /**
+     * recordsTotal is the size of the table, not of the current view. DataTables renders
+     * it as «filtered from N total entries» — the denominator the filtered count is read
+     * against — so no filter may move it, including the two that swap which rows exist.
+     */
+    public function testTheTotalCountIgnoresEveryFilter(): void
+    {
+        foreach ([
+            ['status_filter' => 'unlinked'],
+            ['status_filter' => 'linked'],
+            ['status_filter' => 'debt'],
+            ['search_phone' => '380506105465'],
+        ] as $params) {
+            [$conditions] = TelegramUserRepository::buildDataTablesFilters($params, null, true);
+
+            $this->assertSame(
+                [],
+                $conditions,
+                'the total-count query must carry no filter conditions: ' . json_encode($params),
+            );
+        }
+    }
+
+    /**
      * The Ajax error: the same phone typed into two different inputs. Both placeholders
      * must survive, or Doctrine throws on the unbound one.
      */

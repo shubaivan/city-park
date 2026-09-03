@@ -126,6 +126,27 @@ document.addEventListener("DOMContentLoaded", function () {
         'processing': true,
         'serverSide': true,
         'serverMethod': 'post',
+        // DataTables' own wording is "Showing 1 to 9 of 9 entries (filtered from 449
+        // total entries)", and with a filter pressed that reads as "449 blocked for
+        // debt" — the denominator looks like it belongs to the filter. It does not:
+        // recordsTotal is the size of the whole table and must stay that way, because
+        // the pager is built from it. So the numbers get named instead of renumbered.
+        'language': {
+            'info': 'Показано _START_–_END_ з _TOTAL_',
+            'infoFiltered': ' · усього в базі _MAX_ записів',
+            'infoEmpty': 'Немає записів',
+            'emptyTable': 'Нічого не знайдено',
+            'zeroRecords': 'Нічого не знайдено',
+            'search': 'Пошук:',
+            'lengthMenu': '_MENU_ записів на сторінку',
+            'processing': 'Завантаження…',
+            'paginate': {
+                'first': '«',
+                'previous': '‹',
+                'next': '›',
+                'last': '»'
+            }
+        },
         'ajax': {
             'url': collectionData,
             "data": function ( d ) {

@@ -1400,6 +1400,20 @@ class AdminController extends AbstractController
                     $em->persist($account);
 
                     if ($wasActive) {
+                        // The audit entry is not optional bookkeeping — it is the only
+                        // record of who blocked this account and why, and the unblock
+                        // branch below has always written one. Without it a web upload
+                        // blocked people silently: on 03.09.2026 an import took the house
+                        // from 9 blocked accounts to 22, and account_status_log showed
+                        // nothing but unblocks for that whole day. The CLI paths
+                        // (debt:import-file, debt:recompute) always logged; only this one
+                        // did not, and this is the one the accountant actually uses.
+                        $this->statusAuditor->log(
+                            $account, true, false,
+                            AccountStatusLog::SOURCE_DEBT_IMPORT,
+                            'debt',
+                            sprintf('web debt upload: debt=%.2f, threshold=%.2f', $debt, $accountThreshold),
+                        );
                         $blocked++;
                         foreach ($account->getUsers() as $user) {
                             if ($user->getChatId()) {

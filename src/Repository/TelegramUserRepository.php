@@ -122,9 +122,15 @@ class TelegramUserRepository extends ServiceEntityRepository
         //
         // So the table shows EVERYONE by default. Both halves stay available as explicit
         // filters — «Підтверджені мешканці» is Людмила's view, kept as one click.
-        if (($params['status_filter'] ?? null) === 'unlinked') {
+        // Guarded by !$total like every other filter. $total answers "how many rows does
+        // this table have at all" — DataTables prints it as «filtered from N total
+        // entries», the denominator the filtered count is measured against, and a
+        // denominator that moves with the filter measures nothing. These two used to sit
+        // outside the guard, so «Чекають прив'язки» reported "from 268" while «Боржники»
+        // reported "from 449" — the same table, two different sizes.
+        if (!$total && ($params['status_filter'] ?? null) === 'unlinked') {
             $conditions[] = 'a.id IS NULL';
-        } elseif (($params['status_filter'] ?? null) === 'linked') {
+        } elseif (!$total && ($params['status_filter'] ?? null) === 'linked') {
             $conditions[] = 'a.id IS NOT NULL';
         }
 
