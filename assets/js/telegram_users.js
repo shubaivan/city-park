@@ -89,23 +89,48 @@ document.addEventListener("DOMContentLoaded", function () {
         "visible": false
     });
 
-    // additional_phones column (index 10 after area/threshold insertion)
+    // phone_number (index 9) — carries the "has relatives on file" flag that used to be
+    // a column of its own. additional_phones is the pre-issued pass for a family member:
+    // an owner records a relative's number, and when that person later shares their
+    // contact with the bot, TelegramUserService::resolveAccount() finds the number here
+    // and links them to the same rahunok with nobody's help. Worth knowing at a glance,
+    // not worth a column — 19 rows out of 450 have one.
     common_defs.push({
-        "targets": 10,
-        "orderable": false,
+        "targets": 9,
         "render": function (data, type, row, meta) {
-            var divTag = $('<div/>');
-            if (data && typeof data === 'object' && Object.keys(data).length) {
-                $.each(data, function( index, value ) {
-                    if (value && value.property_name !== undefined) {
-                        var pOrder = $('<p/>').append('<b>' + value.property_name + ':</b> ').append('<i>'+value.property_value+'</i>');
-                        divTag.append(pOrder);
+            var phone = data || '<span class="text-muted">—</span>';
+            var extra = row.additional_phones;
+            var count = 0;
+
+            if (extra && typeof extra === 'object') {
+                $.each(extra, function (index, value) {
+                    if (value && value.property_value) {
+                        count++;
                     }
                 });
             }
 
-            return divTag.html();
+            if (!count) {
+                return phone;
+            }
+
+            // 1 родич · 2 родичі · 5 родичів
+            var mod10 = count % 10;
+            var mod100 = count % 100;
+            var word = (mod10 === 1 && mod100 !== 11)
+                ? 'родич'
+                : ((mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) ? 'родичі' : 'родичів');
+
+            return phone + '<br><small class="text-muted">+' + count + ' ' + word + '</small>';
         }
+    });
+
+    // additional_phones (index 10) — hidden; the numbers themselves are edited in the
+    // «Редагувати» modal, and the count above is all the list needs to show.
+    common_defs.push({
+        "targets": 10,
+        "orderable": false,
+        "visible": false
     });
 
     // first_name (index 11) — renders the whole name, with last_name (12) hidden beside
