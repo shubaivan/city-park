@@ -14,7 +14,33 @@ document.addEventListener("DOMContentLoaded", function () {
         status: '',
     };
 
+        // Address in one column, and the street dropped — the same two calls as
+    // /admin/users. Apartment numbers repeat across the five buildings, so "кв. 76"
+    // alone names two households, while "Козацька" is true of all 166 accounts and
+    // distinguishes nothing. Both hidden rather than removed: the defs below target
+    // columns by INDEX (5, 10), and dropping a field would shift them onto the wrong
+    // cells.
     common_defs.push({
+        "targets": 2,
+        "render": function (data, type, row, meta) {
+            var house = row.house_number ? 'буд. ' + row.house_number : '';
+            var flat = data ? 'кв. ' + data : '';
+
+            return [house, flat].filter(Boolean).join(', ') || '<span class="text-muted">—</span>';
+        }
+    });
+
+    common_defs.push({
+        "targets": 3,
+        "visible": false
+    });
+
+    common_defs.push({
+        "targets": 4,
+        "visible": false
+    });
+
+common_defs.push({
         "targets": 5,
         "render": function (data, type, row, meta) {
             if (data === true) {

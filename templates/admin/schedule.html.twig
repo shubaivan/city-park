@@ -56,18 +56,39 @@
             </div>
         </div>
 
+        {#
+            Same rule as /admin/users: the keys are ScheduledSet::$dataTableFields and were
+            printed raw, so the page showed "account_number" and "photo_status" in an
+            otherwise Ukrainian panel. Unlisted keys fall back to themselves, and the order
+            must stay as the entity defines it — schedule.js targets columns by INDEX.
+        #}
+        {% set th_titles = {
+            'id': '#',
+            'account_number': 'Особовий рахунок',
+            'apartment_number': 'Адреса',
+            'house_number': 'Будинок',
+            'street': 'Вулиця',
+            'is_active': 'Статус',
+            'phone_number': 'Телефон',
+            'username': 'Telegram',
+            'scheduled_at': 'Час бронювання',
+            'pavilion': 'Альтанка',
+            'photo_status': 'Фото',
+            'vote_blocks': 'Блокувань голосуванням'
+        } %}
+
         {% if th_keys|length %}
             <table id='telegramUserTable' class='display dataTable'>
                 <thead>
                 <tr>
                     {% for th_key in th_keys %}
-                        <th scope="col">{{ th_key }}</th>
+                        <th scope="col">{{ th_titles[th_key]|default(th_key) }}</th>
                     {% endfor %}
                 </tr>
                 </thead>
                 <tfoot>
                 {% for th_key in th_keys %}
-                    <th scope="col">{{ th_key }}</th>
+                    <th scope="col">{{ th_titles[th_key]|default(th_key) }}</th>
                 {% endfor %}
                 </tfoot>
             </table>
