@@ -10,6 +10,35 @@
 {% block body %}
     {{ parent() }}
 
+    {#
+        Column titles. The keys are the entity's field names (TelegramUser::$dataTableFields)
+        and were printed raw, so the accountant read "account_number", "is_active",
+        "last_visit" — English identifiers in an otherwise Ukrainian panel. Anything not
+        listed here falls back to its key, so adding a field cannot produce a blank header.
+
+        Order and count must stay exactly as $dataTableFields: telegram_users.js targets
+        every column by INDEX.
+    #}
+    {% set th_titles = {
+        'id': '#',
+        'account_number': 'Особовий рахунок',
+        'apartment_number': 'Адреса',
+        'house_number': 'Будинок',
+        'street': 'Вулиця',
+        'is_active': 'Статус',
+        'debt': 'Борг',
+        'area': 'Площа',
+        'debt_threshold': 'Поріг боргу',
+        'phone_number': 'Телефон',
+        'additional_phones': 'Родичі',
+        'first_name': 'Ім\'я',
+        'last_name': 'Прізвище',
+        'username': 'Telegram',
+        'start': 'У боті з',
+        'last_visit': 'Остання дія',
+        'action': 'Дії'
+    } %}
+
     {% if th_keys|length %}
         <!-- Table -->
         <table id='telegramUserTable' class='display dataTable'>
@@ -17,13 +46,13 @@
             <thead>
             <tr>
                 {% for th_key in th_keys %}
-                    <th scope="col">{{ th_key }}</th>
+                    <th scope="col">{{ th_titles[th_key]|default(th_key) }}</th>
                 {% endfor %}
             </tr>
             </thead>
             <tfoot>
             {% for th_key in th_keys %}
-                <th scope="col">{{ th_key }}</th>
+                <th scope="col">{{ th_titles[th_key]|default(th_key) }}</th>
             {% endfor %}
             </tfoot>
 
