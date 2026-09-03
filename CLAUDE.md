@@ -102,6 +102,27 @@ account renders as `⏳ Не прив'язаний`, never as a red «Забло
 for someone the bot has no flat for, and calling that "blocked" accuses it of blocking a
 person it never heard of.
 
+**Retire a column with `visible: false`, never by deleting it from `$dataTableFields`.**
+Every `columnDef` in `telegram_users.js` / `schedule.js` targets its column by **index**, so
+removing one from the middle shifts the rest and repaints the wrong cells (the debt renderer
+onto area, area onto the threshold). Retired this way and drawn inside a neighbouring cell
+instead: `street`, `house_number` (in the address), `debt_threshold` (under the debt),
+`last_name` (with the first), `additional_phones` (a «+1 родич» count by the phone), `start`
+(under the last activity), `vote_blocks` (a red note by the status, only when non-zero).
+Column titles come from the `th_titles` map in the template — a field appended to the entity
+later must be added there or it renders as its raw English name. The whole row opens the edit
+card; the first cell, `.dtr-control`, `.dtr-details` and the expanded `tr.child` are excluded
+so the responsive expander still works on a narrow screen.
+
+**Sorting resolves through an explicit map with an `?? 'b.id'` fallback.** The old shape
+prefixed known columns with `a.`/`b.` and passed anything else through bare, so a click on
+`vote_blocks`, `role`, `area` or `debt_threshold` reached Doctrine as `ORDER BY vote_blocks`
+— Semantical Error, 500, "DataTables warning: Ajax error" (03.09.2026). Columns with no
+stored counterpart map to what they derive from: `debt_threshold` → `a.area`, `photo_status`
+→ booking time, `vote_blocks` → `a.vote_block_count`.
+`AdminUserSearchTest::testEveryTableColumnIsSafeToSortBy` walks `$dataTableFields` and fails
+on any column the map forgot.
+
 **Never `array_unique()` the bound values.** They are keyed placeholders and `array_unique`
 deduplicates by *value*: the same phone typed into both the global `Search:` box and the
 «Телефон» column dropped one key, and the query reached Doctrine with an unbound placeholder
