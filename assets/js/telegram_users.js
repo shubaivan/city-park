@@ -108,6 +108,28 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
+    // first_name (index 11) — renders the whole name, with last_name (12) hidden beside
+    // it. Telegram gives both fields separately and most people fill only the first, so
+    // two columns meant one of them was blank on most rows while both ate width.
+    common_defs.push({
+        "targets": 11,
+        "render": function (data, type, row, meta) {
+            var name = [data, row.last_name]
+                .filter(function (part) { return part && String(part).trim(); })
+                .join(' ');
+
+            return name || '<span class="text-muted">—</span>';
+        }
+    });
+
+    // last_name (index 12) — drawn inside the name column above. Hidden, not removed:
+    // the defs here target columns by index, and the per-field «Прізвище» search still
+    // queries this column server-side.
+    common_defs.push({
+        "targets": 12,
+        "visible": false
+    });
+
     // action column (was 14, now 16 with area + threshold added)
     common_defs.push({
         "targets": 16,
