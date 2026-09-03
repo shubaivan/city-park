@@ -6,6 +6,17 @@ document.addEventListener("DOMContentLoaded", function () {
     let table;
     var common_defs = [];
 
+    // street (index 4) — the ЖК is five buildings on one street, so the column reads
+    // "Козацька" 166 times and says nothing; the building number next to it is what
+    // actually distinguishes an address. Hidden rather than removed from
+    // TelegramUser::$dataTableFields, because every columnDef below targets a column by
+    // INDEX: pulling a column out of the middle would silently shift all of them by one
+    // and repaint the wrong cells.
+    common_defs.push({
+        "targets": 4,
+        "visible": false
+    });
+
     common_defs.push({
         "targets": 5,
         "render": function (data, type, row, meta) {
