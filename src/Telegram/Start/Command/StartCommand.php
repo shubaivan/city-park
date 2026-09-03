@@ -102,16 +102,21 @@ class StartCommand extends Command
      * container hands back the same shared instance RequestSubscriber init'd.
      */
     /**
-     * Who runs the ОСББ, and how to reach her.
+     * Who runs the ОСББ, and how to reach them.
      *
-     * Residents kept asking the bot things only a person can answer, so the person is
-     * named on the menu rather than buried in the FAQ. She has no Telegram @username —
-     * checked against the registry, the field is empty — so the link is the phone-number
-     * form, which opens a Telegram chat with her without one, and the number itself is in
-     * <code> for tap-to-copy in case they would rather ring.
+     * Residents kept asking the bot things only a person can answer, so the people are
+     * named on the menu rather than buried in the FAQ. Neither has a Telegram @username —
+     * checked against the registry, both fields are empty — so the links are the
+     * phone-number form, which opens a Telegram chat without one, and the numbers
+     * themselves are in <code> for tap-to-copy in case they would rather ring.
      *
-     * Shown only to a linked resident, the same call already made for the accountant's
-     * number: an unlinked visitor browsing 🔑 Оренда is not owed the officers' phones.
+     * The accountant is named alongside the chair because they answer different questions
+     * and residents cannot be expected to know which: Людмила decides, Аліна holds the
+     * registry, and «немає номера в базі» is hers. Her number was already in the block and
+     * unblock messages before this — but only somebody already blocked ever saw it.
+     *
+     * Shown only to a linked resident: an unlinked visitor browsing 🔑 Оренда is not owed
+     * the officers' phones.
      */
     private static function chairBlock(?Account $account): string
     {
@@ -121,7 +126,11 @@ class StartCommand extends Command
 
         return "👩‍💼 <b>Голова ОСББ</b> — Людмила Осипенко\n"
             . "📞 <code>+380 67 470 46 24</code> · "
-            . '<a href="https://t.me/+380674704624">написати в Telegram</a>' . "\n\n";
+            . '<a href="https://t.me/+380674704624">написати в Telegram</a>' . "\n"
+            . "🧾 <b>Бухгалтер ОСББ</b> — Аліна\n"
+            . "📞 <code>+380 93 658 32 02</code> · "
+            . '<a href="https://t.me/+380936583202">написати в Telegram</a>' . "\n"
+            . "<i>Особові рахунки, нарахування, борги, прив'язка квартири — до неї.</i>\n\n";
     }
 
     /**

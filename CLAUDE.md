@@ -81,8 +81,10 @@ field wrong in an unknown subset is worse than one honestly empty. It lives on t
 not the account: a tenant and the owner share one rahunok and must not share one label.
 
 **`/admin/users` shows everyone, and must keep doing so.** Anyone who has ever pressed
-/start has a `TelegramUser` row — 274 of them on 02.09.2026 against 175 actually linked to
-a flat. For one day (02–03.09.2026) the table filtered to `account IS NOT NULL` by default,
+/start has a `TelegramUser` row — verified on prod 03.09.2026: **449 rows, 181 linked to a
+flat, 268 not**. (An earlier note here said "274 against 172"; that was wrong, and the
+DataTables footer is the quickest check — «filtered from N total entries» is the honest
+row count now that no default hides anything.) For one day (02–03.09.2026) the table filtered to `account IS NOT NULL` by default,
 because rows with no о/р and no address read as "who are all these people?". **That default
 is reverted and must not come back.** On 03.09.2026 Аліна searched a resident's phone here,
 found nothing and told him «немає номера в базі» — his row had been in the table for an hour
