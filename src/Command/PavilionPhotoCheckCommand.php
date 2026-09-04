@@ -400,7 +400,7 @@ class PavilionPhotoCheckCommand extends Command
         $text = sprintf(
             "⛔ <b>Ваш аккаунт заблоковано</b>\n\nПричина: не завантажено фото альтанки після бронювання:\n📅 <b>%s</b>\n⏰ <b>%s</b>\n🏠 Альт. <b>%d</b>\n\n"
             . "📸 <i>У вас ще є <b>%s</b> — до <b>%s</b> — щоб надіслати фото в цей чат, і блокування зніметься автоматично.</i>\n\n"
-            . "Після цього — лише через ОСББ:\n" . OsbbContacts::both() . "\nабо розробника @shubaivan.",
+            . "Після цього — лише через ОСББ:\n" . OsbbContacts::ALL_LINES,
             UkDateFormatter::dayDate($start),
             UkDateFormatter::time($start),
             $req->getPavilion(),
@@ -467,7 +467,7 @@ class PavilionPhotoCheckCommand extends Command
             . "Фото за бронювання ще не надіслано:\n📅 <b>%s</b>\n⏰ <b>%s</b>\n🏠 Альт. <b>%d</b>\n\n"
             . "📸 Надішліть фото в цей чат до <b>%s</b> (залишилось менше ніж %d хв) — блокування зніметься автоматично.\n\n"
             . "⛔ Після цього самостійне завантаження буде вимкнено, і розблокувати акаунт можна буде лише через ОСББ:\n"
-            . OsbbContacts::both() . "\nабо розробника @shubaivan.",
+            . OsbbContacts::ALL_LINES,
             UkDateFormatter::dayDate($start),
             UkDateFormatter::time($start),
             $req->getPavilion(),

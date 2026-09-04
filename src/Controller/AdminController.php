@@ -673,6 +673,52 @@ class AdminController extends AbstractController
     }
 
     /**
+     * One property, on a page of its own.
+     *
+     * The register is a list — 173 cards, filters, counters — and it was also carrying the
+     * forms for every one of them. Arriving from a link meant landing on the whole list
+     * with one card in it, filters and all. Same split as people: the register answers
+     * "which objects", the page answers "this object".
+     */
+    #[Route('/admin/objects/{id}', name: 'app_admin_object', requirements: ['id' => '\d+'], methods: [Request::METHOD_GET])]
+    public function object(
+        int $id,
+        AccountRepository $accountRepository,
+        PropertyRegistry $registry,
+        OwnerGroupService $ownerGroups,
+        DebtPolicy $debtPolicy,
+        BlockReasonResolver $blockReasonResolver,
+        ComplaintRepository $complaints,
+        TariffRepository $tariffRepository,
+        EntityManagerInterface $em,
+    ): Response {
+        $account = $accountRepository->find($id);
+
+        if (!$account instanceof Account) {
+            throw $this->createNotFoundException('Немає такого об’єкта');
+        }
+
+        $siblings = $ownerGroups->siblings($account);
+
+        return $this->render('admin/object.html.twig', [
+            'account' => $account,
+            'registry' => $registry,
+            'threshold' => $debtPolicy->getThresholdFor($account),
+            'tariff' => (float)$tariffRepository->getOrCreate($em)->getPricePerMeter(),
+            'block' => $blockReasonResolver->resolve($account),
+            'owners' => $account->getUsers(),
+            'siblings' => $siblings,
+            'groupDebt' => array_reduce(
+                $siblings,
+                static fn (float $carry, Account $s): float => $carry + (float)($s->getDebt() ?? 0),
+                (float)($account->getDebt() ?? 0),
+            ),
+            'complaints' => $complaints->findByAccount($account),
+            'history' => $this->statusLogRepository->findRecentForAccount($account, 10),
+        ]);
+    }
+
+    /**
      * "Це той самий власник" — merge two objects into one owner group.
      *
      * A plain form post rather than the JSON endpoint the users page uses, because this
@@ -744,14 +790,12 @@ class AdminController extends AbstractController
         $em->flush();
 
         $this->addFlash('notice', sprintf(
-            'Додано: %s — %s, буд. %s, %s. Прив’язати мешканця можна в розділі «Люди».',
+            'Додано: %s — %s. Прив’язати мешканця можна в розділі «Люди».',
             $number,
             Account::UNIT_TYPES[$account->getUnitType()],
-            $house,
-            $unit,
         ));
 
-        return $this->redirectToRoute('app_admin_objects');
+        return $this->redirectToRoute('app_admin_object', ['id' => $account->getId()]);
     }
 
     /**
@@ -793,7 +837,7 @@ class AdminController extends AbstractController
             Account::UNIT_TYPES[$type],
         ));
 
-        return $this->redirectToRoute('app_admin_objects');
+        return $this->redirectToRoute('app_admin_object', ['id' => $account->getId()]);
     }
 
     #[Route('/admin/objects/group/link', name: 'app_admin_objects_group_link', methods: [Request::METHOD_POST])]
@@ -824,7 +868,9 @@ class AdminController extends AbstractController
                 : $this->addFlash('error', $error);
         }
 
-        return $this->redirectToRoute('app_admin_objects');
+        return $source instanceof Account
+            ? $this->redirectToRoute('app_admin_object', ['id' => $source->getId()])
+            : $this->redirectToRoute('app_admin_objects');
     }
 
     #[Route('/admin/objects/group/unlink', name: 'app_admin_objects_group_unlink', methods: [Request::METHOD_POST])]
@@ -847,7 +893,7 @@ class AdminController extends AbstractController
             ? $this->addFlash('notice', sprintf('%s відв’язано від групи.', $account->getAccountNumber()))
             : $this->addFlash('error', $error);
 
-        return $this->redirectToRoute('app_admin_objects');
+        return $this->redirectToRoute('app_admin_object', ['id' => $account->getId()]);
     }
 
     #[Route('/admin/users', name: 'app_admin_users')]
