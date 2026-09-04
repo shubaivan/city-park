@@ -147,8 +147,13 @@
                                         <b class="{{ threshold and account.debt > threshold ? 'text-danger' }}">
                                             {{ account.debt|number_format(2, '.', ' ') }} грн
                                         </b>
+                                        <span class="text-muted small">станом на {{ account.debtUpdatedAt ? account.debtUpdatedAt|date('d.m.Y') : '—' }}</span>
+                                    {% elseif account.debtUpdatedAt is null %}
+                                        {# Never in an import: 0 here means "nobody has told us". #}
+                                        <span class="text-muted">ще не завантажувався</span>
                                     {% else %}
                                         <span class="text-success">боргу немає</span>
+                                        <span class="text-muted small">станом на {{ account.debtUpdatedAt|date('d.m.Y') }}</span>
                                     {% endif %}
                                 </dd>
 

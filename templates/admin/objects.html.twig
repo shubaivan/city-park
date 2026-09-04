@@ -222,13 +222,24 @@
                         </div>
 
                         <div class="mt-2">
+                            {#
+                                «Боргу немає» is a statement about the last import, and for an
+                                object that has never been in one it is simply false — the
+                                column is 0 because nothing ever wrote to it. `debt_updated_at`
+                                is stamped inside setDebt(), so its absence is the honest
+                                signal for "we have never been told".
+                            #}
                             {% if row.debt > 0 %}
                                 <span class="{{ row.over_threshold ? 'text-danger' : '' }}">
                                     💰 <b>{{ row.debt|number_format(2, '.', ' ') }} грн</b>
                                 </span>
                                 <span class="small obj-muted">поріг {{ row.threshold|number_format(2, '.', ' ') }}</span>
+                            {% elseif a.debtUpdatedAt is null %}
+                                <span class="obj-muted">💰 борг ще не завантажувався</span>
+                                <span class="small obj-muted">з'явиться з наступним файлом бухгалтера</span>
                             {% else %}
                                 <span class="text-success">💰 боргу немає</span>
+                                <span class="small obj-muted">станом на {{ a.debtUpdatedAt|date('d.m.Y') }}</span>
                             {% endif %}
                         </div>
 
@@ -271,14 +282,37 @@
                                 </div>
                             {% else %}
                                 {#
-                                    Nobody in the bot stands behind this object. Worth saying
-                                    plainly: these are the rows whose debt reaches no-one,
-                                    because every notice the bot sends goes to a TelegramUser.
+                                    Two different situations, and they used to read the same.
+
+                                    An object with nobody on it and no group is genuinely
+                                    unreachable: every notice the bot sends goes to a
+                                    TelegramUser, so its debt reaches no-one.
+
+                                    An object with nobody on it that *is* grouped — a
+                                    комірчина usually is — belongs to a household the panel
+                                    can name. Its own notices still reach nobody, which is
+                                    worth saying, but «нікого не сповіщають» on its own read
+                                    as "abandoned" when the owner was one row away.
                                 #}
-                                <div class="text-warning small">
-                                    ❓ Жоден мешканець не прив'язаний. Борг і блокування по цьому
-                                    об'єкту нікого не сповіщають.
-                                </div>
+                                {% if row.group_owners|length %}
+                                    <div class="small">
+                                        ❓ На самому об'єкті нікого не записано, але він у групі
+                                        одного власника з
+                                        {% for sib in row.siblings %}{{ registry.place(sib) }}{% if not loop.last %}, {% endif %}{% endfor %}:
+                                        {% for o in row.group_owners %}
+                                            {% if o.id %}<a href="{{ path('app_admin_resident', {id: o.id}) }}">{{ o.firstName }} {{ o.lastName }}</a>{% else %}{{ o.firstName }}{% endif %}{% if not loop.last %}, {% endif %}
+                                        {% endfor %}.
+                                        <div class="text-warning">
+                                            Сповіщення саме по цьому об'єкту все одно нікому не
+                                            приходять — бот пише тим, хто прив'язаний до нього.
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <div class="text-warning small">
+                                        ❓ Жоден мешканець не прив'язаний, і об'єкт не в групі.
+                                        Борг і блокування по ньому нікого не сповіщають.
+                                    </div>
+                                {% endif %}
                             {% endfor %}
                         </div>
 

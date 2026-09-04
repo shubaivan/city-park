@@ -60,6 +60,7 @@ class AdminObjectsPageTest extends KernelTestCase
             'over_threshold' => true,
             'block' => null,
             'siblings' => $siblings,
+            'group_owners' => [],
             'group_debt' => 2800.0,
         ];
     }
@@ -115,6 +116,7 @@ class AdminObjectsPageTest extends KernelTestCase
         $html = $this->render([$this->row($this->account(85, '4100085', '85'))], $this->stats());
 
         $this->assertStringContainsString('Жоден мешканець не прив', $html);
+        $this->assertStringContainsString("не в групі", $html);
         $this->assertStringContainsString('нікого не сповіщають', $html);
     }
 

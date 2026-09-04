@@ -87,6 +87,14 @@ class PropertyRegistry
                 'over_threshold' => $debt > $threshold,
                 'block' => $this->blockReasons->resolve($account),
                 'siblings' => $siblings,
+                // People on the *other* objects of the same owner. An object can be part of
+                // a household and still have nobody registered on it — a комірчина usually
+                // does — and «нікого не сповіщають» reads as "abandoned" when in fact the
+                // owner is one row away. Both facts matter and they are different facts.
+                'group_owners' => array_merge(...array_map(
+                    fn (Account $sibling): array => $this->owners($sibling),
+                    $siblings,
+                ) ?: [[]]),
                 // The group's arrears, for the panel only. The bot deliberately does not
                 // sum these — each object has its own threshold (area × tariff × 1.5) and
                 // one delinquent object blocks the group — but a person asking "скільки
