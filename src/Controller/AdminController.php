@@ -665,6 +665,7 @@ class AdminController extends AbstractController
         return $this->render('admin/objects.html.twig', [
             'rows' => $rows,
             'stats' => $registry->stats($rows),
+            'houses' => $registry->houses($rows),
         ]);
     }
 

@@ -103,6 +103,38 @@ class PropertyRegistry
     }
 
     /**
+     * The buildings that actually have objects, in walking order.
+     *
+     * Taken from the data rather than hardcoded: the ЖК is five buildings today (Козацька
+     * 17, 19, 21, 23, 27) and a hardcoded list is a filter that silently drops a building
+     * the day a sixth appears — or shows an empty one after a renumbering.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     *
+     * @return array<int, array{house: string, count: int}>
+     */
+    public function houses(array $rows): array
+    {
+        $counts = [];
+
+        foreach ($rows as $row) {
+            $house = trim((string)$row['account']->getHouseNumber());
+
+            if ($house !== '') {
+                $counts[$house] = ($counts[$house] ?? 0) + 1;
+            }
+        }
+
+        uksort($counts, static fn (string $a, string $b): int => strnatcmp($a, $b));
+
+        return array_map(
+            static fn (string $house, int $count): array => ['house' => $house, 'count' => $count],
+            array_keys($counts),
+            $counts,
+        );
+    }
+
+    /**
      * @return array{objects:int, apartments:int, parking:int, storage:int, unowned:int, grouped:int, debt:float, in_debt:int}
      */
     public function stats(array $rows): array
