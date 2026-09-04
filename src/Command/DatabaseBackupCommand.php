@@ -13,7 +13,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Symfony\Component\Mailer\MailerInterface;
+use Symfony\Component\Mailer\Transport\TransportInterface;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\Process\Process;
 
@@ -53,10 +53,11 @@ class DatabaseBackupCommand extends Command
         private Connection $connection,
         private Nutgram $bot,
         private LoggerInterface $logger,
-        private MailerInterface $mailer,
+        private TransportInterface $mailTransport,
         private string $projectDir,
         private string $backupChatId = '',
         private string $backupEmail = '',
+        private string $mailerDsn = '',
     ) {
         parent::__construct();
     }
@@ -228,9 +229,19 @@ class DatabaseBackupCommand extends Command
                 ->text(strip_tags(str_replace(['<br>', '\n'], "\n", $caption)))
                 ->attachFromPath($path);
 
+            // Straight down the transport, not through MailerInterface.
+            //
+            // `SendEmailMessage` is routed to the async Messenger transport in this project,
+            // so `mailer->send()` only *queues* — it returns success while the actual
+            // delivery happens later in the worker, and a failure there is a CRITICAL in a
+            // log nobody is reading. That is precisely the wrong shape for a backup, whose
+            // whole value is knowing it left. Sending through the transport blocks until the
+            // SMTP server has taken it, and the [OK] below means what it says.
+            //
             // The From is the SMTP account itself; Gmail rewrites anything else anyway, and
             // guessing a sender address here is how mail silently lands in spam.
-            $this->mailer->send($email);
+            $email->from($this->senderAddress());
+            $this->mailTransport->send($email);
 
             $io->success('Надіслано на ' . $this->backupEmail);
             $this->logger->info('db:backup emailed', ['to' => $this->backupEmail]);
@@ -242,6 +253,22 @@ class DatabaseBackupCommand extends Command
 
             return false;
         }
+    }
+
+    /**
+     * The SMTP account's own address, taken from the DSN user.
+     *
+     * Sending through the transport skips the framework's default From, so one has to be
+     * set here; Gmail rewrites anything that is not the authenticated account anyway.
+     */
+    private function senderAddress(): string
+    {
+        // From the bound MAILER_DSN, not getenv(): Symfony's Dotenv populates $_ENV and
+        // $_SERVER but does not necessarily putenv(), so getenv() is empty as often as not.
+        $user = parse_url($this->mailerDsn, PHP_URL_USER);
+        $user = is_string($user) ? urldecode($user) : '';
+
+        return str_contains($user, '@') ? $user : ($this->backupEmail ?: 'noreply@localhost');
     }
 
     /** @return array{accounts:int, users:int, bookings:int} */
