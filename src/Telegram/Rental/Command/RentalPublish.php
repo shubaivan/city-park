@@ -2,6 +2,7 @@
 
 namespace App\Telegram\Rental\Command;
 
+use App\Service\OsbbContacts;
 use App\Entity\RentalListing;
 use App\Service\PhotoUploadFlow;
 use App\Service\RentalListingService;
@@ -81,7 +82,7 @@ class RentalPublish extends Conversation
         if (!$account) {
             $bot->sendMessage(
                 text: "Ваш аккаунт не підтверджений ОСББ — опублікувати оголошення не вийде.\n"
-                    . "Зв'яжіться з Аліною Бухгалтером (+380 93 658 32 02).",
+                    . "Зв'яжіться з бухгалтером ОСББ:\n" . OsbbContacts::ACCOUNTANT_LINE,
                 parse_mode: ParseMode::HTML,
             );
             $this->end();

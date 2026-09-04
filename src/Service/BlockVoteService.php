@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Entity\AccountStatusLog;
 use App\Entity\BlockVoteBallot;
@@ -300,7 +301,7 @@ class BlockVoteService
             . "Сусіди проголосували за тимчасове блокування. Доступ до бронювання припинено до <b>%s</b> (30 днів).\n\n"
             . "Це вже <b>%d-е</b> блокування вашого аккаунта за рішенням спільноти.\n\n"
             . "Після цієї дати доступ відновиться автоматично.\n\n"
-            . "Питання — Аліна Бухгалтер (+380 93 658 32 02) або голова ОСББ Люда (+380 67 470 46 24).",
+            . OsbbContacts::askThem('Питання:'),
             $until->format('d.m.Y'),
             $count
         );

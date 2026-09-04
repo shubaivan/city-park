@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Repository\PhotoUploadRequestRepository;
 
@@ -19,7 +20,11 @@ final class BlockReasonResolver
     ) {
     }
 
-    private const ACCOUNTANT_CONTACT = "Зв'яжіться з Аліною Бухгалтером (+380 93 658 32 02) або головою ОСББ Людою (+380 67 470 46 24)";
+    /** Rendered from OsbbContacts so a changed number changes everywhere at once. */
+    private static function accountantContact(): string
+    {
+        return OsbbContacts::askThem("Зв'яжіться з ОСББ:");
+    }
 
     /**
      * @return array{code:string, label:string, details:?string}|null null when the account is active.
@@ -87,7 +92,7 @@ final class BlockReasonResolver
                 . sprintf("• Поточний борг: <b>%s грн</b>\n", number_format($debt, 2, '.', ' '))
                 . sprintf("• Поріг блокування: <b>%s грн</b>\n\n", number_format($threshold, 2, '.', ' '))
                 . "Будь ласка, сплатіть заборгованість, щоб відновити можливість бронювання.\n\n"
-                . self::ACCOUNTANT_CONTACT;
+                . self::accountantContact();
         }
 
         $blockedReq = $this->photoRequestRepository->findEarliestBlockedOpen($account);
@@ -102,16 +107,16 @@ final class BlockReasonResolver
             if ($this->photoService->isUploadStillAllowed($blockedReq, $now)) {
                 $msg .= "Натисніть «📸 Завантажити фото» та надішліть фото — "
                     . "аккаунт розблокується автоматично.\n\n"
-                    . "Якщо виникли труднощі — " . self::ACCOUNTANT_CONTACT;
+                    . "Якщо виникли труднощі — " . self::accountantContact();
             } else {
                 $msg .= "Час для самостійного завантаження фото вже минув.\n\n"
-                    . self::ACCOUNTANT_CONTACT;
+                    . self::accountantContact();
             }
 
             return $msg;
         }
 
         return $header
-            . "Для відновлення доступу до бронювання " . self::ACCOUNTANT_CONTACT;
+            . "Для відновлення доступу до бронювання " . self::accountantContact();
     }
 }

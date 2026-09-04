@@ -2,6 +2,7 @@
 
 namespace App\Telegram\Start\Command;
 
+use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Service\ComplaintService;
 use App\Service\DebtBoardService;
@@ -124,13 +125,9 @@ class StartCommand extends Command
             return '';
         }
 
-        return "👩‍💼 <b>Голова ОСББ</b> — Людмила Осипенко\n"
-            . "📞 <code>+380 67 470 46 24</code> · "
-            . '<a href="https://t.me/+380674704624">написати в Telegram</a>' . "\n"
-            . "🧾 <b>Бухгалтер ОСББ</b> — Аліна\n"
-            . "📞 <code>+380 93 658 32 02</code> · "
-            . '<a href="https://t.me/+380936583202">написати в Telegram</a>' . "\n"
-            . "<i>Особові рахунки, нарахування, борги, прив'язка квартири — до неї.</i>\n\n";
+        return OsbbContacts::chair() . "\n"
+            . OsbbContacts::accountant() . "\n"
+            . "<i>Особові рахунки, нарахування, борги, прив'язка квартири — до бухгалтера.</i>\n\n";
     }
 
     /**

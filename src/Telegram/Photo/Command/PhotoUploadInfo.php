@@ -2,6 +2,7 @@
 
 namespace App\Telegram\Photo\Command;
 
+use App\Service\OsbbContacts;
 use App\Entity\PhotoUploadRequest;
 use App\Repository\PhotoUploadRequestRepository;
 use App\Service\PavilionPhotoService;
@@ -71,7 +72,8 @@ class PhotoUploadInfo
         }
         if ($hasExpired) {
             $lines[] = sprintf(
-                '❌ — прострочено (минув час на завантаження — %s після блокування). Для розблокування зверніться до Аліни Бухгалтера (+380 93 658 32 02), голови ОСББ Люди (+380 67 470 46 24) або розробника @shubaivan.',
+                "❌ — прострочено (минув час на завантаження — %s після блокування).\nДля розблокування зверніться:\n"
+                . OsbbContacts::BOTH_LINES . "\nабо до розробника @shubaivan.",
                 PavilionPhotoService::uploadGraceLabel(),
             );
         }

@@ -235,6 +235,20 @@ never onto a command line `ps` can read, and `BACKUP_PASSPHRASE` optionally encr
 (AES-256) before delivery. Restore is plain
 `gunzip -c <file> | psql -d <db>`.
 
+## Contacting the ОСББ
+
+Every message that ends with "ask the ОСББ" renders `OsbbContacts::ACCOUNTANT_LINE` /
+`CHAIR_LINE` / `BOTH_LINES` — name, a `tel:` link and a `t.me/+<phone>` link. The sentence
+used to be copy-pasted into twelve files as a bare number, which is a number to write down
+and dial: a resident reading a block notice on a phone at 22:40 does neither. It also meant
+that the day one of them changes their number, eleven messages still point at the old one.
+
+**They are constants, not method calls**, because the FAQ keeps its whole text in a `const`
+array and PHP constant expressions cannot call anything; concatenating constants is allowed.
+`t.me/+<digits>` rather than a @username, because the head of the ОСББ has none (the
+registry field is empty) and one shape that works for both beats a link that works for one.
+`OsbbContactsTest` walks `src/` and fails on any file that keeps its own copy of a number.
+
 ## Debtors' board («дошка пошани»)
 
 The house's total debt plus the three largest debtors, rendered above the main menu on

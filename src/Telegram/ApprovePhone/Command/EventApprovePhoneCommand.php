@@ -2,6 +2,7 @@
 
 namespace App\Telegram\ApprovePhone\Command;
 
+use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Service\TelegramUserService;
 use App\Telegram\Location\Repository\OfficeRepository;
@@ -85,7 +86,7 @@ class EventApprovePhoneCommand extends Command
             . "Це не помилка з вашого боку — просто цей номер не записаний за жодною квартирою, "
             . "тому можливості для мешканців ЖК поки закриті.\n\n"
             . "Що зробити:\n"
-            . "• якщо ви <b>власник</b> — зверніться до бухгалтера ОСББ Аліни (+380 93 658 32 02), "
+            . "• якщо ви <b>власник</b> — зверніться до бухгалтера ОСББ:\n" . OsbbContacts::accountant() . ",\n"
             . "щоб вона додала цей номер до вашого рахунку;\n"
             . "• якщо ви <b>член сім'ї або орендар</b> — попросіть власника квартири додати вас.\n\n"
             . '<i>Щойно номер з’явиться в реєстрі, натисніть /phone ще раз — і все відкриється.</i>';
