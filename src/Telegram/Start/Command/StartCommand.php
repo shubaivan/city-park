@@ -152,8 +152,11 @@ class StartCommand extends Command
     {
         $debt = (float)($account->getDebt() ?? 0);
 
+        // Signed, because the bare number reads as anything — a charge, a payment, a
+        // tariff. A minus beside the рахунок says which direction it goes without a word
+        // of explanation, and it is the shape a receipt uses.
         return $debt >= 1
-            ? sprintf(' · 💸 <b>%s грн</b>', number_format($debt, 0, '.', ' '))
+            ? sprintf(' · 💸 <b>−%s грн</b>', number_format($debt, 0, '.', ' '))
             : ' · ✅ без боргу';
     }
 

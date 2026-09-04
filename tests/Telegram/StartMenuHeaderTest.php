@@ -48,7 +48,9 @@ class StartMenuHeaderTest extends TestCase
             $this->account('235168', '168', Account::UNIT_STORAGE, '0'),
         ], true);
 
-        $this->assertStringContainsString('3 416 грн', $header);
+        // Signed: a bare number beside a рахунок reads as a charge or a payment just as
+        // easily as as arrears.
+        $this->assertStringContainsString('−3 416 грн', $header);
         $this->assertStringContainsString('без боргу', $header);
     }
 
