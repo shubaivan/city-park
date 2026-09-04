@@ -468,13 +468,15 @@ document.addEventListener("DOMContentLoaded", function () {
     // 17/19/21/23/27, which silently drops a sixth building the day one appears.
     var $houseGroup = $('<div/>', {'class': 'btn-group btn-group-sm mb-2 ml-2 flex-wrap'});
 
-    (window.adminHouses || []).forEach(function (house) {
-        $houseGroup.append($('<button/>', {
+    (window.adminHouses || []).forEach(function (item) {
+        var $btn = $('<button/>', {
             'type': 'button',
             'class': 'btn btn-outline-dark',
-            'data-house': house,
-            'text': 'буд. ' + house
-        }));
+            'data-house': item.house
+        });
+        $btn.append(document.createTextNode('буд. ' + item.house + ' '));
+        $btn.append($('<span/>', {'class': 'text-muted', 'text': '(' + item.count + ')'}));
+        $houseGroup.append($btn);
     });
 
     if ((window.adminHouses || []).length > 1) {
