@@ -402,4 +402,53 @@ class DebtBoardRulesTest extends TestCase
             $this->assertLessThan(4096, mb_strlen($board->report($debtors[0], $page)));
         }
     }
+
+    /**
+     * A parking space is not a flat, and the board says so.
+     *
+     * Six of the eight non-flat accounts on prod carry a bare number in
+     * `apartment_number` — the two spelled-out ones ("Паркінг 138") were the only reason
+     * the old "bare number ⇒ кв." rule looked correct. It published `237191`, a parking
+     * space owing 1 330 грн, as «буд. 19, кв. 191». No flat with that number exists in
+     * that building today, which is the only thing that kept it from accusing somebody;
+     * the day the accountant adds one, this is the «кв. 76 is two households» case the
+     * building rule was written for, with the board doing the accusing.
+     */
+    public function testNonFlatUnitsAreNotPublishedAsApartments(): void
+    {
+        $parking = (new Account())
+            ->setAccountNumber('237191')
+            ->setApartmentNumber('191')
+            ->setHouseNumber('19')
+            ->setStreet('Козацька')
+            ->setDebt('1330.00');
+        (new \ReflectionProperty(Account::class, 'id'))->setValue($parking, 175);
+
+        $storage = (new Account())
+            ->setAccountNumber('235169')
+            ->setApartmentNumber('169')
+            ->setHouseNumber('19')
+            ->setStreet('Козацька')
+            ->setDebt('142.00');
+        (new \ReflectionProperty(Account::class, 'id'))->setValue($storage, 108);
+
+        $this->assertTrue($parking->isParking());
+        $this->assertTrue($storage->isStorage());
+
+        $report = $this->service([$parking, $storage], new \DateTimeImmutable('-1 day'))
+            ->report($parking);
+
+        $this->assertStringContainsString('буд. 19, паркомісце 191', $report);
+        $this->assertStringContainsString('буд. 19, комірчина 169', $report);
+        $this->assertStringNotContainsString('кв. 191', $report);
+        $this->assertStringNotContainsString('кв. 169', $report);
+    }
+
+    /** A flat is still a flat, and the building is still never dropped. */
+    public function testFlatsKeepTheirWordingAndTheirBuilding(): void
+    {
+        $report = $this->freshBoard()->report($this->account(1, '134', '12269.00'));
+
+        $this->assertStringContainsString('буд. 23, кв. 134', $report);
+    }
 }

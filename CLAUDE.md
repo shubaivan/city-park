@@ -246,6 +246,13 @@ All the judgement is in `DebtBoardService`; `StartCommand::debtBlock()` and
   «станом на …», and past `DebtBoardService::STALE_AFTER_DAYS` (30) the board hides itself
   rather than naming somebody over numbers nobody can vouch for. Debts only move when the
   accountant uploads a file; there is no live feed.
+- **`place()` must print the building *and* the right kind of unit.** The type comes from
+  the особовий рахунок (`isParking()` / `isStorage()`), never from the text: six of the
+  eight non-flat accounts on prod carry a bare number in `apartment_number`, and the old
+  "bare number ⇒ кв." rule published `237191` — a parking space owing 1 330 грн — as
+  «буд. 19, кв. 191». No flat with that number exists in that building today, which is the
+  only reason it had not yet accused anybody. Same fix applied to `PropertyRegistry::place()`
+  and `ComplaintService::place()`, whose labels also reach the chat.
 - **`place()` must always print the building.** The ЖК is five buildings on one street
   (Козацька 17, 19, 21, 23, 27) and apartment numbers repeat across them — when this
   shipped, "кв. 76" was one household owing 5 402 грн and another owing 651. Apartment
