@@ -260,11 +260,9 @@
                                        user may be on any page of a server-side table — the
                                        link carries the id so there is no row to hunt for. #}
                                     {% if o.id %}
-                                        <a href="{{ path('app_admin_resident', {id: o.id}) }}">
-                                            {{ o.firstName }} {{ o.lastName }}{% if not o.firstName and not o.lastName %}(без імені){% endif %}
-                                        </a>
+                                        <a href="{{ path('app_admin_resident', {id: o.id}) }}">{{ o.displayName }}</a>
                                     {% else %}
-                                        {{ o.firstName }} {{ o.lastName }}
+                                        {{ o.displayName }}
                                     {% endif %}
                                     <span class="badge badge-light">{{ o.roleLabel }}</span>
                                     <div class="small">

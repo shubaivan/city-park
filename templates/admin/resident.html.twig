@@ -40,10 +40,12 @@
             {% endif %}
         </div>
 
-        <h3 class="mb-1">
-            {{ user.firstName }} {{ user.lastName }}
-            {% if not user.firstName and not user.lastName %}<span class="text-muted">без імені</span>{% endif %}
-        </h3>
+        <h3 class="mb-1">{{ user.displayName }}</h3>
+        {% if user.fullName and (user.firstName or user.lastName) %}
+            {# Both names, when they differ: one matches a квитанція, the other matches a
+               message in the residents' chat. #}
+            <div class="text-muted mb-1">у Telegram: {{ user.firstName }} {{ user.lastName }}</div>
+        {% endif %}
 
         <div class="mb-3">
             <span class="badge badge-light">{{ user.roleLabel }}</span>
@@ -93,6 +95,23 @@
                             <dt>У боті з</dt>
                             <dd>{{ user.createdAt ? user.createdAt|date('d.m.Y') : '—' }}</dd>
                         </dl>
+                    </div>
+                </div>
+
+                {# ---------- ПІБ ---------- #}
+                <div class="card res-card">
+                    <div class="card-header">🪪 ПІБ за реєстром ОСББ</div>
+                    <div class="card-body p-3">
+                        <form method="post" action="{{ path('app_admin_resident_name', {id: user.id}) }}">
+                            <input type="text" name="full_name" class="form-control form-control-sm mb-2"
+                                   value="{{ user.fullName }}" placeholder="Шуба Іван Вікторович" maxlength="180">
+                            <button class="btn btn-sm btn-primary">Зберегти ПІБ</button>
+                        </form>
+                        <div class="small text-muted mt-2">
+                            Бот сюди не пише: він знає лише те, як людина назвала себе в Telegram
+                            («{{ user.firstName }} {{ user.lastName }}»), а це не збігається з
+                            квитанцією. Порожнє поле означає «показуємо ім'я з Telegram».
+                        </div>
                     </div>
                 </div>
 
@@ -317,7 +336,7 @@
                                 {% for mate in roommates %}
                                     <li class="py-1">
                                         <a href="{{ path('app_admin_resident', {id: mate.id}) }}">
-                                            {{ mate.firstName }} {{ mate.lastName }}{% if not mate.firstName and not mate.lastName %}без імені{% endif %}
+                                            {{ mate.displayName }}
                                         </a>
                                         <span class="badge badge-light">{{ mate.roleLabel }}</span>
                                         {% if mate.phoneNumber %}

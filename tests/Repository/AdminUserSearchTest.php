@@ -260,4 +260,28 @@ class AdminUserSearchTest extends TestCase
 
         $this->assertNotContains('a.house_number = :house_filter', $conditions);
     }
+
+    /**
+     * The accountant types a surname, not a column name.
+     *
+     * Telegram reports whatever the person called themselves — «63691», «Я Знову Я» — and
+     * the ОСББ's registry spells them «Шуба Іван Вікторович». Both are true about the same
+     * person and both are kept, so a search for «Шуба» has to reach either.
+     */
+    public function testSurnameSearchReachesTheRegistryNameToo(): void
+    {
+        [$conditions, $params] = TelegramUserRepository::buildDataTablesFilters(['search_last_name' => 'Шуба']);
+
+        $joined = implode(' ', $conditions);
+        $this->assertStringContainsString('b.last_name', $joined);
+        $this->assertStringContainsString('b.full_name', $joined);
+        $this->assertSame('%Шуба%', $params['search_last_name']);
+    }
+
+    public function testGlobalSearchReachesTheRegistryName(): void
+    {
+        [$conditions] = TelegramUserRepository::buildDataTablesFilters([], 'Шуба');
+
+        $this->assertStringContainsString('b.full_name', implode(' ', $conditions));
+    }
 }

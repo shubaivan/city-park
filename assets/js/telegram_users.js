@@ -179,11 +179,21 @@ document.addEventListener("DOMContentLoaded", function () {
     common_defs.push({
         "targets": 11,
         "render": function (data, type, row, meta) {
-            var name = [data, row.last_name]
+            var telegramName = [data, row.last_name]
                 .filter(function (part) { return part && String(part).trim(); })
                 .join(' ');
 
-            return name || '<span class="text-muted">—</span>';
+            var registry = row.full_name && String(row.full_name).trim();
+
+            // ПІБ from the ОСББ registry leads when it exists — that is the name on a
+            // квитанція. The Telegram name stays underneath: it is how the accountant
+            // recognises who is writing in the residents' chat, and the two rarely match.
+            if (registry) {
+                return '<b>' + registry + '</b>'
+                    + (telegramName ? '<div class="text-muted small">' + telegramName + '</div>' : '');
+            }
+
+            return telegramName || '<span class="text-muted">—</span>';
         }
     });
 
@@ -193,6 +203,14 @@ document.addEventListener("DOMContentLoaded", function () {
     common_defs.push({
         "targets": 12,
         "visible": false
+    });
+
+    // full_name — appended last by the controller, drawn inside the name column above.
+    // Hidden rather than removed: the defs here target columns by index.
+    common_defs.push({
+        "targets": -1,
+        "visible": false,
+        "orderable": false
     });
 
     // last_visit (index 15) — the activity column, with start (14) folded under it.
