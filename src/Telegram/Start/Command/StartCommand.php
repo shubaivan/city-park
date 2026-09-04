@@ -71,7 +71,7 @@ class StartCommand extends Command
      */
     private static function header(Nutgram $bot, ?Account $account): string
     {
-        return self::renderHeader(self::objects($bot, $account));
+        return self::renderHeader(self::objects($bot, $account), self::debtFiguresArePublishable($bot));
     }
 
     /**
@@ -95,7 +95,7 @@ class StartCommand extends Command
      *
      * @param Account[] $objects
      */
-    public static function renderHeader(array $objects): string
+    public static function renderHeader(array $objects, bool $withDebt = false): string
     {
         $objects = array_values(array_filter(
             $objects,
@@ -120,10 +120,11 @@ class StartCommand extends Command
 
         foreach ($objects as $object) {
             $lines[] = sprintf(
-                '%s %s — <code>%s</code>',
+                '%s %s — <code>%s</code>%s',
                 $object->getUnitTypeIcon(),
                 self::esc($object->getStreetPlaceLabel()),
                 self::esc((string)$object->getAccountNumber()),
+                $withDebt ? self::debtSuffix($object) : '',
             );
         }
 
@@ -133,11 +134,50 @@ class StartCommand extends Command
     }
 
     /**
+     * What this particular object owes, beside its own особовий рахунок.
+     *
+     * Each object is billed separately and has its own threshold, and a debt on **any** of
+     * them blocks booking for the whole household — so "which of my objects owes" is a
+     * real question the resident could not answer anywhere in the bot. The board below
+     * names only objects that reach the published list; this says it per рахунок.
+     *
+     * «без боргу» is spelled out rather than left blank: on a list of two lines, a missing
+     * annotation reads as missing data, not as zero.
+     *
+     * Rendered only when the caller says the figures are fresh (`DebtBoardService::isAvailable()`).
+     * The «станом на» date lives one block below in the same message, and a sum published
+     * without one is the thing the board's staleness rule exists to prevent.
+     */
+    private static function debtSuffix(Account $account): string
+    {
+        $debt = (float)($account->getDebt() ?? 0);
+
+        return $debt >= 1
+            ? sprintf(' · 💸 <b>%s грн</b>', number_format($debt, 0, '.', ' '))
+            : ' · ✅ без боргу';
+    }
+
+    /**
      * Wrapped in a catch-all like every other block on this menu: the owner group is one
      * more DB round-trip, and nothing on the header may stop /start from rendering.
      *
      * @return Account[]
      */
+    /**
+     * Whether the debt figures are fresh enough to print. Same answer the debtors' board
+     * gives itself, so the header cannot show a sum on a day the board has gone quiet.
+     */
+    private static function debtFiguresArePublishable(Nutgram $bot): bool
+    {
+        try {
+            $board = $bot->getContainer()->get(DebtBoardService::class);
+
+            return $board instanceof DebtBoardService && $board->isAvailable();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     private static function objects(Nutgram $bot, ?Account $account): array
     {
         if (!$account instanceof Account) {

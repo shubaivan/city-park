@@ -120,12 +120,17 @@ class DebtBoardService
         ];
 
         foreach ($top as $i => $account) {
+            // The podium is marked the same way the full list is. Without it a resident
+            // reads five lines, recognises their own flat in the fifth, and has to check
+            // the building number against their own to be sure — while the line below
+            // already says they are fifth. The mark is the cheap half of that sentence.
             $lines[] = sprintf(
-                '%s %s — <b>%s грн</b>%s',
+                '%s %s — <b>%s грн</b>%s%s',
                 self::PODIUM[$i] ?? '▫️',
                 $this->place($account),
                 $this->money((float)$account->getDebt()),
                 $i === 0 ? ' 👑' : '',
+                $this->isViewer($account, $viewer) ? ' 📌 <i>(це ви)</i>' : '',
             );
         }
 

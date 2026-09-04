@@ -169,6 +169,37 @@ class DebtBoardRulesTest extends TestCase
         $this->assertStringContainsString('(це ви)', $this->freshBoard()->report($viewer));
     }
 
+    /**
+     * The podium is marked the same way the full list is. Without it a resident reads five
+     * near-identical lines, thinks they recognise their own flat in the fifth, and has to
+     * check the building number to be sure — while the line right below already tells them
+     * they are fifth.
+     */
+    public function testTheViewerIsMarkedOnThePodiumToo(): void
+    {
+        $this->assertStringContainsString(
+            '(це ви)',
+            $this->freshBoard()->menuBlock($this->account(2, '89', '6268.00')),
+        );
+    }
+
+    /** Somebody else's line on the podium is never marked as yours. */
+    public function testNobodyElseIsMarkedOnThePodium(): void
+    {
+        $menu = $this->freshBoard()->menuBlock($this->account(2, '89', '6268.00'));
+
+        $this->assertSame(1, substr_count($menu, '(це ви)'));
+    }
+
+    /** A resident who owes nothing is on no line of the podium. */
+    public function testAResidentWhoOwesNothingIsMarkedNowhereOnThePodium(): void
+    {
+        $this->assertStringNotContainsString(
+            '(це ви)',
+            $this->freshBoard()->menuBlock($this->account(9, '5', '0')),
+        );
+    }
+
     public function testResidentWithoutDebtIsToldSo(): void
     {
         $this->assertStringContainsString(
