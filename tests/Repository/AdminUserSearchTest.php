@@ -230,4 +230,34 @@ class AdminUserSearchTest extends TestCase
             );
         }
     }
+
+    /**
+     * The building, exactly — not the address box.
+     *
+     * «Адреса» is one ILIKE across street, house and unit, so typing «19» there matches
+     * кв. 19 as readily as буд. 19. «Хто в 19-му будинку» is a different question and one
+     * of the most common, so it gets a filter that means what it says.
+     */
+    public function testHouseFilterMatchesTheBuildingAndNotTheFlatNumber(): void
+    {
+        [$conditions, $params] = TelegramUserRepository::buildDataTablesFilters(['house_filter' => '19']);
+
+        $this->assertContains('a.house_number = :house_filter', $conditions);
+        $this->assertSame('19', $params['house_filter']);
+
+        // The address box stays a broad search — the two must not be conflated.
+        [$addressConditions] = TelegramUserRepository::buildDataTablesFilters(['search_address' => '19']);
+        $this->assertNotContains('a.house_number = :house_filter', $addressConditions);
+    }
+
+    /**
+     * $total answers "how many rows does this table have at all" — the denominator
+     * DataTables prints as «усього в базі N». A filter that moved it would measure nothing.
+     */
+    public function testHouseFilterDoesNotChangeTheTotal(): void
+    {
+        [$conditions] = TelegramUserRepository::buildDataTablesFilters(['house_filter' => '19'], null, true);
+
+        $this->assertNotContains('a.house_number = :house_filter', $conditions);
+    }
 }

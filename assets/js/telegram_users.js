@@ -282,6 +282,9 @@ document.addEventListener("DOMContentLoaded", function () {
         username: '',
         role: '',
         address: '',
+        // The building, exactly. Typing «19» into «Адреса» also matches кв. 19, and
+        // "хто в 19-му будинку" is one of the questions this table is opened with.
+        house: '',
     };
 
     table = $('#telegramUserTable').DataTable({
@@ -323,6 +326,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 d.search_username = fieldFilters.username;
                 d.role_filter = fieldFilters.role;
                 d.search_address = fieldFilters.address;
+                d.house_filter = fieldFilters.house;
             }
         },
         columns: th_keys,
@@ -460,6 +464,30 @@ document.addEventListener("DOMContentLoaded", function () {
         $statusGroup.append($btn);
     });
 
+    // One button per building, from the list the server rendered — never a hardcoded
+    // 17/19/21/23/27, which silently drops a sixth building the day one appears.
+    var $houseGroup = $('<div/>', {'class': 'btn-group btn-group-sm mb-2 ml-2 flex-wrap'});
+
+    (window.adminHouses || []).forEach(function (house) {
+        $houseGroup.append($('<button/>', {
+            'type': 'button',
+            'class': 'btn btn-outline-dark',
+            'data-house': house,
+            'text': 'буд. ' + house
+        }));
+    });
+
+    if ((window.adminHouses || []).length > 1) {
+        filterContainer.append($houseGroup);
+    }
+
+    $houseGroup.on('click', 'button', function () {
+        var clicked = String($(this).data('house'));
+        fieldFilters.house = (fieldFilters.house === clicked) ? '' : clicked;
+        renderFilterButtons();
+        table.ajax.reload();
+    });
+
     var $resetBtn = $('<button/>', {
         'type': 'button',
         'class': 'btn btn-link ml-1 mb-2',
@@ -473,6 +501,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function renderFilterButtons() {
+        $houseGroup.find('button').each(function () {
+            var mine = String($(this).data('house')) === fieldFilters.house;
+            $(this).toggleClass('btn-dark', mine).toggleClass('btn-outline-dark', !mine);
+        });
+
         $statusGroup.find('button').each(function () {
             var def = statusButtons.find(d => d.value === $(this).data('value'));
             $(this).removeClass(def.idleClass + ' ' + def.activeClass);

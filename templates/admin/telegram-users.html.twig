@@ -73,6 +73,16 @@
     {{ parent() }}
     {{ encore_entry_script_tags('index/js/telegram_users.min') }}
 
+    <script>
+
+        // The buildings that actually have accounts, so the filter row can never show an
+
+        // empty one or miss a new one.
+
+        window.adminHouses = {{ houses|json_encode|raw }};
+
+    </script>
+
     <script defer>
         console.log('getJSonObject');
         function getJSonObject(value) {
