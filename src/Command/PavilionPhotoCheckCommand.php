@@ -2,6 +2,7 @@
 
 namespace App\Command;
 
+use App\Service\OsbbContacts;
 use App\Entity\AccountStatusLog;
 use App\Entity\PhotoUploadRequest;
 use App\Entity\TelegramUser;
@@ -399,7 +400,7 @@ class PavilionPhotoCheckCommand extends Command
         $text = sprintf(
             "⛔ <b>Ваш аккаунт заблоковано</b>\n\nПричина: не завантажено фото альтанки після бронювання:\n📅 <b>%s</b>\n⏰ <b>%s</b>\n🏠 Альт. <b>%d</b>\n\n"
             . "📸 <i>У вас ще є <b>%s</b> — до <b>%s</b> — щоб надіслати фото в цей чат, і блокування зніметься автоматично.</i>\n\n"
-            . "Після цього — лише через Аліну Бухгалтера (+380 93 658 32 02), голову ОСББ Люду (+380 67 470 46 24) або розробника @shubaivan.",
+            . "Після цього — лише через ОСББ:\n" . OsbbContacts::both() . "\nабо розробника @shubaivan.",
             UkDateFormatter::dayDate($start),
             UkDateFormatter::time($start),
             $req->getPavilion(),
@@ -465,7 +466,8 @@ class PavilionPhotoCheckCommand extends Command
             "⏳ <b>Залишилось мало часу, щоб розблокуватися самостійно</b>\n\n"
             . "Фото за бронювання ще не надіслано:\n📅 <b>%s</b>\n⏰ <b>%s</b>\n🏠 Альт. <b>%d</b>\n\n"
             . "📸 Надішліть фото в цей чат до <b>%s</b> (залишилось менше ніж %d хв) — блокування зніметься автоматично.\n\n"
-            . "⛔ Після цього самостійне завантаження буде вимкнено, і розблокувати акаунт можна буде лише через Аліну Бухгалтера (+380 93 658 32 02), голову ОСББ Люду (+380 67 470 46 24) або розробника @shubaivan.",
+            . "⛔ Після цього самостійне завантаження буде вимкнено, і розблокувати акаунт можна буде лише через ОСББ:\n"
+            . OsbbContacts::both() . "\nабо розробника @shubaivan.",
             UkDateFormatter::dayDate($start),
             UkDateFormatter::time($start),
             $req->getPavilion(),

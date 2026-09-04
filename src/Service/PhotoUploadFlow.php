@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Entity\PhotoUploadRequest;
 use App\Repository\PhotoUploadRequestRepository;
@@ -221,7 +222,8 @@ class PhotoUploadFlow
                 text: '⏰ <b>Час на завантаження фото минув.</b>' . "\n\n"
                     . sprintf(
                         'Фото приймається лише протягом %s після блокування. '
-                        . 'Для розблокування зверніться до Аліни Бухгалтера (+380 93 658 32 02), голови ОСББ Люди (+380 67 470 46 24) або розробника @shubaivan.',
+                        . OsbbContacts::askThem('Для розблокування зверніться:')
+                        . "\nабо до розробника @shubaivan.",
                         PavilionPhotoService::uploadGraceLabel(),
                     ),
                 parse_mode: ParseMode::HTML,

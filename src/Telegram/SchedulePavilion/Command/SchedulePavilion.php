@@ -2,6 +2,7 @@
 
 namespace App\Telegram\SchedulePavilion\Command;
 
+use App\Service\OsbbContacts;
 use App\Entity\ScheduledSet;
 use App\Service\BlockReasonResolver;
 use App\Service\DebtPolicy;
@@ -102,7 +103,8 @@ class SchedulePavilion extends Conversation
 
         if (!$account) {
             $bot->sendMessage(
-                text: 'Ви не можете бронювати! Ваш Аккаунт не підтверджений ОСББ. Зв\'яжітся з Аліною Бухгалтером (+380 93 658 32 02) або головою ОСББ Людою (+380 67 470 46 24)'
+                text: "Ви не можете бронювати! Ваш аккаунт не підтверджений ОСББ.\n\nЗв'яжіться з нами:\n" . OsbbContacts::BOTH_LINES,
+                parse_mode: ParseMode::HTML,
             );
             return;
         }

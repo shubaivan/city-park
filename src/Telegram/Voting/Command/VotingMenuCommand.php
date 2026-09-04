@@ -2,6 +2,7 @@
 
 namespace App\Telegram\Voting\Command;
 
+use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Entity\BlockVoteCampaign;
 use App\Repository\BlockVoteBallotRepository;
@@ -61,7 +62,7 @@ class VotingMenuCommand
                 $bot,
                 $edit,
                 "🗳️ <b>Голосування</b>\n\nВаш аккаунт не підтверджений ОСББ — голосування недоступне.\n"
-                . "Зв'яжіться з Аліною Бухгалтером (+380 93 658 32 02).",
+                . "Зв'яжіться з бухгалтером ОСББ:\n" . OsbbContacts::ACCOUNTANT_LINE,
                 InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton())
             );
             return;
