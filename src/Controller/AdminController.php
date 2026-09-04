@@ -865,6 +865,9 @@ class AdminController extends AbstractController
         // Same rule again: appended after vote_blocks so the indexed columnDefs keep
         // pointing at the columns they were written for.
         $fieldNames[] = 'role';
+        // And again. ПІБ is drawn inside the name cell rather than as a column of its own
+        // — see telegram_users.js — but it still has to travel in the row payload.
+        $fieldNames[] = 'full_name';
 
         array_map(function ($k) use (&$dataTableColumnData) {
             $dataTableColumnData[] = ['data' => $k];
@@ -941,6 +944,27 @@ class AdminController extends AbstractController
                 ))
                 : [],
         ]);
+    }
+
+    /**
+     * ПІБ as the ОСББ's registry spells it.
+     *
+     * Separate from the Telegram name on purpose: that one is whatever the person chose to
+     * call themselves, and it is how the accountant recognises who is writing in the chat.
+     * The registry name is what matches a квитанція. Both are true about the same person.
+     */
+    #[Route('/admin/users/{id}/name', name: 'app_admin_resident_name', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    public function residentName(int $id, Request $request, TelegramUserRepository $repository, EntityManagerInterface $em): Response
+    {
+        $user = $this->residentOr404($id, $repository);
+        $user->setFullName((string)$request->request->get('full_name'));
+        $em->flush();
+
+        $this->addFlash('notice', $user->getFullName() === null
+            ? 'ПІБ очищено — показуємо ім’я з Telegram.'
+            : 'ПІБ збережено: ' . $user->getFullName());
+
+        return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
     }
 
     /** Who this person is to the flat — owner / family / tenant. */

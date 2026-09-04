@@ -75,6 +75,22 @@ class TelegramUser
     #[ORM\Column(length: 16, nullable: true)]
     private ?string $role = null;
 
+    /**
+     * ПІБ as the ОСББ's own registry spells it — «Шуба Іван Вікторович».
+     *
+     * Deliberately not `first_name`/`last_name`: those are what Telegram reports, they are
+     * whatever the person chose to call themselves («63691», «Я Знову Я», «Daniil 🌍🌍🌍»),
+     * and they are how the accountant recognises who is writing in the chat. The registry
+     * name is a different fact about the same person, and the ОСББ needs both — one to
+     * match a квитанція, the other to match a message.
+     *
+     * The bot never writes here: `initUser()` fills the Telegram fields once, on creation,
+     * and touches nothing but `chat_id` afterwards. This is filled by hand until the
+     * accountant's registry file arrives, and that file will land in this column.
+     */
+    #[ORM\Column(length: 180, nullable: true)]
+    private ?string $full_name = null;
+
     #[NotBlank]
     #[ORM\ManyToOne(targetEntity: Account::class, inversedBy: 'users')]
     #[ORM\JoinColumn(name: 'account_id', referencedColumnName: 'id')]
@@ -206,6 +222,31 @@ class TelegramUser
         self::ROLE_FAMILY => 'Член сім\'ї',
         self::ROLE_TENANT => 'Орендар',
     ];
+
+    public function getFullName(): ?string
+    {
+        return $this->full_name;
+    }
+
+    public function setFullName(?string $full_name): TelegramUser
+    {
+        $full_name = $full_name === null ? null : trim($full_name);
+        $this->full_name = ($full_name === null || $full_name === '') ? null : mb_substr($full_name, 0, 180);
+
+        return $this;
+    }
+
+    /** The registry name when the ОСББ knows it, the Telegram one otherwise. */
+    public function getDisplayName(): string
+    {
+        if ($this->full_name !== null && $this->full_name !== '') {
+            return $this->full_name;
+        }
+
+        $name = trim(sprintf('%s %s', (string)($this->first_name ?? ''), (string)($this->last_name ?? '')));
+
+        return $name !== '' ? $name : 'без імені';
+    }
 
     public function getRole(): ?string
     {

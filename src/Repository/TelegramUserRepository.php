@@ -167,6 +167,9 @@ class TelegramUserRepository extends ServiceEntityRepository
             $or[] = 'ILIKE(b.username, :var_search) = TRUE';
             $or[] = 'ILIKE(b.first_name, :var_search) = TRUE';
             $or[] = 'ILIKE(b.last_name, :var_search) = TRUE';
+            // ПІБ from the ОСББ registry: «Шуба» has to find the person whether the surname
+            // sits in the Telegram field or only in the registry one.
+            $or[] = 'ILIKE(b.full_name, :var_search) = TRUE';
             $or[] = 'ILIKE(b.phone_number, :var_search) = TRUE';
             $or[] = 'ILIKE(a.account_number, :var_search) = TRUE';
             $or[] = 'ILIKE(a.apartment_number, :var_search) = TRUE';
@@ -247,8 +250,15 @@ class TelegramUserRepository extends ServiceEntityRepository
         // Per-field ILIKE search — AND'd together so each input narrows the result.
         // The DataTables global "Search:" input stays as a separate OR-across-all
         // quick lookup (handled by the search block above).
+        // «Прізвище» searches both spellings for the same reason: the accountant types a
+        // surname, not a column name.
+        if (!$total && !empty($params['search_last_name'])) {
+            $conditions[] = '(ILIKE(b.last_name, :search_last_name) = TRUE
+                OR ILIKE(b.full_name, :search_last_name) = TRUE)';
+            $bindParams['search_last_name'] = '%' . trim((string)$params['search_last_name']) . '%';
+        }
+
         $ilikeFieldMap = [
-            'search_last_name'  => 'b.last_name',
             'search_first_name' => 'b.first_name',
             'search_phone'      => 'b.phone_number',
             'search_username'   => 'b.username',
