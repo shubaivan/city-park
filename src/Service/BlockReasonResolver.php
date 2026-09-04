@@ -81,7 +81,19 @@ final class BlockReasonResolver
             return null;
         }
 
-        $header = "🚫 <b>Бронювання недоступне — ваш аккаунт призупинено.</b>\n\n";
+        // Which object, by name.
+        //
+        // One person can now hold several — a flat, a parking space, a комірчина — and this
+        // branch fires on the account they are linked to while the neighbouring branch (a
+        // debt on another object of the same owner) names the object it is talking about.
+        // Two messages about the same subject, one of which says «поточний борг 3 415.50»
+        // and leaves the reader to guess which door it belongs to.
+        $header = "🚫 <b>Бронювання недоступне — ваш аккаунт призупинено.</b>\n"
+            . sprintf(
+                "<i>%s · рахунок %s</i>\n\n",
+                htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                htmlspecialchars((string)$account->getAccountNumber(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            );
 
         if ($this->debtPolicy->isAccountBlocked($account)) {
             $debt = (float)($account->getDebt() ?? 0);
