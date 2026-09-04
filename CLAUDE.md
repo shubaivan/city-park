@@ -188,7 +188,8 @@ and those are exactly the ones whose debt reaches nobody, since every notice the
 goes to a `TelegramUser`. The page marks them (`❓ Без власника`) and counts them.
 
 **What an owner group actually changes** (this is not cosmetic, and it already worked before
-the page existed — it was simply never used: zero groups on prod as of 04.09.2026):
+the page existed — it was simply never used: one group of two on prod as of 04.09.2026, the
+first one created the day `/admin/objects` shipped):
 
 - booking limits are counted across the group — `ScheduledSetRepository`, five queries
   through `COALESCE(owner_group_id, a.id)` — so a flat + parking owner cannot book 3 hours
@@ -198,6 +199,29 @@ the page existed — it was simply never used: zero groups on prod as of 04.09.2
   owes. **Debts are deliberately not summed**: each object has its own threshold
   (area × tariff × 1.5), and adding two debts to compare against one threshold compares a
   total against half a rule.
+- **the bot's menu header names every object of the group**, each with its own особовий
+  рахунок (`StartCommand::renderHeader()` over `PropertyRegistry::objectsOfAccount()`).
+  `TelegramUser.account_id` points at one Account, so before 04.09.2026 the other objects
+  of a household existed nowhere in the bot at all — and that number is exactly what the
+  accountant asks for on the phone. A household of one keeps the old singular wording word
+  for word: all but two of the 173 objects on prod are somebody's only one.
+- the debtors' board's viewer line covers the group too — reading only the linked object
+  answered «боргів не має» to an owner whose own комірчина was on the list two lines below.
+  `isViewer()` matches on an **explicit** `owner_group_id`, never on a bare id, so an
+  ungrouped account whose id happens to equal another household's group number is not
+  marked as theirs.
+
+**Unlinking the member the group is named after renumbers the rest.** The group id is the
+smallest member's own id, so removing that member while two others stay leaves it — now
+ungrouped — still resolving to the same `COALESCE(owner_group_id, id)`: its bookings would
+keep counting against the household it just left. `OwnerGroupService::unlink()` re-keys the
+remainder onto their own smallest member; `OwnerGroupRulesTest` pins it.
+
+**Nothing in the bot builds a place label of its own.** `Account::getUnitLabel()` is the one
+definition of «кв. 85» / «комірчина 168» / «паркомісце 138», `getPlaceLabel()` prefixes
+«буд. N» and `getStreetPlaceLabel()` the street. The menu header had its own hardcoded
+`кв. %s` until 04.09.2026 and so called a комірчина a flat — the same mistake
+`DebtBoardService::place()` was corrected for a day earlier.
 
 **Objects are created on `/admin/objects`, not by moving a person.** Typing an unknown
 особовий рахунок into a resident's card creates the row *and drags that resident onto it* —

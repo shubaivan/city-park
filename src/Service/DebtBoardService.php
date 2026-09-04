@@ -223,14 +223,16 @@ class DebtBoardService
     }
 
     /**
-     * The page the viewer's own flat is on, or null when they owe nothing.
+     * The page the viewer's first owing object is on, or null when nothing the household
+     * owns is on the list. Group-aware, so an owner whose комірчина owes but whose flat does not
+     * still lands on the right page instead of getting no button at all.
      *
      * Feeds the «📌 Моя квартира» button: on 149 debtors, "you are 63rd" is useless if
      * getting there means tapping ➡️ four times.
      */
     public function pageOfViewer(?Account $viewer): ?int
     {
-        if (!$viewer instanceof Account || (float)$viewer->getDebt() <= 0) {
+        if (!$viewer instanceof Account) {
             return null;
         }
 
@@ -316,30 +318,74 @@ class DebtBoardService
      */
     private function viewerLine(Account $viewer): string
     {
-        $debt = (float)$viewer->getDebt();
+        // The whole household, not just the object this person happens to be linked to.
+        // A flat, a paркомісце and a комірчина are three особові рахунки with three debts
+        // and three thresholds; reading only the linked one told an owner "боргів немає"
+        // while another of their own objects sat on the list below.
+        $objects = $this->accountRepository->findGroupSiblings($viewer);
 
-        if ($debt <= 0) {
-            return "✅ <i>Ваша квартира боргів не має. Дякуємо!</i>";
-        }
-
-        $position = 1;
+        // One pass over the list for the whole group: it is the same query the board
+        // above already ran, and a per-object lookup would repeat it once per object.
+        $positions = [];
         foreach ($this->accountRepository->findDebtors() as $i => $account) {
-            if ($this->isViewer($account, $viewer)) {
-                $position = $i + 1;
-                break;
+            if ($account->getId() !== null) {
+                $positions[$account->getId()] = $i + 1;
             }
         }
 
-        return sprintf(
-            '📌 <i>Ваша квартира у списку: %s грн, %d місце.</i>',
-            $this->money($debt),
-            $position,
-        );
+        $owing = array_values(array_filter(
+            $objects,
+            static fn (Account $a): bool => $a->getId() !== null && isset($positions[$a->getId()]),
+        ));
+
+        // The singular wording is kept exactly as it was: all but one object on prod is
+        // somebody's only one, and this is the line the whole house reads on every menu.
+        if (count($objects) === 1) {
+            return $owing === []
+                ? '✅ <i>Ваша квартира боргів не має. Дякуємо!</i>'
+                : sprintf(
+                    '📌 <i>Ваша квартира у списку: %s грн, %d місце.</i>',
+                    $this->money((float)$viewer->getDebt()),
+                    $positions[$viewer->getId()],
+                );
+        }
+
+        if ($owing === []) {
+            return '✅ <i>Ваші об’єкти боргів не мають. Дякуємо!</i>';
+        }
+
+        return implode("\n", array_map(
+            fn (Account $a): string => sprintf(
+                '📌 <i>%s у списку: %s грн, %d місце.</i>',
+                $this->place($a),
+                $this->money((float)$a->getDebt()),
+                $positions[$a->getId()],
+            ),
+            $owing,
+        ));
     }
 
+    /**
+     * Whether this row is one of the viewer's own objects — theirs, or another object of
+     * the same household.
+     *
+     * Compared against `owner_group_id` rather than by loading the group, because this is
+     * called once per row of a 149-line list. Only an *explicit* group counts: an account
+     * with no group must never match by its bare id, or the day somebody is unlinked their
+     * id could still equal another household's group number.
+     */
     private function isViewer(Account $account, Account $viewer): bool
     {
-        return $account->getId() !== null && $account->getId() === $viewer->getId();
+        if ($account->getId() === null) {
+            return false;
+        }
+
+        if ($account->getId() === $viewer->getId()) {
+            return true;
+        }
+
+        return $account->getOwnerGroupId() !== null
+            && $account->getOwnerGroupId() === $viewer->getEffectiveGroupId();
     }
 
     /**

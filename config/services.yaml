@@ -72,6 +72,11 @@ services:
     App\Repository\ComplaintRepository:
         public: true
 
+    # Same reason: the menu header names every object the household owns, and the owner
+    # group behind that list is only reachable through a service the bot container exposes.
+    App\Service\PropertyRegistry:
+        public: true
+
     # Nutgram handlers
     App\Telegram\:
         public: true

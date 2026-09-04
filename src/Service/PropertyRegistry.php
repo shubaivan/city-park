@@ -204,8 +204,22 @@ class PropertyRegistry
      */
     public function objectsOf(?TelegramUser $user): array
     {
-        $account = $user?->getAccount();
+        return $this->objectsOfAccount($user?->getAccount());
+    }
 
+    /**
+     * The same list starting from the object rather than the person.
+     *
+     * The bot's menu header resolves an Account, not a TelegramUser (a family member's
+     * account is reached through the conditional-owner phone), and it has to name every
+     * object the household owns: a resident with a flat and a комірчина was shown only
+     * the flat, and the комірчина's особовий рахунок — the number the accountant asks for
+     * — appeared nowhere in the bot at all.
+     *
+     * @return Account[]
+     */
+    public function objectsOfAccount(?Account $account): array
+    {
         if (!$account instanceof Account) {
             return [];
         }

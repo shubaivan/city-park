@@ -313,6 +313,12 @@ class Account
         self::UNIT_STORAGE => '📦 Комірчина',
     ];
 
+    public const UNIT_ICONS = [
+        self::UNIT_APARTMENT => '🏠',
+        self::UNIT_PARKING => '🚗',
+        self::UNIT_STORAGE => '📦',
+    ];
+
     /**
      * The stored type when there is one, otherwise the old derivation.
      *
@@ -347,6 +353,56 @@ class Account
         return self::UNIT_TYPES[$this->getUnitType()];
     }
 
+    /** Just the pictogram of UNIT_TYPES, for lists that name the object beside it. */
+    public function getUnitTypeIcon(): string
+    {
+        return self::UNIT_ICONS[$this->getUnitType()];
+    }
+
+    /**
+     * "кв. 85" / "комірчина 168" / "паркомісце 138" — the unit on its own.
+     *
+     * The word in front comes from the особовий рахунок, never from the text of
+     * `apartment_number`: most non-flat rows carry a bare number there, so a rule that
+     * reads the text turns a parking space into somebody's flat. Split out of
+     * getPlaceLabel() so the bot's menu header, which prints the street rather than
+     * "буд. N", cannot grow a second copy of that rule — it had one, and it called every
+     * object "кв." including a комірчина.
+     */
+    public function getUnitLabel(): string
+    {
+        $unit = trim((string)$this->apartment_number);
+
+        if ($unit === '') {
+            return 'без номера';
+        }
+
+        if (preg_match('/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/u', $unit) === 1) {
+            return match ($this->getUnitType()) {
+                self::UNIT_STORAGE => 'комірчина ',
+                self::UNIT_PARKING => 'паркомісце ',
+                default => 'кв. ',
+            } . $unit;
+        }
+
+        return $unit;
+    }
+
+    /**
+     * "Козацька 19, кв. 85" — the same object named by its street rather than "буд. 19".
+     *
+     * The form a resident reads on their own menu, where the ЖК's five buildings are not
+     * a list to disambiguate but the address they live at.
+     */
+    public function getStreetPlaceLabel(): string
+    {
+        $address = trim(sprintf('%s %s', (string)$this->street, (string)$this->house_number));
+
+        return $address === ''
+            ? $this->getUnitLabel()
+            : sprintf('%s, %s', $address, $this->getUnitLabel());
+    }
+
     /**
      * "буд. 19, кв. 85" — how this object is named to a human, in plain text.
      *
@@ -358,18 +414,8 @@ class Account
      */
     public function getPlaceLabel(): string
     {
-        $unit = trim((string)$this->apartment_number);
         $house = trim((string)$this->house_number);
-
-        if ($unit === '') {
-            $unit = 'без номера';
-        } elseif (preg_match('/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/u', $unit) === 1) {
-            $unit = match ($this->getUnitType()) {
-                self::UNIT_STORAGE => 'комірчина ',
-                self::UNIT_PARKING => 'паркомісце ',
-                default => 'кв. ',
-            } . $unit;
-        }
+        $unit = $this->getUnitLabel();
 
         return $house === '' ? $unit : sprintf('буд. %s, %s', $house, $unit);
     }

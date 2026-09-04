@@ -155,4 +155,40 @@ class OwnerGroupRulesTest extends TestCase
         $this->assertSame(138, $siblings[0]->getId());
         $this->assertSame([], $this->service()->siblings($this->account(200)));
     }
+
+    /**
+     * Unlinking the member the group is *named after* must renumber what is left.
+     *
+     * The group id is the smallest member's own id, and booking limits match on
+     * `COALESCE(owner_group_id, id)`. So removing account 85 from group 85 while 138 and
+     * 200 stay in it leaves 85 — now ungrouped — still resolving to group 85: its bookings
+     * would keep counting against the household it just left, and the household's against
+     * it. The only symptom would be a booking refused for a limit the resident is nowhere
+     * near.
+     */
+    public function testUnlinkingTheMemberTheGroupIsNamedAfterRenumbersTheRest(): void
+    {
+        $flat = $this->account(85, 85);
+        $parking = $this->account(138, 85);
+        $storage = $this->account(200, 85);
+
+        $this->assertNull($this->service()->unlink($flat));
+
+        $this->assertNull($flat->getOwnerGroupId());
+        $this->assertSame(138, $parking->getOwnerGroupId());
+        $this->assertSame(138, $storage->getOwnerGroupId());
+        $this->assertNotSame($flat->getEffectiveGroupId(), $parking->getEffectiveGroupId());
+    }
+
+    /** Leaving two behind is a group; leaving one behind is not, and it dissolves. */
+    public function testUnlinkingDownToASingleMemberDissolvesTheGroup(): void
+    {
+        $flat = $this->account(85, 85);
+        $parking = $this->account(138, 85);
+
+        $this->assertNull($this->service()->unlink($flat));
+
+        $this->assertNull($flat->getOwnerGroupId());
+        $this->assertNull($parking->getOwnerGroupId());
+    }
 }

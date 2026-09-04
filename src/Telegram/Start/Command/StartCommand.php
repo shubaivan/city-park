@@ -5,6 +5,7 @@ namespace App\Telegram\Start\Command;
 use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Service\ComplaintService;
+use App\Service\PropertyRegistry;
 use App\Service\DebtBoardService;
 use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
@@ -43,7 +44,7 @@ class StartCommand extends Command
         // all need it, and each lookup is a DB round-trip on every menu render.
         $account = self::currentAccount($bot);
 
-        $text = self::header($account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
+        $text = self::header($bot, $account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
         $markup = self::mainMenuMarkup($bot, $account);
 
         if ($edit) {
@@ -68,29 +69,92 @@ class StartCommand extends Command
      * Renders nothing when the account can't be resolved (unconfirmed phone, or a
      * family member not yet linked) so the menu never breaks.
      */
-    private static function header(?Account $account): string
+    private static function header(Nutgram $bot, ?Account $account): string
     {
-        if (!$account instanceof Account || !$account->getAccountNumber()) {
+        return self::renderHeader(self::objects($bot, $account));
+    }
+
+    /**
+     * **Every object the household owns, not just the one the person is linked to.**
+     *
+     * `TelegramUser.account_id` points at exactly one Account, but a person may own a
+     * flat, a parking space and a комірчина — three особові рахунки, because that is how
+     * the ОСББ bills them, tied together by `owner_group_id`. Until this listed them all,
+     * the bot printed one number and the other objects existed nowhere in it: their
+     * особовий рахунок is what the accountant asks for on the phone, and their owner had
+     * no way to read it back.
+     *
+     * The one-object wording is kept word for word — 172 of the 173 objects on prod are
+     * somebody's only one, and the singular sentence is what residents have been reading
+     * since the number was first put on the menu.
+     *
+     * Every label goes through `getStreetPlaceLabel()`, so a комірчина is named
+     * «комірчина 168» and not «кв. 168». The header used to build that string itself with
+     * a hardcoded "кв. %s", which was right for a flat and wrong for everything else —
+     * the same mistake the debtors' board was corrected for on 03.09.2026.
+     *
+     * @param Account[] $objects
+     */
+    public static function renderHeader(array $objects): string
+    {
+        $objects = array_values(array_filter(
+            $objects,
+            static fn (Account $account): bool => (string)$account->getAccountNumber() !== '',
+        ));
+
+        if ($objects === []) {
             return '';
         }
 
-        $address = trim(sprintf(
-            '%s %s',
-            (string)$account->getStreet(),
-            (string)$account->getHouseNumber(),
-        ));
+        if (count($objects) === 1) {
+            return sprintf(
+                "🏠 <b>%s</b>\n"
+                . "🧾 Ваш особовий рахунок: <code>%s</code>\n"
+                . "<i>Це ваш номер в ОСББ (не банківський) — називайте його, коли звертаєтесь до бухгалтера.</i>\n\n",
+                self::esc($objects[0]->getStreetPlaceLabel()),
+                self::esc((string)$objects[0]->getAccountNumber()),
+            );
+        }
 
-        $where = $address !== ''
-            ? sprintf('%s, кв. %s', $address, $account->getApartmentNumber())
-            : sprintf('кв. %s', $account->getApartmentNumber());
+        $lines = ['🧾 <b>Ваші об’єкти в ОСББ:</b>'];
 
-        return sprintf(
-            "🏠 <b>%s</b>\n"
-            . "🧾 Ваш особовий рахунок: <code>%s</code>\n"
-            . "<i>Це ваш номер в ОСББ (не банківський) — називайте його, коли звертаєтесь до бухгалтера.</i>\n\n",
-            self::esc($where),
-            self::esc((string)$account->getAccountNumber()),
-        );
+        foreach ($objects as $object) {
+            $lines[] = sprintf(
+                '%s %s — <code>%s</code>',
+                $object->getUnitTypeIcon(),
+                self::esc($object->getStreetPlaceLabel()),
+                self::esc((string)$object->getAccountNumber()),
+            );
+        }
+
+        $lines[] = '<i>Це ваші номери в ОСББ (не банківські) — називайте той, про який питаєте бухгалтера.</i>';
+
+        return implode("\n", $lines) . "\n\n";
+    }
+
+    /**
+     * Wrapped in a catch-all like every other block on this menu: the owner group is one
+     * more DB round-trip, and nothing on the header may stop /start from rendering.
+     *
+     * @return Account[]
+     */
+    private static function objects(Nutgram $bot, ?Account $account): array
+    {
+        if (!$account instanceof Account) {
+            return [];
+        }
+
+        try {
+            $registry = $bot->getContainer()->get(PropertyRegistry::class);
+
+            if ($registry instanceof PropertyRegistry) {
+                return $registry->objectsOfAccount($account);
+            }
+        } catch (\Throwable) {
+            // fall through to the account we already have
+        }
+
+        return [$account];
     }
 
     /**
