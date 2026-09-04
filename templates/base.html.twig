@@ -31,54 +31,51 @@
 </head>
 <body>
 {% block body %}
-    <header>
-        <div class="collapse bg-dark" id="navbarHeader">
-            <div class="container">
-                <div class="row">
-                    <div class="col-sm-8 col-md-7 py-4">
-                        <h4 class="text-white">You are</h4>
-                        <p class="text-muted">
-                            Hello, {{ app.user.userIdentifier }}
-                        </p>
-                    </div>
-                    <div class="col-sm-4 offset-md-1 py-4">
-                        {#<h4 class="text-white">Navigation</h4>#}
-                        <ul class="list-unstyled">
-                            {% if is_granted('IS_AUTHENTICATED_FULLY') %}
-                                <li>
-                                    <a href="{{ path('app_logout') }}" class="text-white row align-items-center">
-                                        Logout <i class="fas fa-sign-out-alt fa-3x"></i>
-                                    </a>
-                                </li>
-                            {% endif %}
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="navbar navbar-dark bg-dark shadow-sm">
-            <div class="container d-flex justify-content-between">
-                {% if is_granted('IS_AUTHENTICATED_REMEMBERED')%}
-                    <a href="{{ path('app_admin') }}" class="navbar-brand d-flex align-items-center">
-                        <i class="fas fa-home"></i>
-                    </a>
-                {% endif %}
+    {#
+        The navigation bar, rebuilt 04.09.2026.
 
-                {% if is_granted('IS_AUTHENTICATED_REMEMBERED') %}
-                    You are logged.
-                {% else %}
-                    <a href="{{ path('app_login') }}" class="float-lg-left">
-                        Login <i class="fas fa-door-open"></i>
-                    </a>
-                {% endif %}
+        Logging out used to mean finding a hamburger button, expanding a dark panel that
+        greeted you in English, and clicking a link with a three-sizes-too-big icon. On a
+        phone that is three taps to leave a panel that holds every resident's phone number
+        and debt — and the page you were on gave no clue which section you were even in.
 
-                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarHeader"
-                        aria-controls="navbarHeader" aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-            </div>
-        </div>
-    </header>
+        Now: the brand goes home, the sections are one tap away, and «Вийти» is always
+        visible with the login next to it. The active section is marked, because the pages
+        look alike and «де я?» is a question a nav bar should answer without being asked.
+    #}
+    <nav class="navbar navbar-expand navbar-dark bg-dark shadow-sm py-1 px-2 px-sm-3">
+        <a href="{{ is_granted('IS_AUTHENTICATED_REMEMBERED') ? path('app_admin') : path('app_login') }}"
+           class="navbar-brand mr-2" title="ОСББ City Park">🏢</a>
+
+        {% if is_granted('IS_AUTHENTICATED_REMEMBERED') %}
+            {# Null outside a request — a template rendered from a command or a test. #}
+            {% set section = app.request ? app.request.attributes.get('_route') : '' %}
+            <ul class="navbar-nav mr-auto flex-row" style="gap:.15rem">
+                <li class="nav-item">
+                    <a class="nav-link px-2 {{ section starts with 'app_admin_resident' or section == 'app_admin_users' ? 'active font-weight-bold' }}"
+                       href="{{ path('app_admin_users') }}">👤 <span class="d-none d-sm-inline">Люди</span></a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link px-2 {{ section starts with 'app_admin_objects' ? 'active font-weight-bold' }}"
+                       href="{{ path('app_admin_objects') }}">🏢 <span class="d-none d-sm-inline">Об'єкти</span></a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link px-2 {{ section starts with 'app_admin_complaint' ? 'active font-weight-bold' }}"
+                       href="{{ path('app_admin_complaints') }}">🔧 <span class="d-none d-sm-inline">Заявки</span></a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link px-2 {{ section starts with 'app_admin_debt' ? 'active font-weight-bold' }}"
+                       href="{{ path('app_admin_debt') }}">💰 <span class="d-none d-sm-inline">Борги</span></a>
+                </li>
+            </ul>
+
+            <span class="navbar-text text-white-50 small mr-2 d-none d-md-inline">{{ app.user.userIdentifier }}</span>
+            <a href="{{ path('app_logout') }}" class="btn btn-sm btn-outline-light">Вийти</a>
+        {% else %}
+            <span class="mr-auto"></span>
+            <a href="{{ path('app_login') }}" class="btn btn-sm btn-outline-light">Увійти</a>
+        {% endif %}
+    </nav>
 
     {#
         One line, in the panel's own language. It used to be a full-width block with the
@@ -95,16 +92,6 @@
             </div>
         {% endfor %}
     {% endfor %}
-
-    <div class="alert alert-danger" role="alert" style="display: none">
-        <h4 class="alert-heading">Error</h4>
-        <p class="mb-0"><i class="fa fa-exclamation-circle"></i>Warning</p>
-    </div>
-
-    <div class="alert alert-success" role="alert" style="display: none">
-        <h4 class="alert-heading">Successul!</h4>
-        <p class="mb-0"><i class="fab fa-angellist"></i>Successul</p>
-    </div>
 {% endblock %}
 {% block javascripts %}
     {{ encore_entry_script_tags('app') }}

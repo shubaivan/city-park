@@ -37,16 +37,18 @@
 
         <h2 id="eligibility">Хто може бронювати, а хто ні</h2>
         <p>Дивимось на <b>третю цифру особового рахунку</b>:</p>
-        <table class="table table-bordered" style="max-width: 600px;">
-            <thead>
-                <tr><th>3-я цифра</th><th>Тип об'єкта</th><th>Бронює?</th></tr>
-            </thead>
-            <tbody>
-                <tr><td><code>0</code></td><td>Квартира</td><td>✅ так</td></tr>
-                <tr><td><code>7</code></td><td>Паркомісце</td><td>✅ так (з 23.05.2026)</td></tr>
-                <tr><td><code>5</code></td><td>Кладова (комірчина)</td><td>❌ ні</td></tr>
-            </tbody>
-        </table>
+        <div class="table-responsive">
+            <table class="table table-bordered" style="max-width: 600px;">
+                <thead>
+                    <tr><th>3-я цифра</th><th>Тип об'єкта</th><th>Бронює?</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>0</code></td><td>Квартира</td><td>✅ так</td></tr>
+                    <tr><td><code>7</code></td><td>Паркомісце</td><td>✅ так (з 23.05.2026)</td></tr>
+                    <tr><td><code>5</code></td><td>Кладова (комірчина)</td><td>❌ ні</td></tr>
+                </tbody>
+            </table>
+        </div>
         <p>Власник кладової не сплачує внесок на двір — тому й альтанку йому не дають. Це <b>правило бота</b>: навіть якщо поставите галочку «Статус» — кладова все одно не зможе бронювати.</p>
 
         <hr/>
@@ -64,15 +66,17 @@
         <p>Це нечесно по відношенню до сусідів: фактично одна людина отримує подвійний ліміт і обхід борг-блоку. Тому є можливість <b>об'єднати ці аккаунти у групу</b> — і тоді бот рахує їх як <b>одного власника</b>.</p>
 
         <h4>Що змінюється після об'єднання у групу</h4>
-        <table class="table table-bordered" style="max-width: 700px;">
-            <thead><tr><th>Правило</th><th>Окремо (за замовч.)</th><th>У групі</th></tr></thead>
-            <tbody>
-                <tr><td>Годин на день</td><td>4 + 4 = 8</td><td><b>4 разом</b></td></tr>
-                <tr><td>Годин на місяць</td><td>20 + 20 = 40</td><td><b>20 разом</b></td></tr>
-                <tr><td>Одна година в обох альтанках одночасно</td><td>можна</td><td><b>не можна</b></td></tr>
-                <tr><td>Борг на одному об'єкті</td><td>блокує лише його</td><td><b>блокує всю групу</b></td></tr>
-            </tbody>
-        </table>
+        <div class="table-responsive">
+            <table class="table table-bordered" style="max-width: 700px;">
+                <thead><tr><th>Правило</th><th>Окремо (за замовч.)</th><th>У групі</th></tr></thead>
+                <tbody>
+                    <tr><td>Годин на день</td><td>4 + 4 = 8</td><td><b>4 разом</b></td></tr>
+                    <tr><td>Годин на місяць</td><td>20 + 20 = 40</td><td><b>20 разом</b></td></tr>
+                    <tr><td>Одна година в обох альтанках одночасно</td><td>можна</td><td><b>не можна</b></td></tr>
+                    <tr><td>Борг на одному об'єкті</td><td>блокує лише його</td><td><b>блокує всю групу</b></td></tr>
+                </tbody>
+            </table>
+        </div>
 
         <h4>Як об'єднати два аккаунти у групу</h4>
         <ol>
@@ -205,12 +209,14 @@
 
         <h4>Формат файлу .xlsx</h4>
         <p>Дані починаються з <b>2-го рядка</b>, рядок 1 — заголовки. Книжка може мати кілька вкладок (наприклад, з довідниками); бот сам знаходить вкладку, у якій 2-й рядок виглядає як «число | число» (особ. рах. + площа).</p>
-        <table class="table table-bordered table-sm" style="max-width:520px">
-            <thead><tr class="table-light">
-                <th style="width:48px">#</th><th>A — ID (ігнор.)</th><th>B — Особ. рах.</th><th>C — Площа, м²</th>
-            </tr></thead>
-            <tbody><tr><td class="text-muted">2</td><td>891439</td><td>117091</td><td>18.8</td></tr></tbody>
-        </table>
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm" style="max-width:520px">
+                <thead><tr class="table-light">
+                    <th style="width:48px">#</th><th>A — ID (ігнор.)</th><th>B — Особ. рах.</th><th>C — Площа, м²</th>
+                </tr></thead>
+                <tbody><tr><td class="text-muted">2</td><td>891439</td><td>117091</td><td>18.8</td></tr></tbody>
+            </table>
+        </div>
 
         <h4>Скільки часто заливати?</h4>
         <ul>
@@ -242,15 +248,17 @@
 
         <h2 id="formula">🔢 Особовий рахунок — як розшифрувати</h2>
         <p>Особовий рахунок — це <b>6 цифр</b>, де кожна щось означає:</p>
-        <table class="table table-bordered" style="max-width: 700px;">
-            <thead><tr><th>Позиція</th><th>Значення</th><th>Приклад</th></tr></thead>
-            <tbody>
-                <tr><td><b>1-а</b></td><td>Номер черги (будинок)</td><td><code>4</code></td></tr>
-                <tr><td><b>2-а</b></td><td>Номер під'їзду</td><td><code>2</code></td></tr>
-                <tr><td><b>3-я</b></td><td><b>Тип:</b> 0 квартира · 5 кладова · 7 паркомісце</td><td><code>0</code></td></tr>
-                <tr><td><b>4–6</b></td><td>Номер об'єкта</td><td><code>085</code></td></tr>
-            </tbody>
-        </table>
+        <div class="table-responsive">
+            <table class="table table-bordered" style="max-width: 700px;">
+                <thead><tr><th>Позиція</th><th>Значення</th><th>Приклад</th></tr></thead>
+                <tbody>
+                    <tr><td><b>1-а</b></td><td>Номер черги (будинок)</td><td><code>4</code></td></tr>
+                    <tr><td><b>2-а</b></td><td>Номер під'їзду</td><td><code>2</code></td></tr>
+                    <tr><td><b>3-я</b></td><td><b>Тип:</b> 0 квартира · 5 кладова · 7 паркомісце</td><td><code>0</code></td></tr>
+                    <tr><td><b>4–6</b></td><td>Номер об'єкта</td><td><code>085</code></td></tr>
+                </tbody>
+            </table>
+        </div>
         <p>Разом: <code>420085</code> = черга 4, під'їзд 2, <b>квартира №85</b>.</p>
         <p>Ще приклади:</p>
         <ul>

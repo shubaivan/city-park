@@ -11,24 +11,26 @@
         <div class="alert alert-info">
             <p class="mb-2"><b>Що це:</b> один XLSX-файл з реєстром усіх особових рахунків і їхньої площі. Завантажується окремо від файлу боржників — тут не треба нічого міняти, поки бухгалтерія не випустила оновлений реєстр.</p>
             <p class="mb-2"><b>Формат файлу:</b> сторінка <code>Лист1</code> (або перша вкладка з підходящим заголовком). Дані починаються з <b>2-го рядка</b>.</p>
-            <table class="table table-bordered table-sm mb-2" style="max-width:520px;background:#fff">
-                <thead>
-                <tr class="table-light">
-                    <th style="width:48px">#</th>
-                    <th>A — ID реєстру</th>
-                    <th>B — Особовий рахунок</th>
-                    <th>C — Загальна площа</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr>
-                    <td class="text-muted">2</td>
-                    <td>891439</td>
-                    <td>117091</td>
-                    <td>18.8</td>
-                </tr>
-                </tbody>
-            </table>
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm mb-2" style="max-width:520px;background:#fff">
+                    <thead>
+                    <tr class="table-light">
+                        <th style="width:48px">#</th>
+                        <th>A — ID реєстру</th>
+                        <th>B — Особовий рахунок</th>
+                        <th>C — Загальна площа</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td class="text-muted">2</td>
+                        <td>891439</td>
+                        <td>117091</td>
+                        <td>18.8</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
             <p class="mb-0 text-muted">
                 Парсер ігнорує колонку A (ID) — нас цікавить лише <b>B</b> (особ. рах.) і <b>C</b> (площа). Інші вкладки книжки (типу «Sheet1» з юридичними довідниками) пропускаються автоматично.
             </p>
@@ -72,26 +74,28 @@
             {% if archive is not defined or archive|length == 0 %}
                 <p class="text-muted"><small>Поки що порожньо — сюди потрапить файл із наступного завантаження.</small></p>
             {% else %}
-                <table class="table table-sm table-striped" style="max-width:640px">
-                    <thead>
-                    <tr><th>Коли</th><th>Хто</th><th>Розмір</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                    {% for item in archive %}
-                        <tr>
-                            <td>{{ item.uploaded_at|date('d.m.Y H:i') }}</td>
-                            <td>{{ item.actor }}</td>
-                            <td>{{ (item.size / 1024)|round }} КБ</td>
-                            <td>
-                                <a class="btn btn-sm btn-outline-secondary"
-                                   href="{{ path('app_admin_import_archive_download', {kind: 'area', name: item.name}) }}">
-                                    ⬇️ Завантажити
-                                </a>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped" style="max-width:640px">
+                        <thead>
+                        <tr><th>Коли</th><th>Хто</th><th>Розмір</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                        {% for item in archive %}
+                            <tr>
+                                <td>{{ item.uploaded_at|date('d.m.Y H:i') }}</td>
+                                <td>{{ item.actor }}</td>
+                                <td>{{ (item.size / 1024)|round }} КБ</td>
+                                <td>
+                                    <a class="btn btn-sm btn-outline-secondary"
+                                       href="{{ path('app_admin_import_archive_download', {kind: 'area', name: item.name}) }}">
+                                        ⬇️ Завантажити
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             {% endif %}
         </div>
 
