@@ -80,23 +80,18 @@
         </div>
     </header>
 
-    {# read and display all flash messages #}
-    {#    {{ dump(app.flashes) }}#}
+    {#
+        One line, in the panel's own language. It used to be a full-width block with the
+        flash key as an English heading — «Notice» over «Роль оновлено» — which took a
+        quarter of the screen on a phone to say nothing.
+    #}
     {% for label, messages in app.flashes %}
         {% for message in messages %}
-            {% if label == 'warning' %}
-                {% set class = 'alert-warning' %}
-            {% elseif label == 'notice' %}
-                {% set class = 'alert-success' %}
-            {% elseif label == 'error' %}
-                {% set class = 'alert-danger' %}
-            {% else %}
-                {% set class = 'alert-success' %}
-            {% endif %}
+            {% set class = label == 'error' ? 'alert-danger' : (label == 'warning' ? 'alert-warning' : 'alert-success') %}
+            {% set icon = label == 'error' ? '⚠️' : (label == 'warning' ? '❗' : '✅') %}
 
-            <div class="alert {{ class }}" role="alert">
-                <h4 class="alert-heading">{{label|capitalize}}</h4>
-                <p class="mb-0"><i class="fa fa-exclamation-circle"></i>{{message}}</p>
+            <div class="alert {{ class }} py-2 px-3 mb-2 mx-2 mx-sm-3 mt-2" role="alert">
+                {{ icon }} {{ message }}
             </div>
         {% endfor %}
     {% endfor %}
