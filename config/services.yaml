@@ -22,6 +22,10 @@ services:
             # Telegram ids allowed to move a complaint's status — the head of the ОСББ.
             # One or two people who change about never, so this is config, not a column.
             $managerIds: '%env(string:COMPLAINT_MANAGER_TELEGRAM_IDS)%'
+            # Where the nightly database dump is sent. A backup that lives on the server
+            # it protects is not a backup — if the machine goes, so does it.
+            $backupChatId: '%env(string:BACKUP_TELEGRAM_CHAT_ID)%'
+            $backupEmail: '%env(string:BACKUP_EMAIL)%'
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name

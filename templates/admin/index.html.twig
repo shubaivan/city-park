@@ -22,13 +22,32 @@
             </thead>
             <tbody>
 
+            {#
+                Two registers, deliberately separate. A person may own several objects and
+                an object may have several owners of different kinds, so "хто це" and "що
+                це" are different questions and each needs its own list. Until 04.09.2026
+                the panel had only the first, which meant an object nobody had linked
+                themselves to could not be opened at all.
+            #}
             <tr>
                 <th scope="row">1</th>
                 <td>
-                    Користувачі
+                    👤 Люди (мешканці)
                 </td>
                 <td>
                     <a href="{{ path('app_admin_users') }}">
+                        Список
+                    </a>
+                </td>
+            </tr>
+
+            <tr>
+                <th scope="row">1a</th>
+                <td>
+                    🏢 Об'єкти нерухомості
+                </td>
+                <td>
+                    <a href="{{ path('app_admin_objects') }}">
                         Список
                     </a>
                 </td>

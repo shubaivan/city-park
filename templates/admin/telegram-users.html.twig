@@ -43,6 +43,11 @@
 
     {% if th_keys|length %}
         <!-- Table -->
+
+        <div class="mb-2">
+            <a href="{{ path('app_admin_objects') }}" class="btn btn-sm btn-outline-secondary">🏢 Об'єкти нерухомості →</a>
+        </div>
+
         <table id='telegramUserTable' class='display dataTable'>
 
             <thead>
@@ -161,9 +166,13 @@
                         </div>
                         <hr/>
                         <div class="form-group">
-                            <label class="col-form-label"><b>Прив'язані аккаунти (один власник)</b></label>
+                            <label class="col-form-label"><b>🏢 Об'єкти цього власника</b></label>
                             <p class="form-text text-muted">
-                                Якщо власник має й квартиру, й паркомісце — прив'яжіть їх, щоб ліміти бронювань і борги рахувалися спільно.
+                                У однієї людини може бути кілька об'єктів — квартира, паркомісце, комірчина.
+                                Кожен з них окремий особовий рахунок, і бот бачить їх як одного власника лише
+                                після того, як їх тут об'єднали: тоді ліміти бронювання рахуються разом, а борг
+                                за будь-яким з об'єктів блокує всі. Повний перелік об'єктів будинку —
+                                у розділі <a href="{{ path('app_admin_objects') }}">🏢 Об'єкти нерухомості</a>.
                             </p>
                             <ul id="group_siblings_list" class="list-group mb-2"></ul>
                             <div class="input-group">
