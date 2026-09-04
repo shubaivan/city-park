@@ -96,6 +96,35 @@ class TelegramUserRepository extends ServiceEntityRepository
      * @param array<string, mixed> $params
      * @return array{0: string[], 1: array<string, mixed>} conditions, bound values
      */
+    /**
+     * How many residents sit in each building.
+     *
+     * The objects register counts objects on its own building chips; this table counts
+     * people, and the two numbers are genuinely different — a building of 48 flats can hold
+     * 60 residents, and a chip promising 48 next to a list of 60 is the kind of small lie
+     * that makes somebody stop trusting the filters.
+     *
+     * @return array<string, int>
+     */
+    public function countByHouse(): array
+    {
+        $rows = $this->createQueryBuilder('b')
+            ->select('a.house_number AS house, COUNT(b.id) AS total')
+            ->join('b.account', 'a')
+            ->andWhere("a.house_number <> ''")
+            ->groupBy('a.house_number')
+            ->getQuery()
+            ->getResult();
+
+        $counts = [];
+
+        foreach ($rows as $row) {
+            $counts[trim((string)$row['house'])] = (int)$row['total'];
+        }
+
+        return $counts;
+    }
+
     public static function buildDataTablesFilters(
         array $params,
         ?string $globalSearch = null,

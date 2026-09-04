@@ -849,7 +849,11 @@ class AdminController extends AbstractController
     }
 
     #[Route('/admin/users', name: 'app_admin_users')]
-    public function users(EntityManagerInterface $em, AccountRepository $accountRepository): Response
+    public function users(
+        EntityManagerInterface $em,
+        AccountRepository $accountRepository,
+        TelegramUserRepository $repository,
+    ): Response
     {
         $fieldNames = TelegramUser::$dataTableFields;
         $fieldNames[] = 'action';
@@ -864,12 +868,22 @@ class AdminController extends AbstractController
             $dataTableColumnData[] = ['data' => $k];
         }, $fieldNames);
 
+        $residents = $repository->countByHouse();
+
         return $this->render('admin/telegram-users.html.twig', [
             'th_keys' => $fieldNames,
             'dataTableKeys' => $dataTableColumnData,
-            // For the per-building filter row. Derived from the data: a hardcoded list
-            // silently drops a building the day one appears.
-            'houses' => $accountRepository->distinctHouseNumbers(),
+            // For the per-building filter row. Derived from the data — a hardcoded list
+            // silently drops a building the day one appears — and counting *residents*,
+            // not objects: this table lists people, and a chip promising the flat count
+            // next to a longer list of people is a small lie about the filter.
+            'houses' => array_map(
+                static fn (string $house): array => [
+                    'house' => $house,
+                    'count' => $residents[$house] ?? 0,
+                ],
+                $accountRepository->distinctHouseNumbers(),
+            ),
         ]);
     }
 
