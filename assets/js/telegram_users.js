@@ -544,11 +544,16 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
-        $('<button type="button" data-toggle="modal" data-target="#exampleModal"></button>')
-            .attr('data-user-id', wanted)
-            .css('display', 'none')
-            .appendTo('body')
-            .trigger('click');
+        // Deferred to the end of the tick on purpose: the modal is filled by a
+        // `show.bs.modal` handler registered further down this same file, so opening it
+        // from here directly showed an empty "create" form — the handler was not bound yet.
+        setTimeout(function () {
+            $('<button type="button" data-toggle="modal" data-target="#exampleModal"></button>')
+                .attr('data-user-id', wanted)
+                .css('display', 'none')
+                .appendTo('body')
+                .trigger('click');
+        }, 0);
     })();
 
     $('<style/>').text(
