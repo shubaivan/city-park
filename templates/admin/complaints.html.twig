@@ -5,94 +5,178 @@
 {% block body %}
     {{ parent() }}
 
-    <div class="container-fluid mt-3">
+    {#
+        Cards, not a table.
+
+        This page is read on a phone as often as on a desktop — the head of the ОСББ is
+        standing next to the thing that broke, or answering about it from somewhere else
+        entirely. A seven-column table with a form in the last column is unusable there:
+        it scrolls sideways, and the two controls that matter are always off-screen. Each
+        complaint is one card that stacks, and the two things she does — answer the author,
+        move the status — are inside it, folded away until she opens them.
+    #}
+    <style>
+        .cmp-card { max-width: 46rem; }
+        .cmp-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+        .cmp-thread { border-left: 3px solid #dee2e6; padding-left: .6rem; }
+        .cmp-msg + .cmp-msg { margin-top: .5rem; }
+        .cmp-msg-official { border-left: 3px solid #28a745; padding-left: .5rem; margin-left: -.6rem; }
+        .cmp-shot { height: 64px; border-radius: 4px; margin: 2px; }
+        summary { cursor: pointer; }
+    </style>
+
+    <div class="container-fluid mt-3 px-2 px-sm-3">
         <h3>🔧 Заявки та скарги мешканців</h3>
         <p class="text-muted">
             Мешканці подають їх самі через бот («🔧 Заявки»). Реєстр бачать усі мешканці —
             саме тому про зламаний ліфт більше не пишуть у чат по п'ять разів.
-            Заявка ніколи не видаляється: виконана залишається тут як запис про те,
-            що і коли полагодили.
+            Обговорення під заявкою теж публічне: писати в нього можуть автор і голова ОСББ,
+            читати — усі.
         </p>
 
         {% if complaints|length == 0 %}
             <div class="alert alert-secondary">Заявок ще не було.</div>
-        {% else %}
-            <table class="table table-striped table-sm align-middle">
-                <thead>
-                <tr>
-                    <th>№</th>
-                    <th>Подано</th>
-                    <th>Квартира</th>
-                    <th>Проблема</th>
-                    <th>Фото</th>
-                    <th>Статус</th>
-                    <th style="min-width:320px">Дія</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for complaint in complaints %}
-                    <tr>
-                        <td>{{ complaint.id }}</td>
-                        <td>
-                            <small>{{ complaint.createdAt|date('d.m.Y H:i') }}</small>
-                        </td>
-                        <td>
-                            {% if complaint.account %}
-                                буд. {{ complaint.account.houseNumber }}, кв. {{ complaint.account.apartmentNumber }}<br>
-                                <small class="text-muted">
-                                    {{ complaint.account.accountNumber }}
-                                    {% if complaint.author %}
-                                        · {{ complaint.author.firstName }} {{ complaint.author.lastName }}
-                                    {% endif %}
-                                </small>
-                            {% endif %}
-                        </td>
-                        <td style="max-width:420px">{{ complaint.text }}</td>
-                        <td>
-                            {% for path in complaint.photos %}
-                                <a href="{{ path }}" target="_blank" rel="noopener">
-                                    <img src="{{ path }}" alt="" style="height:46px;border-radius:4px;margin:1px">
-                                </a>
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endfor %}
-                        </td>
-                        <td>
-                            {% if complaint.status == 'done' %}
-                                <span class="badge bg-success">✅ Виконано</span>
-                            {% elseif complaint.status == 'in_progress' %}
-                                <span class="badge bg-warning text-dark">🔧 В роботі</span>
-                            {% else %}
-                                <span class="badge bg-secondary">🆕 Нова</span>
-                            {% endif %}
-                            {% if complaint.statusChangedBy %}
-                                <br><small class="text-muted">
-                                    {{ complaint.statusChangedAt|date('d.m.Y H:i') }}<br>
-                                    {{ complaint.statusChangedBy }}
-                                </small>
-                            {% endif %}
-                            {% if complaint.resolution %}
-                                <br><small>💬 {{ complaint.resolution }}</small>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <form method="post" action="{{ path('app_admin_complaint_status') }}" class="d-flex gap-1 align-items-start">
-                                <input type="hidden" name="id" value="{{ complaint.id }}">
-                                <input type="text" name="resolution" class="form-control form-control-sm"
-                                       placeholder="що зробили (не обов'язково)"
-                                       value="{{ complaint.resolution }}">
-                                <select name="status" class="form-select form-select-sm" style="width:auto">
-                                    <option value="new" {{ complaint.status == 'new' ? 'selected' }}>🆕 Нова</option>
-                                    <option value="in_progress" {{ complaint.status == 'in_progress' ? 'selected' }}>🔧 В роботі</option>
-                                    <option value="done" {{ complaint.status == 'done' ? 'selected' }}>✅ Виконано</option>
-                                </select>
-                                <button class="btn btn-sm btn-primary">Зберегти</button>
-                            </form>
-                        </td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
         {% endif %}
+
+        {% for complaint in complaints %}
+            {% set thread = threads[complaint.id]|default([]) %}
+            <div class="card mb-3 cmp-card">
+                <div class="card-body p-2 p-sm-3">
+
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>№{{ complaint.id }}</strong>
+                            {% if complaint.status == 'done' %}
+                                <span class="badge badge-success">✅ Виконано</span>
+                            {% elseif complaint.status == 'in_progress' %}
+                                <span class="badge badge-warning">🔧 В роботі</span>
+                            {% elseif complaint.status == 'on_hold' %}
+                                <span class="badge badge-info">⏸ Відкладено</span>
+                            {% else %}
+                                <span class="badge badge-secondary">🆕 Нова</span>
+                            {% endif %}
+                        </div>
+                        <small class="text-muted text-right">
+                            {{ complaint.createdAt|date('d.m.Y H:i') }}
+                        </small>
+                    </div>
+
+                    <div class="mt-2">
+                        {% if complaint.account %}
+                            <strong>буд. {{ complaint.account.houseNumber }}, кв. {{ complaint.account.apartmentNumber }}</strong>
+                            <small class="text-muted">о/р {{ complaint.account.accountNumber }}</small>
+                        {% endif %}
+                    </div>
+
+                    {#
+                        Who to ring. The flat alone was all this page showed, and half of
+                        what gets reported needs one clarifying question before anybody can
+                        be sent to look at it. tel: and t.me links, so a tap on a phone is
+                        the call — that is the whole point of having it here.
+                    #}
+                    {% if complaint.author %}
+                        <div class="small mt-1">
+                            👤
+                            {{ complaint.author.firstName }} {{ complaint.author.lastName }}
+                            {% if complaint.author.username %}
+                                · <a href="https://t.me/{{ complaint.author.username }}" target="_blank" rel="noopener">@{{ complaint.author.username }}</a>
+                            {% endif %}
+                            {% if complaint.author.phoneNumber %}
+                                {% set digits = complaint.author.phoneNumber|replace({'+': '', ' ': '', '-': '', '(': '', ')': ''}) %}
+                                · <a href="tel:+{{ digits }}">+{{ digits }}</a>
+                                · <a href="https://t.me/+{{ digits }}" target="_blank" rel="noopener">Telegram</a>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="small text-muted mt-1">👤 Автора вже немає в базі.</div>
+                    {% endif %}
+
+                    <p class="cmp-text mt-2 mb-2">{{ complaint.text }}</p>
+
+                    {% for path in complaint.photos %}
+                        <a href="{{ path }}" target="_blank" rel="noopener">
+                            <img src="{{ path }}" alt="" class="cmp-shot">
+                        </a>
+                    {% endfor %}
+
+                    {% if complaint.resolution %}
+                        <div class="alert {{ complaint.status == 'on_hold' ? 'alert-info' : 'alert-light' }} py-2 px-2 mt-2 mb-2 small">
+                            {{ complaint.status == 'on_hold' ? '⏸ Чекає:' : '💬 Нотатка:' }}
+                            {{ complaint.resolution }}
+                        </div>
+                    {% endif %}
+
+                    {% if complaint.statusChangedBy %}
+                        <div class="small text-muted">
+                            Оновлено {{ complaint.statusChangedAt|date('d.m.Y H:i') }} · {{ complaint.statusChangedBy }}
+                        </div>
+                    {% endif %}
+
+                    {# --- the official discussion --- #}
+                    <details class="mt-3" {{ thread|length > 0 ? 'open' }}>
+                        <summary class="small">
+                            💬 Обговорення{% if thread|length %} ({{ thread|length }}){% endif %}
+                        </summary>
+
+                        {% if thread|length %}
+                            <div class="cmp-thread mt-2 mb-2">
+                                {% for comment in thread %}
+                                    <div class="cmp-msg small {{ comment.official ? 'cmp-msg-official' }}">
+                                        <div class="text-muted">
+                                            {{ comment.official ? '🏢' : '👤' }}
+                                            <strong>{{ comment.authorLabel }}</strong>
+                                            · {{ comment.createdAt|date('d.m.Y H:i') }}
+                                        </div>
+                                        <div class="cmp-text">{{ comment.text }}</div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <p class="small text-muted mt-2 mb-2">
+                                Тут ще нічого не написано.
+                            </p>
+                        {% endif %}
+
+                        <form method="post" action="{{ path('app_admin_complaint_comment') }}">
+                            <input type="hidden" name="id" value="{{ complaint.id }}">
+                            <textarea name="text" rows="2" class="form-control form-control-sm"
+                                      maxlength="700"
+                                      placeholder="написати автору заявки — це побачать усі мешканці"></textarea>
+                            <button class="btn btn-sm btn-outline-primary mt-2">💬 Додати в обговорення</button>
+                            <div class="small text-muted mt-1">
+                                Автор одразу отримає це повідомленням у Telegram. Видалити написане не можна.
+                            </div>
+                        </form>
+                    </details>
+
+                    {# --- the status --- #}
+                    <details class="mt-2">
+                        <summary class="small">🔧 Змінити статус</summary>
+
+                        <form method="post" action="{{ path('app_admin_complaint_status') }}" class="mt-2">
+                            <input type="hidden" name="id" value="{{ complaint.id }}">
+
+                            <select name="status" class="form-control form-control-sm mb-2">
+                                <option value="new" {{ complaint.status == 'new' ? 'selected' }}>🆕 Нова</option>
+                                <option value="in_progress" {{ complaint.status == 'in_progress' ? 'selected' }}>🔧 В роботі</option>
+                                <option value="on_hold" {{ complaint.status == 'on_hold' ? 'selected' }}>⏸ Відкладено (потрібна причина)</option>
+                                <option value="done" {{ complaint.status == 'done' ? 'selected' }}>✅ Виконано</option>
+                            </select>
+
+                            <input type="text" name="resolution" class="form-control form-control-sm mb-2"
+                                   value="{{ complaint.resolution }}"
+                                   placeholder="нотатка: що зробили / чого чекаємо">
+
+                            <button class="btn btn-sm btn-primary">Зберегти</button>
+                            <div class="small text-muted mt-1">
+                                Автор і чат мешканців дізнаються про зміну статусу. «Відкладено» без
+                                причини не зберігається.
+                            </div>
+                        </form>
+                    </details>
+
+                </div>
+            </div>
+        {% endfor %}
     </div>
 {% endblock %}

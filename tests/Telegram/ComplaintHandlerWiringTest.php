@@ -67,9 +67,71 @@ class ComplaintHandlerWiringTest extends TestCase
         }
     }
 
+    /**
+     * Every `cmp:` button the code emits must match a pattern registered in
+     * config/telegram.php.
+     *
+     * The register's callbacks are routed by three regexes, and the list one is a single
+     * alternation that has already been extended four times. A button whose data no
+     * pattern matches does not error anywhere — it simply spins on the resident's phone
+     * and stops, which is indistinguishable from the bot being down.
+     */
+    public function testEveryCallbackButtonIsRoutedByThePatternsInTheConfig(): void
+    {
+        $config = file_get_contents(__DIR__ . '/../../config/telegram.php');
+
+        preg_match_all(
+            "/onCallbackQueryData\('(\^cmp:[^']+)'/",
+            $config,
+            $registered,
+        );
+
+        $this->assertNotEmpty($registered[1], 'no cmp: routes found in config/telegram.php');
+
+        $sources = [
+            'ComplaintMenuCommand' => __DIR__ . '/../../src/Telegram/Complaint/Command/ComplaintMenuCommand.php',
+            'ComplaintService' => __DIR__ . '/../../src/Service/ComplaintService.php',
+            'ComplaintReply' => __DIR__ . '/../../src/Telegram/Complaint/Command/ComplaintReply.php',
+            'ComplaintHold' => __DIR__ . '/../../src/Telegram/Complaint/Command/ComplaintHold.php',
+        ];
+
+        foreach ($sources as $name => $file) {
+            preg_match_all("/'(cmp:[a-z]+)(:'|')/", file_get_contents($file), $emitted);
+
+            foreach (array_unique($emitted[1]) as $prefix) {
+                // A prefix is concatenated with an id at the call site; try both shapes.
+                $candidates = [$prefix, $prefix . ':7', $prefix . ':7:done', $prefix . ':7:2'];
+
+                $routed = false;
+
+                foreach ($candidates as $candidate) {
+                    foreach ($registered[1] as $pattern) {
+                        if (preg_match('/' . $pattern . '/', $candidate) === 1) {
+                            $routed = true;
+
+                            break 2;
+                        }
+                    }
+                }
+
+                $this->assertTrue(
+                    $routed,
+                    sprintf('%s emits "%s", which no pattern in config/telegram.php routes', $name, $prefix),
+                );
+            }
+        }
+    }
+
     public function testServiceMethodsTheHandlerCallsExist(): void
     {
-        foreach (['delete', 'changeStatus', 'issuePhotoToken', 'label', 'statusLabel', 'mayFile', 'isManager'] as $method) {
+        $methods = [
+            'delete', 'changeStatus', 'issuePhotoToken', 'label', 'statusLabel', 'mayFile', 'isManager',
+            // The discussion and the manager-only contact block: the card calls all four,
+            // and a rename here is a button that throws on prod and nowhere else.
+            'mayComment', 'comment', 'thread', 'countComments', 'authorChatUrl', 'authorContactLine',
+        ];
+
+        foreach ($methods as $method) {
             $this->assertTrue(
                 method_exists(ComplaintService::class, $method),
                 sprintf('ComplaintService::%s() is missing', $method),

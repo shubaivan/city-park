@@ -252,10 +252,16 @@ class AdminController extends AbstractController
     #############
 
     #[Route('/admin/complaints', name: 'app_admin_complaints', methods: [Request::METHOD_GET])]
-    public function complaints(ComplaintRepository $complaints): Response
+    public function complaints(ComplaintRepository $complaints, ComplaintService $complaintService): Response
     {
+        $list = $complaints->findAllNewestFirst();
+
         return $this->render('admin/complaints.html.twig', [
-            'complaints' => $complaints->findAllNewestFirst(),
+            'complaints' => $list,
+            // Both fetched in one query each: the page renders every complaint with its
+            // discussion and the author's contact under it, and per-row lookups here are
+            // how a page of 200 entries becomes 400 queries.
+            'threads' => $complaintService->threadsFor($list),
         ]);
     }
 
@@ -275,15 +281,66 @@ class AdminController extends AbstractController
         $complaint = $complaints->find((int)$request->request->get('id'));
         $status = (string)$request->request->get('status');
 
-        if ($complaint instanceof Complaint && in_array($status, Complaint::STATUSES, true)) {
-            $resolution = trim((string)$request->request->get('resolution'));
-            $complaint->setResolution($resolution !== '' ? $resolution : null);
+        if (!$complaint instanceof Complaint || !in_array($status, Complaint::STATUSES, true)) {
+            return $this->redirectToRoute('app_admin_complaints');
+        }
 
-            $complaintService->changeStatus(
+        $resolution = trim((string)$request->request->get('resolution'));
+
+        // A hold must say what it is waiting for. The service throws otherwise — which
+        // would be a 500 on a form submit — so the panel catches it here and says so.
+        if ($status === Complaint::STATUS_ON_HOLD && $resolution === '') {
+            $this->addFlash('error', sprintf(
+                'Заявка №%d: щоб відкласти, напишіть у полі «нотатка», чого вона чекає. '
+                    . 'Без причини «відкладено» читається мешканцями як «нам байдуже».',
+                $complaint->getId(),
+            ));
+
+            return $this->redirectToRoute('app_admin_complaints');
+        }
+
+        $complaintService->changeStatus(
+            $complaint,
+            $status,
+            (string)$this->getUser()?->getUserIdentifier(),
+            // An empty box means "no note", not "wipe the note": passing null lets
+            // changeStatus keep it, or clear it when a hold is being left.
+            note: $resolution !== '' ? $resolution : null,
+        );
+
+        return $this->redirectToRoute('app_admin_complaints');
+    }
+
+    /**
+     * The desktop half of the official discussion.
+     *
+     * Typing a real answer — «майстер приїде у вівторок після 14:00» — on a phone keyboard
+     * is why /admin/complaints exists at all. The comment reaches the author's Telegram the
+     * same way it would from the bot: the notification lives in ComplaintService, not in
+     * the handler, precisely so this path is not the silent one.
+     */
+    #[Route('/admin/complaints/comment', name: 'app_admin_complaint_comment', methods: [Request::METHOD_POST])]
+    public function complaintComment(
+        Request $request,
+        ComplaintRepository $complaints,
+        ComplaintService $complaintService,
+    ): Response {
+        $complaint = $complaints->find((int)$request->request->get('id'));
+        $text = $complaintService->trimComment((string)$request->request->get('text'));
+
+        if ($complaint instanceof Complaint && $text !== '') {
+            $complaintService->comment(
                 $complaint,
-                $status,
-                (string)$this->getUser()?->getUserIdentifier(),
+                null,
+                $text,
+                official: true,
+                label: $complaintService->adminLabel($this->getUser()?->getUserIdentifier()),
             );
+
+            $this->addFlash('notice', sprintf(
+                'Заявка №%d: повідомлення додано в обговорення, автор отримав сповіщення.',
+                $complaint->getId(),
+            ));
         }
 
         return $this->redirectToRoute('app_admin_complaints');

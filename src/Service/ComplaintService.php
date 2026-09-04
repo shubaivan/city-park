@@ -4,7 +4,9 @@ namespace App\Service;
 
 use App\Entity\Account;
 use App\Entity\Complaint;
+use App\Entity\ComplaintComment;
 use App\Entity\TelegramUser;
+use App\Repository\ComplaintCommentRepository;
 use App\Repository\ComplaintRepository;
 use App\Repository\TelegramUserRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -37,6 +39,7 @@ class ComplaintService
 
     public function __construct(
         private ComplaintRepository $complaints,
+        private ComplaintCommentRepository $comments,
         private ImageStore $images,
         private EntityManagerInterface $em,
         private LoggerInterface $logger,
@@ -113,10 +116,39 @@ class ComplaintService
         string $status,
         string $by,
         ?TelegramUser $actor = null,
+        ?string $note = null,
     ): void {
         $from = $complaint->getStatus();
+        $note = $note === null ? null : trim($note);
+
+        if ($status === Complaint::STATUS_ON_HOLD) {
+            $reason = $note ?? '';
+
+            // «Відкладено» with nothing after it reads, from a resident's side of the
+            // screen, as the ОСББ giving up in public. The reason is the whole difference
+            // between a hold and a shrug, so it is a hard requirement, not a nudge.
+            if ($reason === '') {
+                throw new \InvalidArgumentException('A hold must say why: complaint ' . $complaint->getId());
+            }
+        }
+
+        if ($note !== null) {
+            $complaint->setResolution($note !== '' ? $note : null);
+        } elseif ($from === Complaint::STATUS_ON_HOLD && $from !== $status) {
+            // Leaving a hold with nothing new to say: the old reason must go with it.
+            // «✅ Виконано» carrying «чекаємо насос із Польщі» as its "що зробили" note is
+            // read by the author and posted in the chat, and it says the opposite of what
+            // happened. The note always describes where the complaint stands now.
+            $complaint->setResolution(null);
+        }
 
         if ($from === $status) {
+            // Same status, new note — "ще чекаємо, тепер на іншу деталь". Nothing to
+            // announce, but the note itself must not be silently dropped on the floor.
+            if ($note !== null) {
+                $this->em->flush();
+            }
+
             return;
         }
 
@@ -194,19 +226,18 @@ class ComplaintService
             try {
                 $this->bot->sendMessage(
                     text: sprintf(
-                        "🆕 <b>Нова заявка №%d</b>\n\n%s\n\nВід: %s",
+                        "🆕 <b>Нова заявка №%d</b>\n\n%s\n\nВід: %s\n%s",
                         $complaint->getId(),
                         htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                         $this->where($complaint),
+                        // Who to ring, right here: the flat alone was all she had, and
+                        // half of what gets reported needs one clarifying question before
+                        // anyone can be sent to look at it.
+                        $this->authorContactLine($complaint),
                     ),
                     chat_id: (int)$chatId,
                     parse_mode: ParseMode::HTML,
-                    reply_markup: InlineKeyboardMarkup::make()->addRow(
-                        InlineKeyboardButton::make(
-                            '🔧 Відкрити заявку',
-                            callback_data: 'cmp:view:' . $complaint->getId(),
-                        ),
-                    ),
+                    reply_markup: $this->managerCardMarkup($complaint),
                 );
             } catch (\Throwable $e) {
                 $this->logger->warning('new complaint manager notify failed', [
@@ -221,6 +252,15 @@ class ComplaintService
     /** "буд. 19, кв. 85" — the building matters, apartment numbers repeat across the five. */
     private function where(Complaint $complaint): string
     {
+        return htmlspecialchars($this->place($complaint), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    /**
+     * The same label unescaped, for the places it is stored rather than sent: a comment's
+     * `author_label` is a DB value and must not carry &amp; into the next renderer.
+     */
+    public function place(Complaint $complaint): string
+    {
         $account = $complaint->getAccount();
         $apartment = trim((string)$account?->getApartmentNumber());
         $house = trim((string)$account?->getHouseNumber());
@@ -230,12 +270,10 @@ class ComplaintService
         }
 
         $unit = preg_match('/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/u', $apartment) === 1
-            ? 'кв. ' . htmlspecialchars($apartment, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
-            : htmlspecialchars($apartment, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            ? 'кв. ' . $apartment
+            : $apartment;
 
-        return $house === ''
-            ? $unit
-            : sprintf('буд. %s, %s', htmlspecialchars($house, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), $unit);
+        return $house === '' ? $unit : sprintf('буд. %s, %s', $house, $unit);
     }
 
     /**
@@ -603,6 +641,362 @@ class ComplaintService
         }
     }
 
+    #############
+    # Who filed it — for the head of the ОСББ, and for nobody else
+    #############
+
+    /**
+     * The author's name, @username and phone, as one HTML block.
+     *
+     * **Manager-only.** Every resident reads the register, and the phone in that row is
+     * there because the person gave it to the ОСББ for нарахування — the same reasoning
+     * that makes a rental listing's phone opt-in. What is different here is the reader:
+     * Людмила already has this number in /admin/users, and she is the one person who has
+     * to ring back about the report. Callers must gate this on isManager(); it is not
+     * built into the string because the card assembles several manager-only parts.
+     *
+     * Answers the complaint the feature came from: she could see «буд. 19, кв. 85» and
+     * had no way to ask which section of the parking the gate was in.
+     */
+    public function authorContactLine(Complaint $complaint): string
+    {
+        $author = $complaint->getAuthor();
+
+        if (!$author instanceof TelegramUser) {
+            // The FK is SET NULL, and complaints outlive the people who file them.
+            return '👤 <i>Автора вже немає в базі — залишилась тільки квартира.</i>';
+        }
+
+        $parts = [];
+        $name = $this->authorName($author);
+
+        if ($name !== '') {
+            $parts[] = '<b>' . htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</b>';
+        }
+
+        $username = trim((string)$author->getUsername());
+
+        if ($username !== '') {
+            $parts[] = '@' . htmlspecialchars($username, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }
+
+        $phone = RentalListingService::formatPhone($author->getPhoneNumber());
+
+        if ($phone !== null) {
+            $parts[] = htmlspecialchars($phone, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }
+
+        if ($parts === []) {
+            return '👤 <i>Ні імені, ні номера — лише Telegram без контактів.</i>';
+        }
+
+        return '👤 ' . implode(' · ', $parts);
+    }
+
+    /**
+     * A link that opens a private chat with the author.
+     *
+     * `t.me/<username>` when there is one, otherwise `t.me/+<phone>` — the same shape the
+     * main menu already uses for Людмила's own number, because she has no @username
+     * either. Only ~48% of telegram_user rows carry a username, so the phone branch is
+     * the common one, and without either there is no link Telegram will reliably open.
+     */
+    public function authorChatUrl(Complaint $complaint): ?string
+    {
+        $author = $complaint->getAuthor();
+
+        if (!$author instanceof TelegramUser) {
+            return null;
+        }
+
+        $username = trim((string)$author->getUsername());
+
+        if ($username !== '') {
+            return 'https://t.me/' . ltrim($username, '@');
+        }
+
+        $digits = preg_replace('/\D+/', '', (string)$author->getPhoneNumber()) ?? '';
+
+        return $digits === '' ? null : 'https://t.me/+' . $digits;
+    }
+
+    public function authorName(?TelegramUser $user): string
+    {
+        if (!$user instanceof TelegramUser) {
+            return '';
+        }
+
+        $name = trim(sprintf('%s %s', (string)$user->getFirstName(), (string)$user->getLastName()));
+
+        if ($name !== '') {
+            return $name;
+        }
+
+        $username = trim((string)$user->getUsername());
+
+        return $username !== '' ? '@' . ltrim($username, '@') : '';
+    }
+
+    #############
+    # The official discussion
+    #############
+
+    /**
+     * Read by the house, written by two people: the resident who filed it and the head of
+     * the ОСББ.
+     *
+     * Opening this to every linked resident was considered and rejected — the thread under
+     * the broken lift becomes the chat the register was built to replace, and the one
+     * answer that matters is buried in it. A neighbour with the same problem files their
+     * own entry, which is what the register is for.
+     */
+    public function mayComment(Complaint $complaint, ?TelegramUser $user, ?Account $account): bool
+    {
+        if ($this->isManager($user)) {
+            return true;
+        }
+
+        $accountId = $account?->getId();
+
+        // The id must exist, not merely match: two unsaved Accounts both answer null to
+        // getId(), and `null === null` would hand a neighbour the write button.
+        return $accountId !== null && $complaint->getAccount()?->getId() === $accountId;
+    }
+
+    /**
+     * Add one line to the thread and tell the other side.
+     *
+     * The notification lives here, not in the bot handler, for the reason changeStatus()
+     * already learned the hard way: a comment left from /admin/complaints has to reach the
+     * resident too, and while that logic sat in the handler a status moved from the admin
+     * panel told nobody at all.
+     *
+     * $label is the display name frozen into the row — the admin login when she writes
+     * from the panel, her Telegram name when she writes from the bot, the flat when the
+     * resident does.
+     */
+    public function comment(
+        Complaint $complaint,
+        ?TelegramUser $author,
+        string $text,
+        bool $official,
+        ?string $label = null,
+    ): ComplaintComment {
+        $text = $this->trimComment($text);
+
+        $comment = (new ComplaintComment())
+            ->setComplaint($complaint)
+            ->setAuthor($author)
+            ->setOfficial($official)
+            ->setText($text)
+            ->setAuthorLabel($label ?? $this->defaultLabel($complaint, $author, $official));
+
+        $this->em->persist($comment);
+        $this->em->flush();
+
+        $this->logger->info('complaint comment added', [
+            'complaint_id' => $complaint->getId(),
+            'comment_id' => $comment->getId(),
+            'official' => $official,
+        ]);
+
+        if ($official) {
+            $this->notifyAuthorOfComment($complaint, $comment);
+        } else {
+            $this->notifyManagersOfComment($complaint, $comment, $author);
+        }
+
+        return $comment;
+    }
+
+    private function defaultLabel(Complaint $complaint, ?TelegramUser $author, bool $official): string
+    {
+        if (!$official) {
+            return $this->place($complaint);
+        }
+
+        $name = $this->authorName($author);
+
+        return $name !== '' ? $name . ' (ОСББ)' : 'ОСББ';
+    }
+
+    public function trimComment(string $text): string
+    {
+        $text = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
+
+        return mb_substr($text, 0, ComplaintComment::TEXT_MAX);
+    }
+
+    /** @return ComplaintComment[] oldest first */
+    public function thread(Complaint $complaint, ?int $limit = null): array
+    {
+        return $this->comments->thread($complaint, $limit);
+    }
+
+    /**
+     * @param Complaint[] $complaints
+     *
+     * @return array<int, \App\Entity\ComplaintComment[]>
+     */
+    public function threadsFor(array $complaints): array
+    {
+        return $this->comments->threadsFor($complaints);
+    }
+
+    /**
+     * The name a resident sees against a comment written from /admin/complaints.
+     *
+     * The login is what the panel authenticates; «luda_boss» under an official answer in a
+     * register the whole house reads is not. Falls back to the ОСББ itself rather than to
+     * the raw login — an unknown admin account is still the ОСББ speaking.
+     */
+    public function adminLabel(?string $login): string
+    {
+        return match ($login) {
+            'luda_boss' => 'Людмила (голова ОСББ)',
+            'alina' => 'Аліна (бухгалтер ОСББ)',
+            default => 'ОСББ',
+        };
+    }
+
+    public function countComments(Complaint $complaint): int
+    {
+        return $this->comments->countFor($complaint);
+    }
+
+    /**
+     * @param Complaint[] $complaints
+     *
+     * @return array<int, int>
+     */
+    public function commentCounts(array $complaints): array
+    {
+        return $this->comments->countByComplaint($complaints);
+    }
+
+    /** One rendered line of the thread, for the bot card and nothing else. */
+    public function renderComment(ComplaintComment $comment): string
+    {
+        return sprintf(
+            "%s <b>%s</b> · <i>%s</i>\n%s",
+            $comment->isOfficial() ? '🏢' : '👤',
+            htmlspecialchars($comment->getAuthorLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            $comment->getCreatedAt()
+                ->setTimezone(new \DateTimeZone('Europe/Kyiv'))
+                ->format('d.m H:i'),
+            htmlspecialchars($comment->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+        );
+    }
+
+    /**
+     * The resident hears that the ОСББ said something about their report.
+     *
+     * With a «💬 Відповісти» button, because the question she asks is usually one they can
+     * answer in four words, and an answer that requires finding the card first is an
+     * answer that arrives tomorrow.
+     */
+    private function notifyAuthorOfComment(Complaint $complaint, ComplaintComment $comment): void
+    {
+        $chatId = $complaint->getAuthor()?->getChatId();
+
+        if ($chatId === null || $chatId === '') {
+            return;
+        }
+
+        try {
+            $this->bot->sendMessage(
+                text: sprintf(
+                    "💬 <b>ОСББ відповіло на вашу заявку №%d</b>\n\n%s\n\n<i>%s</i>",
+                    $complaint->getId(),
+                    htmlspecialchars($comment->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                    htmlspecialchars($this->label($complaint), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                ),
+                chat_id: (int)$chatId,
+                parse_mode: ParseMode::HTML,
+                reply_markup: InlineKeyboardMarkup::make()
+                    ->addRow(InlineKeyboardButton::make(
+                        '💬 Відповісти',
+                        callback_data: 'cmp:say:' . $complaint->getId(),
+                    ))
+                    ->addRow(InlineKeyboardButton::make(
+                        '🔧 Відкрити заявку',
+                        callback_data: 'cmp:view:' . $complaint->getId(),
+                    )),
+            );
+        } catch (\Throwable $e) {
+            $this->logger->warning('complaint comment author notify failed', [
+                'complaint_id' => $complaint->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * And she hears the answer, without having to remember which entry she asked about.
+     *
+     * Carries the author's contact for the same reason the "нова заявка" DM does: when the
+     * reply is "приходьте подивіться самі", the next step is a phone call.
+     */
+    private function notifyManagersOfComment(
+        Complaint $complaint,
+        ComplaintComment $comment,
+        ?TelegramUser $author,
+    ): void {
+        foreach ($this->managerTelegramIds() as $telegramId) {
+            $manager = $this->telegramUsers->getByTelegramId($telegramId);
+            $chatId = $manager?->getChatId();
+
+            if ($chatId === null || $chatId === '') {
+                continue;
+            }
+
+            if ($author instanceof TelegramUser && $manager->getId() === $author->getId()) {
+                continue;
+            }
+
+            try {
+                $this->bot->sendMessage(
+                    text: sprintf(
+                        "💬 <b>Відповідь на заявку №%d</b> · %s\n\n%s\n\n%s",
+                        $complaint->getId(),
+                        $this->where($complaint),
+                        htmlspecialchars($comment->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                        $this->authorContactLine($complaint),
+                    ),
+                    chat_id: (int)$chatId,
+                    parse_mode: ParseMode::HTML,
+                    reply_markup: $this->managerCardMarkup($complaint),
+                );
+            } catch (\Throwable $e) {
+                $this->logger->warning('complaint comment manager notify failed', [
+                    'complaint_id' => $complaint->getId(),
+                    'telegram_id' => $telegramId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * The keyboard on everything the manager receives: open the card, answer in the
+     * thread, or write to the person directly.
+     */
+    private function managerCardMarkup(Complaint $complaint): InlineKeyboardMarkup
+    {
+        $markup = InlineKeyboardMarkup::make()->addRow(
+            InlineKeyboardButton::make('🔧 Відкрити заявку', callback_data: 'cmp:view:' . $complaint->getId()),
+            InlineKeyboardButton::make('💬 Відповісти', callback_data: 'cmp:say:' . $complaint->getId()),
+        );
+
+        $url = $this->authorChatUrl($complaint);
+
+        if ($url !== null) {
+            $markup->addRow(InlineKeyboardButton::make('✍️ Написати автору', url: $url));
+        }
+
+        return $markup;
+    }
+
     /**
      * Photos stay when a complaint is finished — the picture of the repaired thing, and
      * of what it looked like before, is the point of keeping the entry at all.
@@ -612,6 +1006,7 @@ class ComplaintService
         return match ($status) {
             Complaint::STATUS_NEW => '🆕 Нова',
             Complaint::STATUS_IN_PROGRESS => '🔧 В роботі',
+            Complaint::STATUS_ON_HOLD => '⏸ Відкладено',
             Complaint::STATUS_DONE => '✅ Виконано',
             default => $status,
         };
