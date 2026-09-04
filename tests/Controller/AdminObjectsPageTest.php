@@ -29,7 +29,12 @@ class AdminObjectsPageTest extends KernelTestCase
 
         return self::getContainer()->get(Environment::class)->render(
             'admin/objects.html.twig',
-            ['rows' => $rows, 'stats' => $stats, 'houses' => $houses],
+            [
+                'rows' => $rows,
+                'stats' => $stats,
+                'houses' => $houses,
+                'registry' => self::getContainer()->get(PropertyRegistry::class),
+            ],
         );
     }
 
