@@ -356,11 +356,24 @@ class DebtBoardService
         $apartment = trim((string)$account->getApartmentNumber());
         $house = trim((string)$account->getHouseNumber());
 
-        // Parking spaces and storage rooms carry their own wording in apartment_number
-        // ("Паркінг 138"), so only a bare number gets the "кв." prefix.
+        // What kind of unit it is comes from the особовий рахунок, not from the text.
+        //
+        // Only two of the eight non-flat accounts on prod spell it out in
+        // `apartment_number` ("Паркінг 138"); the other six carry a bare number, and the
+        // old rule — bare number ⇒ "кв." — published a parking space owing 1 330 грн as
+        // «буд. 19, кв. 191». No flat with that number exists in that building *today*,
+        // which is the only reason it has not yet accused anybody: the moment the
+        // accountant adds one, this is the «кв. 76 is two households» case the building
+        // rule exists to prevent, with the ЖК's own board doing the accusing.
+        $prefix = match (true) {
+            $account->isStorage() => 'комірчина ',
+            $account->isParking() => 'паркомісце ',
+            default => 'кв. ',
+        };
+
         $unit = match (true) {
             $apartment === '' => 'без номера',
-            preg_match('/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/u', $apartment) === 1 => 'кв. ' . $this->esc($apartment),
+            preg_match('/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/u', $apartment) === 1 => $prefix . $this->esc($apartment),
             default => $this->esc($apartment),
         };
 

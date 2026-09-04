@@ -185,10 +185,18 @@ class PropertyRegistry
         $unit = trim((string)$account->getApartmentNumber());
         $house = trim((string)$account->getHouseNumber());
 
+        // The unit type comes from the особовий рахунок, not from the text: most non-flat
+        // accounts carry a bare number in `apartment_number`, and calling one of those
+        // "кв. 191" turns a parking space into somebody's flat. Same reasoning as
+        // DebtBoardService::place(), which publishes the label to the whole house.
         if ($unit === '') {
             $unit = 'без номера';
         } elseif (preg_match('/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/u', $unit) === 1) {
-            $unit = 'кв. ' . $unit;
+            $unit = match (true) {
+                $account->isStorage() => 'комірчина ',
+                $account->isParking() => 'паркомісце ',
+                default => 'кв. ',
+            } . $unit;
         }
 
         return $house === '' ? $unit : sprintf('буд. %s, %s', $house, $unit);

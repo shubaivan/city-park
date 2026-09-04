@@ -269,8 +269,17 @@ class ComplaintService
             return 'мешканець';
         }
 
+        // The unit type comes from the особовий рахунок, not from the text — a parking
+        // owner filing "ворота не відчиняються" must not be posted to the residents' chat
+        // as «буд. 19, кв. 191». Same rule as DebtBoardService::place().
+        $prefix = match (true) {
+            $account?->isStorage() === true => 'комірчина ',
+            $account?->isParking() === true => 'паркомісце ',
+            default => 'кв. ',
+        };
+
         $unit = preg_match('/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/u', $apartment) === 1
-            ? 'кв. ' . $apartment
+            ? $prefix . $apartment
             : $apartment;
 
         return $house === '' ? $unit : sprintf('буд. %s, %s', $house, $unit);
