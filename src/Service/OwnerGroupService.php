@@ -109,6 +109,19 @@ class OwnerGroupService
         if (count($remaining) === 1) {
             $remaining[0]->setOwnerGroupId(null);
             $this->em->flush();
+        } elseif ($remaining !== [] && $groupId === (int)$account->getId()) {
+            // The group is numbered after its smallest member, so unlinking that member
+            // leaves the rest carrying *this* account's id as their group. Booking limits
+            // match on `COALESCE(owner_group_id, id)`, which is still this id — the account
+            // we just removed would keep counting against the group it left, and the group
+            // against it. Renumber what is left onto its own smallest member.
+            $survivor = min(array_map(static fn (Account $a): int => (int)$a->getId(), $remaining));
+
+            foreach ($remaining as $member) {
+                $member->setOwnerGroupId($survivor);
+            }
+
+            $this->em->flush();
         }
 
         $this->logger->info('owner group unlinked', [

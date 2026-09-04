@@ -19,7 +19,7 @@ use PHPUnit\Framework\TestCase;
  */
 class DebtBoardRulesTest extends TestCase
 {
-    private function account(int $id, string $apartment, string $debt, string $house = '23'): Account
+    private function account(int $id, string $apartment, string $debt, string $house = '23', ?int $group = null): Account
     {
         $account = (new Account())
             ->setApartmentNumber($apartment)
@@ -27,6 +27,7 @@ class DebtBoardRulesTest extends TestCase
             ->setHouseNumber($house)
             ->setStreet('Козацька')
             ->setDebt($debt);
+        $account->setOwnerGroupId($group);
 
         $ref = new \ReflectionProperty(Account::class, 'id');
         $ref->setValue($account, $id);
@@ -49,6 +50,25 @@ class DebtBoardRulesTest extends TestCase
             'total' => array_sum(array_map(static fn(Account $a) => (float)$a->getDebt(), $debtors)),
             'debtors' => count($debtors),
         ]);
+
+        // Ungrouped by default: `owner_group_id` is NULL on all but two rows on prod, and
+        // an account with no group is a household of one.
+        $repo->method('findGroupSiblings')->willReturnCallback(
+            static function (Account $account) use ($debtors): array {
+                if ($account->getOwnerGroupId() === null) {
+                    return [$account];
+                }
+
+                $group = array_values(array_filter(
+                    $debtors,
+                    static fn (Account $a): bool => $a->getOwnerGroupId() === $account->getOwnerGroupId(),
+                ));
+
+                $known = array_map(static fn (Account $a): ?int => $a->getId(), $group);
+
+                return in_array($account->getId(), $known, true) ? $group : [$account, ...$group];
+            },
+        );
 
         return new DebtBoardService($repo);
     }
@@ -155,6 +175,78 @@ class DebtBoardRulesTest extends TestCase
             'боргів не має',
             $this->freshBoard()->menuBlock($this->account(9, '5', '0')),
         );
+    }
+
+    /**
+     * A household is several особові рахунки, and the viewer's line has to cover all of
+     * them. Reading only the object the person happens to be *linked* to answered «боргів
+     * не має» to an owner whose own комірчина was on the list two lines below.
+     */
+    public function testAnOwnerIsToldAboutEveryObjectOfTheirHousehold(): void
+    {
+        $flat = $this->account(4, '85', '2732.00', '23', 40);
+        $storage = $this->account(40, '168', '3000.00', '23', 40)
+            ->setUnitType(Account::UNIT_STORAGE);
+
+        $board = $this->service(
+            [
+                $this->account(1, '134', '12269.00'),
+                $storage,
+                $flat,
+                $this->account(5, '59', '2500.00'),
+            ],
+            new \DateTimeImmutable('-1 day'),
+        );
+
+        $menu = $board->menuBlock($flat);
+
+        $this->assertStringContainsString('кв. 85', $menu);
+        $this->assertStringContainsString('комірчина 168', $menu);
+        $this->assertStringNotContainsString('боргів не має', $menu);
+    }
+
+    /** Both objects of the household are marked in the full list, not just the linked one. */
+    public function testEveryObjectOfTheHouseholdIsMarkedInTheReport(): void
+    {
+        $flat = $this->account(4, '85', '2732.00', '23', 40);
+        $storage = $this->account(40, '168', '3000.00', '23', 40);
+
+        $board = $this->service([$storage, $flat], new \DateTimeImmutable('-1 day'));
+
+        $this->assertSame(2, substr_count($board->report($flat), '(це ви)'));
+    }
+
+    /**
+     * The group is matched on an explicit `owner_group_id`, never on a bare id: an
+     * ungrouped account whose id happens to equal somebody else's group number must not
+     * be marked as theirs.
+     */
+    public function testAnUngroupedAccountIsNeverMistakenForAnotherHousehold(): void
+    {
+        $stranger = $this->account(40, '168', '3000.00', '23');
+        $viewer = $this->account(4, '85', '2732.00', '23', 40);
+
+        $board = $this->service([$stranger, $viewer], new \DateTimeImmutable('-1 day'));
+
+        $this->assertSame(1, substr_count($board->report($viewer), '(це ви)'));
+    }
+
+    /**
+     * The «Моя квартира» jump has to work for the object that actually owes. An owner
+     * whose flat is clear and whose паркомісце is not used to get no button at all.
+     */
+    public function testTheJumpFindsTheObjectThatOwesEvenWhenTheLinkedOneIsClear(): void
+    {
+        $flat = $this->account(4, '85', '0', '23', 40);
+        $parking = $this->account(40, '138', '1500.00', '23', 40)
+            ->setUnitType(Account::UNIT_PARKING);
+
+        $board = $this->service(
+            [...array_map(fn (int $i): Account => $this->account(100 + $i, (string)(200 + $i), '9000.00'), range(1, 20)), $parking, $flat],
+            new \DateTimeImmutable('-1 day'),
+        );
+
+        $this->assertSame(2, $board->pageOfViewer($flat));
     }
 
     public function testReportListsEveryDebtorLargestFirst(): void
