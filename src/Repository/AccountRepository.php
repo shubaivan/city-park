@@ -37,6 +37,32 @@ class AccountRepository extends ServiceEntityRepository
     }
 
     /**
+     * Every object in the house, with its owners already loaded.
+     *
+     * The register of *objects*, as opposed to /admin/users which is the register of
+     * *people*. A flat, a parking space and a storage room are three separate accounts,
+     * and until this page existed the only way to look at one was to find somebody linked
+     * to it — which meant an object with no linked resident was invisible, and those are
+     * exactly the ones nobody is chasing for the debt.
+     *
+     * Ordered the way a person walks the ЖК: by building, then by unit. `apartment_number`
+     * is a text column carrying both "85" and "Паркінг 138", so the numeric sort is done in
+     * PHP by the caller rather than pretended at in SQL.
+     *
+     * @return Account[]
+     */
+    public function findAllWithOwners(): array
+    {
+        return $this->createQueryBuilder('a')
+            ->leftJoin('a.users', 'u')
+            ->addSelect('u')
+            ->orderBy('a.house_number', 'ASC')
+            ->addOrderBy('a.account_number', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
      * Accounts owing money, largest debt first.
      *
      * `debt` is a DECIMAL column, so the sort is numeric and 90 does not land above

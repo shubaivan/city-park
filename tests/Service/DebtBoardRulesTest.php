@@ -178,26 +178,57 @@ class DebtBoardRulesTest extends TestCase
         return $snapshot;
     }
 
-    public function testChatAnnouncementLeadsWithFiguresAndNamesTen(): void
+    /**
+     * Twenty named, not ten (widened 04.09.2026).
+     *
+     * The chat post is the only *push* half of the board — it reaches all 77 members
+     * whether or not they ever open the bot — and against 149 flats owing money a top ten
+     * is a list of the extremes rather than a picture of the house.
+     */
+    public function testChatAnnouncementLeadsWithFiguresAndNamesTwenty(): void
+    {
+        $debtors = [];
+        for ($i = 1; $i <= 25; $i++) {
+            $debtors[] = $this->account($i, (string)(100 + $i), (string)(1000 - $i * 10));
+        }
+
+        $board = $this->service($debtors, new \DateTimeImmutable('-1 day'));
+        $post = $board->chatAnnouncement(
+            $this->snapshot(11_340, 25, '-1 day'),
+            $this->snapshot(15_540, 28, '-31 days'),
+        );
+
+        $this->assertStringContainsString('Борг мешканців: <b>11 340 грн</b>', $post);
+        $this->assertStringContainsString('Квартир з боргом: <b>25</b>', $post);
+        $this->assertStringContainsString('зменшився на 4 200 грн', $post);
+
+        // Exactly twenty named: the twentieth is in, the twenty-first is not.
+        $this->assertStringContainsString('буд. 23, кв. 120', $post);
+        $this->assertStringNotContainsString('кв. 121', $post);
+        $this->assertSame(DebtBoardService::ANNOUNCE_SIZE, 20);
+
+        // Telegram refuses anything over 4096 characters outright, and this post is now
+        // twice as long as it was designed to be.
+        $this->assertLessThan(4096, mb_strlen($post));
+    }
+
+    /**
+     * The heading counts what is actually printed. «Двадцятка» over twelve names is the
+     * kind of small lie that makes people distrust the figures above it.
+     */
+    public function testTheAnnouncementHeadingCountsTheNamesItPrints(): void
     {
         $debtors = [];
         for ($i = 1; $i <= 12; $i++) {
             $debtors[] = $this->account($i, (string)(100 + $i), (string)(1000 - $i * 10));
         }
 
-        $board = $this->service($debtors, new \DateTimeImmutable('-1 day'));
-        $post = $board->chatAnnouncement(
+        $post = $this->service($debtors, new \DateTimeImmutable('-1 day'))->chatAnnouncement(
             $this->snapshot(11_340, 12, '-1 day'),
-            $this->snapshot(15_540, 15, '-31 days'),
+            null,
         );
 
-        $this->assertStringContainsString('Борг мешканців: <b>11 340 грн</b>', $post);
-        $this->assertStringContainsString('Квартир з боргом: <b>12</b>', $post);
-        $this->assertStringContainsString('зменшився на 4 200 грн', $post);
-
-        // Exactly ten named: the tenth is in, the eleventh is not.
-        $this->assertStringContainsString('🔟 буд. 23, кв. 110', $post);
-        $this->assertStringNotContainsString('кв. 111', $post);
+        $this->assertStringContainsString('12 «лідерів»', $post);
     }
 
     public function testChatAnnouncementReportsAGrowingDebtToo(): void
@@ -260,5 +291,115 @@ class DebtBoardRulesTest extends TestCase
         usort($positions, static fn(array $a, array $b) => $a[1] <=> $b[1]);
 
         return array_map(static fn(array $pair) => $pair[0], $positions);
+    }
+
+    #############
+    # Paging the in-bot report
+    #############
+
+    /**
+     * @return Account[] 40 debtors, largest first
+     */
+    private function manyDebtors(): array
+    {
+        $debtors = [];
+
+        for ($i = 1; $i <= 40; $i++) {
+            $debtors[] = $this->account($i, (string)(100 + $i), (string)(10000 - $i * 100));
+        }
+
+        return $debtors;
+    }
+
+    /**
+     * The report used to fill one message and stop with «показано перших N із M», which on
+     * 149 flats published the top forty and hid everyone below — the wrong forty, since the
+     * extremes are already on the menu's podium and the neighbour a resident is actually
+     * wondering about is somewhere in the middle.
+     */
+    public function testTheReportIsPagedRatherThanTruncated(): void
+    {
+        $debtors = $this->manyDebtors();
+        $board = $this->service($debtors, new \DateTimeImmutable('-1 day'));
+        $viewer = $debtors[0];
+
+        $this->assertSame(3, $board->pageCount(), '40 debtors at 15 a page');
+
+        $first = $board->report($viewer, 1);
+        $this->assertStringContainsString('кв. 101', $first);
+        $this->assertStringContainsString('кв. 115', $first);
+        $this->assertStringNotContainsString('кв. 116', $first);
+        $this->assertStringContainsString('Сторінка 1 з 3', $first);
+
+        $last = $board->report($viewer, 3);
+        $this->assertStringContainsString('кв. 140', $last);
+        $this->assertStringNotContainsString('кв. 130 —', $last);
+
+        // Every page carries the totals, so no page can be forwarded as "the debt".
+        foreach ([1, 2, 3] as $page) {
+            $this->assertStringContainsString('Разом:', $board->report($viewer, $page));
+        }
+    }
+
+    public function testPageNumberIsClampedRatherThanTrusted(): void
+    {
+        $debtors = $this->manyDebtors();
+        $board = $this->service($debtors, new \DateTimeImmutable('-1 day'));
+
+        // A stale callback from an older, longer list must not answer with an empty page.
+        $this->assertStringContainsString('Сторінка 3 з 3', $board->report($debtors[0], 99));
+        $this->assertStringContainsString('Сторінка 1 з 3', $board->report($debtors[0], 0));
+        $this->assertStringContainsString('Сторінка 1 з 3', $board->report($debtors[0], -5));
+    }
+
+    /**
+     * "Ви 63-й" is useless if reaching that line means tapping ➡️ four times.
+     */
+    public function testTheViewerCanBePointedAtTheirOwnPage(): void
+    {
+        $debtors = $this->manyDebtors();
+        $board = $this->service($debtors, new \DateTimeImmutable('-1 day'));
+
+        $this->assertSame(1, $board->pageOfViewer($debtors[0]));
+        $this->assertSame(2, $board->pageOfViewer($debtors[15]));
+        $this->assertSame(3, $board->pageOfViewer($debtors[39]));
+
+        // Somebody who owes nothing has no page, and must not be sent hunting for one.
+        $this->assertNull($board->pageOfViewer($this->account(999, '77', '0')));
+        $this->assertNull($board->pageOfViewer(null));
+    }
+
+    /**
+     * The viewer's own line rides on every page — "am I on this list?" is the first
+     * question anyone opens the report with, and leafing through ten pages to answer it
+     * is how a nudge becomes an annoyance.
+     */
+    public function testEveryPageTellsTheViewerWhereTheyStand(): void
+    {
+        $debtors = $this->manyDebtors();
+        $board = $this->service($debtors, new \DateTimeImmutable('-1 day'));
+
+        foreach ([1, 2, 3] as $page) {
+            $this->assertStringContainsString(
+                'Ваша квартира у списку',
+                $board->report($debtors[20], $page),
+            );
+        }
+
+        $this->assertStringContainsString(
+            'боргів не має',
+            $board->report($this->account(999, '77', '0'), 1),
+        );
+    }
+
+    /** No page may ever be long enough for Telegram to refuse it. */
+    public function testNoPageApproachesTheTelegramMessageLimit(): void
+    {
+        $debtors = $this->manyDebtors();
+        $board = $this->service($debtors, new \DateTimeImmutable('-1 day'));
+
+        foreach (range(1, $board->pageCount()) as $page) {
+            $this->assertLessThan(4096, mb_strlen($board->report($debtors[0], $page)));
+        }
     }
 }

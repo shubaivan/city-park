@@ -723,7 +723,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     product_id_input.val(data.id);
                     form.append(product_id_input);
 
-                    renderGroupSiblings(data.account_id, data.group_siblings || []);
+                    renderGroupSiblings(data.account_id, data.group_siblings || [], data.own_object || null);
 
                     if (Object.keys(data.additional_phones).length) {
                         $.each(data.additional_phones, function( index, additionalPhone ) {
@@ -861,7 +861,45 @@ document.addEventListener("DOMContentLoaded", function () {
             ).show();
         });
 
-        function renderGroupSiblings(accountId, siblings) {
+        // "буд. 19, кв. 85" — the building is never dropped. The ЖК is five buildings on
+        // one street and apartment numbers repeat across them, so a unit on its own names
+        // two places at once.
+        function objectPlace(obj) {
+            let unit = $.trim(obj.apartment_number || '');
+            let house = $.trim(obj.house_number || '');
+
+            if (!unit) {
+                unit = 'без номера';
+            } else if (/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/.test(unit)) {
+                unit = 'кв. ' + unit;
+            }
+
+            return house ? 'буд. ' + house + ', ' + unit : unit;
+        }
+
+        function objectDebt(obj) {
+            return (obj && obj.debt) ? parseFloat(obj.debt) : 0;
+        }
+
+        /**
+         * Everything this owner has, their own object first.
+         *
+         * The own object used to be missing from the list, so the block read «прив'язок
+         * немає» on somebody who plainly owns a flat — the one object they are actually
+         * linked to was the one it left out, which made the whole section look like it was
+         * about something else.
+         */
+        // The own object is remembered between renders: the link endpoint answers with the
+        // siblings only, and re-rendering from that response used to drop the owner's own
+        // flat out of their own list.
+        let lastOwnObject = null;
+
+        function renderGroupSiblings(accountId, siblings, own) {
+            if (typeof own !== 'undefined') {
+                lastOwnObject = own;
+            }
+            own = lastOwnObject;
+
             let list = $('#group_siblings_list');
             list.empty();
             $('#group_link_feedback').hide().text('');
@@ -874,24 +912,53 @@ document.addEventListener("DOMContentLoaded", function () {
             }
             $('#group_link_btn').prop('disabled', false).data('account-id', accountId);
 
-            if (!siblings.length) {
-                list.append('<li class="list-group-item text-muted">Прив\'язок немає — цей аккаунт сам по собі.</li>');
-                return;
+            let total = 0;
+
+            if (own) {
+                total += objectDebt(own);
+                let mine = $('<li class="list-group-item d-flex justify-content-between align-items-center"></li>');
+                mine.append(
+                    '<span><b>' + objectPlace(own) + '</b> <span class="badge badge-primary">основний</span>'
+                    + ' · <small>' + (own.account_number || '') + '</small>'
+                    + (objectDebt(own) > 0 ? ' <span style="color:red;">(' + objectDebt(own).toFixed(2) + ' грн)</span>' : '')
+                    + '</span>'
+                );
+                list.append(mine);
             }
+
             $.each(siblings, function (_, sib) {
-                let debtLabel = (sib.debt && parseFloat(sib.debt) > 0)
-                    ? ' <span style="color:red;">(' + parseFloat(sib.debt).toFixed(2) + ' грн)</span>'
+                total += objectDebt(sib);
+                let debtLabel = objectDebt(sib) > 0
+                    ? ' <span style="color:red;">(' + objectDebt(sib).toFixed(2) + ' грн)</span>'
                     : '';
                 let item = $('<li class="list-group-item d-flex justify-content-between align-items-center"></li>');
                 item.append(
-                    '<span>' + (sib.apartment_number || '?') + ' · ' + (sib.street || '') + ' ' + (sib.house_number || '') +
-                    ' · <small>' + (sib.account_number || '') + '</small>' + debtLabel + '</span>'
+                    '<span><b>' + objectPlace(sib) + '</b>'
+                    + ' · <small>' + (sib.account_number || '') + '</small>' + debtLabel + '</span>'
                 );
                 let btn = $('<button type="button" class="btn btn-sm btn-outline-danger group_unlink_btn">Відв\'язати</button>');
                 btn.data('account-id', sib.id);
                 item.append(btn);
                 list.append(item);
             });
+
+            if (!siblings.length) {
+                list.append(
+                    '<li class="list-group-item text-muted">'
+                    + 'Більше об\'єктів не прив\'язано. Якщо у власника є ще паркомісце, комірчина '
+                    + 'чи друга квартира — впишіть її особовий рахунок нижче.'
+                    + '</li>'
+                );
+                return;
+            }
+
+            list.append(
+                '<li class="list-group-item d-flex justify-content-between align-items-center">'
+                + '<span>Об\'єктів: <b>' + (siblings.length + (own ? 1 : 0)) + '</b></span>'
+                + '<span>Разом боргу: <b' + (total > 0 ? ' style="color:red;"' : '') + '>'
+                + total.toFixed(2) + ' грн</b></span>'
+                + '</li>'
+            );
         }
 
         $(document).off('click.groupLink').on('click.groupLink', '#group_link_btn', function () {
@@ -938,7 +1005,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     $.ajax({
                         type: 'GET',
                         url: window.Routing.generate('admin-user-get') + '/' + $('#user_id').val(),
-                        success: (data) => renderGroupSiblings(data.account_id, data.group_siblings || []),
+                        success: (data) => renderGroupSiblings(data.account_id, data.group_siblings || [], data.own_object || null),
                     });
                 },
             });

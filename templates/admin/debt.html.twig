@@ -69,16 +69,77 @@
                         {% endif %}
                     </ul>
                     {% if result.missing|length > 0 %}
-                        <details open>
-                            <summary>Деталі ({{ result.missing|length }})</summary>
-                            <ul>
-                                {% for acc in result.missing %}
-                                    <li>{{ acc }}</li>
+                        {#
+                            These rows are in the ОСББ's file and have no account in the
+                            bot, so their debt is simply absent from everything the bot
+                            publishes — the board, the chat post, the house total. The sum
+                            is what says how far the published figure is from the books.
+                        #}
+                        <div class="alert alert-warning py-2 px-2 mb-2">
+                            У файлі є <b>{{ result.missing|length }}</b> рахунків, яких немає в базі бота
+                            {% if result.missing_debt is defined and result.missing_debt > 0 %}
+                                — на <b>{{ result.missing_debt|number_format(2, '.', ' ') }} грн</b> боргу.
+                            {% endif %}
+                            <br>
+                            <small>
+                                Цих грошей немає ні в дошці боржників, ні в оголошенні в чаті: бот рахує
+                                лише за своїми рахунками. Щоб вони потрапили у звіт — їх треба завести
+                                в базу (реєстр площ, <a href="{{ path('app_admin_area') }}">/admin/area</a>).
+                            </small>
+                        </div>
+                        <details>
+                            <summary>Показати ці рахунки ({{ result.missing|length }})</summary>
+                            <ul class="mb-0">
+                                {% for acc, debt in result.missing %}
+                                    <li>{{ acc }}{% if debt is not empty %} — {{ debt|number_format(2, '.', ' ') }} грн{% endif %}</li>
                                 {% endfor %}
                             </ul>
                         </details>
                     {% endif %}
                 </div>
+            </div>
+        {% endif %}
+
+        {#
+            The archive. Until 04.09.2026 the uploaded spreadsheet was read from PHP's
+            temporary path and dropped with the request: `account.debt` is overwritten in
+            place, DebtSnapshot keeps only the totals, and the audit log remembers a figure
+            only for accounts that crossed a block threshold that day. So the evidence
+            behind numbers the bot publishes to the whole house lived in one person's
+            Telegram history.
+        #}
+        {% if archive is defined and archive|length > 0 %}
+            <div class="mt-4">
+                <h5>📁 Архів завантажень</h5>
+                <p class="text-muted mb-2">
+                    <small>Кожен файл зберігається як є. Це єдина копія того, на підставі чого
+                        бот рахував борги того дня.</small>
+                </p>
+                <table class="table table-sm table-striped" style="max-width:640px">
+                    <thead>
+                    <tr>
+                        <th>Коли</th>
+                        <th>Хто</th>
+                        <th>Розмір</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in archive %}
+                        <tr>
+                            <td>{{ item.uploaded_at|date('d.m.Y H:i') }}</td>
+                            <td>{{ item.actor }}</td>
+                            <td>{{ (item.size / 1024)|round }} КБ</td>
+                            <td>
+                                <a class="btn btn-sm btn-outline-secondary"
+                                   href="{{ path('app_admin_import_archive_download', {kind: 'debt', name: item.name}) }}">
+                                    ⬇️ Завантажити
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
             </div>
         {% endif %}
     </div>

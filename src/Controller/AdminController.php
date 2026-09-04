@@ -24,6 +24,9 @@ use App\Service\AccountStatusAuditor;
 use App\Service\BlockReasonResolver;
 use App\Service\BlockVoteService;
 use App\Service\DebtAnnouncer;
+use App\Service\ImportArchive;
+use App\Service\OwnerGroupService;
+use App\Service\PropertyRegistry;
 use App\Service\ComplaintService;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
@@ -638,6 +641,93 @@ class AdminController extends AbstractController
     #############
     # Telegram Users
     #############
+    #############
+    # Об'єкти нерухомості — the register of properties, next to the register of people
+    #############
+
+    /**
+     * Every property in the house, with its owners and its owner-group.
+     *
+     * `/admin/users` answers "who is this person and what do they owe"; this answers "what
+     * is this object and who stands behind it". They are different questions and the panel
+     * had only the first, which meant an object nobody had linked themselves to could not
+     * be looked at at all — and those are exactly the ones nobody is chasing for the debt.
+     *
+     * Rendered server-side rather than as another DataTable: 172 rows is small enough that
+     * paging is machinery for nothing, and a plain page with a filter box works on the
+     * phone this is read on without a JS build step behind every change.
+     */
+    #[Route('/admin/objects', name: 'app_admin_objects', methods: [Request::METHOD_GET])]
+    public function objects(PropertyRegistry $registry): Response
+    {
+        $rows = $registry->overview();
+
+        return $this->render('admin/objects.html.twig', [
+            'rows' => $rows,
+            'stats' => $registry->stats($rows),
+        ]);
+    }
+
+    /**
+     * "Це той самий власник" — merge two objects into one owner group.
+     *
+     * A plain form post rather than the JSON endpoint the users page uses, because this
+     * page has no JavaScript of its own. Both go through OwnerGroupService.
+     */
+    #[Route('/admin/objects/group/link', name: 'app_admin_objects_group_link', methods: [Request::METHOD_POST])]
+    public function objectsGroupLink(
+        Request $request,
+        AccountRepository $accountRepository,
+        OwnerGroupService $ownerGroups,
+    ): Response {
+        $source = $accountRepository->find((int)$request->request->get('account_id'));
+        $partnerNumber = trim((string)$request->request->get('partner_account_number'));
+        $partner = $partnerNumber === ''
+            ? null
+            : $accountRepository->findOneBy(['account_number' => $partnerNumber]);
+
+        if (!$source instanceof Account) {
+            $this->addFlash('error', 'Об’єкт не знайдено.');
+        } elseif (!$partner instanceof Account) {
+            $this->addFlash('error', sprintf('Особового рахунку «%s» немає в базі бота.', $partnerNumber));
+        } else {
+            $error = $ownerGroups->link($source, $partner);
+
+            $error === null
+                ? $this->addFlash('notice', sprintf(
+                    'Об’єднано: %s і %s — тепер це один власник.',
+                    $source->getAccountNumber(),
+                    $partner->getAccountNumber(),
+                ))
+                : $this->addFlash('error', $error);
+        }
+
+        return $this->redirectToRoute('app_admin_objects');
+    }
+
+    #[Route('/admin/objects/group/unlink', name: 'app_admin_objects_group_unlink', methods: [Request::METHOD_POST])]
+    public function objectsGroupUnlink(
+        Request $request,
+        AccountRepository $accountRepository,
+        OwnerGroupService $ownerGroups,
+    ): Response {
+        $account = $accountRepository->find((int)$request->request->get('account_id'));
+
+        if (!$account instanceof Account) {
+            $this->addFlash('error', 'Об’єкт не знайдено.');
+
+            return $this->redirectToRoute('app_admin_objects');
+        }
+
+        $error = $ownerGroups->unlink($account);
+
+        $error === null
+            ? $this->addFlash('notice', sprintf('%s відв’язано від групи.', $account->getAccountNumber()))
+            : $this->addFlash('error', $error);
+
+        return $this->redirectToRoute('app_admin_objects');
+    }
+
     #[Route('/admin/users', name: 'app_admin_users')]
     public function users(EntityManagerInterface $em): Response
     {
@@ -735,6 +825,7 @@ class AdminController extends AbstractController
         }
 
         $telegramUser['group_siblings'] = [];
+        $telegramUser['own_object'] = null;
         $telegramUser['debt_threshold'] = null;
         $telegramUser['tariff_price_per_meter'] = (float)$tariffRepository->getOrCreate($em)->getPricePerMeter();
         $telegramUser['fallback_threshold'] = $debtPolicy->getThreshold();
@@ -761,6 +852,19 @@ class AdminController extends AbstractController
                         'at' => $entry->getCreatedAt()->format('Y-m-d H:i'),
                     ];
                 }
+                // The person's own object, in the same shape as the siblings, so the card
+                // can show "everything this owner has" as one list. Without it the block
+                // read as "прив'язок немає" on somebody who plainly owns a flat — the flat
+                // they are linked to was the one thing the list left out.
+                $telegramUser['own_object'] = [
+                    'id' => $account->getId(),
+                    'account_number' => $account->getAccountNumber(),
+                    'apartment_number' => $account->getApartmentNumber(),
+                    'street' => $account->getStreet(),
+                    'house_number' => $account->getHouseNumber(),
+                    'debt' => $account->getDebt(),
+                ];
+
                 foreach ($accountRepository->findGroupSiblings($account) as $sibling) {
                     if ($sibling->getId() === $account->getId()) {
                         continue;
@@ -784,7 +888,7 @@ class AdminController extends AbstractController
     public function linkAccountGroup(
         Request $request,
         AccountRepository $accountRepository,
-        EntityManagerInterface $em,
+        OwnerGroupService $ownerGroups,
     ): JsonResponse
     {
         $sourceId = (int)$request->request->get('source_account_id');
@@ -804,42 +908,17 @@ class AdminController extends AbstractController
             return $this->json([sprintf('Partner account with особовий рахунок "%s" not found', $partnerAccountNumber)], Response::HTTP_BAD_REQUEST);
         }
 
-        if ($partner->getId() === $source->getId()) {
-            return $this->json(['Cannot link account to itself'], Response::HTTP_BAD_REQUEST);
+        // The merge rules live in OwnerGroupService: the objects register does the same
+        // thing from a plain form, and two copies of "which group id survives" is how two
+        // screens end up disagreeing about who owns what.
+        $error = $ownerGroups->link($source, $partner);
+
+        if ($error !== null) {
+            return $this->json([$error], Response::HTTP_BAD_REQUEST);
         }
-
-        $sourceGid = $source->getOwnerGroupId();
-        $partnerGid = $partner->getOwnerGroupId();
-
-        if ($sourceGid !== null && $partnerGid !== null && $sourceGid === $partnerGid) {
-            return $this->json(['Accounts are already in the same group'], Response::HTTP_BAD_REQUEST);
-        }
-
-        // Pick the surviving group id: prefer existing group(s) over a fresh id,
-        // and the smaller of two existing groups (deterministic).
-        if ($sourceGid !== null && $partnerGid !== null) {
-            $survivor = min($sourceGid, $partnerGid);
-            $disappearing = max($sourceGid, $partnerGid);
-            foreach ($accountRepository->findBy(['owner_group_id' => $disappearing]) as $acct) {
-                $acct->setOwnerGroupId($survivor);
-            }
-        } elseif ($sourceGid !== null) {
-            $partner->setOwnerGroupId($sourceGid);
-        } elseif ($partnerGid !== null) {
-            $source->setOwnerGroupId($partnerGid);
-        } else {
-            $survivor = min($source->getId(), $partner->getId());
-            $source->setOwnerGroupId($survivor);
-            $partner->setOwnerGroupId($survivor);
-        }
-
-        $em->flush();
 
         $siblings = [];
-        foreach ($accountRepository->findGroupSiblings($source) as $sibling) {
-            if ($sibling->getId() === $source->getId()) {
-                continue;
-            }
+        foreach ($ownerGroups->siblings($source) as $sibling) {
             $siblings[] = [
                 'id' => $sibling->getId(),
                 'account_number' => $sibling->getAccountNumber(),
@@ -860,7 +939,7 @@ class AdminController extends AbstractController
     public function unlinkAccountGroup(
         Request $request,
         AccountRepository $accountRepository,
-        EntityManagerInterface $em,
+        OwnerGroupService $ownerGroups,
     ): JsonResponse
     {
         $accountId = (int)$request->request->get('account_id');
@@ -873,20 +952,10 @@ class AdminController extends AbstractController
             return $this->json([sprintf('Account %d not found', $accountId)], Response::HTTP_BAD_REQUEST);
         }
 
-        $oldGid = $account->getOwnerGroupId();
-        if ($oldGid === null) {
-            return $this->json(['Account is not in any group'], Response::HTTP_BAD_REQUEST);
-        }
+        $error = $ownerGroups->unlink($account);
 
-        $account->setOwnerGroupId(null);
-        $em->flush();
-
-        // If only one sibling remains in the original group, clear its group too
-        // (a group of one is meaningless — it behaves identically to ungrouped via getEffectiveGroupId).
-        $remaining = $accountRepository->findBy(['owner_group_id' => $oldGid]);
-        if (count($remaining) === 1) {
-            $remaining[0]->setOwnerGroupId(null);
-            $em->flush();
+        if ($error !== null) {
+            return $this->json([$error], Response::HTTP_BAD_REQUEST);
         }
 
         return $this->json([
@@ -1179,15 +1248,37 @@ class AdminController extends AbstractController
     #############
 
     #[Route('/admin/debt', name: 'app_admin_debt')]
-    public function debt(): Response
+    public function debt(ImportArchive $archive): Response
     {
-        return $this->render('admin/debt.html.twig');
+        return $this->render('admin/debt.html.twig', [
+            'archive' => $archive->recent(ImportArchive::KIND_DEBT),
+        ]);
+    }
+
+    /**
+     * Hand back one archived spreadsheet.
+     *
+     * Behind ^/admin like everything else — these files carry every account's arrears, so
+     * they are exactly as private as the panel that lists them. The filename arrives over
+     * HTTP and is validated inside ImportArchive::path(), which also re-checks that the
+     * resolved path is still inside the archive directory.
+     */
+    #[Route('/admin/import-archive/{kind}/{name}', name: 'app_admin_import_archive_download', methods: [Request::METHOD_GET])]
+    public function downloadImportArchive(string $kind, string $name, ImportArchive $archive): Response
+    {
+        $path = $archive->path($kind, $name);
+
+        if ($path === null) {
+            throw $this->createNotFoundException('No such archived import');
+        }
+
+        return $this->file($path, $name);
     }
 
     #[Route('/admin/area', name: 'app_admin_area', methods: [Request::METHOD_GET])]
-    public function area(EntityManagerInterface $em): Response
+    public function area(EntityManagerInterface $em, ImportArchive $archive): Response
     {
-        return $this->renderArea($em);
+        return $this->renderArea($em, archive: $archive);
     }
 
     #[Route('/admin/area/upload', name: 'app_admin_area_upload', methods: [Request::METHOD_POST])]
@@ -1196,13 +1287,19 @@ class AdminController extends AbstractController
         AccountRepository $accountRepository,
         EntityManagerInterface $em,
         LoggerInterface $logger,
+        ImportArchive $archive,
     ): Response {
         /** @var UploadedFile|null $file */
         $file = $request->files->get('area_file');
 
         if (!$file || !$file->isValid()) {
-            return $this->renderArea($em, ['error' => 'Файл не завантажено або пошкоджено.']);
+            return $this->renderArea($em, ['error' => 'Файл не завантажено або пошкоджено.'], $archive);
         }
+
+        // Archived for the same reason as the debt file, and arguably a stronger one: every
+        // per-account block threshold is area × tariff × 1.5, so this registry is the input
+        // to who gets blocked, and it is overwritten in place too.
+        $archive->store($file, ImportArchive::KIND_AREA, $this->getUser()?->getUserIdentifier());
 
         $spreadsheet = IOFactory::load($file->getPathname());
 
@@ -1282,10 +1379,10 @@ class AdminController extends AbstractController
                 $skipped
             ),
             'not_found' => $notFound,
-        ]);
+        ], $archive);
     }
 
-    private function renderArea(EntityManagerInterface $em, array $extra = []): Response
+    private function renderArea(EntityManagerInterface $em, array $extra = [], ?ImportArchive $archive = null): Response
     {
         $stats = $em->createQuery(
             'SELECT COUNT(a.id) AS total,
@@ -1296,6 +1393,7 @@ class AdminController extends AbstractController
         return $this->render('admin/area.html.twig', array_merge([
             'total' => (int)$stats['total'],
             'with_area' => (int)$stats['with_area'],
+            'archive' => $archive?->recent(ImportArchive::KIND_AREA) ?? [],
         ], $extra));
     }
 
@@ -1395,7 +1493,8 @@ class AdminController extends AbstractController
         Nutgram $bot,
         DebtPolicy $debtPolicy,
         PavilionPhotoService $photoService,
-        DebtAnnouncer $announcer
+        DebtAnnouncer $announcer,
+        ImportArchive $archive,
     ): Response
     {
         /** @var UploadedFile|null $file */
@@ -1403,6 +1502,7 @@ class AdminController extends AbstractController
 
         if (!$file || !$file->isValid()) {
             return $this->render('admin/debt.html.twig', [
+                'archive' => $archive->recent(ImportArchive::KIND_DEBT),
                 'result' => [
                     'success' => false,
                     'processed' => 0,
@@ -1413,6 +1513,12 @@ class AdminController extends AbstractController
                 ],
             ]);
         }
+
+        // Keep the spreadsheet before parsing it. Everything downstream overwrites: the
+        // debt column is written in place and DebtSnapshot keeps only the totals, so
+        // without this the only copy of what the house was billed on lives in the
+        // accountant's Telegram history.
+        $archive->store($file, ImportArchive::KIND_DEBT, $this->getUser()?->getUserIdentifier());
 
         $spreadsheet = IOFactory::load($file->getPathname());
         $worksheet = $spreadsheet->getActiveSheet();
@@ -1443,6 +1549,7 @@ class AdminController extends AbstractController
         $updated = 0;
         $notFound = 0;
         $missing = [];
+        $missingDebt = 0.0;
         $blocked = 0;
 
         foreach ($debtData as $accountNumber => $debt) {
@@ -1512,7 +1619,13 @@ class AdminController extends AbstractController
 
                 $updated++;
             } else {
-                $missing[] = $accountNumber;
+                // Kept with its figure, not just counted. The house total the bot publishes
+                // is the sum over accounts we know about, and rows we cannot match are
+                // silently absent from it — so "скільки боргу лишилось за кадром" has to be
+                // answerable on the same screen, or the published number quietly drifts
+                // away from the ОСББ's own books.
+                $missing[$accountNumber] = $debt;
+                $missingDebt += $debt;
                 $notFound++;
             }
         }
@@ -1588,17 +1701,20 @@ class AdminController extends AbstractController
         $logger->info('Debt upload complete', [
             'updated' => $updated,
             'not_found' => $notFound,
+            'missing_debt' => round($missingDebt, 2),
             'blocked' => $blocked,
             'reset' => $reset,
             'announced' => $announced,
         ]);
 
         return $this->render('admin/debt.html.twig', [
+            'archive' => $archive->recent(ImportArchive::KIND_DEBT),
             'result' => [
                 'success' => true,
                 'processed' => $processed,
                 'updated' => $updated,
                 'not_found' => $notFound,
+                'missing_debt' => round($missingDebt, 2),
                 'blocked' => $blocked,
                 'reset' => $reset,
                 'missing' => $missing,

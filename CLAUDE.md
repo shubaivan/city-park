@@ -159,10 +159,75 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
 
 Admin: `/admin/rentals` lists everything with a take-down button (status `blocked`, stamped with the admin login). Debt is shown for context only.
 
+## Two registers: people and objects
+
+`/admin/users` is the register of **people**, `/admin/objects` the register of **objects**,
+and they answer different questions on purpose:
+
+- **A person may own several objects.** A flat, a parking space and a storage room are three
+  `Account` rows with three особові рахунки, because that is how the ОСББ bills them.
+  `TelegramUser.account_id` links a person to exactly one — «у людини може бути 5 об'єктів,
+  а я ж тільки до 1 підв'язую» (Аліна, 03.09.2026). `Account.owner_group_id` is the admin's
+  statement that some of those rows are one household.
+- **An object may have several owners, of different kinds** (`TelegramUser.role`: owner /
+  family / tenant). That side always worked, but was only visible from one person's card at
+  a time.
+
+Before `/admin/objects` existed there was no way to look at a property at all: you found one
+by finding somebody linked to it, so **an object with no linked resident was invisible** —
+and those are exactly the ones whose debt reaches nobody, since every notice the bot sends
+goes to a `TelegramUser`. The page marks them (`❓ Без власника`) and counts them.
+
+**What an owner group actually changes** (this is not cosmetic, and it already worked before
+the page existed — it was simply never used: zero groups on prod as of 04.09.2026):
+
+- booking limits are counted across the group — `ScheduledSetRepository`, five queries
+  through `COALESCE(owner_group_id, a.id)` — so a flat + parking owner cannot book 3 hours
+  twice in one day;
+- a debt block on **any** object blocks booking for the whole group
+  (`DebtPolicy::isOwnerGroupBlocked`), and `getBlockingSiblings()` names the object that
+  owes. **Debts are deliberately not summed**: each object has its own threshold
+  (area × tariff × 1.5), and adding two debts to compare against one threshold compares a
+  total against half a rule.
+
+`OwnerGroupService` is the only writer of `owner_group_id`; the users page reaches it over
+JSON and the objects page over a plain form, and the merge rules (an existing group beats a
+fresh id, the smaller id survives a merge, a group of one dissolves on unlink) live there
+once — `OwnerGroupRulesTest` pins each. `/admin/objects` is rendered server-side with a
+client-side filter box rather than as a third DataTable: 172 rows makes paging machinery for
+nothing, and it keeps the page free of the JS build step.
+
+## Backups
+
+`db:backup` dumps the database and **delivers it off the server** — a copy that lives on the
+machine it protects covers a bad migration and nothing else. The whole house is in this
+database and nowhere else: 449 people, who lives in which flat, every phone the ОСББ has,
+the arrears, the bookings, the complaints. None of it is reconstructible — the debt file is
+the accountant's and only covers debts, and the resident↔flat mapping exists because Аліна
+built it one person at a time over months.
+
+Two independent channels, because a backup channel is exactly the thing that turns out to be
+broken on the day it is needed: `BACKUP_TELEGRAM_CHAT_ID` (the bot sends the dump as a
+document — no new credentials, readable from a phone) and `BACKUP_EMAIL` (an attachment over
+`MAILER_DSN`, which survives losing the Telegram account too). Either failing does not stop
+the other; with neither configured the command **warns loudly** rather than exiting green,
+since a silently local-only backup is the state somebody thinks they are protected in.
+`--keep` (14) prunes the on-disk copies, the DB password goes through the environment and
+never onto a command line `ps` can read, and `BACKUP_PASSPHRASE` optionally encrypts
+(AES-256) before delivery. Restore is plain
+`gunzip -c <file> | psql -d <db>`.
+
 ## Debtors' board («дошка пошани»)
 
 The house's total debt plus the three largest debtors, rendered above the main menu on
-every `/start` / «🏠 На головну», with `💸 Звіт боржників` opening the full list. Asked
+every `/start` / «🏠 На головну», with `💸 Звіт боржників` opening the full list — **paged**,
+`DebtBoardService::PAGE_SIZE` (15) per page with ⬅️/➡️ and a «📌 Моя квартира» jump
+(`debt-board:page:<n>`). It used to fill one message up to a character budget and stop with
+«показано перших N із M», which published the top ~40 of 149 and hid the rest: the wrong 40,
+since the extremes are already on the menu podium and the neighbour a resident actually
+wonders about is in the middle. The page number is clamped, not trusted — a callback from an
+older, longer list must not answer with an empty page — and the viewer's own line rides on
+every page, because "am I on this list?" is the first question anyone opens it with. Asked
 for by the head of the ОСББ as social pressure towards paying, in the joke register of a
 podium (🥇🥈🥉4️⃣5️⃣👑, `TOP_SIZE` = 5) — that framing is deliberate, not decoration to be tidied away.
 
@@ -186,10 +251,34 @@ All the judgement is in `DebtBoardService`; `StartCommand::debtBlock()` and
   shipped, "кв. 76" was one household owing 5 402 грн and another owing 651. Apartment
   alone accuses both of the larger debt. Regression test in `tests/Service/DebtBoardRulesTest`.
 
+**The uploaded spreadsheets are kept.** `ImportArchive` copies every file that arrives at
+`/admin/debt/upload` and `/admin/area/upload` into `var/import-archive/{debt,area}/`, named
+`YYYY-MM-DD_HH-MM-SS-<admin login>.xlsx`, and both pages list the last
+`ImportArchive::LIST_LIMIT` (24) with a download link (`/admin/import-archive/{kind}/{name}`,
+behind `^/admin` like everything else). Until 04.09.2026 the file was read from PHP's temp
+upload path and dropped with the request: `debt` is overwritten in place, `DebtSnapshot`
+keeps only the totals, and `account_status_log` remembers a figure only for accounts that
+crossed a block threshold that day — so the evidence behind numbers the bot *publishes to
+the whole house* lived in one person's Telegram history. Deliberately dumb (files on disk,
+no table, no retention job: an .xlsx of 172 rows is a few KB and one arrives a month), and
+deliberately non-fatal — a failed archive is logged and the import carries on, because
+losing an import that moved 143 accounts to save a copy of it would be the wrong trade.
+`path()` validates the HTTP-supplied name against a strict pattern **and** re-checks that
+the resolved path is still inside the archive directory; `ImportArchiveTest` pins that.
+
+**The upload result names the rows we could not match, with their debt.** Аліна's file
+carries accounts the bot has never heard of, and their arrears are simply absent from the
+board, the chat post and the house total — the published figure is "the debt of the accounts
+in the bot", not "the debt of the house". `/admin/debt` now shows the count *and* the sum
+behind it, so the gap is visible on the same screen instead of being inferred later.
+
 **The announcement in the residents' chat** rides on the import, not on a cron: `DebtAnnouncer::afterImport()`
 is the tail of both import paths (`debt:import-file` and `/admin/debt/upload`), so the figures
 are fresh by construction and the post shows movement month to month. It leads with the total,
-the flat count and the trend, then names the top ten (`ANNOUNCE_SIZE`). Guards: once per calendar
+the flat count and the trend, then names the top **twenty** (`ANNOUNCE_SIZE`, widened from ten
+on 04.09.2026 — the chat post is the only *push* half of this feature and against 149 flats
+owing money a top ten is a list of the extremes, not a picture of the house; the heading
+counts what it actually prints, so a short list never claims to be twenty). Guards: once per calendar
 day (a corrected re-upload must not put a second list in front of the house), only when the chat
 is configured, and never fatal — a failed post must not undo an import that already moved 143
 accounts. The post is **pinned** in the group (`can_pin_messages` is granted), silently — the message
@@ -442,6 +531,7 @@ or they silently exercise a bot with no middleware.
 0 * * * * sudo -u www-data php …/city-park/bin/console block-vote:tally --env=prod
 0 4 * * * sudo -u www-data php …/city-park/bin/console rental:expire --env=prod
 15 4 * * * sudo -u www-data php …/city-park/bin/console complaint:cleanup --env=prod
+0 2 * * * sudo -u www-data php …/city-park/bin/console db:backup --env=prod
 ```
 
 **The `block-vote:tally` hourly cron is required** — without it, deadline-passed campaigns never close and 30-day vote-blocks never auto-unblock. Install it on deploy.
