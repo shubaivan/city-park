@@ -721,10 +721,14 @@ class AdminController extends AbstractController
             ->setApartmentNumber($unit)
             ->setStreet($street);
 
-        // New objects start active and owing nothing: a row created by hand must not arrive
-        // already blocked, and the debt lands with the accountant's next file.
+        // Active, because a row created by hand must not arrive already blocked.
+        //
+        // The debt is deliberately NOT set: `setDebt()` stamps `debt_updated_at`, and an
+        // object that has never been in an import would then claim «боргу немає станом на
+        // сьогодні» — a statement about a file nobody ever uploaded. The column defaults to
+        // '0' with no date, which is exactly the "we have not been told" the screens now
+        // render.
         $account->setIsActive(true);
-        $account->setDebt('0');
 
         if (isset(Account::UNIT_TYPES[$type])) {
             $account->setUnitType($type);
