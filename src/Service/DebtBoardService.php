@@ -389,8 +389,20 @@ class DebtBoardService
             : 'невідомо';
     }
 
+    /**
+     * Rounded to the hryvnia — but never to nothing.
+     *
+     * The board is a list of debtors, so a line reading «0 грн» is a contradiction on its
+     * face. Amounts under a hryvnia no longer reach the list at all
+     * (AccountRepository::MIN_PUBLISHED_DEBT); this is the second guard, for a total or a
+     * viewer's own line that rounds down.
+     */
     private function money(float $value): string
     {
+        if ($value > 0 && $value < 1) {
+            return 'менше 1';
+        }
+
         return number_format($value, 0, '.', ' ');
     }
 

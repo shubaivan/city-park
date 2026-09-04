@@ -99,11 +99,25 @@ class AccountRepository extends ServiceEntityRepository
      *
      * @return Account[]
      */
+    /**
+     * Below one hryvnia is not a debt.
+     *
+     * The board publishes apartment numbers to the whole house and rounds to the hryvnia,
+     * so an account owing 0.25 грн — a remainder in the accountant's books, not arrears —
+     * was printed as «буд. 19, кв. 24 — 0 грн» in 149th place. Naming a household for
+     * twenty-five kopecks is exactly the accusation the board's rules exist to avoid, and
+     * "owes 0" reads as a bug on top of it.
+     *
+     * Applied to the totals as well, or the count under the list would not match the list.
+     */
+    public const MIN_PUBLISHED_DEBT = '1';
+
     public function findDebtors(int $limit = 0): array
     {
         $qb = $this->createQueryBuilder('a')
             ->andWhere('a.debt IS NOT NULL')
-            ->andWhere('a.debt > 0')
+            ->andWhere('a.debt >= :min_debt')
+            ->setParameter('min_debt', self::MIN_PUBLISHED_DEBT)
             ->orderBy('a.debt', 'DESC')
             ->addOrderBy('a.apartment_number', 'ASC');
 
@@ -122,7 +136,8 @@ class AccountRepository extends ServiceEntityRepository
         $row = $this->createQueryBuilder('a')
             ->select('COALESCE(SUM(a.debt), 0) AS total', 'COUNT(a.id) AS debtors')
             ->andWhere('a.debt IS NOT NULL')
-            ->andWhere('a.debt > 0')
+            ->andWhere('a.debt >= :min_debt')
+            ->setParameter('min_debt', self::MIN_PUBLISHED_DEBT)
             ->getQuery()
             ->getSingleResult();
 
