@@ -667,6 +667,8 @@ class AdminController extends AbstractController
             'rows' => $rows,
             'stats' => $registry->stats($rows),
             'houses' => $registry->houses($rows),
+            // The template names sibling objects, and the label rules live in one place.
+            'registry' => $registry,
         ]);
     }
 
