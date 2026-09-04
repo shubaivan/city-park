@@ -107,6 +107,8 @@ $bot->onCommand('problem', \App\Telegram\Complaint\Command\ComplaintMenuCommand:
 
 // The debtors' board: the menu block is rendered by StartCommand, this is the full list.
 $bot->onCallbackQueryData(\App\Telegram\Debt\Command\DebtBoardCommand::MENU_CALLBACK, \App\Telegram\Debt\Command\DebtBoardCommand::class);
+// The report is 149 flats long and paged; the dead counter button answers with nothing.
+$bot->onCallbackQueryData('^debt-board:(?:page:\d+|noop)$', \App\Telegram\Debt\Command\DebtBoardCommand::class);
 $bot->onCommand('debts', \App\Telegram\Debt\Command\DebtBoardCommand::class);
 
 // The residents' chat: the gate on the door, and the button that hands out the key.

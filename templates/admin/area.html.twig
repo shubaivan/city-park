@@ -64,4 +64,33 @@
 
         <p class="text-muted mt-3"><small>Можна також редагувати площу окремого акаунта вручну у <a href="{{ path('app_admin_users') }}">/admin/users</a> через кнопку «Редагувати».</small></p>
     </div>
+
+        {# Same archive as /admin/debt: the registry these thresholds are computed from
+           was overwritten in place and the file itself kept nowhere. #}
+        {% if archive is defined and archive|length > 0 %}
+            <div class="mt-4">
+                <h5>📁 Архів завантажень реєстру</h5>
+                <table class="table table-sm table-striped" style="max-width:640px">
+                    <thead>
+                    <tr><th>Коли</th><th>Хто</th><th>Розмір</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                    {% for item in archive %}
+                        <tr>
+                            <td>{{ item.uploaded_at|date('d.m.Y H:i') }}</td>
+                            <td>{{ item.actor }}</td>
+                            <td>{{ (item.size / 1024)|round }} КБ</td>
+                            <td>
+                                <a class="btn btn-sm btn-outline-secondary"
+                                   href="{{ path('app_admin_import_archive_download', {kind: 'area', name: item.name}) }}">
+                                    ⬇️ Завантажити
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+
 {% endblock %}

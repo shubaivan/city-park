@@ -162,7 +162,14 @@ Admin: `/admin/rentals` lists everything with a take-down button (status `blocke
 ## Debtors' board («дошка пошани»)
 
 The house's total debt plus the three largest debtors, rendered above the main menu on
-every `/start` / «🏠 На головну», with `💸 Звіт боржників` opening the full list. Asked
+every `/start` / «🏠 На головну», with `💸 Звіт боржників` opening the full list — **paged**,
+`DebtBoardService::PAGE_SIZE` (15) per page with ⬅️/➡️ and a «📌 Моя квартира» jump
+(`debt-board:page:<n>`). It used to fill one message up to a character budget and stop with
+«показано перших N із M», which published the top ~40 of 149 and hid the rest: the wrong 40,
+since the extremes are already on the menu podium and the neighbour a resident actually
+wonders about is in the middle. The page number is clamped, not trusted — a callback from an
+older, longer list must not answer with an empty page — and the viewer's own line rides on
+every page, because "am I on this list?" is the first question anyone opens it with. Asked
 for by the head of the ОСББ as social pressure towards paying, in the joke register of a
 podium (🥇🥈🥉4️⃣5️⃣👑, `TOP_SIZE` = 5) — that framing is deliberate, not decoration to be tidied away.
 
@@ -186,10 +193,34 @@ All the judgement is in `DebtBoardService`; `StartCommand::debtBlock()` and
   shipped, "кв. 76" was one household owing 5 402 грн and another owing 651. Apartment
   alone accuses both of the larger debt. Regression test in `tests/Service/DebtBoardRulesTest`.
 
+**The uploaded spreadsheets are kept.** `ImportArchive` copies every file that arrives at
+`/admin/debt/upload` and `/admin/area/upload` into `var/import-archive/{debt,area}/`, named
+`YYYY-MM-DD_HH-MM-SS-<admin login>.xlsx`, and both pages list the last
+`ImportArchive::LIST_LIMIT` (24) with a download link (`/admin/import-archive/{kind}/{name}`,
+behind `^/admin` like everything else). Until 04.09.2026 the file was read from PHP's temp
+upload path and dropped with the request: `debt` is overwritten in place, `DebtSnapshot`
+keeps only the totals, and `account_status_log` remembers a figure only for accounts that
+crossed a block threshold that day — so the evidence behind numbers the bot *publishes to
+the whole house* lived in one person's Telegram history. Deliberately dumb (files on disk,
+no table, no retention job: an .xlsx of 172 rows is a few KB and one arrives a month), and
+deliberately non-fatal — a failed archive is logged and the import carries on, because
+losing an import that moved 143 accounts to save a copy of it would be the wrong trade.
+`path()` validates the HTTP-supplied name against a strict pattern **and** re-checks that
+the resolved path is still inside the archive directory; `ImportArchiveTest` pins that.
+
+**The upload result names the rows we could not match, with their debt.** Аліна's file
+carries accounts the bot has never heard of, and their arrears are simply absent from the
+board, the chat post and the house total — the published figure is "the debt of the accounts
+in the bot", not "the debt of the house". `/admin/debt` now shows the count *and* the sum
+behind it, so the gap is visible on the same screen instead of being inferred later.
+
 **The announcement in the residents' chat** rides on the import, not on a cron: `DebtAnnouncer::afterImport()`
 is the tail of both import paths (`debt:import-file` and `/admin/debt/upload`), so the figures
 are fresh by construction and the post shows movement month to month. It leads with the total,
-the flat count and the trend, then names the top ten (`ANNOUNCE_SIZE`). Guards: once per calendar
+the flat count and the trend, then names the top **twenty** (`ANNOUNCE_SIZE`, widened from ten
+on 04.09.2026 — the chat post is the only *push* half of this feature and against 149 flats
+owing money a top ten is a list of the extremes, not a picture of the house; the heading
+counts what it actually prints, so a short list never claims to be twenty). Guards: once per calendar
 day (a corrected re-upload must not put a second list in front of the house), only when the chat
 is configured, and never fatal — a failed post must not undo an import that already moved 143
 accounts. The post is **pinned** in the group (`can_pin_messages` is granted), silently — the message

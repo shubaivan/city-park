@@ -24,6 +24,7 @@ use App\Service\AccountStatusAuditor;
 use App\Service\BlockReasonResolver;
 use App\Service\BlockVoteService;
 use App\Service\DebtAnnouncer;
+use App\Service\ImportArchive;
 use App\Service\ComplaintService;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
@@ -1179,15 +1180,37 @@ class AdminController extends AbstractController
     #############
 
     #[Route('/admin/debt', name: 'app_admin_debt')]
-    public function debt(): Response
+    public function debt(ImportArchive $archive): Response
     {
-        return $this->render('admin/debt.html.twig');
+        return $this->render('admin/debt.html.twig', [
+            'archive' => $archive->recent(ImportArchive::KIND_DEBT),
+        ]);
+    }
+
+    /**
+     * Hand back one archived spreadsheet.
+     *
+     * Behind ^/admin like everything else — these files carry every account's arrears, so
+     * they are exactly as private as the panel that lists them. The filename arrives over
+     * HTTP and is validated inside ImportArchive::path(), which also re-checks that the
+     * resolved path is still inside the archive directory.
+     */
+    #[Route('/admin/import-archive/{kind}/{name}', name: 'app_admin_import_archive_download', methods: [Request::METHOD_GET])]
+    public function downloadImportArchive(string $kind, string $name, ImportArchive $archive): Response
+    {
+        $path = $archive->path($kind, $name);
+
+        if ($path === null) {
+            throw $this->createNotFoundException('No such archived import');
+        }
+
+        return $this->file($path, $name);
     }
 
     #[Route('/admin/area', name: 'app_admin_area', methods: [Request::METHOD_GET])]
-    public function area(EntityManagerInterface $em): Response
+    public function area(EntityManagerInterface $em, ImportArchive $archive): Response
     {
-        return $this->renderArea($em);
+        return $this->renderArea($em, archive: $archive);
     }
 
     #[Route('/admin/area/upload', name: 'app_admin_area_upload', methods: [Request::METHOD_POST])]
@@ -1196,13 +1219,19 @@ class AdminController extends AbstractController
         AccountRepository $accountRepository,
         EntityManagerInterface $em,
         LoggerInterface $logger,
+        ImportArchive $archive,
     ): Response {
         /** @var UploadedFile|null $file */
         $file = $request->files->get('area_file');
 
         if (!$file || !$file->isValid()) {
-            return $this->renderArea($em, ['error' => 'Файл не завантажено або пошкоджено.']);
+            return $this->renderArea($em, ['error' => 'Файл не завантажено або пошкоджено.'], $archive);
         }
+
+        // Archived for the same reason as the debt file, and arguably a stronger one: every
+        // per-account block threshold is area × tariff × 1.5, so this registry is the input
+        // to who gets blocked, and it is overwritten in place too.
+        $archive->store($file, ImportArchive::KIND_AREA, $this->getUser()?->getUserIdentifier());
 
         $spreadsheet = IOFactory::load($file->getPathname());
 
@@ -1282,10 +1311,10 @@ class AdminController extends AbstractController
                 $skipped
             ),
             'not_found' => $notFound,
-        ]);
+        ], $archive);
     }
 
-    private function renderArea(EntityManagerInterface $em, array $extra = []): Response
+    private function renderArea(EntityManagerInterface $em, array $extra = [], ?ImportArchive $archive = null): Response
     {
         $stats = $em->createQuery(
             'SELECT COUNT(a.id) AS total,
@@ -1296,6 +1325,7 @@ class AdminController extends AbstractController
         return $this->render('admin/area.html.twig', array_merge([
             'total' => (int)$stats['total'],
             'with_area' => (int)$stats['with_area'],
+            'archive' => $archive?->recent(ImportArchive::KIND_AREA) ?? [],
         ], $extra));
     }
 
@@ -1395,7 +1425,8 @@ class AdminController extends AbstractController
         Nutgram $bot,
         DebtPolicy $debtPolicy,
         PavilionPhotoService $photoService,
-        DebtAnnouncer $announcer
+        DebtAnnouncer $announcer,
+        ImportArchive $archive,
     ): Response
     {
         /** @var UploadedFile|null $file */
@@ -1403,6 +1434,7 @@ class AdminController extends AbstractController
 
         if (!$file || !$file->isValid()) {
             return $this->render('admin/debt.html.twig', [
+                'archive' => $archive->recent(ImportArchive::KIND_DEBT),
                 'result' => [
                     'success' => false,
                     'processed' => 0,
@@ -1413,6 +1445,12 @@ class AdminController extends AbstractController
                 ],
             ]);
         }
+
+        // Keep the spreadsheet before parsing it. Everything downstream overwrites: the
+        // debt column is written in place and DebtSnapshot keeps only the totals, so
+        // without this the only copy of what the house was billed on lives in the
+        // accountant's Telegram history.
+        $archive->store($file, ImportArchive::KIND_DEBT, $this->getUser()?->getUserIdentifier());
 
         $spreadsheet = IOFactory::load($file->getPathname());
         $worksheet = $spreadsheet->getActiveSheet();
@@ -1443,6 +1481,7 @@ class AdminController extends AbstractController
         $updated = 0;
         $notFound = 0;
         $missing = [];
+        $missingDebt = 0.0;
         $blocked = 0;
 
         foreach ($debtData as $accountNumber => $debt) {
@@ -1512,7 +1551,13 @@ class AdminController extends AbstractController
 
                 $updated++;
             } else {
-                $missing[] = $accountNumber;
+                // Kept with its figure, not just counted. The house total the bot publishes
+                // is the sum over accounts we know about, and rows we cannot match are
+                // silently absent from it — so "скільки боргу лишилось за кадром" has to be
+                // answerable on the same screen, or the published number quietly drifts
+                // away from the ОСББ's own books.
+                $missing[$accountNumber] = $debt;
+                $missingDebt += $debt;
                 $notFound++;
             }
         }
@@ -1588,17 +1633,20 @@ class AdminController extends AbstractController
         $logger->info('Debt upload complete', [
             'updated' => $updated,
             'not_found' => $notFound,
+            'missing_debt' => round($missingDebt, 2),
             'blocked' => $blocked,
             'reset' => $reset,
             'announced' => $announced,
         ]);
 
         return $this->render('admin/debt.html.twig', [
+            'archive' => $archive->recent(ImportArchive::KIND_DEBT),
             'result' => [
                 'success' => true,
                 'processed' => $processed,
                 'updated' => $updated,
                 'not_found' => $notFound,
+                'missing_debt' => round($missingDebt, 2),
                 'blocked' => $blocked,
                 'reset' => $reset,
                 'missing' => $missing,

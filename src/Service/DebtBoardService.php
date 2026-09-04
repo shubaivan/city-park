@@ -35,16 +35,31 @@ class DebtBoardService
      */
     public const TOP_SIZE = 5;
 
-    /** Telegram's hard limit is 4096; leave room for the footer we append last. */
-    private const MAX_REPORT_CHARS = 3500;
-
     private const MEDALS = ['🥇', '🥈', '🥉'];
 
     /** Places 4 and 5 keep the podium's joke register rather than dropping to a bullet. */
     private const PODIUM = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
 
-    /** How many are named in the residents'-chat announcement. */
-    public const ANNOUNCE_SIZE = 10;
+    /**
+     * How many are named in the residents'-chat announcement.
+     *
+     * Ten at first; twenty since 04.09.2026. The chat post is the only *push* half of this
+     * feature — it reaches all 77 members whether or not they ever open the bot — and with
+     * 149 flats owing money a top ten is a list of the extremes, not a picture of the
+     * house. Twenty is still one screen and still well inside Telegram's 4096 characters.
+     */
+    public const ANNOUNCE_SIZE = 20;
+
+    /**
+     * How many lines one page of the in-bot report carries.
+     *
+     * The report used to fill a message up to a character budget and then stop with
+     * "показано перших N із M" — which named the top of the list and silently hid the rest,
+     * so a resident could not check their own neighbours and the ОСББ could not point at
+     * anything below ~40th place. Paging shows all 149 without ever building a message
+     * Telegram would refuse.
+     */
+    public const PAGE_SIZE = 15;
 
     private const RANKS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 
@@ -123,9 +138,15 @@ class DebtBoardService
     }
 
     /**
-     * The full list behind the 💸 button, largest debt first.
+     * The full list behind the 💸 button, largest debt first, one page at a time.
+     *
+     * Paged rather than truncated. The first shape filled a message up to a character
+     * budget and stopped with «показано перших N із M»: it named the top of the
+     * list and hid everyone below, which on 149 debtors meant roughly the first forty.
+     * That is the wrong forty to publish — the extremes are already on the podium in the
+     * menu, and a resident checking whether *their* neighbour pays could never get there.
      */
-    public function report(?Account $viewer): string
+    public function report(?Account $viewer, int $page = 1): string
     {
         if (!$viewer instanceof Account) {
             return "💸 <b>Звіт боржників</b>\n\n"
@@ -148,27 +169,23 @@ class DebtBoardService
                 . sprintf('📅 <i>Дані станом на %s</i>', $this->asOfLabel());
         }
 
+        $pages = $this->pageCount();
+        $page = max(1, min($page, $pages));
+        $offset = ($page - 1) * self::PAGE_SIZE;
+
         $head = "💸 <b>ЗВІТ БОРЖНИКІВ</b> 💸\n"
             . "<i>Від найбільшого до найменшого. Хто сплатив — той зникає зі списку.</i>\n\n";
 
         $body = '';
-        $shown = 0;
 
-        foreach ($debtors as $i => $account) {
-            $line = sprintf(
+        foreach (array_slice($debtors, $offset, self::PAGE_SIZE, true) as $i => $account) {
+            $body .= sprintf(
                 "%s %s — <b>%s грн</b>%s\n",
                 self::MEDALS[$i] ?? sprintf('<b>%d.</b>', $i + 1),
                 $this->place($account),
                 $this->money((float)$account->getDebt()),
                 $this->isViewer($account, $viewer) ? ' 📌 <i>(це ви)</i>' : '',
             );
-
-            if (mb_strlen($body . $line) > self::MAX_REPORT_CHARS) {
-                break;
-            }
-
-            $body .= $line;
-            $shown++;
         }
 
         $foot = "\n" . sprintf(
@@ -177,13 +194,53 @@ class DebtBoardService
             $totals['debtors'],
         );
 
-        if ($shown < count($debtors)) {
-            $foot .= sprintf("<i>Показано перших %d із %d.</i>\n", $shown, count($debtors));
+        if ($pages > 1) {
+            $foot .= sprintf(
+                "<i>Сторінка %d з %d · місця %d–%d.</i>\n",
+                $page,
+                $pages,
+                $offset + 1,
+                min($offset + self::PAGE_SIZE, count($debtors)),
+            );
         }
+
+        // Their own line, on every page. Without it the viewer has to leaf through ten
+        // pages to find out whether they are on the list at all — and "am I on it?" is the
+        // first question anyone opens this with.
+        $foot .= $this->viewerLine($viewer) . "\n";
 
         $foot .= sprintf("📅 <i>Дані станом на %s. Суми округлені до гривні.</i>", $this->asOfLabel());
 
         return $head . $body . $foot;
+    }
+
+    /** How many pages the in-bot report has. At least one, even with nobody on it. */
+    public function pageCount(): int
+    {
+        $debtors = $this->accountRepository->debtTotals()['debtors'] ?? 0;
+
+        return max(1, (int)ceil($debtors / self::PAGE_SIZE));
+    }
+
+    /**
+     * The page the viewer's own flat is on, or null when they owe nothing.
+     *
+     * Feeds the «📌 Моя квартира» button: on 149 debtors, "you are 63rd" is useless if
+     * getting there means tapping ➡️ four times.
+     */
+    public function pageOfViewer(?Account $viewer): ?int
+    {
+        if (!$viewer instanceof Account || (float)$viewer->getDebt() <= 0) {
+            return null;
+        }
+
+        foreach ($this->accountRepository->findDebtors() as $i => $account) {
+            if ($this->isViewer($account, $viewer)) {
+                return (int)floor($i / self::PAGE_SIZE) + 1;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -215,7 +272,10 @@ class DebtBoardService
 
         if ($top !== []) {
             $lines[] = '';
-            $lines[] = sprintf('🏆 <b>Десятка «лідерів»</b> — вітаємо! 👏');
+            // The heading counts what is actually printed: on a small house the list can
+            // be shorter than ANNOUNCE_SIZE, and «Двадцятка» over twelve names is the kind
+            // of small lie that makes people distrust the figures above it.
+            $lines[] = sprintf('🏆 <b>Найбільші борги — %d «лідерів»</b>, вітаємо! 👏', count($top));
             $lines[] = '';
 
             foreach ($top as $i => $account) {
