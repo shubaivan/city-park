@@ -122,4 +122,21 @@ class AdminObjectsPageTest extends KernelTestCase
 
         $this->assertStringContainsString("Об'єкти нерухомості", $html);
     }
+
+    /**
+     * Creating an object was possible only by moving a person onto a new особовий рахунок,
+     * which is the wrong tool for a кладова — it would take its owner off their flat.
+     */
+    public function testThePageOffersAWayToAddAnObject(): void
+    {
+        $html = $this->render([], [
+            'objects' => 0, 'apartments' => 0, 'parking' => 0, 'storage' => 0,
+            'unowned' => 0, 'grouped' => 0, 'debt' => 0.0, 'in_debt' => 0,
+        ]);
+
+        $this->assertStringContainsString('Додати обʼєкт', $html);
+        $this->assertStringContainsString('name="account_number"', $html);
+        $this->assertStringContainsString('name="unit_type"', $html);
+        $this->assertStringContainsString('name="area"', $html);
+    }
 }

@@ -47,6 +47,52 @@
             з боргом: <b>{{ stats.in_debt }}</b> на <b>{{ stats.debt|number_format(0, '.', ' ') }} грн</b>
         </div>
 
+        {#
+            Creating an object used to be possible only by moving a person onto a new
+            особовий рахунок — right for "цей мешканець насправді у кв. 86", wrong for a
+            кладова, which would take its owner off their flat. Objects that exist on paper
+            and have nobody in the bot had no way in at all.
+        #}
+        <details class="mb-3">
+            <summary class="btn btn-sm btn-outline-success">➕ Додати обʼєкт</summary>
+            <form method="post" action="{{ path('app_admin_objects_create') }}" class="mt-2" style="max-width:46rem">
+                <div class="form-row">
+                    <div class="form-group col-6 col-md-3">
+                        <label class="small mb-1">Особовий рахунок</label>
+                        <input type="text" name="account_number" class="form-control form-control-sm" placeholder="235085" required>
+                    </div>
+                    <div class="form-group col-6 col-md-2">
+                        <label class="small mb-1">Будинок</label>
+                        <input type="text" name="house_number" class="form-control form-control-sm" placeholder="19" required>
+                    </div>
+                    <div class="form-group col-6 col-md-3">
+                        <label class="small mb-1">Номер обʼєкта</label>
+                        <input type="text" name="apartment_number" class="form-control form-control-sm" placeholder="85" required>
+                    </div>
+                    <div class="form-group col-6 col-md-2">
+                        <label class="small mb-1">Площа, м²</label>
+                        <input type="text" name="area" class="form-control form-control-sm" placeholder="3.5">
+                    </div>
+                    <div class="form-group col-12 col-md-2">
+                        <label class="small mb-1">Тип</label>
+                        <select name="unit_type" class="form-control form-control-sm">
+                            <option value="apartment">🏠 Квартира</option>
+                            <option value="parking">🚗 Паркомісце</option>
+                            <option value="storage">📦 Комірчина</option>
+                        </select>
+                    </div>
+                </div>
+                <input type="hidden" name="street" value="Козацька">
+                <button class="btn btn-sm btn-success">Додати</button>
+                <div class="small obj-muted mt-1">
+                    Обʼєкт створюється порожнім: активний, без боргу і без власника. Борг прийде
+                    з наступним файлом, а мешканця прив'язують у розділі «Люди».
+                    Площу можна не вказувати — тоді поріг блокування рахується за
+                    загальним значенням, поки не оновиться реєстр площ.
+                </div>
+            </form>
+        </details>
+
         <div class="obj-filters">
             <input type="search" id="objFilter" class="form-control"
                    placeholder="Пошук: особовий рахунок, квартира, прізвище, телефон…"
