@@ -105,6 +105,13 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary js-obj-chip" data-chip="debt">💰 З боргом</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary js-obj-chip" data-chip="blocked">🚫 Заблоковані</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary js-obj-chip" data-chip="unowned">❓ Без власника</button>
+                {# Several people on one object: family, tenants, conditional owners. This is
+                   where a tenant sits next to an owner and where a role is most likely wrong
+                   or missing, so it is worth being able to list them. #}
+                <button type="button" class="btn btn-sm btn-outline-secondary js-obj-chip" data-chip="multi">👥 2+ власники ({{ stats.multi_owner }})</button>
+                {% if stats.many_owner > 0 %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary js-obj-chip" data-chip="many">👥 3+ ({{ stats.many_owner }})</button>
+                {% endif %}
                 <button type="button" class="btn btn-sm btn-outline-secondary js-obj-chip" data-chip="grouped">🔗 У групі</button>
             </div>
             {#
@@ -137,6 +144,8 @@
                      data-unowned="{{ row.owners|length == 0 ? 1 : 0 }}"
                      data-grouped="{{ row.siblings|length > 0 ? 1 : 0 }}"
                      data-house="{{ a.houseNumber }}"
+                     data-multi="{{ row.owners|length >= 2 ? 1 : 0 }}"
+                     data-many="{{ row.owners|length >= 3 ? 1 : 0 }}"
                      {# The type label is in here on purpose: «паркінг» is the word somebody
                         types into the box, and without it the search found nothing while
                         the 🚗 chip right above it worked. #}
@@ -190,7 +199,14 @@
                             <div class="small obj-muted">Власники ({{ row.owners|length }})</div>
                             {% for o in row.owners %}
                                 <div class="obj-owner py-1">
-                                    {{ o.firstName }} {{ o.lastName }}
+                                    {# The round trip: an object names its people, and each
+                                       name opens that person's card. The card is where the
+                                       phone, the role and the block history live, and the
+                                       user may be on any page of a server-side table — the
+                                       link carries the id so there is no row to hunt for. #}
+                                    <a href="{{ path('app_admin_users') }}?user={{ o.id }}" target="_blank" rel="noopener">
+                                        {{ o.firstName }} {{ o.lastName }}{% if not o.firstName and not o.lastName %}(без імені){% endif %}
+                                    </a>
                                     <span class="badge badge-light">{{ o.roleLabel }}</span>
                                     <div class="small">
                                         {% if o.phoneNumber %}
@@ -318,6 +334,15 @@
                 shown.textContent = n;
             }
 
+            // Arriving from a person's card: /admin/objects?object=<особовий рахунок>.
+            // Prefilling the box rather than hiding everything else keeps the filter visible
+            // and clearable — the reader can see why they are looking at one card.
+            var wanted = new URLSearchParams(window.location.search).get('object');
+
+            if (wanted) {
+                input.value = wanted;
+            }
+
             input.addEventListener('input', apply);
 
             function bindChips(selector, onPick) {
@@ -333,6 +358,8 @@
 
             bindChips('.js-obj-chip', function (btn) { chip = btn.dataset.chip; });
             bindChips('.js-obj-house', function (btn) { house = btn.dataset.house; });
+
+            apply();
         })();
     </script>
 {% endblock %}
