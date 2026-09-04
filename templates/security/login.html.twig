@@ -1,42 +1,80 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Log in!{% endblock %}
+{% block title %}Вхід · ОСББ City Park{% endblock %}
 
 {% block body %}
-    <form method="post">
-        {% if error %}
-            <div class="alert alert-danger">{{ error.messageKey|trans(error.messageData, 'security') }}</div>
-        {% endif %}
+    {#
+        A centred card instead of four unlabelled inputs stacked against the left edge.
 
-        {% if app.user %}
-            <div class="mb-3">
-                You are logged in as {{ app.user.userIdentifier }}, <a href="{{ path('app_logout') }}">Logout</a>
+        This page is opened on a phone as often as on a desktop — the accountant checks a
+        resident from wherever she is — so the fields are full-width and 16px (anything
+        smaller makes iOS zoom the page on focus), the button is thumb-sized, and nothing
+        needs horizontal scrolling. The header/navbar of the layout is deliberately hidden:
+        every link in it leads somewhere that would only bounce back here.
+    #}
+    <style>
+        .login-shell {
+            min-height: calc(100vh - 60px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        .login-card { width: 100%; max-width: 24rem; }
+        .login-card .card-body { padding: 1.75rem; }
+        .login-brand { font-size: 2.25rem; line-height: 1; }
+        .login-card .form-control { font-size: 16px; height: auto; padding: .6rem .75rem; }
+        .login-card .btn { padding: .6rem; font-size: 1rem; }
+        header, .navbar { display: none; }
+    </style>
+
+    <div class="login-shell">
+        <div class="card shadow-sm login-card">
+            <div class="card-body">
+
+                <div class="text-center mb-4">
+                    <div class="login-brand">🏢</div>
+                    <h1 class="h5 mt-2 mb-1">ОСББ «City Park»</h1>
+                    <div class="text-muted small">Панель адміністратора</div>
+                </div>
+
+                {% if error %}
+                    <div class="alert alert-danger py-2 px-2 small">
+                        {{ error.messageKey|trans(error.messageData, 'security') }}
+                    </div>
+                {% endif %}
+
+                {% if app.user %}
+                    <div class="alert alert-info py-2 px-2 small">
+                        Ви вже увійшли як <b>{{ app.user.userIdentifier }}</b>.
+                        <a href="{{ path('app_admin') }}">До панелі</a> ·
+                        <a href="{{ path('app_logout') }}">вийти</a>
+                    </div>
+                {% endif %}
+
+                <form method="post">
+                    <div class="form-group">
+                        <label for="username" class="small mb-1">Логін</label>
+                        <input type="text" value="{{ last_username }}" name="_username" id="username"
+                               class="form-control" autocomplete="username" required autofocus
+                               autocapitalize="none" spellcheck="false">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password" class="small mb-1">Пароль</label>
+                        <input type="password" name="_password" id="password"
+                               class="form-control" autocomplete="current-password" required>
+                    </div>
+
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
+
+                    <button class="btn btn-primary btn-block" type="submit">Увійти</button>
+                </form>
+
+                <div class="text-center text-muted small mt-3">
+                    Забули пароль — напишіть Івану.
+                </div>
             </div>
-        {% endif %}
-
-        <h1 class="h3 mb-3 font-weight-normal">Please sign in</h1>
-        <label for="username">User Name</label>
-        <input type="text" value="{{ last_username }}" name="_username" id="username" class="form-control" autocomplete="username" required autofocus>
-        <label for="password">Password</label>
-        <input type="password" name="_password" id="password" class="form-control" autocomplete="current-password" required>
-
-        <input type="hidden" name="_csrf_token"
-               value="{{ csrf_token('authenticate') }}"
-        >
-
-        {#
-            Uncomment this section and add a remember_me option below your firewall to activate remember me functionality.
-            See https://symfony.com/doc/current/security/remember_me.html
-
-            <div class="checkbox mb-3">
-                <label>
-                    <input type="checkbox" name="_remember_me"> Remember me
-                </label>
-            </div>
-        #}
-
-        <button class="btn btn-lg btn-primary" type="submit">
-            Sign in
-        </button>
-    </form>
+        </div>
+    </div>
 {% endblock %}

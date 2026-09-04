@@ -83,6 +83,7 @@ class AdminObjectsPageTest extends KernelTestCase
     public function testItRendersAnObjectWithItsOwnersAndGroup(): void
     {
         $owner = new TelegramUser();
+        (new \ReflectionProperty(TelegramUser::class, 'id'))->setValue($owner, 42);
         $owner->setFirstName('Іван');
         $owner->setLastName('Шуба');
         $owner->setUsername(null);
@@ -96,6 +97,8 @@ class AdminObjectsPageTest extends KernelTestCase
         $this->assertStringContainsString('буд. 19, кв. 85', $html);
         $this->assertStringContainsString('о/р 4100085', $html);
         $this->assertStringContainsString('Іван Шуба', $html);
+        // The name is the way into that person's card.
+        $this->assertStringContainsString('/admin/users/42', $html);
         $this->assertStringContainsString('Власник', $html);
         $this->assertStringContainsString('href="tel:+380671234567"', $html);
         // The other object of the same owner, and the combined figure.

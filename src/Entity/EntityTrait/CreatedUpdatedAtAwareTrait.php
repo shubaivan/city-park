@@ -16,9 +16,18 @@ trait CreatedUpdatedAtAwareTrait
     #[ORM\Column(name: 'updated_at', type: Types::DATETIME_MUTABLE, nullable: true)]
     private \DateTime $updated_at;
 
-    public function getCreatedAt(): \DateTime
+    /**
+     * Null until the row is persisted.
+     *
+     * The column is NOT NULL and prePersist fills it, so in the database this is always a
+     * date — but a `new Entity()` that has not been flushed has the typed property
+     * uninitialised, and reading it there throws rather than returning null. Anything that
+     * renders an entity before it is saved (a preview, a test, an admin form) hit that as
+     * a fatal instead of an empty cell.
+     */
+    public function getCreatedAt(): ?\DateTime
     {
-        return $this->created_at;
+        return $this->created_at ?? null;
     }
 
     public function setCreatedAt(\DateTime $created_at): self
@@ -28,9 +37,10 @@ trait CreatedUpdatedAtAwareTrait
         return $this;
     }
 
-    public function getUpdatedAt(): \DateTime
+    /** Null until the row is persisted — same reasoning as getCreatedAt(). */
+    public function getUpdatedAt(): ?\DateTime
     {
-        return $this->updated_at;
+        return $this->updated_at ?? null;
     }
 
     public function setUpdatedAt(\DateTime $updated_at): self
