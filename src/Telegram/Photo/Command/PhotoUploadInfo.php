@@ -73,7 +73,7 @@ class PhotoUploadInfo
         if ($hasExpired) {
             $lines[] = sprintf(
                 "❌ — прострочено (минув час на завантаження — %s після блокування).\nДля розблокування зверніться:\n"
-                . OsbbContacts::BOTH_LINES . "\nабо до розробника @shubaivan.",
+                . OsbbContacts::ALL_LINES,
                 PavilionPhotoService::uploadGraceLabel(),
             );
         }

@@ -243,6 +243,11 @@ used to be copy-pasted into twelve files as a bare number, which is a number to 
 and dial: a resident reading a block notice on a phone at 22:40 does neither. It also meant
 that the day one of them changes their number, eleven messages still point at the old one.
 
+The developer's line (`DEV_LINE`) is a plain `@username`, because he has one; both officers
+fall back to `t.me/+<phone>` because neither does — the head of the ОСББ's registry field is
+empty and the accountant's Telegram is not on the number she publishes. The shapes differ
+because the facts do, not as a style choice.
+
 **They are constants, not method calls**, because the FAQ keeps its whole text in a `const`
 array and PHP constant expressions cannot call anything; concatenating constants is allowed.
 `t.me/+<digits>` rather than a @username, because the head of the ОСББ has none (the

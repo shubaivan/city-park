@@ -1,0 +1,244 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ registry.place(account) }} · Об'єкт · ОСББ City Park{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    {#
+        One property, on a page of its own — the same split as people.
+
+        The register is a list of 173 cards with filters and counters, and it was carrying
+        the edit forms for every one of them too. Arriving from a link meant landing on the
+        whole list with a single card in it, filters and all.
+    #}
+    <style>
+        .obj-wrap { max-width: 76rem; }
+        .obj-card { margin-bottom: 1rem; }
+        .obj-card .card-header { font-weight: 600; background: #f8f9fa; }
+        .obj-kv { display: grid; grid-template-columns: 12rem 1fr; gap: .35rem 1rem; }
+        @media (max-width: 576px) { .obj-kv { grid-template-columns: 1fr; gap: 0 } .obj-kv dt { margin-top: .5rem } }
+        .obj-kv dt { font-weight: 500; color: #6c757d; margin: 0 }
+        .obj-kv dd { margin: 0 }
+        .obj-history li + li { border-top: 1px dashed #e9ecef }
+    </style>
+
+    <div class="container-fluid mt-3 px-2 px-sm-3 obj-wrap">
+
+        <div class="mb-2">
+            <a href="{{ path('app_admin_objects') }}" class="btn btn-sm btn-outline-secondary">← Усі об'єкти</a>
+            <a href="{{ path('app_admin_users') }}" class="btn btn-sm btn-outline-secondary">👤 Люди</a>
+        </div>
+
+        <h3 class="mb-1">{{ registry.place(account) }}</h3>
+
+        <div class="mb-3">
+            <span class="badge badge-light">{{ account.unitTypeLabel }}</span>
+            {% if block %}
+                <span class="badge badge-danger">🚫 {{ block.label }}</span>
+            {% elseif account.isActive %}
+                <span class="badge badge-success">✅ Активний</span>
+            {% else %}
+                <span class="badge badge-secondary">⏸ Неактивний</span>
+            {% endif %}
+            {% if account.voteBlockCount > 0 %}
+                <span class="badge badge-warning">🗳 блокувань спільнотою: {{ account.voteBlockCount }}</span>
+            {% endif %}
+        </div>
+
+        <div class="row">
+            <div class="col-12 col-lg-6">
+
+                <div class="card obj-card">
+                    <div class="card-header">🏠 Об'єкт</div>
+                    <div class="card-body p-3">
+                        <dl class="obj-kv mb-0">
+                            <dt>Особовий рахунок</dt>
+                            <dd><code>{{ account.accountNumber }}</code></dd>
+
+                            <dt>Адреса</dt>
+                            <dd>{{ account.street }}, {{ registry.place(account) }}</dd>
+
+                            <dt>Площа</dt>
+                            <dd>{{ account.area ? account.area ~ ' м²' : '—' }}</dd>
+
+                            <dt>Борг</dt>
+                            <dd>
+                                {% if account.debt and account.debt > 0 %}
+                                    <b class="{{ account.debt > threshold ? 'text-danger' }}">
+                                        {{ account.debt|number_format(2, '.', ' ') }} грн
+                                    </b>
+                                    <span class="text-muted small">станом на {{ account.debtUpdatedAt ? account.debtUpdatedAt|date('d.m.Y') : '—' }}</span>
+                                {% elseif account.debtUpdatedAt is null %}
+                                    {# Never in an import: 0 here means "nobody has told us". #}
+                                    <span class="text-muted">ще не завантажувався</span>
+                                {% else %}
+                                    <span class="text-success">боргу немає</span>
+                                    <span class="text-muted small">станом на {{ account.debtUpdatedAt|date('d.m.Y') }}</span>
+                                {% endif %}
+                            </dd>
+
+                            <dt>Поріг блокування</dt>
+                            <dd>
+                                {{ threshold|number_format(2, '.', ' ') }} грн
+                                {% if account.area %}
+                                    <span class="text-muted small">({{ account.area }} м² × {{ tariff }} × 1.5)</span>
+                                {% else %}
+                                    <span class="text-muted small">(запасний поріг: площа не вказана)</span>
+                                {% endif %}
+                            </dd>
+                        </dl>
+
+                        {% if block %}
+                            <div class="alert alert-danger py-2 px-2 mt-3 mb-0">
+                                <b>{{ block.label }}</b>
+                                {% if block.details %}<div class="small">{{ block.details }}</div>{% endif %}
+                                <div class="small mt-1">
+                                    Змінити статус можна в картці мешканця цього об'єкта.
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card obj-card">
+                    <div class="card-header">🏷 Тип об'єкта</div>
+                    <div class="card-body p-3">
+                        <form method="post" action="{{ path('app_admin_objects_type') }}" class="form-inline">
+                            <input type="hidden" name="account_id" value="{{ account.id }}">
+                            <select name="unit_type" class="form-control form-control-sm mr-2 mb-1">
+                                <option value="apartment" {{ account.unitType == 'apartment' ? 'selected' }}>🏠 Квартира</option>
+                                <option value="parking" {{ account.unitType == 'parking' ? 'selected' }}>🚗 Паркомісце</option>
+                                <option value="storage" {{ account.unitType == 'storage' ? 'selected' }}>📦 Комірчина</option>
+                            </select>
+                            <button class="btn btn-sm btn-outline-primary mb-1">Зберегти тип</button>
+                        </form>
+                        <div class="small text-muted mt-2">
+                            Тип вирішує, як об'єкт підписаний на дошці боржників і в чаті
+                            («кв. 191» чи «паркомісце 191») і чи можна з нього бронювати
+                            альтанку — з комірчини не можна.
+                            {% if account.storedUnitType is null %}
+                                Зараз тип визначено з особового рахунку автоматично.
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="col-12 col-lg-6">
+
+                <div class="card obj-card">
+                    <div class="card-header">👥 Власники ({{ owners|length }})</div>
+                    <div class="card-body p-3">
+                        {% if owners|length %}
+                            <ul class="list-unstyled mb-0">
+                                {% for o in owners %}
+                                    <li class="py-1">
+                                        <a href="{{ path('app_admin_resident', {id: o.id}) }}">{{ o.displayName }}</a>
+                                        <span class="badge badge-light">{{ o.roleLabel }}</span>
+                                        <div class="small">
+                                            {% if o.phoneNumber %}
+                                                {% set digits = o.phoneNumber|replace({'+': '', ' ': '', '-': '', '(': '', ')': ''}) %}
+                                                <a href="tel:+{{ digits }}">+{{ digits }}</a>
+                                            {% endif %}
+                                            {% if o.username %}
+                                                · <a href="https://t.me/{{ o.username }}" target="_blank" rel="noopener">@{{ o.username }}</a>
+                                            {% endif %}
+                                        </div>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <div class="text-warning small">
+                                Жоден мешканець не прив'язаний до цього об'єкта. Бот пише тільки
+                                прив'язаним — тож борг і блокування по ньому нікого не сповіщають.
+                                Прив'язка робиться в картці мешканця, у розділі «Люди».
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card obj-card">
+                    <div class="card-header">🔗 Той самий власник</div>
+                    <div class="card-body p-3">
+                        {% if siblings|length %}
+                            <ul class="list-group mb-2">
+                                {% for s in siblings %}
+                                    <li class="list-group-item py-2 d-flex justify-content-between align-items-center">
+                                        <span>
+                                            <a href="{{ path('app_admin_object', {id: s.id}) }}">{{ registry.place(s) }}</a>
+                                            <span class="text-muted small">{{ s.accountNumber }}</span>
+                                            {% if s.debt and s.debt > 0 %}
+                                                · <span class="text-danger">{{ s.debt|number_format(2, '.', ' ') }} грн</span>
+                                            {% endif %}
+                                        </span>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                            <div class="mb-2">Разом по власнику: <b>{{ groupDebt|number_format(2, '.', ' ') }} грн</b></div>
+                            <form method="post" action="{{ path('app_admin_objects_group_unlink') }}" class="mb-2">
+                                <input type="hidden" name="account_id" value="{{ account.id }}">
+                                <button class="btn btn-sm btn-outline-danger">Відв'язати цей об'єкт від групи</button>
+                            </form>
+                        {% else %}
+                            <p class="small text-muted">
+                                Об'єкт сам по собі. Якщо у власника є ще квартира, паркомісце чи
+                                комірчина — впишіть її особовий рахунок: ліміти бронювання
+                                рахуватимуться разом, а борг за будь-яким з об'єктів блокуватиме всі.
+                            </p>
+                        {% endif %}
+
+                        <form method="post" action="{{ path('app_admin_objects_group_link') }}" class="form-inline">
+                            <input type="hidden" name="account_id" value="{{ account.id }}">
+                            <input type="text" name="partner_account_number" class="form-control form-control-sm mr-2 mb-1"
+                                   placeholder="особовий рахунок іншого об'єкта" required>
+                            <button class="btn btn-sm btn-success mb-1">Прив'язати</button>
+                        </form>
+                    </div>
+                </div>
+
+                {% if complaints|length %}
+                    <div class="card obj-card">
+                        <div class="card-header">🔧 Заявки з цього об'єкта ({{ complaints|length }})</div>
+                        <div class="card-body p-0">
+                            <ul class="list-unstyled mb-0 obj-history">
+                                {% for c in complaints|slice(0, 8) %}
+                                    <li class="px-3 py-2 small">
+                                        <b>№{{ c.id }}</b>
+                                        {% if c.status == 'done' %}✅{% elseif c.status == 'in_progress' %}🔧{% elseif c.status == 'on_hold' %}⏸{% else %}🆕{% endif %}
+                                        {{ c.createdAt|date('d.m.Y') }} — {{ c.text|slice(0, 90) }}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                {% endif %}
+
+                {% if history|length %}
+                    <div class="card obj-card">
+                        <div class="card-header">🕘 Історія статусу</div>
+                        <div class="card-body p-0">
+                            <ul class="list-unstyled mb-0 obj-history">
+                                {% for entry in history %}
+                                    <li class="px-3 py-2 small">
+                                        {% if entry.newActive %}
+                                            <span class="badge badge-success">Розблок</span>
+                                        {% else %}
+                                            <span class="badge badge-danger">Блок</span>
+                                        {% endif %}
+                                        {{ entry.createdAt|date('d.m.Y H:i') }}
+                                        · {{ entry.source }}
+                                        {% if entry.reasonCode %} · {{ entry.reasonCode }}{% endif %}
+                                        {% if entry.actorUsername %} · <i>{{ entry.actorUsername }}</i>{% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+{% endblock %}

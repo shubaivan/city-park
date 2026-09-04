@@ -222,8 +222,7 @@ class PhotoUploadFlow
                 text: '⏰ <b>Час на завантаження фото минув.</b>' . "\n\n"
                     . sprintf(
                         'Фото приймається лише протягом %s після блокування. '
-                        . OsbbContacts::askThem('Для розблокування зверніться:')
-                        . "\nабо до розробника @shubaivan.",
+                        . 'Для розблокування зверніться:' . "\n" . OsbbContacts::ALL_LINES,
                         PavilionPhotoService::uploadGraceLabel(),
                     ),
                 parse_mode: ParseMode::HTML,

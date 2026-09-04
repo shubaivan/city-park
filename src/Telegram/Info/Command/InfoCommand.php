@@ -170,6 +170,7 @@ class InfoCommand
                 . OsbbContacts::ACCOUNTANT_LINE . "\n"
                 . "(активація аккаунту, розблокування, заборгованість)\n\n"
                 . OsbbContacts::CHAIR_LINE . "\n"
+                . OsbbContacts::DEV_LINE . "\n"
                 . "(заявки та скарги, розблокування, заборгованість)\n\n"
                 . "Технічні питання з ботом: <b>Іван</b> — <b>+380 63 302 26 66</b>",
         ],

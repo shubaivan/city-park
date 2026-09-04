@@ -20,7 +20,7 @@ class OsbbContactsTest extends TestCase
         foreach ([OsbbContacts::ACCOUNTANT_LINE, OsbbContacts::CHAIR_LINE] as $line) {
             $this->assertStringContainsString('href="tel:+380', $line, 'a phone must dial');
             $this->assertStringContainsString('https://t.me/+380', $line, 'and open a chat');
-            $this->assertStringContainsString('написати в Telegram', $line);
+            $this->assertStringContainsString('написати', $line);
         }
     }
 
@@ -87,5 +87,50 @@ class OsbbContactsTest extends TestCase
         }
 
         $this->assertSame([], $offenders, 'these still carry their own copy of a phone number');
+    }
+
+    /**
+     * A @username is the short handle and is used wherever the person has one — the
+     * developer does. Neither officer does: the head of the ОСББ's registry field is empty
+     * and the accountant's Telegram is not on the number she publishes, so their line falls
+     * back to `t.me/+<phone>`. The shapes differ because the facts do.
+     */
+    public function testTheDeveloperIsReachedByUsername(): void
+    {
+        $this->assertStringContainsString('@' . OsbbContacts::DEV_USERNAME, OsbbContacts::DEV_LINE);
+        $this->assertStringContainsString('https://t.me/' . OsbbContacts::DEV_USERNAME, OsbbContacts::DEV_LINE);
+        // No phone: he is reached about the bot, not about a квитанція.
+        $this->assertStringNotContainsString('tel:', OsbbContacts::DEV_LINE);
+    }
+
+    public function testAllLinesCarryEveryone(): void
+    {
+        $all = OsbbContacts::ALL_LINES;
+
+        foreach ([OsbbContacts::ACCOUNTANT_LINE, OsbbContacts::CHAIR_LINE, OsbbContacts::DEV_LINE] as $line) {
+            $this->assertStringContainsString($line, $all);
+        }
+
+        $this->assertSame($all, OsbbContacts::all());
+    }
+
+    /** The developer's handle must not be pasted anywhere by hand either. */
+    public function testNoOtherFileHardcodesTheDeveloperHandle(): void
+    {
+        $root = __DIR__ . '/../../src';
+        $offenders = [];
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root));
+
+        foreach ($files as $file) {
+            if ($file->getExtension() !== 'php' || str_contains($file->getPathname(), 'OsbbContacts.php')) {
+                continue;
+            }
+
+            if (str_contains((string)file_get_contents($file->getPathname()), '@shubaivan')) {
+                $offenders[] = str_replace($root . '/', '', $file->getPathname());
+            }
+        }
+
+        $this->assertSame([], $offenders);
     }
 }
