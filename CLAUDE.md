@@ -200,7 +200,12 @@ first one created the day `/admin/objects` shipped):
   (area × tariff × 1.5), and adding two debts to compare against one threshold compares a
   total against half a rule.
 - **the bot's menu header names every object of the group**, each with its own особовий
-  рахунок (`StartCommand::renderHeader()` over `PropertyRegistry::objectsOfAccount()`).
+  рахунок **and what that object owes** (`StartCommand::renderHeader()` over
+  `PropertyRegistry::objectsOfAccount()`). «без боргу» is spelled out rather than left
+  blank — on a list of two lines a missing annotation reads as missing data, not as zero —
+  and no figure is printed at all unless `DebtBoardService::isAvailable()` says so, since
+  the «станом на» date lives one block below in the same message and a sum without one is
+  what the board's staleness rule exists to prevent.
   `TelegramUser.account_id` points at one Account, so before 04.09.2026 the other objects
   of a household existed nowhere in the bot at all — and that number is exactly what the
   accountant asks for on the phone. A household of one keeps the old singular wording word
@@ -209,7 +214,9 @@ first one created the day `/admin/objects` shipped):
   answered «боргів не має» to an owner whose own комірчина was on the list two lines below.
   `isViewer()` matches on an **explicit** `owner_group_id`, never on a bare id, so an
   ungrouped account whose id happens to equal another household's group number is not
-  marked as theirs.
+  marked as theirs. The **podium** carries the same «📌 (це ви)» mark as the full list: five
+  near-identical lines and a "ви п'яті" underneath meant checking the building number by
+  hand to find which line was yours.
 
 **Unlinking the member the group is named after renumbers the rest.** The group id is the
 smallest member's own id, so removing that member while two others stay leaves it — now

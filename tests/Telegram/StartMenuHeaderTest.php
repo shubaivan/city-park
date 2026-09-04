@@ -23,15 +23,64 @@ use PHPUnit\Framework\TestCase;
  */
 class StartMenuHeaderTest extends TestCase
 {
-    private function account(string $number, string $unit, ?string $type = null): Account
+    private function account(string $number, string $unit, ?string $type = null, string $debt = '0'): Account
     {
         $account = (new Account())
             ->setAccountNumber($number)
             ->setApartmentNumber($unit)
             ->setHouseNumber('19')
-            ->setStreet('Козацька');
+            ->setStreet('Козацька')
+            ->setDebt($debt);
 
         return $type === null ? $account : $account->setUnitType($type);
+    }
+
+    /**
+     * Each object is billed separately, has its own threshold, and a debt on **any** of
+     * them blocks booking for the whole household — so "which of my objects owes" has to
+     * be answerable beside the рахунок itself, not only from the board below, which lists
+     * an object only once it reaches the published list.
+     */
+    public function testEachObjectCarriesItsOwnDebt(): void
+    {
+        $header = StartCommand::renderHeader([
+            $this->account('230085', '85', null, '3415.50'),
+            $this->account('235168', '168', Account::UNIT_STORAGE, '0'),
+        ], true);
+
+        $this->assertStringContainsString('3 416 грн', $header);
+        $this->assertStringContainsString('без боргу', $header);
+    }
+
+    /**
+     * A zero is spelled out, never left blank: on a list of two lines a missing annotation
+     * reads as missing data rather than as nothing owed.
+     */
+    public function testAnObjectThatOwesNothingSaysSoRatherThanSayingNothing(): void
+    {
+        $header = StartCommand::renderHeader([
+            $this->account('230085', '85', null, '0'),
+            $this->account('235168', '168', Account::UNIT_STORAGE, '0'),
+        ], true);
+
+        $this->assertSame(2, substr_count($header, 'без боргу'));
+    }
+
+    /**
+     * Never a sum without a date. The «станом на» line lives in the debtors' block below,
+     * and when that block falls silent as stale the header must not keep publishing
+     * figures nobody can vouch for — the caller passes that same answer in.
+     */
+    public function testNoFigureIsPrintedWhenTheDebtDataIsTooOldToPublish(): void
+    {
+        $header = StartCommand::renderHeader([
+            $this->account('230085', '85', null, '3415.50'),
+            $this->account('235168', '168', Account::UNIT_STORAGE, '0'),
+        ], false);
+
+        $this->assertStringNotContainsString('грн', $header);
+        $this->assertStringNotContainsString('без боргу', $header);
+        $this->assertStringContainsString('<code>235168</code>', $header);
     }
 
     public function testASingleObjectKeepsTheWordingResidentsHaveBeenReading(): void
