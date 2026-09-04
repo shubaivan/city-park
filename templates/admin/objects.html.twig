@@ -73,7 +73,10 @@
                      data-blocked="{{ row.block ? 1 : 0 }}"
                      data-unowned="{{ row.owners|length == 0 ? 1 : 0 }}"
                      data-grouped="{{ row.siblings|length > 0 ? 1 : 0 }}"
-                     data-search="{{ (a.accountNumber ~ ' ' ~ row.place ~ ' ' ~ a.street)|lower }}{% for o in row.owners %} {{ (o.firstName ~ ' ' ~ o.lastName ~ ' ' ~ o.phoneNumber ~ ' ' ~ o.username)|lower }}{% endfor %}">
+                     {# The type label is in here on purpose: «паркінг» is the word somebody
+                        types into the box, and without it the search found nothing while
+                        the 🚗 chip right above it worked. #}
+                     data-search="{{ (a.accountNumber ~ ' ' ~ row.place ~ ' ' ~ a.street ~ ' ' ~ row.type_label ~ ' ' ~ a.apartmentNumber)|lower }}{% for o in row.owners %} {{ (o.firstName ~ ' ' ~ o.lastName ~ ' ' ~ o.phoneNumber ~ ' ' ~ o.username)|lower }}{% endfor %}">
                     <div class="card-body p-2 p-sm-3">
 
                         <div class="d-flex justify-content-between align-items-start">
