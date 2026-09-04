@@ -11,6 +11,15 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 ## Core domain
 
 - `Account` is the tenant unit. One Account ↔ many `TelegramUser` (family members / conditional owners).
+- **`Account.unit_type` is what kind of property it is** — `apartment` / `parking` /
+  `storage`, stored since 04.09.2026 and seeded from the old formula so nothing changed on
+  the day it shipped. Everything goes through `getUnitType()`; `deriveUnitType()` (third
+  digit of `account_number`, plus the legacy free-text check) is now only the fallback for a
+  row that has none, and `/admin/objects` can correct one by hand. It was worth writing down
+  because the formula reads a *position*: `42076` is five digits, so its third character is
+  the `0` of what should have been `420076`, and the row answered "apartment" with full
+  confidence. The type decides the label on the public board, the address in a complaint
+  posted to the chat, and `canBookPavilion()` — one wrong row is three wrong things.
 - `Account.is_active = false` is the single block flag — used by debt blocking AND photo-miss blocking. Toggled via `/admin/users`.
 - `Account::canBookPavilion()` blocks **storage** units from booking *structurally* (checked before `is_active` — admins can't grant booking to a кладова without renaming the unit). Parking **is** allowed: its owners pay the yard fee. The unit type comes from the third digit of `account_number` (`getUnitTypeDigit()`: 0 apartment, 5 storage, 7 parking), with `isStorage()` also matching legacy free-text `apartment_number` (кладов/комірчина/storage). There is no `isNonResidential()` — this file claimed one until 02.09.2026.
 - `ScheduledSet` is one row per booked **hour** (no merging). A "session" = consecutive same-pavilion hours by one account, detected at query time.
