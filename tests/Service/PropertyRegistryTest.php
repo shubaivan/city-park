@@ -130,6 +130,7 @@ class PropertyRegistryTest extends TestCase
 
         $stats = $registry->stats($rows);
         $this->assertSame(1, $stats['unowned']);
+        $this->assertSame(0, $stats['multi_owner']);
         $this->assertSame(1, $stats['in_debt']);
         $this->assertSame(2500.0, $stats['debt']);
     }
@@ -201,5 +202,32 @@ class PropertyRegistryTest extends TestCase
         );
 
         $this->assertSame([], $this->registry([])->houses([]));
+    }
+
+    /**
+     * Several people on one object — family, tenants, conditional owners. Worth counting:
+     * this is where a tenant sits next to an owner and where `role` is most likely wrong or
+     * missing, and it is the set somebody actually wants to review.
+     */
+    public function testObjectsWithSeveralOwnersAreCounted(): void
+    {
+        $alone = $this->account(1, '4100085', '85');
+        $alone->getUsers()->add($this->owner('Іван', 'owner'));
+
+        $pair = $this->account(2, '4100086', '86');
+        $pair->getUsers()->add($this->owner('Іван', 'owner'));
+        $pair->getUsers()->add($this->owner('Олена', 'family'));
+
+        $crowd = $this->account(3, '4100087', '87');
+        $crowd->getUsers()->add($this->owner('Іван', 'owner'));
+        $crowd->getUsers()->add($this->owner('Олена', 'family'));
+        $crowd->getUsers()->add($this->owner('Орендар', 'tenant'));
+
+        $registry = $this->registry([$alone, $pair, $crowd]);
+        $stats = $registry->stats($registry->overview());
+
+        $this->assertSame(2, $stats['multi_owner'], 'two objects have 2 or more owners');
+        $this->assertSame(1, $stats['many_owner'], 'one of them has 3');
+        $this->assertSame(0, $stats['unowned']);
     }
 }

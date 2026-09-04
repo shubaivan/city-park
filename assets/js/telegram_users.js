@@ -529,6 +529,28 @@ document.addEventListener("DOMContentLoaded", function () {
         row.find('button[data-user-id]').first().trigger('click');
     });
 
+    /**
+     * Open one resident's card straight from a link: /admin/users?user=<id>.
+     *
+     * The objects register links here — from an object to the person standing behind it —
+     * and that person is very likely not on the current page of a server-side table, so
+     * there is no row to click. The modal fetches by id anyway; all it needs is an element
+     * carrying data-user-id as the Bootstrap relatedTarget.
+     */
+    (function openUserFromQuery() {
+        var wanted = new URLSearchParams(window.location.search).get('user');
+
+        if (!wanted) {
+            return;
+        }
+
+        $('<button type="button" data-toggle="modal" data-target="#exampleModal"></button>')
+            .attr('data-user-id', wanted)
+            .css('display', 'none')
+            .appendTo('body')
+            .trigger('click');
+    })();
+
     $('<style/>').text(
         '#telegramUserTable tbody tr { cursor: pointer; }'
         + '#telegramUserTable tbody tr:hover td { background: #eef4ff; }'
@@ -881,6 +903,19 @@ document.addEventListener("DOMContentLoaded", function () {
             return (obj && obj.debt) ? parseFloat(obj.debt) : 0;
         }
 
+        // The other half of the round trip: from a person to the object's card in the
+        // objects register, which is where its type, its group and its other owners live.
+        function objectLink(obj) {
+            var number = obj.account_number || '';
+
+            if (!number) {
+                return '<small class="text-muted">без рахунку</small>';
+            }
+
+            return '<small><a href="/admin/objects?object=' + encodeURIComponent(number)
+                + '" target="_blank" rel="noopener">' + number + '</a></small>';
+        }
+
         /**
          * Everything this owner has, their own object first.
          *
@@ -919,7 +954,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 let mine = $('<li class="list-group-item d-flex justify-content-between align-items-center"></li>');
                 mine.append(
                     '<span><b>' + objectPlace(own) + '</b> <span class="badge badge-primary">основний</span>'
-                    + ' · <small>' + (own.account_number || '') + '</small>'
+                    + ' · ' + objectLink(own)
                     + (objectDebt(own) > 0 ? ' <span style="color:red;">(' + objectDebt(own).toFixed(2) + ' грн)</span>' : '')
                     + '</span>'
                 );
@@ -934,7 +969,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 let item = $('<li class="list-group-item d-flex justify-content-between align-items-center"></li>');
                 item.append(
                     '<span><b>' + objectPlace(sib) + '</b>'
-                    + ' · <small>' + (sib.account_number || '') + '</small>' + debtLabel + '</span>'
+                    + ' · ' + objectLink(sib) + debtLabel + '</span>'
                 );
                 let btn = $('<button type="button" class="btn btn-sm btn-outline-danger group_unlink_btn">Відв\'язати</button>');
                 btn.data('account-id', sib.id);

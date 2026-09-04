@@ -135,7 +135,7 @@ class PropertyRegistry
     }
 
     /**
-     * @return array{objects:int, apartments:int, parking:int, storage:int, unowned:int, grouped:int, debt:float, in_debt:int}
+     * @return array{objects:int, apartments:int, parking:int, storage:int, unowned:int, grouped:int, debt:float, in_debt:int, multi_owner:int, many_owner:int}
      */
     public function stats(array $rows): array
     {
@@ -148,6 +148,11 @@ class PropertyRegistry
             'grouped' => 0,
             'debt' => 0.0,
             'in_debt' => 0,
+            // Several people on one object — family, tenants, conditional owners. Worth
+            // filtering for: this is where a tenant is registered next to an owner, and
+            // where a role is most likely to be wrong or missing.
+            'multi_owner' => 0,
+            'many_owner' => 0,
         ];
 
         foreach ($rows as $row) {
@@ -157,8 +162,18 @@ class PropertyRegistry
                 default => 'apartments',
             }]++;
 
-            if ($row['owners'] === []) {
+            $owners = count($row['owners']);
+
+            if ($owners === 0) {
                 $stats['unowned']++;
+            }
+
+            if ($owners >= 2) {
+                $stats['multi_owner']++;
+            }
+
+            if ($owners >= 3) {
+                $stats['many_owner']++;
             }
 
             if ($row['siblings'] !== []) {

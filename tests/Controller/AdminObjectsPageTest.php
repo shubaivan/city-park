@@ -75,6 +75,8 @@ class AdminObjectsPageTest extends KernelTestCase
             'grouped' => 0,
             'debt' => 2500.0,
             'in_debt' => 1,
+            'multi_owner' => 0,
+            'many_owner' => 0,
         ];
     }
 
@@ -118,6 +120,7 @@ class AdminObjectsPageTest extends KernelTestCase
         $html = $this->render([], [
             'objects' => 0, 'apartments' => 0, 'parking' => 0, 'storage' => 0,
             'unowned' => 0, 'grouped' => 0, 'debt' => 0.0, 'in_debt' => 0,
+            'multi_owner' => 0, 'many_owner' => 0,
         ]);
 
         $this->assertStringContainsString("Об'єкти нерухомості", $html);
@@ -132,6 +135,7 @@ class AdminObjectsPageTest extends KernelTestCase
         $html = $this->render([], [
             'objects' => 0, 'apartments' => 0, 'parking' => 0, 'storage' => 0,
             'unowned' => 0, 'grouped' => 0, 'debt' => 0.0, 'in_debt' => 0,
+            'multi_owner' => 0, 'many_owner' => 0,
         ]);
 
         $this->assertStringContainsString('Додати обʼєкт', $html);
