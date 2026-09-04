@@ -33,9 +33,31 @@ class Complaint
 {
     public const STATUS_NEW = 'new';
     public const STATUS_IN_PROGRESS = 'in_progress';
+
+    /**
+     * Known, agreed, and waiting on something the ОСББ does not control — a part, a
+     * contractor, a court, the money for it.
+     *
+     * This is the most common real state of a house problem and the register had no word
+     * for it. Without it «в роботі» has to mean both "майстер їде зараз" and "чекаємо
+     * насос із Польщі три тижні", and a resident reading it a second week running
+     * concludes that nothing is happening — which is exactly the conclusion the whole
+     * register exists to prevent.
+     *
+     * A hold **must** carry a reason: `ComplaintService::changeStatus()` refuses it
+     * otherwise. «Відкладено» with no explanation is worse than «в роботі» — it reads as
+     * the ОСББ giving up in public.
+     */
+    public const STATUS_ON_HOLD = 'on_hold';
+
     public const STATUS_DONE = 'done';
 
-    public const STATUSES = [self::STATUS_NEW, self::STATUS_IN_PROGRESS, self::STATUS_DONE];
+    public const STATUSES = [
+        self::STATUS_NEW,
+        self::STATUS_IN_PROGRESS,
+        self::STATUS_ON_HOLD,
+        self::STATUS_DONE,
+    ];
 
     /** Same ceiling and reasoning as a rental listing: three pictures say everything. */
     public const PHOTOS_MAX = 3;
@@ -120,7 +142,15 @@ class Complaint
     #[ORM\Column(length: 120, nullable: true)]
     private ?string $status_changed_by = null;
 
-    /** Optional "що зробили" note left when closing. */
+    /**
+     * The note attached to the current status: "що зробили" when closing, and the
+     * mandatory "чому чекаємо" of a hold.
+     *
+     * One field rather than two on purpose — it always describes where the complaint
+     * stands *now*, and it is already rendered on the card, in the author's notification
+     * and in the chat post. A closing note overwriting a hold reason is correct: the
+     * history of what was said lives in the comment thread, which nothing overwrites.
+     */
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $resolution = null;
 
@@ -194,6 +224,12 @@ class Complaint
         return $this->status === self::STATUS_DONE;
     }
 
+    public function isOnHold(): bool
+    {
+        return $this->status === self::STATUS_ON_HOLD;
+    }
+
+    /** A held complaint is still an unsolved problem, so it counts as open everywhere. */
     public function isOpen(): bool
     {
         return !$this->isDone();

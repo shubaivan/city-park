@@ -2,10 +2,30 @@
 <html>
 <head>
     <meta charset="UTF-8">
+    {#
+        Without this, every admin page renders at a 980px desktop width on a phone and is
+        zoomed out to unreadable — Bootstrap's grid, the DataTables responsive plugin and
+        every `col-sm-*` in here are all no-ops until the viewport is declared. The two
+        standalone upload pages had it from the start; the panel itself never did, and it
+        is read on a phone (searching a resident, moving a complaint) as often as not.
+    #}
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title>{% block title %}Welcome!{% endblock %}</title>
     {% block stylesheets %}
         {{ encore_entry_link_tags('app') }}
+        {#
+            The panel is worked from a phone — searching a resident, moving a complaint —
+            and iOS zooms the whole page in whenever a focused field is smaller than 16px.
+            Bootstrap's `form-control-sm`, which most of this admin uses, is 14px: every
+            tap on a filter box left the page zoomed and scrolled sideways. Small screens
+            only; the desktop table keeps its compact controls.
+        #}
+        <style>
+            @media (max-width: 576px) {
+                input, select, textarea { font-size: 16px !important; max-width: 100%; }
+            }
+        </style>
         <link rel="shortcut icon" type="image/x-icon" href="{{ asset('admin.jpg') }}">
     {% endblock %}
 </head>

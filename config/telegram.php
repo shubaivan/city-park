@@ -96,8 +96,12 @@ $bot->onCommand('vote', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 // The house's problem register. cmp:status is guarded inside the handler, not here:
 // a callback from anyone else has to answer with an explanation, not silence.
 $bot->onCallbackQueryData(\App\Telegram\Complaint\Command\ComplaintMenuCommand::MENU_CALLBACK, \App\Telegram\Complaint\Command\ComplaintMenuCommand::class);
-$bot->onCallbackQueryData('^cmp:(?:(?:view|photos|page|del|delok|my):\d+|pic:\d+:\d+|status:\d+:[a-z_]+|noop)$', \App\Telegram\Complaint\Command\ComplaintMenuCommand::class);
+$bot->onCallbackQueryData('^cmp:(?:(?:view|photos|page|del|delok|my|talk):\d+|pic:\d+:\d+|status:\d+:[a-z_]+|noop|cancel)$', \App\Telegram\Complaint\Command\ComplaintMenuCommand::class);
 $bot->onCallbackQueryData('^cmp:edit:\d+$', \App\Telegram\Complaint\Command\ComplaintEdit::class);
+// The official discussion, and the one status change that has to ask why first. Both are
+// guarded inside their conversation: a tap from the wrong person gets an explanation.
+$bot->onCallbackQueryData('^cmp:say:\d+$', \App\Telegram\Complaint\Command\ComplaintReply::class);
+$bot->onCallbackQueryData('^cmp:hold:\d+$', \App\Telegram\Complaint\Command\ComplaintHold::class);
 $bot->onCallbackQueryData(\App\Telegram\Complaint\Command\ComplaintCreate::START_CALLBACK, \App\Telegram\Complaint\Command\ComplaintCreate::class);
 $bot->onCommand('problem', \App\Telegram\Complaint\Command\ComplaintMenuCommand::class);
 

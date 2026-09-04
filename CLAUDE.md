@@ -225,14 +225,20 @@ the whole house sees every entry and why the open count rides on the menu button
   blocks *booking*, and a debtor is still paying for that lift. Unit type is not checked
   either: "ворота в паркінг не відчиняються" is by definition a parking owner's report.
   Only an unlinked visitor is out, the same call as the residents' chat.
-- **Statuses are the head of the ОСББ's alone** (🆕 Нова → 🔧 В роботі → ✅ Виконано, and
-  back). "Виконано" is a statement about what the ОСББ did; a register anyone can close
+- **Statuses are the head of the ОСББ's alone** (🆕 Нова → 🔧 В роботі → ⏸ Відкладено →
+  ✅ Виконано, and back). "Виконано" is a statement about what the ОСББ did; a register anyone can close
   records nothing. Managers are Telegram ids in `.env.local`
   (`COMPLAINT_MANAGER_TELEGRAM_IDS`), same shape as `RESIDENT_CHAT_ID` — one or two people
   who change about never, so a column and an admin checkbox would be machinery for nothing.
   **An empty list means nobody can move a status, never everybody**; there is a test for it.
-  She can also work from `/admin/complaints`, which is where the "що зробили" note is
-  typed — awkward on a phone.
+  She can also work from `/admin/complaints`, which is where the "що зробили" note and the
+  official answers are typed — awkward on a phone keyboard. That page is **cards, not a
+  table**: it is read on a phone as often as on a desktop, and a seven-column table with a
+  form in the last column keeps the two controls that matter off-screen. `base.html.twig`
+  had **no viewport meta tag** until 04.09.2026, so the whole panel — DataTables'
+  responsive plugin, every `col-sm-*` — rendered at 980px and zoomed out on a phone; the
+  same block also lifts small inputs to 16px under 576px, because anything smaller makes
+  iOS zoom the page in on focus.
 - **The entry stays the author's.** They can retype the text (`ComplaintEdit`) or delete it
   outright, at any status — a confirmation step first, and the photos go with it. Restricting
   deletion to 🆕 was considered and rejected: typos, duplicates and problems that fix
@@ -264,6 +270,49 @@ the whole house sees every entry and why the open count rides on the menu button
   status moved from `/admin/complaints` told nobody at all. Silent on purpose —
   `disable_notification: true` — since progress can wait until the chat is next opened,
   unlike the arrival of the problem itself.
+- **⏸ Відкладено must say what it is waiting for.** The most common real state of a house
+  problem — known, agreed, waiting on a part, a contractor or the money — had no word, so
+  «в роботі» had to mean both "майстер їде зараз" and "чекаємо насос три тижні", and a
+  resident reading it a second week running concludes nothing is happening. The reason is
+  mandatory and enforced twice: the bot button opens `ComplaintHold` (a conversation that
+  asks) instead of flipping the status, and `ComplaintService::changeStatus()` throws on a
+  hold with an empty note no matter who calls it — `/admin/complaints` catches that and
+  answers with a flash rather than a 500. The reason is stored in `resolution`, the one
+  "note about where this stands now" field: **leaving a hold with no new note clears it**,
+  or «✅ Виконано» would carry «чекаємо насос із Польщі» into the author's DM and the
+  residents' chat, saying the opposite of what happened. A held complaint is still
+  `isOpen()` — it counts in the menu badge and in the cleanup rules.
+- **The author's contact is shown to the head of the ОСББ and to nobody else.** Every
+  resident reads this register; the phone in that row is there because the person gave it
+  to the ОСББ for нарахування. `authorContactLine()` / `authorChatUrl()` are gated on
+  `isManager()` at each call site — the card, the "нова заявка" DM, the comment DM — and
+  `/admin/complaints` shows the same as `tel:` and `t.me` links, since she already has that
+  number in `/admin/users` and she is the one who has to ring back. The link is
+  `t.me/<username>`, falling back to `t.me/+<phone>` (only ~48% of rows have a username —
+  same shape the menu header uses for Людмила's own number).
+- **The discussion is read by the house and written by two people.** `ComplaintComment` is
+  an open thread under each card (`cmp:talk:<id>`, «💬 Написати» → `ComplaintReply`);
+  `mayComment()` admits the complaint's account and the managers, nobody else. Opening it
+  to all 141 flats was considered and rejected: the thread under the broken lift becomes
+  the chat this register replaced, and the one answer that matters is buried in it — a
+  neighbour with the same problem files their own entry. **Nothing is edited or deleted**
+  (the complaint itself stays the author's to retype; what was said about it does not), and
+  `author_label` is a *snapshot* so a row still reads «буд. 19, кв. 85» after the FK is
+  nulled and «Людмила (голова ОСББ)» after she leaves the manager list —
+  `ComplaintService::adminLabel()` maps admin logins to people, because «luda_boss» must
+  not appear under an official answer the whole house reads. Notifications go to the two
+  parties only (her comment DMs the author with a «💬 Відповісти» button, theirs DMs the
+  managers); the chat still hears status changes and nothing else. The thread is a
+  **separate message**, not more lines on the card: a card with photos is a caption, capped
+  at 1024 characters, and a thread appended to it would render for two comments and then
+  silently stop sending the card at all.
+- **Both new conversations carry the `interceptConversationPhoto()` guard**, and a tap on
+  any button while one is live is treated as «скасувати» — Nutgram routes every update from
+  that user into the conversation, so an unhandled callback there is a spinning button.
+  `ComplaintHandlerWiringTest::testEveryCallbackButtonIsRoutedByThePatternsInTheConfig`
+  walks the `cmp:` literals in the sources against the regexes in `config/telegram.php`: an
+  unrouted button errors nowhere, it just spins, which is indistinguishable from the bot
+  being down.
 - **Filing is one step.** The person doing it is standing in front of a broken lift, and
   every extra question is a reason to close the bot and write in the chat instead. Photos
   are offered *after* the complaint is saved, so giving up at that point still leaves the
