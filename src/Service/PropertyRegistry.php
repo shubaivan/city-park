@@ -220,26 +220,10 @@ class PropertyRegistry
      * The ЖК is five buildings on one street and apartment numbers repeat across them, so
      * an object named by its unit alone names two places at once.
      */
+    /** Delegates to the entity so the label reads the same wherever it is printed. */
     public function place(Account $account): string
     {
-        $unit = trim((string)$account->getApartmentNumber());
-        $house = trim((string)$account->getHouseNumber());
-
-        // The unit type comes from the особовий рахунок, not from the text: most non-flat
-        // accounts carry a bare number in `apartment_number`, and calling one of those
-        // "кв. 191" turns a parking space into somebody's flat. Same reasoning as
-        // DebtBoardService::place(), which publishes the label to the whole house.
-        if ($unit === '') {
-            $unit = 'без номера';
-        } elseif (preg_match('/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/u', $unit) === 1) {
-            $unit = match ($account->getUnitType()) {
-                Account::UNIT_STORAGE => 'комірчина ',
-                Account::UNIT_PARKING => 'паркомісце ',
-                default => 'кв. ',
-            } . $unit;
-        }
-
-        return $house === '' ? $unit : sprintf('буд. %s, %s', $house, $unit);
+        return $account->getPlaceLabel();
     }
 
     /** @return TelegramUser[] */
