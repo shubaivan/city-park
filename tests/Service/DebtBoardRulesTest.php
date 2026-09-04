@@ -451,4 +451,27 @@ class DebtBoardRulesTest extends TestCase
 
         $this->assertStringContainsString('буд. 23, кв. 134', $report);
     }
+
+    /**
+     * «буд. 19, кв. 24 — 0 грн» in 149th place, seen on prod 04.09.2026.
+     *
+     * The account owed 0.25 грн — a remainder in the accountant's books, not arrears — and
+     * the board rounds to the hryvnia. Naming a household to the whole house for
+     * twenty-five kopecks is the accusation these rules exist to avoid, and "owes 0" reads
+     * as a bug on top of it. Sub-hryvnia amounts no longer reach the list; money() is the
+     * second guard, so nothing anywhere prints a debtor owing nothing.
+     */
+    public function testNothingIsEverPublishedAsOwingZero(): void
+    {
+        $board = $this->service(
+            [$this->account(1, '134', '12269.00'), $this->account(2, '24', '0.25')],
+            new \DateTimeImmutable('-1 day'),
+        );
+
+        // The service is fed by the repository, which now filters these out — but the
+        // renderer must not be able to print «0 грн» even if one reaches it.
+        $report = $board->report($this->account(1, '134', '12269.00'));
+
+        $this->assertStringNotContainsString('— <b>0 грн</b>', $report);
+    }
 }
