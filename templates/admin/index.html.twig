@@ -1,173 +1,130 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Hello Admin!{% endblock %}
-
-{% block stylesheets %}
-    {{ parent() }}
-    <link rel="stylesheet" type="text/css" href="{{ asset('simditor-2.3.28/styles/simditor.css') }}" />
-{% endblock %}
+{% block title %}Панель ОСББ City Park{% endblock %}
 
 {% block body %}
     {{ parent() }}
 
-    <div class="container">
-        <table class="table table-hover">
-            <caption>Management</caption>
-            <thead>
-            <tr>
-                <th scope="col">#</th>
-                <th scope="col">Resource Name</th>
-                <th scope="col">Action</th>
-            </tr>
-            </thead>
-            <tbody>
+    {#
+        A directory of the panel, as cards.
 
-            {#
-                Two registers, deliberately separate. A person may own several objects and
-                an object may have several owners of different kinds, so "хто це" and "що
-                це" are different questions and each needs its own list. Until 04.09.2026
-                the panel had only the first, which meant an object nobody had linked
-                themselves to could not be opened at all.
-            #}
-            <tr>
-                <th scope="row">1</th>
-                <td>
-                    👤 Люди (мешканці)
-                </td>
-                <td>
-                    <a href="{{ path('app_admin_users') }}">
-                        Список
-                    </a>
-                </td>
-            </tr>
+        It was a table with «Management / Resource Name / Action» in English, rows numbered
+        1, 1a, 2… and every link saying «Список» — so the only way to know what a section
+        did was to open it. Each card now says what the page is for in one line, which is
+        also what makes the panel usable by somebody who opens it twice a month.
+    #}
+    <style>
+        .hub { max-width: 68rem; }
+        .hub-grid { display: grid; grid-template-columns: 1fr; gap: .75rem; }
+        @media (min-width: 576px) { .hub-grid { grid-template-columns: 1fr 1fr } }
+        @media (min-width: 992px) { .hub-grid { grid-template-columns: 1fr 1fr 1fr } }
+        .hub-card { display: block; color: inherit; text-decoration: none; height: 100%; }
+        .hub-card:hover { text-decoration: none; color: inherit; box-shadow: 0 .25rem .6rem rgba(0,0,0,.09); }
+        .hub-card .card-body { padding: .9rem 1rem; }
+        .hub-emoji { font-size: 1.5rem; line-height: 1; }
+        .hub-note { color: #6c757d; font-size: .84rem; }
+        .hub-h { font-size: .8rem; letter-spacing: .04em; text-transform: uppercase; color: #6c757d; }
+    </style>
 
-            <tr>
-                <th scope="row">1a</th>
-                <td>
-                    🏢 Об'єкти нерухомості
-                </td>
-                <td>
-                    <a href="{{ path('app_admin_objects') }}">
-                        Список
-                    </a>
-                </td>
-            </tr>
+    <div class="container-fluid mt-3 px-2 px-sm-3 hub">
 
-            <tr>
-                <th scope="row">2</th>
-                <td>
-                    Бронюваня
-                </td>
-                <td>
-                    <a href="{{ path('app_admin_schedule') }}">
-                        Список
-                    </a>
-                </td>
-            </tr>
+        <h3 class="mb-3">Панель ОСББ «City Park»</h3>
 
-            <tr>
-                <th scope="row">3</th>
-                <td>
-                    Боржники
-                </td>
-                <td>
-                    <a href="{{ path('app_admin_debt') }}">
-                        Завантажити файл
-                    </a>
-                </td>
-            </tr>
+        <div class="hub-h mb-2">Щоденне</div>
+        <div class="hub-grid mb-4">
+            <a class="card hub-card" href="{{ path('app_admin_users') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">👤</div>
+                    <b>Люди</b>
+                    <div class="hub-note">Усі, хто відкривав бота. Пошук за телефоном, прізвищем, рахунком; картка мешканця з блокуванням і роллю.</div>
+                </div>
+            </a>
 
-            <tr>
-                <th scope="row">4</th>
-                <td>
-                    Запити на фото
-                </td>
-                <td>
-                    <a href="{{ path('app_admin_photo_requests') }}">
-                        Список
-                    </a>
-                </td>
-            </tr>
+            <a class="card hub-card" href="{{ path('app_admin_objects') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">🏢</div>
+                    <b>Об'єкти нерухомості</b>
+                    <div class="hub-note">Квартири, паркомісця, комірчини: борг, власники, тип, об'єднання об'єктів одного власника.</div>
+                </div>
+            </a>
 
-            <tr>
-                <th scope="row">5</th>
-                <td>
-                    💰 Тариф (ціна за 1 м²)
-                </td>
-                <td>
-                    <a href="{{ path('app_admin_tariff') }}">
-                        Налаштувати
-                    </a>
-                </td>
-            </tr>
+            <a class="card hub-card" href="{{ path('app_admin_complaints') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">🔧</div>
+                    <b>Заявки</b>
+                    <div class="hub-note">Що зламалось у будинку. Статуси, обговорення з автором, фото.</div>
+                </div>
+            </a>
+        </div>
 
-            <tr>
-                <th scope="row">6</th>
-                <td>
-                    📐 Площі квартир (реєстр)
-                </td>
-                <td>
-                    <a href="{{ path('app_admin_area') }}">
-                        Завантажити файл
-                    </a>
-                </td>
-            </tr>
+        <div class="hub-h mb-2">Гроші</div>
+        <div class="hub-grid mb-4">
+            <a class="card hub-card" href="{{ path('app_admin_debt') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">💰</div>
+                    <b>Борги</b>
+                    <div class="hub-note">Завантаження файлу боргів. Показує, скільки рахунків із файлу бот не знає і на яку суму.</div>
+                </div>
+            </a>
 
-            <tr>
-                <th scope="row">7</th>
-                <td>
-                    🗳️ Голосування за блокування
-                </td>
-                <td>
-                    <a href="{{ path('app_admin_block_votes') }}">
-                        Список
-                    </a>
-                </td>
-            </tr>
+            <a class="card hub-card" href="{{ path('app_admin_area') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">📐</div>
+                    <b>Реєстр площ</b>
+                    <div class="hub-note">Площі квартир одним файлом. Від площі залежить персональний поріг блокування.</div>
+                </div>
+            </a>
 
-            <tr>
-                <th scope="row">8</th>
-                <td>
-                    🔑 Оголошення про оренду
-                </td>
-                <td>
-                    <a href="{{ path('app_admin_rentals') }}">
-                        Список
-                    </a>
-                </td>
-            </tr>
+            <a class="card hub-card" href="{{ path('app_admin_tariff') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">💵</div>
+                    <b>Тариф</b>
+                    <div class="hub-note">Ціна за м². Разом із площею дає поріг: площа × тариф × 1.5.</div>
+                </div>
+            </a>
+        </div>
 
-            <tr>
-                <th scope="row">9</th>
-                <td>
-                    🔧 Заявки та скарги
-                </td>
-                <td>
-                    <a href="{{ path('app_admin_complaints') }}">
-                        Список
-                    </a>
-                </td>
-            </tr>
+        <div class="hub-h mb-2">Альтанка і мешканці</div>
+        <div class="hub-grid mb-4">
+            <a class="card hub-card" href="{{ path('app_admin_schedule') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">📅</div>
+                    <b>Бронювання</b>
+                    <div class="hub-note">Хто і коли бронював альтанки.</div>
+                </div>
+            </a>
 
-            <tr>
-                <th scope="row">10</th>
-                <td>
-                    📘 Інструкція адміністратора
-                </td>
-                <td>
-                    <a href="{{ path('app_admin_guide') }}">
-                        Відкрити
-                    </a>
-                </td>
-            </tr>
-            </tbody>
-        </table>
+            <a class="card hub-card" href="{{ path('app_admin_photo_requests') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">📸</div>
+                    <b>Запити на фото</b>
+                    <div class="hub-note">Хто не надіслав фото після бронювання і кого через це заблоковано.</div>
+                </div>
+            </a>
 
+            <a class="card hub-card" href="{{ path('app_admin_block_votes') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">🗳️</div>
+                    <b>Голосування за блокування</b>
+                    <div class="hub-note">Рішення спільноти заблокувати аккаунт на 30 днів.</div>
+                </div>
+            </a>
+
+            <a class="card hub-card" href="{{ path('app_admin_rentals') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">🔑</div>
+                    <b>Оренда квартир</b>
+                    <div class="hub-note">Оголошення мешканців. Можна зняти з публікації.</div>
+                </div>
+            </a>
+
+            <a class="card hub-card" href="{{ path('app_admin_guide') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">📖</div>
+                    <b>Інструкція</b>
+                    <div class="hub-note">Як користуватись панеллю: покроково, з картинками.</div>
+                </div>
+            </a>
+        </div>
     </div>
-
 {% endblock %}
-
-{% block javascripts %}
-    {{ parent() }}
-{% endblock %}
-

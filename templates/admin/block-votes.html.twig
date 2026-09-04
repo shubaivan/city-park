@@ -40,27 +40,29 @@
                 <div class="card my-3 border-danger">
                     <div class="card-header bg-danger text-white">Підтвердження: кого виносимо на голосування</div>
                     <div class="card-body">
-                        <table class="table table-sm mb-3" style="max-width:680px">
-                            <tr><th style="width:220px">Кандидат</th><td><b>{{ preview.label }}</b></td></tr>
-                            <tr><th>Особовий рахунок</th><td>{{ preview.account_number }}</td></tr>
-                            <tr><th>Адреса</th><td>{{ preview.street }}, буд. {{ preview.house_number }}, кв. {{ preview.apartment_number }}</td></tr>
-                            <tr><th>Остання бронь альтанки</th><td>{{ preview.last_booking ?? '—' }}</td></tr>
-                            <tr><th>Жильці (Telegram)</th><td>
-                                {% if preview.names is empty %}
-                                    <span class="text-muted">немає прив'язаних користувачів бота</span>
-                                {% else %}
-                                    {% for n in preview.names %}{{ n }}{% if not loop.last %}<br>{% endif %}{% endfor %}
-                                {% endif %}
-                            </td></tr>
-                            <tr><th>Поточний статус</th><td>
-                                {% if preview.is_active %}<span class="badge bg-success">Активний</span>
-                                {% else %}<span class="badge bg-secondary">Заблокований</span>{% endif %}
-                            </td></tr>
-                            <tr><th>Блокувань голосуванням</th><td>
-                                {% if preview.vote_block_count > 0 %}<span class="badge bg-warning text-dark">{{ preview.vote_block_count }}×</span>{% else %}0{% endif %}
-                            </td></tr>
-                            <tr><th>Голосуватимуть</th><td><b>{{ preview.eligible }}</b> квартир та паркомісць · потрібно «За»: <b>{{ preview.needed }}</b></td></tr>
-                        </table>
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-3" style="max-width:680px">
+                                <tr><th style="width:220px">Кандидат</th><td><b>{{ preview.label }}</b></td></tr>
+                                <tr><th>Особовий рахунок</th><td>{{ preview.account_number }}</td></tr>
+                                <tr><th>Адреса</th><td>{{ preview.street }}, буд. {{ preview.house_number }}, кв. {{ preview.apartment_number }}</td></tr>
+                                <tr><th>Остання бронь альтанки</th><td>{{ preview.last_booking ?? '—' }}</td></tr>
+                                <tr><th>Жильці (Telegram)</th><td>
+                                    {% if preview.names is empty %}
+                                        <span class="text-muted">немає прив'язаних користувачів бота</span>
+                                    {% else %}
+                                        {% for n in preview.names %}{{ n }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                                    {% endif %}
+                                </td></tr>
+                                <tr><th>Поточний статус</th><td>
+                                    {% if preview.is_active %}<span class="badge bg-success">Активний</span>
+                                    {% else %}<span class="badge bg-secondary">Заблокований</span>{% endif %}
+                                </td></tr>
+                                <tr><th>Блокувань голосуванням</th><td>
+                                    {% if preview.vote_block_count > 0 %}<span class="badge bg-warning text-dark">{{ preview.vote_block_count }}×</span>{% else %}0{% endif %}
+                                </td></tr>
+                                <tr><th>Голосуватимуть</th><td><b>{{ preview.eligible }}</b> квартир та паркомісць · потрібно «За»: <b>{{ preview.needed }}</b></td></tr>
+                            </table>
+                        </div>
 
                         {% if not preview.is_apartment %}
                             <div class="alert alert-warning py-2">Увага: це не квартира (паркомісце/кладова). Голосувати за нього зможуть лише квартири.</div>
@@ -85,87 +87,91 @@
         {% if open is empty %}
             <p class="text-muted">Немає відкритих голосувань.</p>
         {% else %}
-            <table class="table table-bordered table-sm">
-                <thead>
-                <tr>
-                    <th>Кандидат</th>
-                    <th>Рахунок</th>
-                    <th>Блок. голосуванням</th>
-                    <th>За</th>
-                    <th>Проти</th>
-                    <th>Треба «За»</th>
-                    <th>Квартир+паркомісць</th>
-                    <th>До</th>
-                    <th>Відкрив</th>
-                    <th>Дія</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for c in open %}
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm">
+                    <thead>
                     <tr>
-                        <td>{{ c.label }}</td>
-                        <td>{{ c.account_number }}</td>
-                        <td>{% if c.blocks > 0 %}<span class="badge bg-warning text-dark">{{ c.blocks }}×</span>{% else %}—{% endif %}</td>
-                        <td><b>{{ c.yes }}</b></td>
-                        <td>{{ c.no }}</td>
-                        <td>{{ c.needed }}</td>
-                        <td>{{ c.eligible }}</td>
-                        <td>{{ c.deadline|date('d.m.Y') }}</td>
-                        <td>{{ c.created_by ?? '—' }}</td>
-                        <td>
-                            <form method="post" action="{{ path('app_admin_block_vote_remind') }}" class="mb-1"
-                                  onsubmit="return confirm('Надіслати нагадування всім, хто ще не проголосував?');">
-                                <input type="hidden" name="campaign_id" value="{{ c.id }}">
-                                <button type="submit" class="btn btn-sm btn-outline-primary">📣 Нагадати тим, хто не голосував</button>
-                            </form>
-                            <form method="post" action="{{ path('app_admin_block_vote_cancel') }}"
-                                  onsubmit="return confirm('Скасувати це голосування?');">
-                                <input type="hidden" name="campaign_id" value="{{ c.id }}">
-                                <button type="submit" class="btn btn-sm btn-outline-secondary">Скасувати</button>
-                            </form>
-                        </td>
+                        <th>Кандидат</th>
+                        <th>Рахунок</th>
+                        <th>Блок. голосуванням</th>
+                        <th>За</th>
+                        <th>Проти</th>
+                        <th>Треба «За»</th>
+                        <th>Квартир+паркомісць</th>
+                        <th>До</th>
+                        <th>Відкрив</th>
+                        <th>Дія</th>
                     </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                    {% for c in open %}
+                        <tr>
+                            <td>{{ c.label }}</td>
+                            <td>{{ c.account_number }}</td>
+                            <td>{% if c.blocks > 0 %}<span class="badge bg-warning text-dark">{{ c.blocks }}×</span>{% else %}—{% endif %}</td>
+                            <td><b>{{ c.yes }}</b></td>
+                            <td>{{ c.no }}</td>
+                            <td>{{ c.needed }}</td>
+                            <td>{{ c.eligible }}</td>
+                            <td>{{ c.deadline|date('d.m.Y') }}</td>
+                            <td>{{ c.created_by ?? '—' }}</td>
+                            <td>
+                                <form method="post" action="{{ path('app_admin_block_vote_remind') }}" class="mb-1"
+                                      onsubmit="return confirm('Надіслати нагадування всім, хто ще не проголосував?');">
+                                    <input type="hidden" name="campaign_id" value="{{ c.id }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-primary">📣 Нагадати тим, хто не голосував</button>
+                                </form>
+                                <form method="post" action="{{ path('app_admin_block_vote_cancel') }}"
+                                      onsubmit="return confirm('Скасувати це голосування?');">
+                                    <input type="hidden" name="campaign_id" value="{{ c.id }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Скасувати</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         {% endif %}
 
         <h5 class="mt-4">Завершені голосування</h5>
         {% if recent is empty %}
             <p class="text-muted">Поки що немає.</p>
         {% else %}
-            <table class="table table-bordered table-sm">
-                <thead>
-                <tr>
-                    <th>Кандидат</th>
-                    <th>Рахунок</th>
-                    <th>Блок. голосуванням</th>
-                    <th>Результат</th>
-                    <th>За</th>
-                    <th>Проти</th>
-                    <th>Треба було «За»</th>
-                    <th>Завершено</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for c in recent %}
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm">
+                    <thead>
                     <tr>
-                        <td>{{ c.label }}</td>
-                        <td>{{ c.account_number }}</td>
-                        <td>{% if c.blocks > 0 %}<span class="badge bg-warning text-dark">{{ c.blocks }}×</span>{% else %}—{% endif %}</td>
-                        <td>
-                            {% if c.status == 'passed' %}<span class="badge bg-danger">Заблоковано</span>
-                            {% elseif c.status == 'failed' %}<span class="badge bg-success">Не пройшло</span>
-                            {% else %}<span class="badge bg-secondary">Скасовано</span>{% endif %}
-                        </td>
-                        <td>{{ c.yes ?? 0 }}</td>
-                        <td>{{ c.no ?? 0 }}</td>
-                        <td>{{ c.needed }}</td>
-                        <td>{{ c.closed_at ? c.closed_at|date('d.m.Y H:i') : '—' }}</td>
+                        <th>Кандидат</th>
+                        <th>Рахунок</th>
+                        <th>Блок. голосуванням</th>
+                        <th>Результат</th>
+                        <th>За</th>
+                        <th>Проти</th>
+                        <th>Треба було «За»</th>
+                        <th>Завершено</th>
                     </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                    {% for c in recent %}
+                        <tr>
+                            <td>{{ c.label }}</td>
+                            <td>{{ c.account_number }}</td>
+                            <td>{% if c.blocks > 0 %}<span class="badge bg-warning text-dark">{{ c.blocks }}×</span>{% else %}—{% endif %}</td>
+                            <td>
+                                {% if c.status == 'passed' %}<span class="badge bg-danger">Заблоковано</span>
+                                {% elseif c.status == 'failed' %}<span class="badge bg-success">Не пройшло</span>
+                                {% else %}<span class="badge bg-secondary">Скасовано</span>{% endif %}
+                            </td>
+                            <td>{{ c.yes ?? 0 }}</td>
+                            <td>{{ c.no ?? 0 }}</td>
+                            <td>{{ c.needed }}</td>
+                            <td>{{ c.closed_at ? c.closed_at|date('d.m.Y H:i') : '—' }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         {% endif %}
 
         <a href="{{ path('app_admin') }}" class="btn btn-link">← До панелі</a>

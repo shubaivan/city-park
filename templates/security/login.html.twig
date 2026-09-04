@@ -14,7 +14,7 @@
     #}
     <style>
         .login-shell {
-            min-height: calc(100vh - 60px);
+            min-height: calc(100vh - 90px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -25,7 +25,8 @@
         .login-brand { font-size: 2.25rem; line-height: 1; }
         .login-card .form-control { font-size: 16px; height: auto; padding: .6rem .75rem; }
         .login-card .btn { padding: .6rem; font-size: 1rem; }
-        header, .navbar { display: none; }
+        /* The bar carries a single «Увійти» button on this page; the card is the point. */
+        .navbar { margin-bottom: 0; }
     </style>
 
     <div class="login-shell">

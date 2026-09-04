@@ -11,108 +11,112 @@
         {% if open|length == 0 %}
             <div class="alert alert-success">Немає відкритих запитів — усі бронювання вже підтверджені фото.</div>
         {% else %}
-            <table class="table table-striped table-sm align-middle">
-                <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Аккаунт</th>
-                    <th>Альт.</th>
-                    <th>Сесія</th>
-                    <th>Нагад.</th>
-                    <th>Статус</th>
-                    <th>Фото того ж дня</th>
-                    <th>Дія</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for req in open %}
-                    {% set candidates = candidatePhotosByReq[req.id] ?? [] %}
+            <div class="table-responsive">
+                <table class="table table-striped table-sm align-middle">
+                    <thead>
                     <tr>
-                        <td>{{ req.id }}</td>
-                        <td>
-                            {{ req.account.accountNumber }}<br>
-                            <small>{{ req.account.street }} {{ req.account.houseNumber }}, кв. {{ req.account.apartmentNumber }}</small>
-                        </td>
-                        <td>{{ req.pavilion }}</td>
-                        <td>
-                            {{ req.sessionStartAt|date('Y-m-d H:i') }} → {{ req.sessionEndAt|date('H:i') }}
-                        </td>
-                        <td>{{ req.remindersSent }}/3</td>
-                        <td>
-                            {% if req.blockedAt %}
-                                <span class="badge bg-danger">⛔ Заблоковано {{ req.blockedAt|date('m-d H:i') }}</span>
-                            {% else %}
-                                <span class="badge bg-warning text-dark">⏳ Очікує</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if candidates|length > 0 %}
-                                {% for photo in candidates %}
-                                    <a href="{{ photo.filePath }}" target="_blank" title="Сесія {{ photo.sessionStartAt|date('H:i') }}–{{ photo.sessionEndAt|date('H:i') }}">
-                                        <img src="{{ photo.filePath }}" alt="photo"
-                                             style="height:42px;border-radius:4px;margin-right:4px;border:1px solid #ccc;">
-                                    </a>
-                                {% endfor %}
-                                <br><small class="text-success">Цей акаунт уже завантажив фото у цей день у цій альтанці.</small>
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if candidates|length > 0 %}
-                                <button class="btn btn-sm btn-success"
-                                        onclick="resolveRequest({{ req.id }}, this, true)">
-                                    ✅ Закрити (є фото)
-                                </button>
-                            {% else %}
-                                <button class="btn btn-sm btn-outline-secondary"
-                                        onclick="resolveRequest({{ req.id }}, this, false)">
-                                    Закрити запит
-                                </button>
-                            {% endif %}
-                        </td>
+                        <th>ID</th>
+                        <th>Аккаунт</th>
+                        <th>Альт.</th>
+                        <th>Сесія</th>
+                        <th>Нагад.</th>
+                        <th>Статус</th>
+                        <th>Фото того ж дня</th>
+                        <th>Дія</th>
                     </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                    {% for req in open %}
+                        {% set candidates = candidatePhotosByReq[req.id] ?? [] %}
+                        <tr>
+                            <td>{{ req.id }}</td>
+                            <td>
+                                {{ req.account.accountNumber }}<br>
+                                <small>{{ req.account.street }} {{ req.account.houseNumber }}, кв. {{ req.account.apartmentNumber }}</small>
+                            </td>
+                            <td>{{ req.pavilion }}</td>
+                            <td>
+                                {{ req.sessionStartAt|date('Y-m-d H:i') }} → {{ req.sessionEndAt|date('H:i') }}
+                            </td>
+                            <td>{{ req.remindersSent }}/3</td>
+                            <td>
+                                {% if req.blockedAt %}
+                                    <span class="badge bg-danger">⛔ Заблоковано {{ req.blockedAt|date('m-d H:i') }}</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">⏳ Очікує</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if candidates|length > 0 %}
+                                    {% for photo in candidates %}
+                                        <a href="{{ photo.filePath }}" target="_blank" title="Сесія {{ photo.sessionStartAt|date('H:i') }}–{{ photo.sessionEndAt|date('H:i') }}">
+                                            <img src="{{ photo.filePath }}" alt="photo"
+                                                 style="height:42px;border-radius:4px;margin-right:4px;border:1px solid #ccc;">
+                                        </a>
+                                    {% endfor %}
+                                    <br><small class="text-success">Цей акаунт уже завантажив фото у цей день у цій альтанці.</small>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if candidates|length > 0 %}
+                                    <button class="btn btn-sm btn-success"
+                                            onclick="resolveRequest({{ req.id }}, this, true)">
+                                        ✅ Закрити (є фото)
+                                    </button>
+                                {% else %}
+                                    <button class="btn btn-sm btn-outline-secondary"
+                                            onclick="resolveRequest({{ req.id }}, this, false)">
+                                        Закрити запит
+                                    </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         {% endif %}
 
         <h4 class="mt-4">Нещодавно закриті (14 днів)</h4>
         {% if recent|length == 0 %}
             <div class="text-muted">Немає.</div>
         {% else %}
-            <table class="table table-sm">
-                <thead>
-                <tr>
-                    <th>Аккаунт</th>
-                    <th>Альт.</th>
-                    <th>Сесія</th>
-                    <th>Закрито</th>
-                    <th>Фото</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for req in recent %}
-                    {% set key = req.account.id ~ ':' ~ req.pavilion ~ ':' ~ req.sessionStartAt|date('Y-m-d H:i') %}
-                    {% set photo = photosByKey[key] ?? null %}
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
                     <tr>
-                        <td>{{ req.account.accountNumber }}</td>
-                        <td>{{ req.pavilion }}</td>
-                        <td>{{ req.sessionStartAt|date('Y-m-d H:i') }}</td>
-                        <td>{{ req.resolvedAt|date('Y-m-d H:i') }}</td>
-                        <td>
-                            {% if photo %}
-                                <a href="{{ photo.filePath }}" target="_blank">
-                                    <img src="{{ photo.filePath }}" alt="photo" style="height:48px;cursor:pointer;border-radius:4px;">
-                                </a>
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endif %}
-                        </td>
+                        <th>Аккаунт</th>
+                        <th>Альт.</th>
+                        <th>Сесія</th>
+                        <th>Закрито</th>
+                        <th>Фото</th>
                     </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                    {% for req in recent %}
+                        {% set key = req.account.id ~ ':' ~ req.pavilion ~ ':' ~ req.sessionStartAt|date('Y-m-d H:i') %}
+                        {% set photo = photosByKey[key] ?? null %}
+                        <tr>
+                            <td>{{ req.account.accountNumber }}</td>
+                            <td>{{ req.pavilion }}</td>
+                            <td>{{ req.sessionStartAt|date('Y-m-d H:i') }}</td>
+                            <td>{{ req.resolvedAt|date('Y-m-d H:i') }}</td>
+                            <td>
+                                {% if photo %}
+                                    <a href="{{ photo.filePath }}" target="_blank">
+                                        <img src="{{ photo.filePath }}" alt="photo" style="height:48px;cursor:pointer;border-radius:4px;">
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         {% endif %}
     </div>
 {% endblock %}
