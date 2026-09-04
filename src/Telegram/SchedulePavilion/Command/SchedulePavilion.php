@@ -129,10 +129,13 @@ class SchedulePavilion extends Conversation
         if ($this->debtPolicy->isOwnerGroupBlocked($account)) {
             $blocking = $this->debtPolicy->getBlockingSiblings($account);
             $lines = array_map(
+                // Never "кв. %s" for every object in the group: this list is exactly where
+                // a comirchyna or a parking space shows up, and calling one of those a flat
+                // tells the reader to go look at a door that has nothing to do with it.
                 static fn($a) => sprintf(
-                    '• <b>%s грн</b> — кв. %s (рахунок %s)',
+                    '• <b>%s грн</b> — %s (рахунок %s)',
                     number_format((float)$a->getDebt(), 2, '.', ' '),
-                    htmlspecialchars((string)$a->getApartmentNumber(), ENT_QUOTES, 'UTF-8'),
+                    htmlspecialchars($a->getPlaceLabel(), ENT_QUOTES, 'UTF-8'),
                     htmlspecialchars((string)$a->getAccountNumber(), ENT_QUOTES, 'UTF-8'),
                 ),
                 $blocking,

@@ -348,6 +348,33 @@ class Account
     }
 
     /**
+     * "буд. 19, кв. 85" — how this object is named to a human, in plain text.
+     *
+     * Two rules, both learned the hard way. **The building is never dropped:** the ЖК is
+     * five buildings on one street and apartment numbers repeat across them, so "кв. 76"
+     * named two households owing 5 402 and 651 грн. **The kind of unit comes from the
+     * особовий рахунок, not from the text:** most non-flat rows carry a bare number, and
+     * calling one of those "кв. 191" turns a parking space into somebody's flat.
+     */
+    public function getPlaceLabel(): string
+    {
+        $unit = trim((string)$this->apartment_number);
+        $house = trim((string)$this->house_number);
+
+        if ($unit === '') {
+            $unit = 'без номера';
+        } elseif (preg_match('/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/u', $unit) === 1) {
+            $unit = match ($this->getUnitType()) {
+                self::UNIT_STORAGE => 'комірчина ',
+                self::UNIT_PARKING => 'паркомісце ',
+                default => 'кв. ',
+            } . $unit;
+        }
+
+        return $house === '' ? $unit : sprintf('буд. %s, %s', $house, $unit);
+    }
+
+    /**
      * The historical rule, kept as the seed and the fallback: the third digit of the
      * особовий рахунок, plus a free-text check for legacy rows that spell it out.
      */

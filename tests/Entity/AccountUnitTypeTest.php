@@ -105,4 +105,27 @@ class AccountUnitTypeTest extends TestCase
             $this->assertNotSame('', $account->getUnitTypeLabel());
         }
     }
+
+    /**
+     * The label every screen prints. The booking gate lists the objects of a group that owe
+     * money, and that list is exactly where a комірчина or a parking space appears — calling
+     * one of those "кв. 168" sends the reader to a door that has nothing to do with it.
+     */
+    public function testThePlaceLabelNamesTheBuildingAndTheKindOfUnit(): void
+    {
+        $flat = $this->account('230085', '85');
+        $storage = $this->account('235168', '168');
+        $parking = $this->account('237191', '191');
+        $spelled = $this->account('117138', 'Паркінг 138');
+
+        $this->assertSame('буд. 19, кв. 85', $flat->getPlaceLabel());
+        $this->assertSame('буд. 19, комірчина 168', $storage->getPlaceLabel());
+        $this->assertSame('буд. 19, паркомісце 191', $parking->getPlaceLabel());
+        // A row that already spells it out keeps its own wording.
+        $this->assertSame('буд. 19, Паркінг 138', $spelled->getPlaceLabel());
+
+        // Correcting the type corrects the label everywhere at once.
+        $storage->setUnitType(Account::UNIT_APARTMENT);
+        $this->assertSame('буд. 19, кв. 168', $storage->getPlaceLabel());
+    }
 }
