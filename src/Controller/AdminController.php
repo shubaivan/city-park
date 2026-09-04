@@ -675,6 +675,78 @@ class AdminController extends AbstractController
      * page has no JavaScript of its own. Both go through OwnerGroupService.
      */
     /**
+     * Add an object nobody lives in yet.
+     *
+     * Creating an `Account` was possible before only as a side effect of *moving a person*:
+     * typing an unknown особовий рахунок into a resident's card creates the row and drags
+     * that resident onto it. That is right for "цей мешканець насправді у кв. 86" and wrong
+     * for everything else — a кладова entered that way would take its owner off their flat.
+     *
+     * So objects that exist on paper but have no linked resident — a storage room, a parking
+     * space, a flat whose owner has never opened the bot — had no way in at all, and those
+     * are precisely the rows whose debt reaches nobody.
+     */
+    #[Route('/admin/objects/create', name: 'app_admin_objects_create', methods: [Request::METHOD_POST])]
+    public function objectsCreate(
+        Request $request,
+        AccountRepository $accountRepository,
+        EntityManagerInterface $em,
+    ): Response {
+        $number = trim((string)$request->request->get('account_number'));
+        $house = trim((string)$request->request->get('house_number'));
+        $unit = trim((string)$request->request->get('apartment_number'));
+        $street = trim((string)$request->request->get('street')) ?: 'Козацька';
+        $type = (string)$request->request->get('unit_type');
+        $area = str_replace(',', '.', trim((string)$request->request->get('area')));
+
+        if ($number === '' || $house === '' || $unit === '') {
+            $this->addFlash('error', 'Потрібні особовий рахунок, будинок і номер обʼєкта.');
+
+            return $this->redirectToRoute('app_admin_objects');
+        }
+
+        // The особовий рахунок is what the debt import matches on, so a duplicate silently
+        // sends somebody's arrears to the wrong row. Refuse rather than create a second one.
+        if ($accountRepository->findOneBy(['account_number' => $number]) instanceof Account) {
+            $this->addFlash('error', sprintf('Рахунок %s уже є в базі.', $number));
+
+            return $this->redirectToRoute('app_admin_objects');
+        }
+
+        $account = (new Account())
+            ->setAccountNumber($number)
+            ->setHouseNumber($house)
+            ->setApartmentNumber($unit)
+            ->setStreet($street);
+
+        // New objects start active and owing nothing: a row created by hand must not arrive
+        // already blocked, and the debt lands with the accountant's next file.
+        $account->setIsActive(true);
+        $account->setDebt('0');
+
+        if (isset(Account::UNIT_TYPES[$type])) {
+            $account->setUnitType($type);
+        }
+
+        if ($area !== '' && is_numeric($area) && (float)$area > 0) {
+            $account->setArea($area);
+        }
+
+        $em->persist($account);
+        $em->flush();
+
+        $this->addFlash('notice', sprintf(
+            'Додано: %s — %s, буд. %s, %s. Прив’язати мешканця можна в розділі «Люди».',
+            $number,
+            Account::UNIT_TYPES[$account->getUnitType()],
+            $house,
+            $unit,
+        ));
+
+        return $this->redirectToRoute('app_admin_objects');
+    }
+
+    /**
      * Correct what kind of property an object is.
      *
      * The type used to be recomputed from the особовий рахунок on every read, so a row with

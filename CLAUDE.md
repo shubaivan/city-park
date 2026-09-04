@@ -199,6 +199,15 @@ the page existed — it was simply never used: zero groups on prod as of 04.09.2
   (area × tariff × 1.5), and adding two debts to compare against one threshold compares a
   total against half a rule.
 
+**Objects are created on `/admin/objects`, not by moving a person.** Typing an unknown
+особовий рахунок into a resident's card creates the row *and drags that resident onto it* —
+right for "цей мешканець насправді у кв. 86", wrong for anything else: a кладова entered
+that way takes its owner off their flat. So an object that exists on paper and has nobody in
+the bot (a storage room, a parking space, a flat whose owner never opened it) had no way in
+at all, and those are exactly the rows whose debt reaches nobody. The form refuses a
+duplicate особовий рахунок outright — that is what the debt import matches on, and a second
+row silently sends somebody's arrears to the wrong place.
+
 `OwnerGroupService` is the only writer of `owner_group_id`; the users page reaches it over
 JSON and the objects page over a plain form, and the merge rules (an existing group beats a
 fresh id, the smaller id survives a merge, a group of one dissolves on unlink) live there
