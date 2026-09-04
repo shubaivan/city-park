@@ -849,7 +849,7 @@ class AdminController extends AbstractController
     }
 
     #[Route('/admin/users', name: 'app_admin_users')]
-    public function users(EntityManagerInterface $em): Response
+    public function users(EntityManagerInterface $em, AccountRepository $accountRepository): Response
     {
         $fieldNames = TelegramUser::$dataTableFields;
         $fieldNames[] = 'action';
@@ -867,6 +867,9 @@ class AdminController extends AbstractController
         return $this->render('admin/telegram-users.html.twig', [
             'th_keys' => $fieldNames,
             'dataTableKeys' => $dataTableColumnData,
+            // For the per-building filter row. Derived from the data: a hardcoded list
+            // silently drops a building the day one appears.
+            'houses' => $accountRepository->distinctHouseNumbers(),
         ]);
     }
 

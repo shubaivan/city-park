@@ -232,6 +232,17 @@ class TelegramUserRepository extends ServiceEntityRepository
                 $bindParams[$param] = '%' . ltrim(trim((string)$params[$param]), '@') . '%';
             }
         }
+        // The building, exactly — not the address box.
+        //
+        // Typing «19» into «Адреса» matches кв. 19 and буд. 19 alike, because that field is
+        // one ILIKE across street, house and unit. «Хто в 19-му будинку» is a different
+        // question and one of the most common: it is how the accountant works through a
+        // building at a time.
+        if (!$total && !empty($params['house_filter'])) {
+            $conditions[] = 'a.house_number = :house_filter';
+            $bindParams['house_filter'] = trim((string)$params['house_filter']);
+        }
+
         if (!$total && !empty($params['search_address'])) {
             $conditions[] = '(ILIKE(a.street, :search_address) = TRUE
                 OR ILIKE(a.house_number, :search_address) = TRUE

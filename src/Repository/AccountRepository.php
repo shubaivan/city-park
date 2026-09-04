@@ -63,6 +63,33 @@ class AccountRepository extends ServiceEntityRepository
     }
 
     /**
+     * The buildings that actually have accounts, in walking order.
+     *
+     * Feeds the per-building filters on both admin registers. Read from the data rather
+     * than hardcoded as 17/19/21/23/27: that list is already wrong — there is a буд. 25 —
+     * and it would silently drop a sixth building the day one appears.
+     *
+     * @return string[]
+     */
+    public function distinctHouseNumbers(): array
+    {
+        $rows = $this->createQueryBuilder('a')
+            ->select('DISTINCT a.house_number AS house')
+            ->andWhere("a.house_number <> ''")
+            ->getQuery()
+            ->getScalarResult();
+
+        $houses = array_values(array_filter(array_map(
+            static fn (array $row): string => trim((string)$row['house']),
+            $rows,
+        )));
+
+        usort($houses, 'strnatcmp');
+
+        return $houses;
+    }
+
+    /**
      * Accounts owing money, largest debt first.
      *
      * `debt` is a DECIMAL column, so the sort is numeric and 90 does not land above
