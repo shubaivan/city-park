@@ -26,6 +26,7 @@ services:
             # it protects is not a backup — if the machine goes, so does it.
             $backupChatId: '%env(string:BACKUP_TELEGRAM_CHAT_ID)%'
             $backupEmail: '%env(string:BACKUP_EMAIL)%'
+            $mailerDsn: '%env(string:MAILER_DSN)%'
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name
