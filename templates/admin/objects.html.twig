@@ -85,6 +85,12 @@
                                 <div class="small obj-muted">
                                     {{ row.type_label }} · о/р {{ a.accountNumber }}
                                     {% if a.area %} · {{ a.area }} м²{% endif %}
+                                    {% if a.storedUnitType is null %}
+                                        {# Still derived from the account number rather than
+                                           stated. Worth showing: a mistyped rahunok reads as
+                                           the wrong type instead of as an error. #}
+                                        <span class="badge badge-light" title="Тип визначено з особового рахунку, не вказаний вручну">авто</span>
+                                    {% endif %}
                                 </div>
                             </div>
                             <div class="text-right">
@@ -147,6 +153,25 @@
                                 </div>
                             {% endfor %}
                         </div>
+
+                        {# --- what kind of object this is --- #}
+                        <details class="mt-2">
+                            <summary class="small">🏷 Тип об'єкта</summary>
+                            <form method="post" action="{{ path('app_admin_objects_type') }}" class="form-inline mt-2">
+                                <input type="hidden" name="account_id" value="{{ a.id }}">
+                                <select name="unit_type" class="form-control form-control-sm mr-2 mb-1">
+                                    <option value="apartment" {{ row.type == 'apartment' ? 'selected' }}>🏠 Квартира</option>
+                                    <option value="parking" {{ row.type == 'parking' ? 'selected' }}>🚗 Паркомісце</option>
+                                    <option value="storage" {{ row.type == 'storage' ? 'selected' }}>📦 Комірчина</option>
+                                </select>
+                                <button class="btn btn-sm btn-outline-primary mb-1">Зберегти тип</button>
+                            </form>
+                            <div class="small obj-muted mt-1">
+                                Тип вирішує, як об'єкт підписаний на дошці боржників і в чаті
+                                («кв. 191» чи «паркомісце 191») і чи можна з нього бронювати альтанку
+                                (з комірчини — ні).
+                            </div>
+                        </details>
 
                         {# --- one owner, several objects --- #}
                         <details class="mt-2">

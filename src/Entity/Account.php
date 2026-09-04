@@ -82,6 +82,27 @@ class Account
     #[ORM\Column(type: 'integer', nullable: true)]
     private ?int $owner_group_id = null;
 
+    /**
+     * What kind of property this is: a flat, a parking space or a storage room.
+     *
+     * Derived from the особовий рахунок for years (`getUnitTypeDigit()`: the third digit of
+     * Q-P-T-NNN — 0 apartment, 5 storage, 7 parking) and never written down. That worked
+     * until it did not:
+     *
+     * - the formula reads a *position*, so a mistyped rahunok reads as the wrong type
+     *   rather than as an error — `42076` is five digits, and its third character is the
+     *   `0` of what should have been `420076`;
+     * - six of the eight non-flat accounts on prod carry a bare number in
+     *   `apartment_number`, so nothing else in the row says what it is;
+     * - and there is no way for an admin to correct one, because there was nothing to
+     *   correct — the answer was recomputed from the number every time.
+     *
+     * So the type is now stored, seeded from the formula (which is right for every current
+     * row), and editable. The formula stays as the fallback for a row that has none.
+     */
+    #[ORM\Column(length: 16, nullable: true)]
+    private ?string $unit_type = null;
+
     #[ORM\OneToMany(targetEntity: TelegramUser::class, mappedBy: 'account', cascade: ["persist"])]
     private Collection $users;
 
@@ -282,29 +303,84 @@ class Account
         return in_array($d, [0, 5, 7], true) ? $d : null;
     }
 
+    public const UNIT_APARTMENT = 'apartment';
+    public const UNIT_PARKING = 'parking';
+    public const UNIT_STORAGE = 'storage';
+
+    public const UNIT_TYPES = [
+        self::UNIT_APARTMENT => '🏠 Квартира',
+        self::UNIT_PARKING => '🚗 Паркомісце',
+        self::UNIT_STORAGE => '📦 Комірчина',
+    ];
+
+    /**
+     * The stored type when there is one, otherwise the old derivation.
+     *
+     * Everything asking "what kind of unit is this" goes through here, so correcting one
+     * row in the admin panel corrects the label on the debtors' board, the complaint posted
+     * to the residents' chat and the right to book the pavilion, all at once.
+     */
+    public function getUnitType(): string
+    {
+        if ($this->unit_type !== null && isset(self::UNIT_TYPES[$this->unit_type])) {
+            return $this->unit_type;
+        }
+
+        return $this->deriveUnitType();
+    }
+
+    /** The raw stored value — null means "never set, still derived". */
+    public function getStoredUnitType(): ?string
+    {
+        return $this->unit_type;
+    }
+
+    public function setUnitType(?string $type): static
+    {
+        $this->unit_type = ($type !== null && isset(self::UNIT_TYPES[$type])) ? $type : null;
+
+        return $this;
+    }
+
+    public function getUnitTypeLabel(): string
+    {
+        return self::UNIT_TYPES[$this->getUnitType()];
+    }
+
+    /**
+     * The historical rule, kept as the seed and the fallback: the third digit of the
+     * особовий рахунок, plus a free-text check for legacy rows that spell it out.
+     */
+    public function deriveUnitType(): string
+    {
+        $value = mb_strtolower((string)$this->apartment_number, 'UTF-8');
+
+        foreach (['кладов', 'комірчина', 'комирчина', 'storage'] as $needle) {
+            if (str_contains($value, $needle)) {
+                return self::UNIT_STORAGE;
+            }
+        }
+
+        return match ($this->getUnitTypeDigit()) {
+            5 => self::UNIT_STORAGE,
+            7 => self::UNIT_PARKING,
+            default => self::UNIT_APARTMENT,
+        };
+    }
+
     public function isApartment(): bool
     {
-        return $this->getUnitTypeDigit() === 0;
+        return $this->getUnitType() === self::UNIT_APARTMENT;
     }
 
     public function isParking(): bool
     {
-        return $this->getUnitTypeDigit() === 7;
+        return $this->getUnitType() === self::UNIT_PARKING;
     }
 
     public function isStorage(): bool
     {
-        if ($this->getUnitTypeDigit() === 5) {
-            return true;
-        }
-        // Legacy rows where apartment_number is free text like "кладова 12".
-        $value = mb_strtolower((string)$this->apartment_number, 'UTF-8');
-        foreach (['кладов', 'комірчина', 'комирчина', 'storage'] as $needle) {
-            if (str_contains($value, $needle)) {
-                return true;
-            }
-        }
-        return false;
+        return $this->getUnitType() === self::UNIT_STORAGE;
     }
 
     /**

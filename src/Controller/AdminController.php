@@ -674,6 +674,48 @@ class AdminController extends AbstractController
      * A plain form post rather than the JSON endpoint the users page uses, because this
      * page has no JavaScript of its own. Both go through OwnerGroupService.
      */
+    /**
+     * Correct what kind of property an object is.
+     *
+     * The type used to be recomputed from the особовий рахунок on every read, so a row with
+     * a mistyped number was permanently the wrong kind of thing and nobody could say
+     * otherwise. It decides the label on the public debtors' board, the address in a
+     * complaint posted to the residents' chat and the right to book the pavilion, so it is
+     * worth being able to fix by hand.
+     */
+    #[Route('/admin/objects/type', name: 'app_admin_objects_type', methods: [Request::METHOD_POST])]
+    public function objectsSetType(
+        Request $request,
+        AccountRepository $accountRepository,
+        EntityManagerInterface $em,
+    ): Response {
+        $account = $accountRepository->find((int)$request->request->get('account_id'));
+        $type = (string)$request->request->get('unit_type');
+
+        if (!$account instanceof Account) {
+            $this->addFlash('error', 'Об’єкт не знайдено.');
+
+            return $this->redirectToRoute('app_admin_objects');
+        }
+
+        if (!isset(Account::UNIT_TYPES[$type])) {
+            $this->addFlash('error', 'Невідомий тип об’єкта.');
+
+            return $this->redirectToRoute('app_admin_objects');
+        }
+
+        $account->setUnitType($type);
+        $em->flush();
+
+        $this->addFlash('notice', sprintf(
+            '%s — тепер %s.',
+            $account->getAccountNumber(),
+            Account::UNIT_TYPES[$type],
+        ));
+
+        return $this->redirectToRoute('app_admin_objects');
+    }
+
     #[Route('/admin/objects/group/link', name: 'app_admin_objects_group_link', methods: [Request::METHOD_POST])]
     public function objectsGroupLink(
         Request $request,

@@ -27,9 +27,10 @@ use App\Repository\AccountRepository;
  */
 class PropertyRegistry
 {
-    public const TYPE_APARTMENT = 'apartment';
-    public const TYPE_PARKING = 'parking';
-    public const TYPE_STORAGE = 'storage';
+    /** Aliases of the Account constants, kept so callers need not import the entity. */
+    public const TYPE_APARTMENT = Account::UNIT_APARTMENT;
+    public const TYPE_PARKING = Account::UNIT_PARKING;
+    public const TYPE_STORAGE = Account::UNIT_STORAGE;
 
     public function __construct(
         private AccountRepository $accounts,
@@ -159,20 +160,12 @@ class PropertyRegistry
 
     public function type(Account $account): string
     {
-        return match (true) {
-            $account->isStorage() => self::TYPE_STORAGE,
-            $account->isParking() => self::TYPE_PARKING,
-            default => self::TYPE_APARTMENT,
-        };
+        return $account->getUnitType();
     }
 
     public function typeLabel(Account $account): string
     {
-        return match ($this->type($account)) {
-            self::TYPE_STORAGE => '📦 Комірчина',
-            self::TYPE_PARKING => '🚗 Паркомісце',
-            default => '🏠 Квартира',
-        };
+        return $account->getUnitTypeLabel();
     }
 
     /**
@@ -192,9 +185,9 @@ class PropertyRegistry
         if ($unit === '') {
             $unit = 'без номера';
         } elseif (preg_match('/^\d+[a-zA-Zа-яА-ЯіїєґІЇЄҐ]?$/u', $unit) === 1) {
-            $unit = match (true) {
-                $account->isStorage() => 'комірчина ',
-                $account->isParking() => 'паркомісце ',
+            $unit = match ($account->getUnitType()) {
+                Account::UNIT_STORAGE => 'комірчина ',
+                Account::UNIT_PARKING => 'паркомісце ',
                 default => 'кв. ',
             } . $unit;
         }
