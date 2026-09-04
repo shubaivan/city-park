@@ -248,9 +248,13 @@
                                        phone, the role and the block history live, and the
                                        user may be on any page of a server-side table — the
                                        link carries the id so there is no row to hunt for. #}
-                                    <a href="{{ path('app_admin_users') }}?user={{ o.id }}" target="_blank" rel="noopener">
-                                        {{ o.firstName }} {{ o.lastName }}{% if not o.firstName and not o.lastName %}(без імені){% endif %}
-                                    </a>
+                                    {% if o.id %}
+                                        <a href="{{ path('app_admin_resident', {id: o.id}) }}">
+                                            {{ o.firstName }} {{ o.lastName }}{% if not o.firstName and not o.lastName %}(без імені){% endif %}
+                                        </a>
+                                    {% else %}
+                                        {{ o.firstName }} {{ o.lastName }}
+                                    {% endif %}
                                     <span class="badge badge-light">{{ o.roleLabel }}</span>
                                     <div class="small">
                                         {% if o.phoneNumber %}

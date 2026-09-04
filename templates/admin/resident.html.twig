@@ -1,0 +1,426 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ user.firstName }} {{ user.lastName }} | Мешканець{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    {#
+        A page, not a modal.
+
+        The resident card used to be a narrow column floating over the table: unreadable,
+        and — the part that cost time — with no address. Close it and there was no way back
+        except finding the row again in a server-side table of 453 people, and no way to
+        send anyone a link to it. Every action here is its own small form: correcting an
+        address can no longer move somebody to another flat as a side effect.
+    #}
+    <style>
+        .res-wrap { max-width: 76rem; }
+        .res-card { margin-bottom: 1rem; }
+        .res-card .card-header { font-weight: 600; background: #f8f9fa; }
+        .res-kv { display: grid; grid-template-columns: 11rem 1fr; gap: .35rem 1rem; }
+        @media (max-width: 576px) { .res-kv { grid-template-columns: 1fr; gap: 0 } .res-kv dt { margin-top: .5rem } }
+        .res-kv dt { font-weight: 500; color: #6c757d; margin: 0 }
+        .res-kv dd { margin: 0 }
+        .res-danger { border-color: #f5c6cb }
+        .res-danger .card-header { background: #f8d7da }
+        .res-history li + li { border-top: 1px dashed #e9ecef }
+    </style>
+
+    <div class="container-fluid mt-3 px-2 px-sm-3 res-wrap">
+
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+            <div>
+                <a href="{{ path('app_admin_users') }}" class="btn btn-sm btn-outline-secondary">← Усі мешканці</a>
+                <a href="{{ path('app_admin_objects') }}" class="btn btn-sm btn-outline-secondary">🏢 Об'єкти</a>
+            </div>
+            {% if account %}
+                <a href="{{ path('app_admin_block_votes') }}?candidate={{ account.accountNumber }}"
+                   class="btn btn-sm btn-outline-danger">🗳️ Голосування за блокування</a>
+            {% endif %}
+        </div>
+
+        <h3 class="mb-1">
+            {{ user.firstName }} {{ user.lastName }}
+            {% if not user.firstName and not user.lastName %}<span class="text-muted">без імені</span>{% endif %}
+        </h3>
+
+        <div class="mb-3">
+            <span class="badge badge-light">{{ user.roleLabel }}</span>
+            {% if account is null %}
+                <span class="badge badge-secondary">⏳ Не прив'язаний до рахунку</span>
+            {% elseif block %}
+                <span class="badge badge-danger">🚫 {{ block.label }}</span>
+            {% elseif account.isActive %}
+                <span class="badge badge-success">✅ Активний</span>
+            {% else %}
+                <span class="badge badge-secondary">⏸ Неактивний</span>
+            {% endif %}
+            {% if account and account.voteBlockCount > 0 %}
+                <span class="badge badge-warning">🗳 блокувань спільнотою: {{ account.voteBlockCount }}</span>
+            {% endif %}
+        </div>
+
+        <div class="row">
+            <div class="col-12 col-lg-6">
+
+                {# ---------- contacts ---------- #}
+                <div class="card res-card">
+                    <div class="card-header">👤 Контакти</div>
+                    <div class="card-body p-3">
+                        <dl class="res-kv mb-0">
+                            <dt>Телефон</dt>
+                            <dd>
+                                {% if user.phoneNumber %}
+                                    {% set digits = user.phoneNumber|replace({'+': '', ' ': '', '-': '', '(': '', ')': ''}) %}
+                                    <a href="tel:+{{ digits }}">+{{ digits }}</a>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                            </dd>
+
+                            <dt>Telegram</dt>
+                            <dd>
+                                {% if user.username %}
+                                    <a href="https://t.me/{{ user.username }}" target="_blank" rel="noopener">@{{ user.username }}</a>
+                                {% elseif user.phoneNumber %}
+                                    <a href="https://t.me/+{{ user.phoneNumber|replace({'+': '', ' ': '', '-': ''}) }}" target="_blank" rel="noopener">написати</a>
+                                    <span class="text-muted">(без @username)</span>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                            </dd>
+
+                            <dt>Telegram ID</dt>
+                            <dd><code>{{ user.telegramId ?: '—' }}</code></dd>
+
+                            <dt>У боті з</dt>
+                            <dd>{{ user.createdAt ? user.createdAt|date('d.m.Y') : '—' }}</dd>
+                        </dl>
+                    </div>
+                </div>
+
+                {# ---------- role ---------- #}
+                <div class="card res-card">
+                    <div class="card-header">🏷 Хто це для квартири</div>
+                    <div class="card-body p-3">
+                        <form method="post" action="{{ path('app_admin_resident_role', {id: user.id}) }}" class="form-inline">
+                            <select name="role" class="form-control form-control-sm mr-2 mb-1">
+                                <option value="" {{ user.role is null ? 'selected' }}>— не вказано —</option>
+                                <option value="owner" {{ user.role == 'owner' ? 'selected' }}>Власник</option>
+                                <option value="family" {{ user.role == 'family' ? 'selected' }}>Член сім'ї</option>
+                                <option value="tenant" {{ user.role == 'tenant' ? 'selected' }}>Орендар</option>
+                            </select>
+                            <button class="btn btn-sm btn-primary mb-1">Зберегти</button>
+                        </form>
+                        <div class="small text-muted mt-2">
+                            Ставиться вручну: бот цього не знає — у нього є лише квартира й телефон.
+                            Роль належить людині, а не рахунку: орендар і власник ділять один
+                            особовий рахунок і не мають ділити один підпис.
+                        </div>
+                    </div>
+                </div>
+
+                {# ---------- the object ---------- #}
+                <div class="card res-card">
+                    <div class="card-header">🏠 Об'єкт</div>
+                    <div class="card-body p-3">
+                        {% if account is null %}
+                            <p class="text-muted mb-2">
+                                Цей мешканець ще не прив'язаний до особового рахунку. Бот бачить
+                                його, але не знає, з якої він квартири — тож не пускає ні в чат,
+                                ні в бронювання.
+                            </p>
+                        {% else %}
+                            <dl class="res-kv">
+                                <dt>Особовий рахунок</dt>
+                                <dd>
+                                    <a href="{{ path('app_admin_objects') }}?object={{ account.accountNumber }}">{{ account.accountNumber }}</a>
+                                    · {{ account.unitTypeLabel }}
+                                </dd>
+
+                                <dt>Адреса</dt>
+                                <dd>{{ registry.place(account) }}, {{ account.street }}</dd>
+
+                                <dt>Площа</dt>
+                                <dd>{{ account.area ? account.area ~ ' м²' : '—' }}</dd>
+
+                                <dt>Борг</dt>
+                                <dd>
+                                    {% if account.debt and account.debt > 0 %}
+                                        <b class="{{ threshold and account.debt > threshold ? 'text-danger' }}">
+                                            {{ account.debt|number_format(2, '.', ' ') }} грн
+                                        </b>
+                                    {% else %}
+                                        <span class="text-success">боргу немає</span>
+                                    {% endif %}
+                                </dd>
+
+                                <dt>Поріг блокування</dt>
+                                <dd>
+                                    {% if threshold %}
+                                        {{ threshold|number_format(2, '.', ' ') }} грн
+                                        {% if account.area %}
+                                            <span class="text-muted small">({{ account.area }} м² × {{ tariff }} × 1.5)</span>
+                                        {% else %}
+                                            <span class="text-muted small">(запасний поріг: площа не вказана)</span>
+                                        {% endif %}
+                                    {% else %}—{% endif %}
+                                </dd>
+                            </dl>
+
+                            <form method="post" action="{{ path('app_admin_resident_account', {id: user.id}) }}" class="mt-2">
+                                <div class="form-row">
+                                    <div class="form-group col-6 col-md-3">
+                                        <label class="small mb-1">Будинок</label>
+                                        <input type="text" name="house_number" class="form-control form-control-sm" value="{{ account.houseNumber }}">
+                                    </div>
+                                    <div class="form-group col-6 col-md-3">
+                                        <label class="small mb-1">Номер</label>
+                                        <input type="text" name="apartment_number" class="form-control form-control-sm" value="{{ account.apartmentNumber }}">
+                                    </div>
+                                    <div class="form-group col-6 col-md-3">
+                                        <label class="small mb-1">Вулиця</label>
+                                        <input type="text" name="street" class="form-control form-control-sm" value="{{ account.street }}">
+                                    </div>
+                                    <div class="form-group col-6 col-md-3">
+                                        <label class="small mb-1">Площа, м²</label>
+                                        <input type="text" name="area" class="form-control form-control-sm" value="{{ account.area }}">
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-primary">Зберегти об'єкт</button>
+                                <div class="small text-muted mt-1">
+                                    Площу заповнюйте вручну лише якщо рахунку немає у файлі реєстру
+                                    (<a href="{{ path('app_admin_area') }}">/admin/area</a>) — від неї залежить поріг блокування.
+                                </div>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {# ---------- conditional owners ---------- #}
+                <div class="card res-card">
+                    <div class="card-header">📞 Умовні власники</div>
+                    <div class="card-body p-3">
+                        <p class="small text-muted">
+                            Додаткові номери, які бот вважає такими, що належать цій квартирі:
+                            за ними людину впустять у чат мешканців і прив'яжуть до цього ж рахунку.
+                        </p>
+                        <form method="post" action="{{ path('app_admin_resident_phones', {id: user.id}) }}">
+                            <div id="phoneRows">
+                                {% for phone in user.additionalPhones %}
+                                    <div class="form-row js-phone-row">
+                                        <div class="form-group col-5">
+                                            <input type="text" name="phone_name[]" class="form-control form-control-sm"
+                                                   placeholder="Хто це (Дружина, Син…)" value="{{ phone.property_name|default('') }}">
+                                        </div>
+                                        <div class="form-group col-6">
+                                            <input type="text" name="phone_value[]" class="form-control form-control-sm"
+                                                   placeholder="380…" value="{{ phone.property_value|default('') }}">
+                                        </div>
+                                        <div class="form-group col-1">
+                                            <button type="button" class="btn btn-sm btn-outline-danger js-phone-del">×</button>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            <button type="button" id="phoneAdd" class="btn btn-sm btn-outline-secondary">+ Додати номер</button>
+                            <button class="btn btn-sm btn-primary">Зберегти номери</button>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="col-12 col-lg-6">
+
+                {# ---------- status ---------- #}
+                <div class="card res-card">
+                    <div class="card-header">🚦 Доступ до бронювання</div>
+                    <div class="card-body p-3">
+                        {% if account is null %}
+                            <p class="text-muted mb-0">Немає рахунку — немає й статусу.</p>
+                        {% else %}
+                            {% if block %}
+                                <div class="alert alert-danger py-2 px-2">
+                                    <b>{{ block.label }}</b>
+                                    {% if block.details %}<div class="small">{{ block.details }}</div>{% endif %}
+                                </div>
+                            {% endif %}
+
+                            <form method="post" action="{{ path('app_admin_resident_status', {id: user.id}) }}">
+                                <input type="hidden" name="action" value="{{ account.isActive ? 'block' : 'unblock' }}">
+                                <div class="form-group mb-2">
+                                    <label class="small mb-1">Причина</label>
+                                    <select name="reason" class="form-control form-control-sm">
+                                        {% if account.isActive %}
+                                            <option value="">— оберіть —</option>
+                                            <option value="debt">💰 Борг</option>
+                                            <option value="photo">📸 Не завантажене фото</option>
+                                            <option value="other">📝 Інша</option>
+                                        {% else %}
+                                            <option value="other">📝 Інша</option>
+                                            <option value="debt">💰 Борг сплачено</option>
+                                            <option value="photo">📸 Фото надіслано</option>
+                                        {% endif %}
+                                    </select>
+                                </div>
+                                <button class="btn btn-sm {{ account.isActive ? 'btn-danger' : 'btn-success' }}">
+                                    {{ account.isActive ? '⛔ Заблокувати' : '✅ Розблокувати' }}
+                                </button>
+                                <div class="small text-muted mt-2">
+                                    Причина обов'язкова при блокуванні: вона потрапляє в журнал і в
+                                    повідомлення мешканцю. Сповіщення отримають усі, хто прив'язаний
+                                    до цього рахунку, а не лише ця людина.
+                                    {% if not account.isActive %}
+                                        Розблокування також знімає 30-денне вікно голосування спільноти
+                                        і закриває відкриті вимоги фото, щоб наступний крон не заблокував знову.
+                                    {% endif %}
+                                </div>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {# ---------- history ---------- #}
+                {% if history|length %}
+                    <div class="card res-card">
+                        <div class="card-header">🕘 Історія статусу</div>
+                        <div class="card-body p-0">
+                            <ul class="list-unstyled mb-0 res-history">
+                                {% for entry in history %}
+                                    <li class="px-3 py-2 small">
+                                        {% if entry.newActive %}
+                                            <span class="badge badge-success">Розблок</span>
+                                        {% else %}
+                                            <span class="badge badge-danger">Блок</span>
+                                        {% endif %}
+                                        {{ entry.createdAt|date('d.m.Y H:i') }}
+                                        · {{ entry.source }}
+                                        {% if entry.reasonCode %} · {{ entry.reasonCode }}{% endif %}
+                                        {% if entry.actorUsername %} · <i>{{ entry.actorUsername }}</i>{% endif %}
+                                        {% if entry.reasonText %}<div class="text-muted">{{ entry.reasonText }}</div>{% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                {% endif %}
+
+                {# ---------- other people on this account ---------- #}
+                <div class="card res-card">
+                    <div class="card-header">👥 Інші на цьому рахунку</div>
+                    <div class="card-body p-3">
+                        {% if roommates|length %}
+                            <ul class="list-unstyled mb-0">
+                                {% for mate in roommates %}
+                                    <li class="py-1">
+                                        <a href="{{ path('app_admin_resident', {id: mate.id}) }}">
+                                            {{ mate.firstName }} {{ mate.lastName }}{% if not mate.firstName and not mate.lastName %}без імені{% endif %}
+                                        </a>
+                                        <span class="badge badge-light">{{ mate.roleLabel }}</span>
+                                        {% if mate.phoneNumber %}
+                                            <span class="small text-muted">{{ mate.phoneNumber }}</span>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-muted mb-0 small">Більше ніхто не прив'язаний до цього рахунку.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {# ---------- owner group ---------- #}
+                <div class="card res-card">
+                    <div class="card-header">🔗 Об'єкти цього власника</div>
+                    <div class="card-body p-3">
+                        <p class="small text-muted">
+                            У однієї людини може бути кілька об'єктів — квартира, паркомісце,
+                            комірчина. Бот бачить їх як одного власника лише після об'єднання:
+                            тоді ліміти бронювання спільні, а борг за будь-яким блокує всі.
+                        </p>
+
+                        {% if account %}
+                            <ul class="list-group mb-2">
+                                <li class="list-group-item py-2">
+                                    <b>{{ registry.place(account) }}</b>
+                                    <span class="badge badge-primary">основний</span>
+                                    · <a href="{{ path('app_admin_objects') }}?object={{ account.accountNumber }}">{{ account.accountNumber }}</a>
+                                    {% if account.debt and account.debt > 0 %}
+                                        · <span class="text-danger">{{ account.debt|number_format(2, '.', ' ') }} грн</span>
+                                    {% endif %}
+                                </li>
+                                {% for sib in siblings %}
+                                    <li class="list-group-item py-2 d-flex justify-content-between align-items-center">
+                                        <span>
+                                            <b>{{ registry.place(sib) }}</b>
+                                            · <a href="{{ path('app_admin_objects') }}?object={{ sib.accountNumber }}">{{ sib.accountNumber }}</a>
+                                            · {{ sib.unitTypeLabel }}
+                                            {% if sib.debt and sib.debt > 0 %}
+                                                · <span class="text-danger">{{ sib.debt|number_format(2, '.', ' ') }} грн</span>
+                                            {% endif %}
+                                        </span>
+                                        <form method="post" action="{{ path('app_admin_resident_group_unlink', {id: user.id}) }}">
+                                            <input type="hidden" name="account_id" value="{{ sib.id }}">
+                                            <button class="btn btn-sm btn-outline-danger">Відв'язати</button>
+                                        </form>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+
+                            <form method="post" action="{{ path('app_admin_resident_group_link', {id: user.id}) }}" class="form-inline">
+                                <input type="text" name="partner_account_number" class="form-control form-control-sm mr-2 mb-1"
+                                       placeholder="особовий рахунок іншого об'єкта" required>
+                                <button class="btn btn-sm btn-success mb-1">Прив'язати</button>
+                            </form>
+                        {% else %}
+                            <p class="text-muted mb-0 small">Спершу прив'яжіть мешканця до рахунку.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {# ---------- move ---------- #}
+                <div class="card res-card res-danger">
+                    <div class="card-header">📦 Перенести на інший рахунок</div>
+                    <div class="card-body p-3">
+                        <p class="small mb-2">
+                            Якщо людина переїхала в іншу квартиру. Переїжджає <b>лише вона</b> —
+                            попередній рахунок, його адреса, борг і решта мешканців лишаються як були.
+                            Рахунок має вже існувати: створити його можна в розділі
+                            <a href="{{ path('app_admin_objects') }}">«Об'єкти нерухомості»</a>.
+                        </p>
+                        <form method="post" action="{{ path('app_admin_resident_move', {id: user.id}) }}" class="form-inline"
+                              onsubmit="return confirm('Перенести цього мешканця на інший особовий рахунок?')">
+                            <input type="text" name="account_number" class="form-control form-control-sm mr-2 mb-1"
+                                   placeholder="новий особовий рахунок" required>
+                            <button class="btn btn-sm btn-outline-danger mb-1">Перенести</button>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            var rows = document.getElementById('phoneRows');
+            var add = document.getElementById('phoneAdd');
+
+            function row() {
+                var div = document.createElement('div');
+                div.className = 'form-row js-phone-row';
+                div.innerHTML =
+                    '<div class="form-group col-5"><input type="text" name="phone_name[]" class="form-control form-control-sm" placeholder="Хто це (Дружина, Син…)"></div>'
+                    + '<div class="form-group col-6"><input type="text" name="phone_value[]" class="form-control form-control-sm" placeholder="380…"></div>'
+                    + '<div class="form-group col-1"><button type="button" class="btn btn-sm btn-outline-danger js-phone-del">×</button></div>';
+                return div;
+            }
+
+            add.addEventListener('click', function () { rows.appendChild(row()); });
+
+            rows.addEventListener('click', function (e) {
+                if (e.target.classList.contains('js-phone-del')) {
+                    e.target.closest('.js-phone-row').remove();
+                }
+            });
+        })();
+    </script>
+{% endblock %}

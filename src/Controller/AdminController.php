@@ -27,6 +27,7 @@ use App\Service\DebtAnnouncer;
 use App\Service\ImportArchive;
 use App\Service\OwnerGroupService;
 use App\Service\PropertyRegistry;
+use App\Service\AccountAccessService;
 use App\Service\ComplaintService;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
@@ -865,6 +866,288 @@ class AdminController extends AbstractController
         ]);
     }
 
+    #############
+    # Картка мешканця — a page, not a modal
+    #############
+
+    /**
+     * One resident, on a page of their own.
+     *
+     * This was a modal: a narrow column over the table, unreadable on anything, and — the
+     * part that actually cost time — it had no address. Close it and there was no way back
+     * except finding the row again in a server-side table of 453 people. A card that other
+     * screens link to (the objects register names its owners) has to be somewhere you can
+     * link *to*.
+     *
+     * Every action on it is its own small form posting to its own endpoint, instead of one
+     * JSON payload that meant "save the whole person" — so moving somebody to another flat
+     * can no longer happen as a side effect of correcting their площа.
+     */
+    #[Route('/admin/users/{id}', name: 'app_admin_resident', requirements: ['id' => '\d+'], methods: [Request::METHOD_GET])]
+    public function resident(
+        int $id,
+        TelegramUserRepository $repository,
+        DebtPolicy $debtPolicy,
+        BlockReasonResolver $blockReasonResolver,
+        PropertyRegistry $registry,
+        OwnerGroupService $ownerGroups,
+        TariffRepository $tariffRepository,
+        EntityManagerInterface $em,
+    ): Response {
+        $user = $repository->find($id);
+
+        if (!$user instanceof TelegramUser) {
+            throw $this->createNotFoundException('Немає такого мешканця');
+        }
+
+        $account = $user->getAccount();
+
+        return $this->render('admin/resident.html.twig', [
+            'user' => $user,
+            'account' => $account,
+            'threshold' => $account ? $debtPolicy->getThresholdFor($account) : null,
+            'tariff' => (float)$tariffRepository->getOrCreate($em)->getPricePerMeter(),
+            'block' => $blockReasonResolver->resolve($account),
+            'siblings' => $account ? $ownerGroups->siblings($account) : [],
+            'registry' => $registry,
+            'history' => $account ? $this->statusLogRepository->findRecentForAccount($account, 10) : [],
+            'roommates' => $account
+                ? array_values(array_filter(
+                    $account->getUsers()->toArray(),
+                    static fn (TelegramUser $u): bool => $u->getId() !== $user->getId(),
+                ))
+                : [],
+        ]);
+    }
+
+    /** Who this person is to the flat — owner / family / tenant. */
+    #[Route('/admin/users/{id}/role', name: 'app_admin_resident_role', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    public function residentRole(int $id, Request $request, TelegramUserRepository $repository, EntityManagerInterface $em): Response
+    {
+        $user = $this->residentOr404($id, $repository);
+        $user->setRole(($role = (string)$request->request->get('role')) === '' ? null : $role);
+        $em->flush();
+
+        $this->addFlash('notice', 'Роль оновлено: ' . $user->getRoleLabel());
+
+        return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+    }
+
+    /** The flat's own fields. Never the особовий рахунок — that is a move, and it has its own form. */
+    #[Route('/admin/users/{id}/account', name: 'app_admin_resident_account', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    public function residentAccount(int $id, Request $request, TelegramUserRepository $repository, EntityManagerInterface $em): Response
+    {
+        $user = $this->residentOr404($id, $repository);
+        $account = $user->getAccount();
+
+        if (!$account instanceof Account) {
+            $this->addFlash('error', 'У мешканця немає особового рахунку — спершу прив’яжіть його.');
+
+            return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+        }
+
+        $account
+            ->setHouseNumber(trim((string)$request->request->get('house_number')))
+            ->setApartmentNumber(trim((string)$request->request->get('apartment_number')))
+            ->setStreet(trim((string)$request->request->get('street')) ?: 'Козацька');
+
+        // Blank or nonsense leaves the stored area alone: the registry import is the real
+        // source, and a typo here silently changes the block threshold for the whole flat.
+        $area = trim(str_replace(',', '.', (string)$request->request->get('area')));
+
+        if ($area !== '' && is_numeric($area) && (float)$area > 0) {
+            $account->setArea(number_format((float)$area, 2, '.', ''));
+        }
+
+        $em->flush();
+        $this->addFlash('notice', 'Дані об’єкта збережено.');
+
+        return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+    }
+
+    /** Block or unblock, with every side effect, through the one service that knows them. */
+    #[Route('/admin/users/{id}/status', name: 'app_admin_resident_status', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    public function residentStatus(
+        int $id,
+        Request $request,
+        TelegramUserRepository $repository,
+        AccountAccessService $access,
+    ): Response {
+        $user = $this->residentOr404($id, $repository);
+        $account = $user->getAccount();
+
+        if (!$account instanceof Account) {
+            $this->addFlash('error', 'У мешканця немає особового рахунку.');
+
+            return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+        }
+
+        $reason = (string)$request->request->get('reason') ?: null;
+
+        $error = $request->request->get('action') === 'block'
+            ? $access->block($account, $reason)
+            : $access->unblock($account, $reason);
+
+        $error === null
+            ? $this->addFlash('notice', 'Статус змінено, мешканців сповіщено.')
+            : $this->addFlash('error', $error);
+
+        return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+    }
+
+    /**
+     * Move this person to another особовий рахунок.
+     *
+     * Its own form, on purpose. It used to ride inside the general save — type a different
+     * number into the о/р field and the person moved — which is exactly the shape of edit
+     * somebody makes by accident while fixing an address. The flat they leave keeps its
+     * other residents and its data untouched.
+     */
+    #[Route('/admin/users/{id}/move', name: 'app_admin_resident_move', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    public function residentMove(
+        int $id,
+        Request $request,
+        TelegramUserRepository $repository,
+        AccountRepository $accountRepository,
+        EntityManagerInterface $em,
+        LoggerInterface $logger,
+    ): Response {
+        $user = $this->residentOr404($id, $repository);
+        $number = trim((string)$request->request->get('account_number'));
+
+        if ($number === '') {
+            $this->addFlash('error', 'Вкажіть особовий рахунок.');
+
+            return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+        }
+
+        $target = $accountRepository->findOneBy(['account_number' => $number]);
+
+        if (!$target instanceof Account) {
+            $this->addFlash('error', sprintf(
+                'Рахунку %s немає в базі. Створіть об’єкт у розділі «Об’єкти нерухомості», потім поверніться сюди.',
+                $number,
+            ));
+
+            return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+        }
+
+        $from = $user->getAccount();
+        $user->setAccount($target);
+        $em->flush();
+
+        $logger->info('Admin account reassignment', [
+            'user_id' => $user->getId(),
+            'from_account_number' => $from?->getAccountNumber(),
+            'to_account_number' => $target->getAccountNumber(),
+        ]);
+
+        $this->addFlash('notice', sprintf(
+            'Перенесено на рахунок %s (%s). Попередній рахунок і його мешканці не змінились.',
+            $target->getAccountNumber(),
+            trim(sprintf('буд. %s, %s', $target->getHouseNumber(), $target->getApartmentNumber())),
+        ));
+
+        return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+    }
+
+    /** Conditional owners: extra phones the bot recognises as belonging to this flat. */
+    #[Route('/admin/users/{id}/phones', name: 'app_admin_resident_phones', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    public function residentPhones(int $id, Request $request, TelegramUserRepository $repository, EntityManagerInterface $em): Response
+    {
+        $user = $this->residentOr404($id, $repository);
+
+        $names = (array)$request->request->all('phone_name');
+        $values = (array)$request->request->all('phone_value');
+        $phones = [];
+
+        foreach ($values as $i => $value) {
+            $value = trim((string)$value);
+
+            if ($value === '') {
+                continue;
+            }
+
+            $phones[] = [
+                'property_name' => trim((string)($names[$i] ?? '')) ?: 'Умовний власник',
+                'property_value' => $value,
+            ];
+        }
+
+        $user->setAdditionalPhones($phones);
+        $em->flush();
+
+        $this->addFlash('notice', sprintf('Збережено умовних власників: %d.', count($phones)));
+
+        return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+    }
+
+    #[Route('/admin/users/{id}/group/link', name: 'app_admin_resident_group_link', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    public function residentGroupLink(
+        int $id,
+        Request $request,
+        TelegramUserRepository $repository,
+        AccountRepository $accountRepository,
+        OwnerGroupService $ownerGroups,
+    ): Response {
+        $user = $this->residentOr404($id, $repository);
+        $account = $user->getAccount();
+        $partner = $accountRepository->findOneBy([
+            'account_number' => trim((string)$request->request->get('partner_account_number')),
+        ]);
+
+        if (!$account instanceof Account || !$partner instanceof Account) {
+            $this->addFlash('error', 'Не знайдено рахунок для об’єднання.');
+
+            return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+        }
+
+        $error = $ownerGroups->link($account, $partner);
+
+        $error === null
+            ? $this->addFlash('notice', 'Об’єкти об’єднані: тепер це один власник.')
+            : $this->addFlash('error', $error);
+
+        return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+    }
+
+    #[Route('/admin/users/{id}/group/unlink', name: 'app_admin_resident_group_unlink', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    public function residentGroupUnlink(
+        int $id,
+        Request $request,
+        TelegramUserRepository $repository,
+        AccountRepository $accountRepository,
+        OwnerGroupService $ownerGroups,
+    ): Response {
+        $this->residentOr404($id, $repository);
+        $account = $accountRepository->find((int)$request->request->get('account_id'));
+
+        if (!$account instanceof Account) {
+            $this->addFlash('error', 'Об’єкт не знайдено.');
+
+            return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+        }
+
+        $error = $ownerGroups->unlink($account);
+
+        $error === null
+            ? $this->addFlash('notice', sprintf('%s відв’язано.', $account->getAccountNumber()))
+            : $this->addFlash('error', $error);
+
+        return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+    }
+
+    private function residentOr404(int $id, TelegramUserRepository $repository): TelegramUser
+    {
+        $user = $repository->find($id);
+
+        if (!$user instanceof TelegramUser) {
+            throw $this->createNotFoundException('Немає такого мешканця');
+        }
+
+        return $user;
+    }
+
     #[Route('/admin/users/data-table', name: 'admin-users-data-table', options: ['expose' => true])]
     public function getUsersDataTable(
         TelegramUserRepository $repository,
@@ -921,446 +1204,6 @@ class AdminController extends AbstractController
             )
         );
     }
-
-    #[Route('/admin/user/{id}', name: 'admin-user-get', options: ['expose' => true], methods: [Request::METHOD_GET])]
-    public function getUserById(
-        int $id,
-        TelegramUserRepository $repository,
-        AccountRepository $accountRepository,
-        TariffRepository $tariffRepository,
-        DebtPolicy $debtPolicy,
-        BlockReasonResolver $blockReasonResolver,
-        EntityManagerInterface $em,
-    ): JsonResponse
-    {
-        $telegramUser = $repository->getUserInfoById($id);
-
-        if (!$telegramUser) {
-            return $this->json([sprintf('User by id: %s was not found', $id)], Response::HTTP_BAD_REQUEST);
-        }
-
-        $telegramUser['group_siblings'] = [];
-        $telegramUser['own_object'] = null;
-        $telegramUser['debt_threshold'] = null;
-        $telegramUser['tariff_price_per_meter'] = (float)$tariffRepository->getOrCreate($em)->getPricePerMeter();
-        $telegramUser['fallback_threshold'] = $debtPolicy->getThreshold();
-        $telegramUser['block_reason_label'] = null;
-        $telegramUser['block_reason_details'] = null;
-        $telegramUser['status_history'] = [];
-        $telegramUser['vote_block_count'] = 0;
-
-        if (!empty($telegramUser['account_id'])) {
-            $account = $accountRepository->find($telegramUser['account_id']);
-            if ($account) {
-                $telegramUser['vote_block_count'] = $account->getVoteBlockCount();
-                $telegramUser['debt_threshold'] = number_format($debtPolicy->getThresholdFor($account), 2, '.', '');
-                $reason = $blockReasonResolver->resolve($account);
-                $telegramUser['block_reason_label'] = $reason['label'] ?? null;
-                $telegramUser['block_reason_details'] = $reason['details'] ?? null;
-                foreach ($this->statusLogRepository->findRecentForAccount($account, 5) as $entry) {
-                    $telegramUser['status_history'][] = [
-                        'new_active' => $entry->getNewActive(),
-                        'source' => $entry->getSource(),
-                        'reason_code' => $entry->getReasonCode(),
-                        'reason_text' => $entry->getReasonText(),
-                        'actor' => $entry->getActorUsername(),
-                        'at' => $entry->getCreatedAt()->format('Y-m-d H:i'),
-                    ];
-                }
-                // The person's own object, in the same shape as the siblings, so the card
-                // can show "everything this owner has" as one list. Without it the block
-                // read as "прив'язок немає" on somebody who plainly owns a flat — the flat
-                // they are linked to was the one thing the list left out.
-                $telegramUser['own_object'] = [
-                    'id' => $account->getId(),
-                    'account_number' => $account->getAccountNumber(),
-                    'apartment_number' => $account->getApartmentNumber(),
-                    'street' => $account->getStreet(),
-                    'house_number' => $account->getHouseNumber(),
-                    'debt' => $account->getDebt(),
-                ];
-
-                foreach ($accountRepository->findGroupSiblings($account) as $sibling) {
-                    if ($sibling->getId() === $account->getId()) {
-                        continue;
-                    }
-                    $telegramUser['group_siblings'][] = [
-                        'id' => $sibling->getId(),
-                        'account_number' => $sibling->getAccountNumber(),
-                        'apartment_number' => $sibling->getApartmentNumber(),
-                        'street' => $sibling->getStreet(),
-                        'house_number' => $sibling->getHouseNumber(),
-                        'debt' => $sibling->getDebt(),
-                    ];
-                }
-            }
-        }
-
-        return new JsonResponse($telegramUser, Response::HTTP_OK);
-    }
-
-    #[Route('/admin/account/group/link', name: 'admin-account-group-link', options: ['expose' => true], methods: [Request::METHOD_POST])]
-    public function linkAccountGroup(
-        Request $request,
-        AccountRepository $accountRepository,
-        OwnerGroupService $ownerGroups,
-    ): JsonResponse
-    {
-        $sourceId = (int)$request->request->get('source_account_id');
-        $partnerAccountNumber = trim((string)$request->request->get('partner_account_number'));
-
-        if ($sourceId <= 0 || $partnerAccountNumber === '') {
-            return $this->json(['source_account_id and partner_account_number are required'], Response::HTTP_BAD_REQUEST);
-        }
-
-        $source = $accountRepository->find($sourceId);
-        if (!$source) {
-            return $this->json([sprintf('Source account %d not found', $sourceId)], Response::HTTP_BAD_REQUEST);
-        }
-
-        $partner = $accountRepository->findOneBy(['account_number' => $partnerAccountNumber]);
-        if (!$partner) {
-            return $this->json([sprintf('Partner account with особовий рахунок "%s" not found', $partnerAccountNumber)], Response::HTTP_BAD_REQUEST);
-        }
-
-        // The merge rules live in OwnerGroupService: the objects register does the same
-        // thing from a plain form, and two copies of "which group id survives" is how two
-        // screens end up disagreeing about who owns what.
-        $error = $ownerGroups->link($source, $partner);
-
-        if ($error !== null) {
-            return $this->json([$error], Response::HTTP_BAD_REQUEST);
-        }
-
-        $siblings = [];
-        foreach ($ownerGroups->siblings($source) as $sibling) {
-            $siblings[] = [
-                'id' => $sibling->getId(),
-                'account_number' => $sibling->getAccountNumber(),
-                'apartment_number' => $sibling->getApartmentNumber(),
-                'street' => $sibling->getStreet(),
-                'house_number' => $sibling->getHouseNumber(),
-                'debt' => $sibling->getDebt(),
-            ];
-        }
-
-        return $this->json([
-            'owner_group_id' => $source->getOwnerGroupId(),
-            'group_siblings' => $siblings,
-        ]);
-    }
-
-    #[Route('/admin/account/group/unlink', name: 'admin-account-group-unlink', options: ['expose' => true], methods: [Request::METHOD_POST])]
-    public function unlinkAccountGroup(
-        Request $request,
-        AccountRepository $accountRepository,
-        OwnerGroupService $ownerGroups,
-    ): JsonResponse
-    {
-        $accountId = (int)$request->request->get('account_id');
-        if ($accountId <= 0) {
-            return $this->json(['account_id is required'], Response::HTTP_BAD_REQUEST);
-        }
-
-        $account = $accountRepository->find($accountId);
-        if (!$account) {
-            return $this->json([sprintf('Account %d not found', $accountId)], Response::HTTP_BAD_REQUEST);
-        }
-
-        $error = $ownerGroups->unlink($account);
-
-        if ($error !== null) {
-            return $this->json([$error], Response::HTTP_BAD_REQUEST);
-        }
-
-        return $this->json([
-            'owner_group_id' => null,
-            'group_siblings' => [],
-        ]);
-    }
-
-    #[Route('/admin/user/update', name: 'admin-user-update', options: ['expose' => true])]
-    public function updateUser(
-        Nutgram $bot,
-        Request $request,
-        TelegramUserRepository $repository,
-        AccountRepository $accountRepository,
-        EntityManagerInterface $em,
-        LoggerInterface $logger,
-        PavilionPhotoService $photoService,
-    ): JsonResponse
-    {
-        $params = $request->request->all();
-        $logger->info('##################### admin-user-update', $params);
-        if (!$request->request->has('user_id')) {
-            return $this->json(['user_id is required'], Response::HTTP_BAD_REQUEST);
-        }
-
-        if (!$request->request->has('additional_phones')) {
-            $params['additional_phones'] = [];
-        }
-
-        $currentUser = $repository->find($request->request->get('user_id'));
-
-        if (!$currentUser) {
-            return $this->json([sprintf('User by id: %s was not found', $request->request->get('user_id'))], Response::HTTP_BAD_REQUEST);
-        }
-
-        // Who this person is to the flat. Sent as a plain field, not inside account[]:
-        // it belongs to the person, not the flat — a tenant and the owner share one
-        // rahunok and must not share one label.
-        if (array_key_exists('role', $params)) {
-            $currentUser->setRole($params['role'] === '' ? null : (string)$params['role']);
-        }
-
-        $unblockReason = null;
-        if (isset($params['account'])) {
-            $account = $params['account'];
-            if (isset($account['is_active'])) {
-                $account['is_active'] = $account['is_active'] == 'true';
-            } else {
-                $account['is_active'] = false;
-            }
-
-            // unblock_reason / block_reason are admin-only metadata, not Account fields.
-            $unblockReason = $account['unblock_reason'] ?? null;
-            $blockReason = $account['block_reason'] ?? null;
-            unset($account['unblock_reason'], $account['block_reason']);
-
-            // Normalize area: blank or invalid → leave existing value untouched.
-            if (isset($account['area'])) {
-                $areaInput = trim(str_replace(',', '.', (string)$account['area']));
-                if ($areaInput === '' || !is_numeric($areaInput) || (float)$areaInput <= 0) {
-                    unset($account['area']);
-                } else {
-                    $account['area'] = number_format((float)$areaInput, 2, '.', '');
-                }
-            }
-
-            unset($params['account']);
-            $accountContext = [];
-            $isWasInActive = true;
-            $accountEntity = $currentUser->getAccount() ?: null;
-
-            // Reassignment: the submitted особовий рахунок differs from the one the user is
-            // currently linked to. Without this branch the number would be denormalized ONTO
-            // the existing row — renaming a shared Account (one Account ↔ many TelegramUser)
-            // and dragging every family member along with it. Re-point the FK instead.
-            $submittedNumber = trim((string)($account['account_number'] ?? ''));
-            if ($accountEntity && $submittedNumber !== '' && $submittedNumber !== $accountEntity->getAccountNumber()) {
-                $target = $accountRepository->findOneBy(['account_number' => $submittedNumber]);
-                $logger->info('Admin account reassignment', [
-                    'user_id' => $currentUser->getId(),
-                    'from_account_id' => $accountEntity->getId(),
-                    'from_account_number' => $accountEntity->getAccountNumber(),
-                    'to_account_number' => $submittedNumber,
-                    'to_account_id' => $target?->getId(),
-                ]);
-
-                if ($target) {
-                    // Pure move onto an existing rahunok: re-point the FK and leave the target
-                    // row exactly as it is. The submitted address/area/is_active describe the
-                    // account the user is LEAVING, so applying them here would corrupt the
-                    // destination (and its other family members).
-                    $currentUser->setAccount($target);
-                    $reassignedTo = $target;
-                } else {
-                    // No such rahunok yet → build a fresh Account from the submitted fields,
-                    // same as first-time onboarding. The old row stays intact.
-                    $accountEntity = null;
-                }
-            }
-
-            if (!$accountEntity && !isset($reassignedTo)) {
-                $accountEntity = $accountRepository->findOneBy(['account_number' => $account['account_number']]);
-            }
-
-            if ($accountEntity && !isset($reassignedTo)) {
-                $accountContext += [
-                    AbstractNormalizer::OBJECT_TO_POPULATE => $accountEntity
-                ];
-                $isWasInActive = !$accountEntity->isActive();
-            }
-
-            // Never treat a move as an unblock: the "was inactive" flag describes the account
-            // being left, while the post-flush hook reads the destination — that mismatch would
-            // fire a bogus unblock notice and forgive the destination's photo requests.
-            if (isset($reassignedTo)) {
-                $isWasInActive = false;
-            }
-
-            // A pure reassignment carries no account edits, so skip the block-reason gate and
-            // the denormalize entirely — the destination row must survive untouched.
-            if (!isset($reassignedTo)) {
-                // Block reason is mandatory on active → blocked transition so the audit log,
-                // bot notification, and admin UI all have a non-empty cause to display.
-                $isCurrentlyActive = $accountEntity ? $accountEntity->isActive() : true;
-                $willBeBlocked = $account['is_active'] === false;
-                if ($isCurrentlyActive && $willBeBlocked && !in_array($blockReason, ['debt', 'photo', 'other'], true)) {
-                    return $this->json(
-                        ['Оберіть причину блокування (борг / фото / інша)'],
-                        Response::HTTP_BAD_REQUEST,
-                    );
-                }
-
-                $accountEntity = $this->denormalizer->denormalize(
-                    $account,
-                    Account::class,
-                    null,
-                    $accountContext
-                );
-
-                $em->persist($accountEntity);
-                $currentUser->setAccount($accountEntity);
-            }
-        }
-
-        $context = [
-            AbstractNormalizer::OBJECT_TO_POPULATE => $currentUser,
-            AbstractNormalizer::CALLBACKS => [
-                'additional_phones' => function (?array $additional_phones): ?array {
-                    if (!$additional_phones) {
-                        return $additional_phones;
-                    }
-
-                    return array_values($additional_phones);
-                },
-            ]
-        ];
-
-        $updatedUser = $this->denormalizer->denormalize(
-            $params,
-            TelegramUser::class,
-            null,
-            $context
-        );
-
-        $em->persist($updatedUser);
-        $em->flush();
-
-        // A reassignment changes WHICH account the user belongs to, not that account's status —
-        // both status hooks below compare against the account being left, so they must not run.
-        if (!isset($reassignedTo) && isset($isWasInActive) && $isWasInActive && $updatedUser->getAccount() && $updatedUser->getAccount()->isActive()) {
-            // An explicit admin unblock overrides any active community vote-block too, so the
-            // 30-day window doesn't linger and re-gate later debt/photo unblocks.
-            $updatedUser->getAccount()->setBlockedUntil(null);
-            $forgiven = $photoService->forgiveBlockingRequests(
-                $updatedUser->getAccount(),
-                SchedulePavilionService::createNewDate()
-            );
-            if ($forgiven > 0) {
-                $logger->info(sprintf(
-                    'Admin unblock: forgave %d open photo-upload request(s) for account %d',
-                    $forgiven,
-                    $updatedUser->getAccount()->getId()
-                ));
-            }
-            $logger->info('Admin unblock', [
-                'account_id' => $updatedUser->getAccount()->getId(),
-                'account_number' => $updatedUser->getAccount()->getAccountNumber(),
-                'reason' => $unblockReason ?: 'unspecified',
-            ]);
-
-            $this->statusAuditor->log(
-                $updatedUser->getAccount(), false, true,
-                AccountStatusLog::SOURCE_ADMIN,
-                $unblockReason ?: 'other',
-                $forgiven > 0 ? sprintf('forgave %d open photo request(s)', $forgiven) : null,
-            );
-            $em->flush();
-
-            $unblockText = match ($unblockReason) {
-                'photo' => "✅ <b>Доступ до бронювання відновлено.</b>\n\n"
-                    . "Дякуємо за надіслане фото — обмеження знято. Можна знову бронювати.",
-                'debt' => "✅ <b>Доступ до бронювання відновлено.</b>\n\n"
-                    . "Борг сплачено — обмеження знято. Можна знову бронювати.\n\n"
-                    . "<i>Нагадуємо: блок вмикається автоматично, якщо борг перевищить персональний поріг (площа × тариф ОСББ × 1.5, тобто 150% місячної плати).</i>",
-                default => "✅ <b>Доступ до бронювання відновлено.</b>\n\nМожна знову бронювати.",
-            };
-
-            $this->notifyAccountUsers($bot, $logger, $updatedUser->getAccount(), $unblockText, 'unblock');
-        }
-
-        if (!isset($reassignedTo) && isset($isWasInActive) && !$isWasInActive && $updatedUser->getAccount() && !$updatedUser->getAccount()->isActive()) {
-            $logger->info('Admin block', [
-                'account_id' => $updatedUser->getAccount()->getId(),
-                'account_number' => $updatedUser->getAccount()->getAccountNumber(),
-                'reason' => $blockReason ?: 'unspecified',
-            ]);
-
-            $this->statusAuditor->log(
-                $updatedUser->getAccount(), true, false,
-                AccountStatusLog::SOURCE_ADMIN,
-                $blockReason,
-            );
-            $em->flush();
-
-            $blockText = match ($blockReason) {
-                'debt' => "⛔ <b>Ваш аккаунт заблоковано</b>\n\n"
-                    . "Причина: <b>борг</b> — сума перевищила персональний поріг (площа × тариф ОСББ × 1.5).\n\n"
-                    . "Зверніться для розблокування до Аліни Бухгалтера (+380 93 658 32 02) або голови ОСББ Люди (+380 67 470 46 24).",
-                'photo' => "⛔ <b>Ваш аккаунт заблоковано</b>\n\n"
-                    . "Причина: не завантажене фото після бронювання.\n\n"
-                    . "Зверніться для розблокування до Аліни Бухгалтера (+380 93 658 32 02) або голови ОСББ Люди (+380 67 470 46 24).",
-                default => "⛔ <b>Ваш аккаунт заблоковано</b>\n\n"
-                    . "Зверніться для уточнення причини та розблокування до Аліни Бухгалтера (+380 93 658 32 02) або голови ОСББ Люди (+380 67 470 46 24).",
-            };
-
-            $this->notifyAccountUsers(
-                $bot,
-                $logger,
-                $updatedUser->getAccount(),
-                $blockText,
-                'block',
-            );
-        }
-
-        $response = $this->serializer->serialize(
-            $updatedUser, 'json',
-            [AbstractNormalizer::IGNORED_ATTRIBUTES => ['additional_phones', 'account']]
-        );
-
-        return new JsonResponse($response, Response::HTTP_OK, [], true);
-    }
-
-    /**
-     * Block / unblock applies to the whole Account, so the notice must reach every
-     * TelegramUser hanging off it — not just the row the admin happened to click on.
-     * Skips users without a chat_id and swallows per-user send errors so one offline
-     * family member can't fail the whole admin save.
-     */
-    private function notifyAccountUsers(
-        Nutgram $bot,
-        LoggerInterface $logger,
-        Account $account,
-        string $text,
-        string $kind,
-    ): void {
-        foreach ($account->getUsers() as $user) {
-            /** @var TelegramUser $user */
-            if (!$user->getChatId()) {
-                continue;
-            }
-            try {
-                $bot->sendMessage(
-                    text: $text,
-                    chat_id: $user->getChatId(),
-                    parse_mode: ParseMode::HTML,
-                );
-            } catch (\Throwable $t) {
-                $logger->warning(sprintf('admin %s notice send failed', $kind), [
-                    'account_id' => $account->getId(),
-                    'user_id' => $user->getId(),
-                    'chat_id' => $user->getChatId(),
-                    'error' => $t->getMessage(),
-                ]);
-            }
-        }
-    }
-
-    #############
-    # Debt Management
-    #############
 
     #[Route('/admin/debt', name: 'app_admin_debt')]
     public function debt(ImportArchive $archive): Response
