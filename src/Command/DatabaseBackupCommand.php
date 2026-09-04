@@ -198,7 +198,10 @@ class DatabaseBackupCommand extends Command
             );
 
             $io->success('Надіслано в Telegram.');
-            $this->logger->info('db:backup delivered', ['size' => $size, 'chat_id' => $this->backupChatId]);
+            $this->logger->info('db:backup delivered', [
+                'file' => basename($path),
+                'chat_id' => $this->backupChatId,
+            ]);
 
             return true;
         } catch (\Throwable $e) {
