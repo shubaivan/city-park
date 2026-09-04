@@ -38,13 +38,57 @@
             а в однієї людини — кілька об'єктів: для цього їх об'єднують у групу одного власника.
         </p>
 
+        {#
+            Each number says what it counts and what it means. The first version was one
+            dense line — «у групах: 0 · без жодного власника в боті: 4 · з боргом: 149 на
+            150 883 грн» — and none of the three is self-explanatory: "у групах" means
+            nothing until you know what a group does, "без власника" reads like a
+            formality rather than "this debt reaches nobody", and the total is not the
+            house's debt but the debt of the accounts the bot happens to know.
+        #}
         <div class="alert alert-light py-2 px-2 mb-3">
-            <b>{{ stats.objects }}</b> об'єктів:
-            🏠 {{ stats.apartments }} · 🚗 {{ stats.parking }} · 📦 {{ stats.storage }}
-            <br>
-            🔗 у групах: <b>{{ stats.grouped }}</b> ·
-            без жодного власника в боті: <b>{{ stats.unowned }}</b> ·
-            з боргом: <b>{{ stats.in_debt }}</b> на <b>{{ stats.debt|number_format(0, '.', ' ') }} грн</b>
+            <div>
+                <b>{{ stats.objects }}</b> об'єктів у будинку:
+                🏠 {{ stats.apartments }} квартир ·
+                🚗 {{ stats.parking }} паркомісць ·
+                📦 {{ stats.storage }} {{ stats.storage == 1 ? 'комірчина' : 'комірчин' }}
+            </div>
+
+            <div class="mt-2">
+                🔗 <b>Об'єднані в групу одного власника: {{ stats.grouped }}</b> з {{ stats.objects }}
+                <div class="small obj-muted">
+                    Скільки об'єктів позначені як такі, що належать тій самій людині.
+                    У об'єднаних спільні ліміти бронювання альтанки, і борг за одним із них
+                    блокує всі. Решта об'єктів бот рахує окремо, навіть якщо власник той самий.
+                </div>
+            </div>
+
+            <div class="mt-2">
+                ❓ <b>Без жодного власника в боті: {{ stats.unowned }}</b>
+                <div class="small obj-muted">
+                    До цих об'єктів не прив'язаний жоден мешканець. Бот пише тільки
+                    прив'язаним — тож борг і блокування по них нікого не сповіщають,
+                    і в чаті про них ніхто не дізнається.
+                </div>
+            </div>
+
+            <div class="mt-2">
+                👥 <b>З кількома власниками: {{ stats.multi_owner }}</b>
+                <div class="small obj-muted">
+                    На об'єкті записано двоє і більше людей — власник, член сім'ї, орендар.
+                    Кожен із них може бронювати і подавати заявки від цієї квартири.
+                </div>
+            </div>
+
+            <div class="mt-2">
+                💰 <b>З боргом: {{ stats.in_debt }}</b> об'єктів на
+                <b>{{ stats.debt|number_format(0, '.', ' ') }} грн</b>
+                <div class="small obj-muted">
+                    Сума лише за об'єктами, які є в базі бота. Якщо у файлі бухгалтера є
+                    рахунки, яких тут немає — їхній борг у цю цифру не входить, і в чаті
+                    мешканців теж.
+                </div>
+            </div>
         </div>
 
         {#
