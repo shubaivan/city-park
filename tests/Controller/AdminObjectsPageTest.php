@@ -18,7 +18,7 @@ use Twig\Environment;
  */
 class AdminObjectsPageTest extends KernelTestCase
 {
-    private function render(array $rows, array $stats): string
+    private function render(array $rows, array $stats, array $houses = []): string
     {
         self::bootKernel();
 
@@ -29,7 +29,7 @@ class AdminObjectsPageTest extends KernelTestCase
 
         return self::getContainer()->get(Environment::class)->render(
             'admin/objects.html.twig',
-            ['rows' => $rows, 'stats' => $stats],
+            ['rows' => $rows, 'stats' => $stats, 'houses' => $houses],
         );
     }
 

@@ -173,4 +173,33 @@ class PropertyRegistryTest extends TestCase
 
         $this->assertSame(2, $this->registry([$flat, $parking, $alone])->stats($rows)['grouped']);
     }
+
+    /**
+     * The building chips are built from the data, not from a hardcoded 17/19/21/23/27 —
+     * that list silently drops a sixth building the day one appears, and shows an empty
+     * one after a renumbering.
+     */
+    public function testBuildingsComeFromTheDataInWalkingOrder(): void
+    {
+        $rows = [];
+
+        foreach ([['19', '85'], ['9', '3'], ['17', '1'], ['19', '86'], ['21', '7']] as $i => [$house, $unit]) {
+            $account = $this->account($i + 1, '4100' . $unit, $unit);
+            $account->setHouseNumber($house);
+            $rows[] = ['account' => $account];
+        }
+
+        $this->assertSame(
+            [
+                ['house' => '9', 'count' => 1],
+                ['house' => '17', 'count' => 1],
+                ['house' => '19', 'count' => 2],
+                ['house' => '21', 'count' => 1],
+            ],
+            // strnatcmp, so "9" sorts before "17" rather than after it.
+            $this->registry([])->houses($rows),
+        );
+
+        $this->assertSame([], $this->registry([])->houses([]));
+    }
 }

@@ -107,6 +107,23 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary js-obj-chip" data-chip="unowned">❓ Без власника</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary js-obj-chip" data-chip="grouped">🔗 У групі</button>
             </div>
+            {#
+                Buildings are a second, independent dimension: «паркінг у 19-му» is a real
+                question and one row of chips could not answer it. The list comes from the
+                data — a hardcoded 17/19/21/23/27 silently drops a sixth building the day
+                one appears.
+            #}
+            {% if houses|length > 1 %}
+                <div class="mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-dark js-obj-house active" data-house="">Усі будинки</button>
+                    {% for h in houses %}
+                        <button type="button" class="btn btn-sm btn-outline-dark js-obj-house" data-house="{{ h.house }}">
+                            буд. {{ h.house }} <span class="obj-muted">({{ h.count }})</span>
+                        </button>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
             <div class="small text-muted mt-1"><span id="objShown">{{ stats.objects }}</span> з {{ stats.objects }}</div>
         </div>
 
@@ -119,6 +136,7 @@
                      data-blocked="{{ row.block ? 1 : 0 }}"
                      data-unowned="{{ row.owners|length == 0 ? 1 : 0 }}"
                      data-grouped="{{ row.siblings|length > 0 ? 1 : 0 }}"
+                     data-house="{{ a.houseNumber }}"
                      {# The type label is in here on purpose: «паркінг» is the word somebody
                         types into the box, and without it the search found nothing while
                         the 🚗 chip right above it worked. #}
@@ -277,7 +295,10 @@
             var input = document.getElementById('objFilter');
             var shown = document.getElementById('objShown');
             var chip = '';
+            var house = '';
 
+            // Three independent filters, ANDed: the text box, the kind/state chip and the
+            // building. "паркінг у 19-му, з боргом" has to be askable.
             function apply() {
                 var q = (input.value || '').trim().toLowerCase();
                 var n = 0;
@@ -287,8 +308,9 @@
                     var matchesChip = chip === ''
                         || card.dataset.type === chip
                         || card.dataset[chip] === '1';
+                    var matchesHouse = house === '' || card.dataset.house === house;
 
-                    var visible = matchesText && matchesChip;
+                    var visible = matchesText && matchesChip && matchesHouse;
                     card.hidden = !visible;
                     if (visible) { n++; }
                 });
@@ -298,14 +320,19 @@
 
             input.addEventListener('input', apply);
 
-            document.querySelectorAll('.js-obj-chip').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    document.querySelectorAll('.js-obj-chip').forEach(function (b) { b.classList.remove('active'); });
-                    btn.classList.add('active');
-                    chip = btn.dataset.chip;
-                    apply();
+            function bindChips(selector, onPick) {
+                document.querySelectorAll(selector).forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        document.querySelectorAll(selector).forEach(function (b) { b.classList.remove('active'); });
+                        btn.classList.add('active');
+                        onPick(btn);
+                        apply();
+                    });
                 });
-            });
+            }
+
+            bindChips('.js-obj-chip', function (btn) { chip = btn.dataset.chip; });
+            bindChips('.js-obj-house', function (btn) { house = btn.dataset.house; });
         })();
     </script>
 {% endblock %}
