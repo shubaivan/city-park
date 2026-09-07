@@ -72,10 +72,16 @@ class GuardQrCommand
 
         $link = sprintf('https://t.me/%s?start=%s', $username, $this->guard->mintToken($account));
 
-        $png = self::render($link);
+        $photo = self::photo($link);
+
+        if ($photo === null) {
+            $bot->sendMessage(text: '⚠️ Не вдалося створити код. Спробуйте ще раз за хвилину.');
+
+            return;
+        }
 
         $bot->sendPhoto(
-            photo: InputFile::make($png, 'qr.png'),
+            photo: $photo,
             caption: sprintf(
                 "🔒 <b>QR для охорони</b>\n\n%s альтанка · <b>%s–%s</b>\n%s\n\n"
                     . "Покажіть цей екран охоронцю — він наведе камеру і бот підтвердить, "
@@ -89,6 +95,29 @@ class GuardQrCommand
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
         );
+    }
+
+    /**
+     * The QR as Telegram wants it: a **stream**, not the bytes.
+     *
+     * `InputFile` wraps a resource or a path and answers «Invalid resource specified» to a
+     * raw string — which is a 500 on /hook, after which Telegram retries the same tap four
+     * times until the callback query is too old to answer. From the outside that is
+     * «натиснув і нічого» (07.09.2026), with the real cause four lines down in the log
+     * under two rounds of retries.
+     */
+    public static function photo(string $link): ?InputFile
+    {
+        $stream = fopen('php://temp', 'r+');
+
+        if ($stream === false) {
+            return null;
+        }
+
+        fwrite($stream, self::render($link));
+        rewind($stream);
+
+        return InputFile::make($stream, 'qr.png');
     }
 
     /**
