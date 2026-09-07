@@ -87,6 +87,14 @@ class RentalMenuCommand
             return;
         }
 
+        // «rent:deal:<all|rent|sale>:<page>» — the tab and the page in one callback, so
+        // leafing through «Продаж» cannot silently drop back into the mixed list.
+        if (str_starts_with($data, 'rent:deal:')) {
+            [$deal, $page] = array_pad(explode(':', substr($data, strlen('rent:deal:'))), 2, '1');
+            $this->renderMenu($bot, edit: true, page: (int)$page, deal: $deal);
+            return;
+        }
+
         if (str_starts_with($data, 'rent:contact:')) {
             $this->contact($bot, (int)substr($data, strlen('rent:contact:')));
             return;
@@ -120,7 +128,7 @@ class RentalMenuCommand
         return $this->telegramUserService->resolveAccount($user);
     }
 
-    private function renderMenu(Nutgram $bot, bool $edit, ?string $notice = null, int $page = 1): void
+    private function renderMenu(Nutgram $bot, bool $edit, ?string $notice = null, int $page = 1, string $deal = 'all'): void
     {
         // Reading the list is open to everyone who opens the bot, confirmed by the
         // accountant or not. A listing is an advertisement — hiding it from someone who
@@ -133,8 +141,23 @@ class RentalMenuCommand
         // Alina's number is not something to hand to every unlinked stranger.
         $account = $this->currentAccount($bot);
 
-        $listings = $this->rentalService->activeListings();
+        $all = $this->rentalService->activeListings();
         $mine = $account ? $this->rentalService->activeForAccount($account) : null;
+
+        $rentCount = count(array_filter($all, static fn (RentalListing $l): bool => !$l->isSale()));
+        $saleCount = count($all) - $rentCount;
+
+        // The tabs appear only when there is something to separate. One kind of advert
+        // does not need a filter above it, and an empty «Продаж» tab is a dead end.
+        $tabbed = $rentCount > 0 && $saleCount > 0;
+        $deal = in_array($deal, ['rent', 'sale'], true) && $tabbed ? $deal : 'all';
+
+        $listings = $deal === 'all'
+            ? $all
+            : array_values(array_filter(
+                $all,
+                static fn (RentalListing $l): bool => $deal === 'sale' ? $l->isSale() : !$l->isSale(),
+            ));
 
         $lines = [];
         if ($notice) {
@@ -159,7 +182,26 @@ class RentalMenuCommand
             $page = max(1, min($page, $pages));
             $shown = array_slice($listings, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE);
 
-            $lines[] = 'Оберіть квартиру, щоб побачити деталі та контакт. 🔑 — здається, 🏷 — продається.';
+            $lines[] = $tabbed
+                ? 'Оберіть квартиру, щоб побачити деталі та контакт.'
+                : 'Оберіть квартиру, щоб побачити деталі та контакт. 🔑 — здається, 🏡 — продається.';
+
+            if ($tabbed) {
+                $markup->addRow(
+                    InlineKeyboardButton::make(
+                        ($deal === 'all' ? '• ' : '') . 'Усі (' . count($all) . ')',
+                        callback_data: 'rent:deal:all:1',
+                    ),
+                    InlineKeyboardButton::make(
+                        ($deal === 'rent' ? '• ' : '') . '🔑 Оренда (' . $rentCount . ')',
+                        callback_data: 'rent:deal:rent:1',
+                    ),
+                    InlineKeyboardButton::make(
+                        ($deal === 'sale' ? '• ' : '') . '🏡 Продаж (' . $saleCount . ')',
+                        callback_data: 'rent:deal:sale:1',
+                    ),
+                );
+            }
 
             $anyPhotos = false;
 
@@ -195,16 +237,16 @@ class RentalMenuCommand
                 $nav = [];
 
                 if ($page > 1) {
-                    $nav[] = InlineKeyboardButton::make('⬅️', callback_data: 'rent:page:' . ($page - 1));
+                    $nav[] = InlineKeyboardButton::make('⬅️', callback_data: 'rent:deal:' . $deal . ':' . ($page - 1));
                 }
 
                 $nav[] = InlineKeyboardButton::make(
                     sprintf('%d/%d', $page, $pages),
-                    callback_data: 'rent:page:' . $page,
+                    callback_data: 'rent:deal:' . $deal . ':' . $page,
                 );
 
                 if ($page < $pages) {
-                    $nav[] = InlineKeyboardButton::make('➡️', callback_data: 'rent:page:' . ($page + 1));
+                    $nav[] = InlineKeyboardButton::make('➡️', callback_data: 'rent:deal:' . $deal . ':' . ($page + 1));
                 }
 
                 $markup->addRow(...$nav);
@@ -216,7 +258,7 @@ class RentalMenuCommand
             // two they came to do, and the question would be a step to abandon on.
             $markup->addRow(
                 InlineKeyboardButton::make('🔑 Здаю квартиру', callback_data: RentalPublish::START_CALLBACK),
-                InlineKeyboardButton::make('🏷 Продаю', callback_data: RentalPublish::START_SALE_CALLBACK),
+                InlineKeyboardButton::make('🏡 Продаю', callback_data: RentalPublish::START_SALE_CALLBACK),
             );
         }
 

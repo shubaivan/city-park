@@ -19,7 +19,7 @@ class BotMenuUpdateCommand extends Command
     /** [command, description] pairs. Keep <= 32 chars per description (Telegram limit). */
     /** Order here is the order Telegram shows in the slash menu — first line is the most visible. */
     private const MENU = [
-        ['rent', '🔑 Оренда квартир'],
+        ['rent', '🔑 Оренда та продаж'],
         ['chat', '🏘 Чат мешканців'],
         ['problem', '🔧 Заявки та скарги'],
         ['start', '🏠 Головне меню'],

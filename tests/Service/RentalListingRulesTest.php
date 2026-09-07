@@ -132,7 +132,7 @@ class RentalListingRulesTest extends KernelTestCase
             ->setRooms(2)
             ->setPrice(1850000);
 
-        $this->assertSame('🏷 б. 1, кв. 85 · 2-кімн. · 1 850 000 грн', $service->buttonLabel($sale));
+        $this->assertSame('🏡 б. 1, кв. 85 · 2-кімн. · 1 850 000 грн', $service->buttonLabel($sale));
         $this->assertSame('Продається', $sale->dealVerb());
         $this->assertSame('Здається', $listing->dealVerb());
         $this->assertSame('1 850 000 грн', $sale->priceLabel(), 'a sale price is not per month');

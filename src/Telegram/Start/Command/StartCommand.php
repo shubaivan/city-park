@@ -309,7 +309,7 @@ class StartCommand extends Command
             // not finding it at the bottom of the menu, under three rows they already
             // know by heart. Booking is the everyday action and stays one tap away.
             ->addRow(
-                InlineKeyboardButton::make('🔑 Оренда квартир', callback_data: 'rental-menu'),
+                InlineKeyboardButton::make('🔑 Оренда та продаж', callback_data: 'rental-menu'),
             );
 
         // Second, above the everyday buttons, and only once the chat exists: a button
