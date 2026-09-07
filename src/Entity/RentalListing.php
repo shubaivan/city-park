@@ -37,6 +37,15 @@ class RentalListing
     public const STATUS_BLOCKED  = 'blocked';
 
     /** How long a listing stays visible before it needs re-confirmation. */
+    /**
+     * What the owner is offering. One entity for both, because everything around the
+     * advert is identical — 30 days, the renewal prompt, up to three photos, the phone
+     * consent, the admin take-down — and the only real difference is one word in the
+     * text and whether the price is per month.
+     */
+    public const DEAL_RENT = 'rent';
+    public const DEAL_SALE = 'sale';
+
     public const LIFETIME_DAYS = 30;
 
     /** Days before expiry the "ще актуально?" prompt is sent. */
@@ -63,6 +72,9 @@ class RentalListing
     #[ORM\ManyToOne(targetEntity: TelegramUser::class)]
     #[ORM\JoinColumn(name: 'author_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?TelegramUser $author = null;
+
+    #[ORM\Column(type: Types::STRING, length: 16, options: ['default' => self::DEAL_RENT])]
+    private string $deal = self::DEAL_RENT;
 
     #[ORM\Column(type: 'string', length: 16, nullable: false, options: ['default' => self::STATUS_ACTIVE])]
     private string $status = self::STATUS_ACTIVE;
@@ -378,5 +390,22 @@ class RentalListing
         }
 
         return number_format($this->price, 0, ',', ' ') . ' грн/міс';
+    }
+
+    public function getDeal(): string
+    {
+        return $this->deal;
+    }
+
+    public function setDeal(string $deal): self
+    {
+        $this->deal = $deal === self::DEAL_SALE ? self::DEAL_SALE : self::DEAL_RENT;
+
+        return $this;
+    }
+
+    public function isSale(): bool
+    {
+        return $this->deal === self::DEAL_SALE;
     }
 }
