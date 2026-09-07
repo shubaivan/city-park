@@ -143,6 +143,7 @@ class AdminResidentPageTest extends KernelTestCase
             'app_admin_resident_name', 'app_admin_resident_role', 'app_admin_resident_move',
             'app_admin_resident_phones', 'app_admin_resident_status', 'app_admin_resident_chat',
             'app_admin_resident_group_link', 'app_admin_resident_group_unlink',
+            'app_admin_resident_account',
         ] as $route) {
             $this->assertStringNotContainsString(
                 $route,

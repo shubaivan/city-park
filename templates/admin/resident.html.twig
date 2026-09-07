@@ -210,6 +210,7 @@
                                 </dd>
                             </dl>
 
+                            {% if is_granted('ROLE_ADMIN') %}
                             <form method="post" action="{{ path('app_admin_resident_account', {id: user.id}) }}" class="mt-2">
                                 <div class="form-row">
                                     <div class="form-group col-6 col-md-3">
@@ -235,6 +236,7 @@
                                     (<a href="{{ path('app_admin_area') }}">/admin/area</a>) — від неї залежить поріг блокування.
                                 </div>
                             </form>
+                            {% endif %}
                         {% endif %}
                     </div>
                 </div>
