@@ -388,6 +388,18 @@ losing an import that moved 143 accounts to save a copy of it would be the wrong
 `path()` validates the HTTP-supplied name against a strict pattern **and** re-checks that
 the resolved path is still inside the archive directory; `ImportArchiveTest` pins that.
 
+**The board counts every object, linked or not** — the queries filter on `debt >= 1` and
+nothing else, so an arrears on a flat whose owner never opened the bot is in the total and
+on the list. That was the intent all along; what made it untrue was that the bot held 175
+of the ЖК's 966 objects, so 791 flats' arrears had nowhere to land. Since
+`objects:import-registry` ran on 07.09.2026 the published figure is the house's, not the
+bot's.
+
+**A trend is only honest between two counts of the same thing.** When the number of flats
+with a debt jumps by a quarter or more, `trendLine()` prints what actually changed —
+«у боті побільшало обʼєктів (150 → 420)» — instead of «борг зріс на N», which is an
+accusation about money nobody stopped paying. Covered by `DebtBoardRulesTest`.
+
 **The upload result names the rows we could not match, with their debt.** Аліна's file
 carries accounts the bot has never heard of, and their arrears are simply absent from the
 board, the chat post and the house total — the published figure is "the debt of the accounts

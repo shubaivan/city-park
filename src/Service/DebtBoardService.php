@@ -302,10 +302,33 @@ class DebtBoardService
         return implode("\n", $lines);
     }
 
+    /**
+     * How much more of the house has to appear before a jump stops being a trend.
+     *
+     * The bot knew 175 of the ЖК's 966 objects until 07.09.2026, so the arrears of the
+     * other 791 were not in the total at all. The first import after that will look like
+     * the debt exploded, and the house would read «борг зріс на N» as an accusation.
+     * Nothing grew — the bot merely started counting the whole building.
+     */
+    private const COVERAGE_JUMP = 1.25;
+
     private function trendLine(DebtSnapshot $current, DebtSnapshot $previous): string
     {
         $delta = $current->getTotal() - $previous->getTotal();
         $since = $previous->getTakenAt()->setTimezone(new \DateTimeZone('Europe/Kyiv'))->format('d.m.Y');
+
+        // A month-on-month comparison is only honest between two counts of the same
+        // thing. When the number of flats with a debt jumps by a quarter, the set itself
+        // changed, and the delta says nothing about anybody paying or not paying.
+        if ($previous->getDebtors() > 0 && $current->getDebtors() >= $previous->getDebtors() * self::COVERAGE_JUMP) {
+            return sprintf(
+                '📊 Цього разу без порівняння з %s: у боті побільшало об’єктів (%d → %d), '
+                . 'тож сума не зросла — просто тепер вона рахує більшу частину будинку.',
+                $since,
+                $previous->getDebtors(),
+                $current->getDebtors(),
+            );
+        }
 
         if (abs($delta) < 1) {
             return sprintf('➖ З %s борг не змінився.', $since);

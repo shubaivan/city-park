@@ -597,4 +597,35 @@ class DebtBoardRulesTest extends TestCase
 
         $this->assertStringNotContainsString('— <b>0 грн</b>', $report);
     }
+
+    /**
+     * A month-on-month figure is only honest between two counts of the same thing.
+     *
+     * The bot held 175 of the ЖК's 966 objects until the register was imported, so the
+     * arrears of the other 791 were not in the total. The first announcement after that
+     * would have read «борг зріс на N» to eighty people — an accusation about money
+     * nobody had stopped paying.
+     */
+    public function testTheTrendStepsAsideWhenTheSetOfObjectsChanged(): void
+    {
+        $text = $this->service([], new \DateTimeImmutable('-1 day'))->chatAnnouncement(
+            $this->snapshot(430_000, 420, '-1 hour'),
+            $this->snapshot(151_092, 150, '-1 month'),
+        );
+
+        $this->assertStringNotContainsString('зріс на', $text);
+        $this->assertStringContainsString('побільшало обʼєктів', str_replace('’', 'ʼ', $text));
+        $this->assertStringContainsString('150 → 420', $text);
+    }
+
+    /** With the same set of objects, the comparison is exactly what the house wants. */
+    public function testTheTrendStaysWhenOnlyTheMoneyMoved(): void
+    {
+        $text = $this->service([], new \DateTimeImmutable('-1 day'))->chatAnnouncement(
+            $this->snapshot(148_000, 147, '-1 hour'),
+            $this->snapshot(151_092, 150, '-1 month'),
+        );
+
+        $this->assertStringContainsString('зменшився на', $text);
+    }
 }
