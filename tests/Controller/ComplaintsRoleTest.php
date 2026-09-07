@@ -4,7 +4,6 @@ namespace App\Tests\Controller;
 
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
-use Symfony\Component\Security\Core\User\InMemoryUser;
 
 /**
  * What the complaints role may reach, and what it must not.
@@ -17,10 +16,22 @@ use Symfony\Component\Security\Core\User\InMemoryUser;
  */
 class ComplaintsRoleTest extends WebTestCase
 {
-    private function loginAs(string $role): KernelBrowser
+    /**
+     * Sign in as one of the panel's real logins, taken from the provider.
+     *
+     * Not `new InMemoryUser('serhii', null, [$role])`, which is the obvious shape and does
+     * not work: the session user would carry a null password, the provider refreshes it
+     * into the configured one, and Symfony reads the difference as "the user changed",
+     * drops the token and bounces to /login. Every request in this class then answered 302
+     * — which both halves accepted as a refusal, so the whole test passed while proving
+     * nothing. Found 07.09.2026 while adding the sign-in log.
+     */
+    private function loginAs(string $login): KernelBrowser
     {
         $client = static::createClient();
-        $client->loginUser(new InMemoryUser('serhii', null, [$role]));
+        $provider = static::getContainer()->get('security.user.provider.concrete.users_in_memory');
+
+        $client->loginUser($provider->loadUserByIdentifier($login));
 
         return $client;
     }
@@ -33,19 +44,30 @@ class ComplaintsRoleTest extends WebTestCase
             'the dashboard that leads to it' => ['/admin'],
             'people, to see who reported what' => ['/admin/users'],
             'objects, for the same reason' => ['/admin/objects'],
+            // Read by everyone who can sign in, on purpose: a log only the owner opens is
+            // an audit trail nobody reads.
+            'the sign-in log' => ['/admin/logins'],
         ];
     }
 
     /** @dataProvider readable */
     public function testTheComplaintsRoleCanLookAtTheseAdminPages(string $path): void
     {
-        $client = $this->loginAs('ROLE_COMPLAINTS');
+        $client = $this->loginAs('serhii');
         $client->request('GET', $path);
 
+        // Not 200: the test environment has no database, so a page that gets past the
+        // firewall answers 500 on its first query. What is being pinned here is the
+        // firewall's verdict, and 403 is the only status that means "refused".
         $this->assertNotSame(
             403,
             $client->getResponse()->getStatusCode(),
             $path . ' must stay readable for the complaints role',
+        );
+        $this->assertNotSame(
+            302,
+            $client->getResponse()->getStatusCode(),
+            $path . ': the client is not signed in, so this test would prove nothing',
         );
     }
 
@@ -67,33 +89,24 @@ class ComplaintsRoleTest extends WebTestCase
     /** @dataProvider forbidden */
     public function testTheComplaintsRoleIsRefusedEverythingThatChangesAResident(string $method, string $path): void
     {
-        $client = $this->loginAs('ROLE_COMPLAINTS');
+        $client = $this->loginAs('serhii');
         $client->request($method, $path);
 
-        // Symfony answers a denied *authenticated* request with 403, and a firewall with a
-        // form login may instead bounce to /login. Either is a refusal; what must never
-        // happen is 200, which would mean the page opened.
-        $status = $client->getResponse()->getStatusCode();
-
-        $this->assertContains(
-            $status,
-            [302, 403],
-            sprintf('%s %s must be refused to the complaints role, got %d', $method, $path, $status),
+        // 403 and nothing else. A redirect to /login used to be accepted here as "also a
+        // refusal", which is true — and it is also what an unauthenticated client gets for
+        // every page in the panel, so it made the whole class pass without signing anybody
+        // in. An authenticated user who is denied gets 403.
+        $this->assertSame(
+            403,
+            $client->getResponse()->getStatusCode(),
+            sprintf('%s %s must be refused to the complaints role', $method, $path),
         );
-
-        if ($status === 302) {
-            $this->assertStringContainsString(
-                '/login',
-                (string)$client->getResponse()->headers->get('Location'),
-                'a refusal may redirect only to the login page',
-            );
-        }
     }
 
     /** The full administrator keeps everything, or this split has quietly broken the panel. */
     public function testTheAdministratorStillReachesTheDebtUpload(): void
     {
-        $client = $this->loginAs('ROLE_ADMIN');
+        $client = $this->loginAs('alina');
         $client->request('GET', '/admin/debt');
 
         $this->assertNotSame(403, $client->getResponse()->getStatusCode());

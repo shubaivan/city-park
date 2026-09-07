@@ -11,6 +11,7 @@ use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
 use App\Repository\ComplaintRepository;
 use App\Repository\AccountStatusLogRepository;
+use App\Repository\AdminLoginRepository;
 use App\Repository\PavilionPhotoRepository;
 use App\Repository\PhotoUploadRequestRepository;
 use App\Repository\RentalListingRepository;
@@ -53,6 +54,12 @@ use Symfony\Component\Serializer\SerializerInterface;
 
 class AdminController extends AbstractController
 {
+    /**
+     * How much of the sign-in history the page draws. Four people signing in a few times
+     * a day means about a fortnight, which is the horizon anybody actually asks about.
+     */
+    private const LOGINS_SHOWN = 200;
+
     public function __construct(
         protected readonly DenormalizerInterface $denormalizer,
         protected readonly SerializerInterface $serializer,
@@ -64,6 +71,25 @@ class AdminController extends AbstractController
     public function guide(): Response
     {
         return $this->render('admin/guide.html.twig');
+    }
+
+    /**
+     * Who signed in to the panel, and who tried to.
+     *
+     * Open to everyone who can sign in, on purpose — see App\Entity\AdminLogin. Four
+     * colleagues seeing their own last visit and each other's is what turns an entry
+     * nobody recognises into something said out loud the same day; a log only the owner
+     * reads is an audit trail nobody opens.
+     */
+    #[Route('/admin/logins', name: 'app_admin_logins', methods: [Request::METHOD_GET])]
+    public function logins(AdminLoginRepository $logins): Response
+    {
+        return $this->render('admin/logins.html.twig', [
+            'entries' => $logins->findRecent(self::LOGINS_SHOWN),
+            'last_seen' => $logins->lastSeenByLogin(),
+            'failed_week' => $logins->countFailedSince(new \DateTimeImmutable('-7 days')),
+            'shown' => self::LOGINS_SHOWN,
+        ]);
     }
 
     #[Route('/admin', name: 'app_admin')]

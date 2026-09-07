@@ -215,6 +215,37 @@ submit — a form that renders and then 403s is reported as «панель не 
 `ComplaintsRoleTest` pins the routes; `AdminResidentPageTest` pins that the card renders
 without a single one of its forms.
 
+## Who signed in to the panel
+
+`/admin/logins` — one row per sign-in attempt: the login as typed, when, the IP and a
+one-word device, successful or not. Written by `AdminLoginSubscriber` from Symfony's own
+`LoginSuccessEvent` / `LoginFailureEvent` (not from the login controller, which is not
+where authentication happens) and **never fatal**: a failed write is logged and the
+person is still let in, because the panel is how the accountant works.
+
+**Failed attempts are the more interesting half** — a success answers «це я заходила
+вчора?», a run of failures against `alina` is the only thing on the page that is news.
+The password is never read; only the name that was typed.
+
+**Read by everyone who can sign in, including `ROLE_COMPLAINTS`.** Иван asked for it as
+«чисто для меня» and then widened it himself twice («хотя можно и не только для меня» →
+«пусть будет для всех кто зашел в админку»): four colleagues seeing their own last visit
+and each other's is what makes an entry nobody recognises get mentioned out loud the same
+day, whereas a log only the owner opens is an audit trail nobody reads. GET only —
+nothing on the page is anybody's to change.
+
+No retention job: four people signing in a few times a day is a few hundred rows a year,
+and the page draws the last `AdminController::LOGINS_SHOWN` (200), about a fortnight.
+
+**`loginUser(new InMemoryUser(...))` does not sign anybody in here.** The session user
+would carry a null password, the in-memory provider refreshes it into the configured hash,
+Symfony reads the difference as "the user changed" and drops the token — every request
+then answers 302 to `/login`. `ComplaintsRoleTest` was written that way and accepted 302
+as a refusal, so the whole class passed while proving nothing about the role split it
+exists to pin (found 07.09.2026). Load the user from
+`security.user.provider.concrete.users_in_memory` instead, and assert **403 exactly** on a
+refusal.
+
 ## Two registers: people and objects
 
 `/admin/users` is the register of **people**, `/admin/objects` the register of **objects**,
