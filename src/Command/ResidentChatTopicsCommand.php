@@ -35,7 +35,14 @@ class ResidentChatTopicsCommand extends Command
         ResidentChatService::TOPIC_COMPLAINTS => ['🔧 Заявки', 0xFB6F5F],
         ResidentChatService::TOPIC_DEBT => ['💸 Борги', 0xF8AB00],
         ResidentChatService::TOPIC_RENTALS => ['🔑 Оренда та продаж', 0x6FB9F0],
+        // The bot writes nothing here — it exists so that everything the bot *does* write
+        // has somewhere else to be. Without it the chatter lands in «Заявки» and buries
+        // the one answer somebody was looking for.
+        self::TOPIC_SMALLTALK => ['💬 Спілкування', 0x8EEE98],
     ];
+
+    /** Not in ResidentChatService: nothing is ever posted into it by the bot. */
+    private const TOPIC_SMALLTALK = 'smalltalk';
 
     private const ENV_KEYS = [
         ResidentChatService::TOPIC_COMPLAINTS => 'RESIDENT_CHAT_TOPIC_COMPLAINTS',
@@ -69,7 +76,7 @@ class ResidentChatTopicsCommand extends Command
         $lines = [];
 
         foreach (self::TOPICS as $kind => [$name, $color]) {
-            $already = $this->residentChat->topic($kind);
+            $already = isset(self::ENV_KEYS[$kind]) ? $this->residentChat->topic($kind) : null;
 
             if ($already !== null) {
                 $io->writeln(sprintf('  %s — вже налаштовано (%d), пропускаю', $name, $already));
@@ -100,7 +107,10 @@ class ResidentChatTopicsCommand extends Command
             }
 
             $io->success(sprintf('%s → message_thread_id %d', $name, $topic->message_thread_id));
-            $lines[] = sprintf('%s=%d', self::ENV_KEYS[$kind], $topic->message_thread_id);
+
+            if (isset(self::ENV_KEYS[$kind])) {
+                $lines[] = sprintf('%s=%d', self::ENV_KEYS[$kind], $topic->message_thread_id);
+            }
         }
 
         if ($lines === []) {
