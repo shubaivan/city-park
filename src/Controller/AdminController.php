@@ -1135,11 +1135,22 @@ class AdminController extends AbstractController
             'to_account_number' => $target->getAccountNumber(),
         ]);
 
-        $this->addFlash('notice', sprintf(
-            'Перенесено на рахунок %s (%s). Попередній рахунок і його мешканці не змінились.',
-            $target->getAccountNumber(),
-            trim(sprintf('буд. %s, %s', $target->getHouseNumber(), $target->getApartmentNumber())),
-        ));
+        // A first link and a move are the same write and a different sentence: telling
+        // somebody who has just attached a new resident that "the previous account is
+        // unchanged" names an account that never existed. The place label comes from the
+        // entity, never assembled here — «кв.» hand-built from apartment_number is how a
+        // комірчина gets published as a flat.
+        $this->addFlash('notice', $from instanceof Account
+            ? sprintf(
+                'Перенесено на рахунок %s (%s). Попередній рахунок і його мешканці не змінились.',
+                $target->getAccountNumber(),
+                $target->getPlaceLabel(),
+            )
+            : sprintf(
+                'Прив’язано до рахунку %s (%s). Тепер бот бачить, з якої він квартири.',
+                $target->getAccountNumber(),
+                $target->getPlaceLabel(),
+            ));
 
         return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
     }
