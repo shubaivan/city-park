@@ -103,49 +103,28 @@ class ResidentChatBanCommand extends Command
             return Command::SUCCESS;
         }
 
-        $chatId = (int)$this->residentChat->chatId();
         $action = match (true) {
-            (bool)$input->getOption('unban') => 'unban',
-            (bool)$input->getOption('kick') => 'kick',
-            default => 'ban',
+            (bool)$input->getOption('unban') => ResidentChatService::MODERATION_UNBAN,
+            (bool)$input->getOption('kick') => ResidentChatService::MODERATION_KICK,
+            default => ResidentChatService::MODERATION_BAN,
         };
 
-        try {
-            if ($action === 'unban') {
-                // only_if_banned, so this cannot accidentally kick a current member.
-                $this->bot->unbanChatMember($chatId, $telegramId, only_if_banned: true);
-            } else {
-                $this->bot->banChatMember($chatId, $telegramId);
+        $reason = trim((string)$input->getOption('reason'));
 
-                if ($action === 'kick') {
-                    $this->bot->unbanChatMember($chatId, $telegramId, only_if_banned: true);
-                }
-            }
+        try {
+            // The same call the admin panel makes: one path, one log line, one set of rules.
+            $said = $this->residentChat->moderate($this->bot, $user, $action, $reason, 'console');
         } catch (\Throwable $e) {
-            $io->error('Telegram відмовив: ' . $e->getMessage());
+            $io->error($e->getMessage());
 
             return Command::FAILURE;
         }
 
-        $reason = trim((string)$input->getOption('reason'));
-
-        $this->chatLogger->warning('resident chat moderation', [
-            'action' => $action,
-            'telegram_id' => $telegramId,
-            'user_id' => $user->getId(),
-            'account' => $user->getAccount()?->getAccountNumber(),
-            'reason' => $reason !== '' ? $reason : null,
-        ]);
-
         if ($input->getOption('notify')) {
-            $this->tell($user, $action, $reason, $io);
+            $this->residentChat->tellAboutModeration($this->bot, $user, $action, $reason);
         }
 
-        $io->success(match ($action) {
-            'unban' => 'Знято. Тепер людина може подати заявку на вступ ще раз.',
-            'kick' => 'Видалено з чату. Може подати заявку знову — бот пустить, якщо вона й далі мешканець.',
-            default => 'Заблоковано. Заявки від цієї людини Telegram більше не пропустить; зняти — цією ж командою з --unban.',
-        });
+        $io->success($said);
 
         return Command::SUCCESS;
     }
@@ -196,25 +175,5 @@ class ResidentChatBanCommand extends Command
             $user->getPhoneNumber() ?: 'без телефона',
             $account ? $account->getPlaceLabel() . ' (о/р ' . $account->getAccountNumber() . ')' : 'без квартири',
         ));
-    }
-
-    /** Saying why beats leaving somebody to discover the door is shut. */
-    private function tell(TelegramUser $user, string $action, string $reason, SymfonyStyle $io): void
-    {
-        $text = match ($action) {
-            'unban' => '✅ Вас знову впустять до чату мешканців — надішліть заявку на вступ ще раз.',
-            'kick' => '⚠️ Вас видалено з чату мешканців ЖК.',
-            default => '⛔ Вас заблоковано в чаті мешканців ЖК.',
-        };
-
-        if ($reason !== '') {
-            $text .= "\n\nПричина: " . $reason;
-        }
-
-        try {
-            $this->bot->sendMessage(text: $text, chat_id: (int)$user->getChatId());
-        } catch (\Throwable $e) {
-            $io->warning('Повідомити людину не вдалося: ' . $e->getMessage());
-        }
     }
 }

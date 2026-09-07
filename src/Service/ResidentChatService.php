@@ -90,6 +90,87 @@ class ResidentChatService
         return $this->residentChatId;
     }
 
+    /** What moderation can do to a member, in the two shapes Telegram actually has. */
+    public const MODERATION_KICK = 'kick';
+    public const MODERATION_BAN = 'ban';
+    public const MODERATION_UNBAN = 'unban';
+
+    /**
+     * Remove somebody from the chat, or let them back in.
+     *
+     * The distinction is the whole point. A **kick** is ban+unban: the person is out and
+     * may ask to join again, which the gate approves if they are still a resident — right
+     * for "cool off" and for somebody who sold their flat. A **ban** keeps them out until
+     * it is lifted; Telegram will not even deliver their join request. Getting these two
+     * the wrong way round locks a neighbour out of the house chat permanently over a row
+     * about parking.
+     *
+     * Returns the sentence to show whoever asked for it, or throws with a reason.
+     */
+    public function moderate(Nutgram $bot, TelegramUser $user, string $action, ?string $reason, ?string $actor = null): string
+    {
+        if (!$this->isConfigured()) {
+            throw new \RuntimeException('Чат мешканців не налаштований.');
+        }
+
+        $telegramId = (int)$user->getTelegramId();
+
+        if ($telegramId === 0) {
+            throw new \RuntimeException('У цієї людини немає Telegram id — вона ніколи не відкривала бота.');
+        }
+
+        $chatId = (int)$this->residentChatId;
+
+        if ($action === self::MODERATION_UNBAN) {
+            // only_if_banned, so lifting a ban cannot accidentally kick a current member.
+            $bot->unbanChatMember($chatId, $telegramId, only_if_banned: true);
+        } else {
+            $bot->banChatMember($chatId, $telegramId);
+
+            if ($action === self::MODERATION_KICK) {
+                $bot->unbanChatMember($chatId, $telegramId, only_if_banned: true);
+            }
+        }
+
+        $this->chatLogger->warning('resident chat moderation', [
+            'action' => $action,
+            'telegram_id' => $telegramId,
+            'user_id' => $user->getId(),
+            'account' => $user->getAccount()?->getAccountNumber(),
+            'actor' => $actor,
+            'reason' => ($reason !== null && trim($reason) !== '') ? trim($reason) : null,
+        ]);
+
+        return match ($action) {
+            self::MODERATION_UNBAN => 'Знято. Людина може подати заявку на вступ ще раз.',
+            self::MODERATION_KICK => 'Видалено з чату. Може подати заявку знову — бот пустить, якщо вона й далі мешканець.',
+            default => 'Заблоковано. Заявки від цієї людини Telegram більше не пропустить.',
+        };
+    }
+
+    /** Saying why beats leaving somebody to find the door shut. */
+    public function tellAboutModeration(Nutgram $bot, TelegramUser $user, string $action, ?string $reason): void
+    {
+        $text = match ($action) {
+            self::MODERATION_UNBAN => '✅ Вас знову впустять до чату мешканців — надішліть заявку на вступ ще раз.',
+            self::MODERATION_KICK => '⚠️ Вас видалено з чату мешканців ЖК.',
+            default => '⛔ Вас заблоковано в чаті мешканців ЖК.',
+        };
+
+        if ($reason !== null && trim($reason) !== '') {
+            $text .= "\n\nПричина: " . trim($reason);
+        }
+
+        try {
+            $bot->sendMessage(text: $text, chat_id: (int)$user->getChatId());
+        } catch (\Throwable $e) {
+            $this->chatLogger->info('moderation notice not delivered', [
+                'user_id' => $user->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     /**
      * May this Telegram user be let into the chat?
      *

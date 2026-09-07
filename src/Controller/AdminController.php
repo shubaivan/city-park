@@ -32,6 +32,7 @@ use App\Service\ComplaintService;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
 use App\Service\RentalListingService;
+use App\Service\ResidentChatService;
 use App\Service\SchedulePavilionService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -1114,6 +1115,54 @@ class AdminController extends AbstractController
         $error === null
             ? $this->addFlash('notice', 'Статус змінено, мешканців сповіщено.')
             : $this->addFlash('error', $error);
+
+        return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+    }
+
+    /**
+     * Remove somebody from the residents' chat, or let them back in.
+     *
+     * The same call the console command makes — one path, one log line. Kicking and
+     * banning are separate buttons rather than one control with a checkbox, because the
+     * two are easy to confuse and the expensive mistake is one-directional: a ban meant
+     * as "leave and cool off" keeps a neighbour out of the house chat until somebody
+     * remembers to lift it.
+     */
+    #[Route('/admin/users/{id}/chat', name: 'app_admin_resident_chat', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    public function residentChatModeration(
+        int $id,
+        Request $request,
+        TelegramUserRepository $repository,
+        ResidentChatService $residentChat,
+        Nutgram $bot,
+    ): Response {
+        $user = $this->residentOr404($id, $repository);
+        $action = (string)$request->request->get('action');
+        $reason = trim((string)$request->request->get('reason')) ?: null;
+
+        $allowed = [
+            ResidentChatService::MODERATION_KICK,
+            ResidentChatService::MODERATION_BAN,
+            ResidentChatService::MODERATION_UNBAN,
+        ];
+
+        if (!in_array($action, $allowed, true)) {
+            $this->addFlash('error', 'Невідома дія.');
+
+            return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+        }
+
+        try {
+            $said = $residentChat->moderate($bot, $user, $action, $reason, (string)$this->getUser()?->getUserIdentifier());
+
+            if ($request->request->get('notify')) {
+                $residentChat->tellAboutModeration($bot, $user, $action, $reason);
+            }
+
+            $this->addFlash('notice', $said);
+        } catch (\Throwable $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
 
         return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
     }
