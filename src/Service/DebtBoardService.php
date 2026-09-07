@@ -43,12 +43,30 @@ class DebtBoardService
     /**
      * How many are named in the residents'-chat announcement.
      *
-     * Ten at first; twenty since 04.09.2026. The chat post is the only *push* half of this
-     * feature — it reaches all 77 members whether or not they ever open the bot — and with
-     * 149 flats owing money a top ten is a list of the extremes, not a picture of the
-     * house. Twenty is still one screen and still well inside Telegram's 4096 characters.
+     * Ten at first, twenty since 04.09.2026, and twenty still.
+     *
+     * The accountant asked for a hundred on 07.09.2026, once the register import took the
+     * house from 149 known debtors to 753. Measured against the real data, a hundred does
+     * not fit: a Telegram message dies at 4096 UTF-16 units, ninety lines is where that
+     * cliff sits, and an over-long message is not truncated — it is rejected, so the house
+     * would get no post at all. Ivan's call was to stay at twenty rather than publish a
+     * wall nobody reads: the full list is one tap away in the bot, paged, with a «моя
+     * квартира» jump.
+     *
+     * It is a **ceiling, not a promise** either way — see CHAT_BUDGET.
      */
     public const ANNOUNCE_SIZE = 20;
+
+    /**
+     * Characters the ranked list may spend, leaving Telegram's 4096 a wide margin for the
+     * header, the trend line and the footer.
+     *
+     * Twenty lines cost about 1 200 today, so this never bites — which is the point. It
+     * exists because the alternative failure is silent and total: one long month, one
+     * rejected message, and the only *push* half of this feature simply does not arrive,
+     * with a warning in a log nobody reads until somebody asks why the chat went quiet.
+     */
+    private const CHAT_BUDGET = 3300;
 
     /**
      * How many lines one page of the in-bot report carries.
@@ -276,23 +294,41 @@ class DebtBoardService
         }
 
         $top = $this->accountRepository->findDebtors(self::ANNOUNCE_SIZE);
+        $ranked = [];
+        $spent = 0;
 
-        if ($top !== []) {
-            $lines[] = '';
-            // The heading counts what is actually printed: on a small house the list can
-            // be shorter than ANNOUNCE_SIZE, and «Двадцятка» over twelve names is the kind
-            // of small lie that makes people distrust the figures above it.
-            $lines[] = sprintf('🏆 <b>Найбільші борги — %d «лідерів»</b>, вітаємо! 👏', count($top));
-            $lines[] = '';
+        foreach ($top as $i => $account) {
+            $line = sprintf(
+                '%s %s — <b>%s грн</b>%s',
+                self::RANKS[$i] ?? sprintf('%d.', $i + 1),
+                $this->place($account),
+                $this->money((float)$account->getDebt()),
+                $i === 0 ? ' 👑' : '',
+            );
 
-            foreach ($top as $i => $account) {
-                $lines[] = sprintf(
-                    '%s %s — <b>%s грн</b>%s',
-                    self::RANKS[$i] ?? sprintf('%d.', $i + 1),
-                    $this->place($account),
-                    $this->money((float)$account->getDebt()),
-                    $i === 0 ? ' 👑' : '',
-                );
+            $cost = self::telegramLength($line) + 1;
+
+            if ($spent + $cost > self::CHAT_BUDGET) {
+                break;
+            }
+
+            $spent += $cost;
+            $ranked[] = $line;
+        }
+
+        if ($ranked !== []) {
+            $lines[] = '';
+            // The heading counts what is actually printed: the list can be shorter than
+            // ANNOUNCE_SIZE — a small house, or the budget running out — and «сотня» over
+            // eighty names is the kind of small lie that makes people distrust the figures
+            // above it.
+            $lines[] = sprintf('🏆 <b>Найбільші борги — %d «лідерів»</b>, вітаємо! 👏', count($ranked));
+            $lines[] = '';
+            $lines = array_merge($lines, $ranked);
+
+            if (count($ranked) < count($top)) {
+                $lines[] = '';
+                $lines[] = '<i>Список не помістився повністю — решта в боті.</i>';
             }
         }
 
@@ -311,6 +347,17 @@ class DebtBoardService
      * Nothing grew — the bot merely started counting the whole building.
      */
     private const COVERAGE_JUMP = 1.25;
+
+    /**
+     * What Telegram counts, which is UTF-16 code units — an emoji costs two, not one.
+     *
+     * Counting characters instead would put the budget out by the number of medals and
+     * rank glyphs in the list, which is exactly where it matters.
+     */
+    private static function telegramLength(string $text): int
+    {
+        return (int)(strlen(mb_convert_encoding($text, 'UTF-16LE', 'UTF-8')) / 2);
+    }
 
     private function trendLine(DebtSnapshot $current, DebtSnapshot $previous): string
     {
