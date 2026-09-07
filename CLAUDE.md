@@ -266,6 +266,11 @@ never onto a command line `ps` can read, and `BACKUP_PASSPHRASE` optionally encr
 (AES-256) before delivery. Restore is plain
 `gunzip -c <file> | psql -d <db>`.
 
+**The dump subprocess is given an explicit working directory** (`$this->projectDir`),
+never the inherited one — see the cron section for the night-after-night failure that
+cost. A backup that fails is also the one failure nobody notices, so the cron line logs
+to `var/log/backup.log` instead of running `-q` into silence.
+
 ## Contacting the ОСББ
 
 Every message that ends with "ask the ОСББ" renders `OsbbContacts::ACCOUNTANT_LINE` /
@@ -606,8 +611,15 @@ or they silently exercise a bot with no middleware.
 0 * * * * sudo -u www-data php …/city-park/bin/console block-vote:tally --env=prod
 0 4 * * * sudo -u www-data php …/city-park/bin/console rental:expire --env=prod
 15 4 * * * sudo -u www-data php …/city-park/bin/console complaint:cleanup --env=prod
-0 2 * * * sudo -u www-data php …/city-park/bin/console db:backup --env=prod
+0 2 * * * cd …/city-park && sudo -u www-data php bin/console db:backup --env=prod >> var/log/backup.log 2>&1
 ```
+
+**Every line `cd`s into the project first** (or the `db:backup` one does, at minimum).
+Cron starts a job in `/root`, mode `700`, and a `sudo -u www-data` command inherits that
+as its working directory: anything that then spawns a subprocess dies with `proc_open():
+posix_spawn() failed: Permission denied` before it runs. That is what silently killed
+every nightly backup until 07.09.2026 — the command works by hand from any other
+directory, which is why it read as fine.
 
 **The `block-vote:tally` hourly cron is required** — without it, deadline-passed campaigns never close and 30-day vote-blocks never auto-unblock. Install it on deploy.
 

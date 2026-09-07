@@ -107,7 +107,11 @@ class DatabaseBackupCommand extends Command
             escapeshellarg($path),
         );
 
-        $process = Process::fromShellCommandline($command, null, [
+        // The working directory is given explicitly, never inherited. Cron starts the job in
+        // /root, which is mode 700, so the `sudo -u www-data` line spawned pg_dump from a
+        // directory www-data cannot chdir into: `posix_spawn() failed: Permission denied`,
+        // every night, while the same command run by hand from anywhere else succeeded.
+        $process = Process::fromShellCommandline($command, $this->projectDir, [
             'PGPASSWORD' => (string)($params['password'] ?? ''),
             'BACKUP_PASSPHRASE' => $passphrase,
         ], null, 600);
