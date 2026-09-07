@@ -3,7 +3,7 @@
 namespace App\Service;
 
 /**
- * The two people a resident is ever told to contact, in one place.
+ * Everybody a resident is ever told to contact, in one place.
  *
  * The same sentence — «Зверніться до Аліни Бухгалтера (+380 93 658 32 02) або голови ОСББ
  * Люди (+380 67 470 46 24)» — was copy-pasted into twelve files: the block notice, the
@@ -32,6 +32,18 @@ class OsbbContacts
     public const DEV_USERNAME = 'shubaivan';
 
     /**
+     * Заявки — the person who answers for repairs (Сергій, since 07.09.2026).
+     *
+     * A @username, like the developer's and unlike the two officers': he has one, and it
+     * is the handle he already uses. His phone is deliberately **not** published — the two
+     * officers' numbers are on the menu because those are the ОСББ's own published lines,
+     * and a private number reaches 457 people the moment it is printed here. Add it only
+     * if he asks for it.
+     */
+    public const REPAIRS_NAME = 'Сергій';
+    public const REPAIRS_USERNAME = 'differz';
+
+    /**
      * Constants, not method calls, because the FAQ keeps its whole text in a `const` array
      * and PHP constant expressions cannot call anything. Concatenating constants is
      * allowed, so the one definition still lives here and the FAQ still reads it.
@@ -52,6 +64,9 @@ class OsbbContacts
 
     public const DEV_LINE = '🛠 ' . self::DEV_NAME . ', технічні питання — '
         . '<a href="https://t.me/' . self::DEV_USERNAME . '">@' . self::DEV_USERNAME . '</a>';
+
+    public const REPAIRS_LINE = '🔧 ' . self::REPAIRS_NAME . ', відповідальний за заявки — '
+        . '<a href="https://t.me/' . self::REPAIRS_USERNAME . '">@' . self::REPAIRS_USERNAME . '</a>';
 
     public const BOTH_LINES = self::ACCOUNTANT_LINE . "\n" . self::CHAIR_LINE;
 
@@ -84,6 +99,11 @@ class OsbbContacts
     public static function developer(): string
     {
         return self::DEV_LINE;
+    }
+
+    public static function repairs(): string
+    {
+        return self::REPAIRS_LINE;
     }
 
     public static function all(): string

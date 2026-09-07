@@ -110,6 +110,11 @@ $bot->onCommand('problem', \App\Telegram\Complaint\Command\ComplaintMenuCommand:
 // private chats, and /guard belongs to two people. The handler checks the id itself.
 $bot->onCallbackQueryData(\App\Telegram\Guard\Command\GuardCommand::MENU_CALLBACK, \App\Telegram\Guard\Command\GuardCommand::class);
 $bot->onCommand('guard', \App\Telegram\Guard\Command\GuardCommand::class);
+// The resident's QR, and the deep link a guard's camera opens. Nutgram anchors command
+// patterns, so `/start` alone still reaches StartCommand and this only ever sees a
+// payload — which is why it must be registered as its own command and not as a prefix.
+$bot->onCallbackQueryData(\App\Telegram\Guard\Command\GuardQrCommand::MENU_CALLBACK, \App\Telegram\Guard\Command\GuardQrCommand::class);
+$bot->onCommand('start {payload}', \App\Telegram\Guard\Command\GuardScanCommand::class);
 
 // The debtors' board: the menu block is rendered by StartCommand, this is the full list.
 $bot->onCallbackQueryData(\App\Telegram\Debt\Command\DebtBoardCommand::MENU_CALLBACK, \App\Telegram\Debt\Command\DebtBoardCommand::class);

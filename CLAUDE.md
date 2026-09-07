@@ -40,9 +40,16 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 | 🏘 Чат мешканців | `resident-chat` | `/chat` | `ResidentChatCommand` (hands out the join-request link) |
 | 🔧 Заявки | `complaints-menu` / `cmp:{view,photos,page,del,delok,edit}:<id>` / `cmp:pic:<id>:<n>` / `cmp:status:<id>:<status>` / `cmp:new` | `/problem` | `ComplaintMenuCommand` + `ComplaintCreate` / `ComplaintEdit` (conversations) |
 | 🛡 Хто зараз в альтанці | `guard-board` | `/guard` | `GuardCommand` (guards only — **not** in the pushed slash menu) |
+| 🔒 QR для охорони | `guard-qr` | — | `GuardQrCommand` (resident, only while a booking runs); scanned via `/start g-…` → `GuardScanCommand` |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
 
-The menu header also names the head of the ОСББ (Людмила Осипенко) with her number and a
+The contact block under the menu header names four people — the head of the ОСББ, the
+accountant, **Сергій as «відповідальний за заявки»** (added 07.09.2026) and the developer —
+each with one italic line saying what they are for. The two officers get `t.me/+<phone>`
+because neither has a @username; Сергій and the developer get theirs, and **Сергій's phone
+is deliberately not published**: the officers' numbers are the ОСББ's own published lines,
+his is a private one that would reach 457 people the moment it were printed there.
+The header also names the head of the ОСББ (Людмила Осипенко) with her number and a
 `t.me/+<phone>` link — she has no Telegram @username, the registry field is empty. Shown to
 linked residents only, the same call already made for the accountant's number: an unlinked
 visitor browsing 🔑 Оренда is not owed the officers' phones.
@@ -380,9 +387,28 @@ edits the message in place.
 - `/guard` is registered as a handler but deliberately **left out of
   `BotMenuUpdateCommand::MENU`**, which is pushed to all private chats.
 
-Open: the QR half of Иван's idea (07.09.2026) — the resident generates a QR from their
-booking, the guard scans it and the bot answers «ці люди тут зараз законно». The board is
-the half that had to exist first: without a list there is nothing for a scan to confirm.
+**The QR half** (Иван's idea, same day): «🔒 QR для охорони» appears on the resident's own
+menu **only while their booking is running**, which is why it needs no explaining — it is
+there when you are sitting in the альтанка and gone the rest of the month. It renders a
+deep link, `t.me/<bot>?start=g-<account>-<signature>`, so the guard needs no scanner app:
+his camera opens Telegram and `GuardScanCommand` replies ✅ with the flat, the pavilion and
+the hours, or ❌ «броні на зараз немає» — which is the answer that matters, since a
+screenshot from last Saturday has to read as plainly wrong rather than as a bot error.
+
+- **Signed, and stored nowhere.** `hash_hmac` over the account id with `APP_SECRET`, 12
+  hex characters. The flats and особові рахунки of the largest debtors are published to
+  the whole house every month, so a code that merely *named* a flat could be drawn by
+  anyone who read that board — and the guard would confirm it, because that flat really
+  does have a booking. The signature is what makes the bot the only thing that can mint
+  one. Nothing is written: the question is «is this household in the альтанка now», and
+  the bookings table already answers it, so the code needs no expiry either.
+- **Only a guard gets an answer.** A resident scanning their own code, or anyone the
+  picture is forwarded to, is told «цей QR-код зчитує охорона» and nothing about the flat.
+- **`start {payload}` cannot swallow a plain `/start`.** Nutgram anchors command patterns,
+  so the deep-link handler needs the space and a payload while `/start` alone still reaches
+  `StartCommand`. `GuardWiringTest` pins it: getting that wrong takes the main menu away
+  from 457 people and shows up as «бот не відповідає», not as an error anywhere.
+- Needs `endroid/qr-code`, so a deploy that brings this in must run `composer install`.
 
 ## Backups
 

@@ -13,13 +13,14 @@ use PHPUnit\Framework\TestCase;
  */
 class GuardBoardRulesTest extends TestCase
 {
-    private function service(string $ids = ''): GuardService
+    private function service(string $ids = '', string $secret = 'test-secret'): GuardService
     {
         // The repository is only reached by sessionsOfDay(); every rule below lives in the
         // static half precisely so it can be exercised without a database.
         return new GuardService(
             $this->createMock(\App\Repository\ScheduledSetRepository::class),
             $ids,
+            $secret,
         );
     }
 
@@ -228,6 +229,51 @@ class GuardBoardRulesTest extends TestCase
 
         $this->assertStringNotContainsString('20:00–21:00', $board);
         $this->assertStringContainsString('вільні', $board);
+    }
+
+    #############
+    # 🔒 The QR code
+    #############
+
+    /**
+     * A code the bot minted comes back as the account it was minted for.
+     */
+    public function testAMintedTokenReadsBackAsItsAccount(): void
+    {
+        $guard = $this->service();
+        $account = $this->user(7)->getAccount();
+
+        $token = $guard->mintToken($account);
+
+        $this->assertSame(7, $guard->readToken($token));
+    }
+
+    /**
+     * The rule the whole design rests on: a code cannot be *drawn*.
+     *
+     * The особові рахунки and flats of the largest debtors are published to the whole
+     * house every month, so a QR that merely named a flat could be made by anyone who
+     * read that board — and the guard would confirm it, because the flat really does have
+     * a booking. Only the bot can produce the signature.
+     */
+    public function testAForgedOrTamperedTokenIsRefused(): void
+    {
+        $guard = $this->service();
+        $token = $guard->mintToken($this->user(7)->getAccount());
+
+        $this->assertNull($guard->readToken('g-7-000000000000'), 'a made-up signature');
+        $this->assertNull($guard->readToken(str_replace('g-7-', 'g-8-', $token)), 'the neighbour\'s flat');
+        $this->assertNull($guard->readToken('g-7'), 'a truncated payload');
+        $this->assertNull($guard->readToken('hello'), 'somebody else\'s deep link');
+        $this->assertNull($guard->readToken(''), 'a bare /start');
+    }
+
+    /** A code minted by one installation must not verify against another's secret. */
+    public function testTheSignatureIsTiedToTheApplicationSecret(): void
+    {
+        $token = $this->service('', 'one-secret')->mintToken($this->user(7)->getAccount());
+
+        $this->assertNull($this->service('', 'another-secret')->readToken($token));
     }
 
     /** @param array<int, array<string, mixed>> $sessions */
