@@ -29,7 +29,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 
 | Button | Callback | Slash | Handler |
 |---|---|---|---|
-| 🔑 Оренда квартир | `rental-menu` / `rent:new` / `rent:{view,page,photos,contact,phone,extend,remove}:<id>` / `rent:pic:<id>:<n>` | `/rent` | `RentalMenuCommand` + `RentalPublish` (conversation) |
+| 🔑 Оренда та продаж | `rental-menu` / `rent:new` / `rent:new-sale` / `rent:deal:<all\|rent\|sale>:<page>` / `rent:{view,page,photos,contact,phone,extend,remove}:<id>` / `rent:pic:<id>:<n>` | `/rent` | `RentalMenuCommand` + `RentalPublish` (conversation) |
 | Бронювання | `schedule-pavilion` | `/schedule` | `SchedulePavilion` (conversation) |
 | Переглянути свої | `own-schedule` | — | `OwnSchedule` |
 | Як доїхати? | `type:route` | — | `RouteCommand` |
@@ -166,10 +166,17 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
 - **Rent and sale are one entity, told apart by `deal`.** Everything around the advert is
   identical — 30 days, the renewal prompt, three photos, the phone consent, the admin
   take-down — and what differs is one word and whether the price is per month, so
-  `priceLabel()` drops «/міс» on a sale and `dealIcon()` puts 🔑 or 🏷 first in the index
+  `priceLabel()` drops «/міс» on a sale and `dealIcon()` puts 🔑 or 🏡 first in the index
   button, before the price, because «що це» has to read before the number. Two buttons
-  under the list («🔑 Здаю квартиру», «🏷 Продаю») rather than a first question inside the
-  conversation: the owner already knows which they came to do.
+  under the list («🔑 Здаю квартиру», «🏡 Продаю») rather than a first question inside the
+  conversation: the owner already knows which they came to do. The index grows a
+  «Усі / 🔑 Оренда / 🏡 Продаж» row **only when both kinds exist** — one kind needs no
+  filter above it and an empty tab is a dead end — and the tab rides in the paging
+  callback (`rent:deal:<kind>:<page>`) so leafing through «Продаж» cannot drop back
+  into the mixed list. `RentalCallbackWiringTest` checks every `rent:` button against
+  the regexes in `config/telegram.php`: an unrouted one does not error, it just spins.
+  The sale glyph is 🏡 and not 🏷 — the latter rendered as an empty box in Telegram
+  Desktop.
 - **Every listing is also posted to the residents' chat**, into the `🔑 Оренда` topic
   (`RESIDENT_CHAT_TOPIC_RENTALS`), silently, and the post is **deleted when the listing
   closes** — withdrawn, replaced, taken down or expired (`RentalListing.chat_message_id`).

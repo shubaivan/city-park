@@ -123,7 +123,7 @@ class RentalPublish extends Conversation
         $sale = $this->deal === RentalListing::DEAL_SALE;
 
         $bot->sendMessage(
-            text: ($sale ? "🏷 <b>Оголошення про продаж</b>\n\n" : "🔑 <b>Оголошення про оренду</b>\n\n")
+            text: ($sale ? "🏡 <b>Оголошення про продаж</b>\n\n" : "🔑 <b>Оголошення про оренду</b>\n\n")
                 . 'Квартиру, адресу та площу візьмемо з вашого особового рахунку — '
                 . "їх вводити не треба.\n\n"
                 . 'Скільки кімнат?',

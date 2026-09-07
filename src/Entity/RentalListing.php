@@ -402,10 +402,10 @@ class RentalListing
         return number_format($this->price, 0, ',', ' ') . ($this->isSale() ? ' грн' : ' грн/міс');
     }
 
-    /** 🔑 / 🏷 — one glyph, because it rides in a button caption Telegram truncates. */
+    /** 🔑 / 🏡 — one glyph, because it rides in a button caption Telegram truncates. */
     public function dealIcon(): string
     {
-        return $this->isSale() ? '🏷' : '🔑';
+        return $this->isSale() ? '🏡' : '🔑';
     }
 
     public function dealLabel(): string
