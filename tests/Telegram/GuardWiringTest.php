@@ -71,6 +71,24 @@ class GuardWiringTest extends TestCase
     }
 
     /**
+     * And it is wrapped the way Telegram wants it — a stream, not the bytes.
+     *
+     * `InputFile::make()` on a raw string throws «Invalid resource specified», which is a
+     * 500 on /hook; Telegram then retries the same tap until the callback query is too old
+     * to answer, and the person sees a button that does nothing at all. Shipped that way
+     * on 07.09.2026 because the test above proved the PNG existed and nothing proved it
+     * could be sent.
+     */
+    public function testTheQrIsWrappedAsSomethingTelegramCanSend(): void
+    {
+        $photo = \App\Telegram\Guard\Command\GuardQrCommand::photo(
+            'https://t.me/che_city_park_bot?start=g-7-abcdef012345',
+        );
+
+        $this->assertInstanceOf(\SergiX44\Nutgram\Telegram\Types\Internal\InputFile::class, $photo);
+    }
+
+    /**
      * `/guard` must stay out of the slash menu, which is pushed to every private chat.
      * There it would be a command 457 residents can type and nobody but two people may
      * use — and each refusal is a message that reads like the bot is broken.
