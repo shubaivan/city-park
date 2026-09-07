@@ -45,6 +45,10 @@ class ComplaintPhotoController extends AbstractController
             'complaint' => $complaint,
             'token' => $token,
             'max' => Complaint::PHOTOS_MAX,
+            // The page is the same one either way; only its heading and the set it lists
+            // differ, because the link decides which of the two it is.
+            'result' => $complaint->getPhotoTokenTarget() === Complaint::PHOTOS_RESULT,
+            'photos' => $this->complaints->photosForToken($complaint),
         ]);
     }
 
@@ -76,7 +80,7 @@ class ComplaintPhotoController extends AbstractController
 
         return new JsonResponse([
             'path' => $path,
-            'count' => count($complaint->getPhotos()),
+            'count' => count($this->complaints->photosForToken($complaint)),
             'max' => Complaint::PHOTOS_MAX,
         ]);
     }
@@ -92,13 +96,13 @@ class ComplaintPhotoController extends AbstractController
 
         $path = (string)$request->request->get('path');
 
-        if (!in_array($path, $complaint->getPhotos(), true)) {
+        if (!in_array($path, $this->complaints->photosForToken($complaint), true)) {
             return new JsonResponse(['error' => 'Фото не знайдено.'], Response::HTTP_BAD_REQUEST);
         }
 
         $this->complaints->removePhoto($complaint, $path);
 
-        return new JsonResponse(['count' => count($complaint->getPhotos())]);
+        return new JsonResponse(['count' => count($this->complaints->photosForToken($complaint))]);
     }
 
     /**

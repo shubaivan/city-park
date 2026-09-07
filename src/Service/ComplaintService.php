@@ -424,7 +424,13 @@ class ComplaintService
      * Issue (or refresh) the photo-upload link. Regenerated on every request, so a link
      * forwarded yesterday stops working as soon as a new one is asked for.
      */
-    public function issuePhotoToken(Complaint $complaint): string
+    /**
+     * $target says which set the link writes into — the author's photos of the problem, or
+     * the ОСББ's photos of the work. It rides on the token because the token *is* the
+     * authorisation: nobody is logged in on that page, so the server cannot ask who is
+     * uploading and must know from the link itself.
+     */
+    public function issuePhotoToken(Complaint $complaint, string $target = Complaint::PHOTOS_AUTHOR): string
     {
         $token = bin2hex(random_bytes(16));
 
@@ -432,9 +438,24 @@ class ComplaintService
             $token,
             new \DateTimeImmutable(sprintf('+%d hours', Complaint::PHOTO_TOKEN_TTL_HOURS)),
         );
+        $complaint->setPhotoTokenTarget(
+            $target === Complaint::PHOTOS_RESULT ? Complaint::PHOTOS_RESULT : Complaint::PHOTOS_AUTHOR,
+        );
         $this->em->flush();
 
         return $token;
+    }
+
+    /**
+     * The set the live link writes into, read back.
+     *
+     * @return string[]
+     */
+    public function photosForToken(Complaint $complaint): array
+    {
+        return $complaint->getPhotoTokenTarget() === Complaint::PHOTOS_RESULT
+            ? $complaint->getResultPhotos()
+            : $complaint->getPhotos();
     }
 
     public function savePromptMessageId(Complaint $complaint): void
@@ -463,9 +484,15 @@ class ComplaintService
         return $complaint;
     }
 
+    /**
+     * Stores into whichever set the live link is for. Each set has its own ceiling: three
+     * pictures of the problem and three of the repair are two answers, not six.
+     */
     public function storePhoto(Complaint $complaint, UploadedFile $file, ?string &$error = null): ?string
     {
-        if (count($complaint->getPhotos()) >= Complaint::PHOTOS_MAX) {
+        $result = $complaint->getPhotoTokenTarget() === Complaint::PHOTOS_RESULT;
+
+        if (count($this->photosForToken($complaint)) >= Complaint::PHOTOS_MAX) {
             $error = 'Більше ' . Complaint::PHOTOS_MAX . ' фото не можна.';
 
             return null;
@@ -477,23 +504,41 @@ class ComplaintService
             return null;
         }
 
-        $complaint->setPhotos([...$complaint->getPhotos(), $path]);
+        if ($result) {
+            $complaint->setResultPhotos([...$complaint->getResultPhotos(), $path]);
+        } else {
+            $complaint->setPhotos([...$complaint->getPhotos(), $path]);
+        }
+
         $this->em->flush();
 
         $this->logger->info('complaint photo stored', [
             'complaint_id' => $complaint->getId(),
+            'target' => $complaint->getPhotoTokenTarget(),
             'path' => $path,
         ]);
 
         return $path;
     }
 
+    /**
+     * Removes from the set the live link is for, and only from it: the author's page must
+     * not be able to delete the ОСББ's evidence of the repair, nor the manager's page the
+     * author's evidence of the fault.
+     */
     public function removePhoto(Complaint $complaint, string $publicPath): void
     {
-        $complaint->setPhotos(array_filter(
-            $complaint->getPhotos(),
+        $drop = static fn (array $set): array => array_filter(
+            $set,
             static fn (string $p): bool => $p !== $publicPath,
-        ));
+        );
+
+        if ($complaint->getPhotoTokenTarget() === Complaint::PHOTOS_RESULT) {
+            $complaint->setResultPhotos($drop($complaint->getResultPhotos()));
+        } else {
+            $complaint->setPhotos($drop($complaint->getPhotos()));
+        }
+
         $this->em->flush();
 
         $this->images->delete($publicPath, self::PHOTO_DIR);
@@ -558,7 +603,9 @@ class ComplaintService
 
         $this->unannounce($complaint);
 
-        foreach ($complaint->getPhotos() as $path) {
+        // Both sets, or the repair photos outlive the entry they belong to as orphan
+        // files nothing points at.
+        foreach ($complaint->getAllPhotos() as $path) {
             $this->images->delete($path, self::PHOTO_DIR);
         }
 
@@ -579,6 +626,7 @@ class ComplaintService
     public function burnPhotoToken(Complaint $complaint): void
     {
         $complaint->setPhotoToken(null, null);
+        $complaint->setPhotoTokenTarget(null);
         $this->em->flush();
     }
 
@@ -598,6 +646,13 @@ class ComplaintService
      */
     public function confirmPhotoOnPrompt(Complaint $complaint): void
     {
+        // The prompt this rewrites is the author's «📷 Фото до заявки» message. A manager
+        // uploading photos of the repair must not edit it into «дякуємо, фото додано» in
+        // somebody else's chat.
+        if ($complaint->getPhotoTokenTarget() === Complaint::PHOTOS_RESULT) {
+            return;
+        }
+
         $messageId = $complaint->getPhotoPromptMessageId();
         $chatId = $complaint->getAuthor()?->getChatId();
 
@@ -659,8 +714,15 @@ class ComplaintService
             return;
         }
 
+        // «Фото додано» from the ОСББ and «фото додано» by yourself are the same three
+        // words about opposite events: one is news, the other is an echo of what you just
+        // did. The author gets told only about the first, and told what it is.
+        $result = $complaint->getPhotoTokenTarget() === Complaint::PHOTOS_RESULT;
+
         $caption = sprintf(
-            "📷 <b>Фото додано до заявки №%d</b>\n\n%s\n\nСтатус: <b>%s</b>",
+            "%s <b>%s заявки №%d</b>\n\n%s\n\nСтатус: <b>%s</b>",
+            $result ? '🔧' : '📷',
+            $result ? 'ОСББ додало фото виконаної роботи до' : 'Фото додано до',
             $complaint->getId(),
             htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
             $this->statusLabel($complaint->getStatus()),
@@ -676,7 +738,7 @@ class ComplaintService
                 InlineKeyboardButton::make('🏠 На головну', callback_data: 'main-menu'),
             );
 
-        $cover = $complaint->getPhotos()[0] ?? null;
+        $cover = ($result ? $complaint->getResultPhotos() : $complaint->getPhotos())[0] ?? null;
         $abs = $cover !== null ? $this->images->absolutePath($cover, self::PHOTO_DIR) : null;
 
         try {

@@ -15,7 +15,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
-    <title>Фото до заявки №{{ complaint.id }}</title>
+    <title>{{ result ? 'Фото роботи' : 'Фото до заявки' }} №{{ complaint.id }}</title>
     {# Present only when the page runs as a Telegram Web App; the script is a no-op elsewhere. #}
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
@@ -72,15 +72,20 @@
 </head>
 <body>
 <div class="wrap">
-    <h1>📷 Фото до заявки</h1>
+    <h1>{{ result ? '🔧 Фото виконаної роботи' : '📷 Фото до заявки' }}</h1>
     <p class="hint">
         Заявка №{{ complaint.id }} · {{ complaint.text|length > 90 ? complaint.text|slice(0, 89) ~ '…' : complaint.text }}<br>
-        Додайте до {{ max }} фото — так голові ОСББ одразу видно, про що йдеться.
+        {% if result %}
+            Додайте до {{ max }} фото того, що зробили. Їх побачить автор заявки і весь будинок —
+            окремо від фото проблеми.
+        {% else %}
+            Додайте до {{ max }} фото — так голові ОСББ одразу видно, про що йдеться.
+        {% endif %}
     </p>
 
     <div class="card">
         <div class="grid" id="grid">
-            {% for path in complaint.photos %}
+            {% for path in photos %}
                 <div class="thumb" data-path="{{ path }}">
                     <img src="{{ path }}" alt="">
                     <button type="button" title="Видалити">×</button>

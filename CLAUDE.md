@@ -686,6 +686,20 @@ the whole house sees every entry and why the open count rides on the menu button
   every extra question is a reason to close the bot and write in the chat instead. Photos
   are offered *after* the complaint is saved, so giving up at that point still leaves the
   problem reported.
+- **What the ОСББ did is its own set of photos.** `Complaint.result_photos`, asked for by
+  Сергій («до статусу зробиш фотки?», 07.09.2026), offered — never demanded — right after
+  «✅ Виконано» and from a button on `/admin/complaints`. One array would have been less
+  code and the wrong data: the value of these pictures is «було / стало», and a single
+  list puts the repaired lift and the broken one side by side with nothing saying which
+  is which. The card leafs through both (the problem first) and the carousel counter
+  turns 🖼 into 🔧 on the ОСББ's own, since on a photo card that counter is the only line
+  that can say so. The author is told «ОСББ додало фото виконаної роботи», which is news,
+  as opposed to the echo of their own upload.
+  **The target rides on the token** (`photo_token_target`), because the token *is* the
+  authorisation and nobody is logged in on that page: the server cannot ask who is
+  uploading and must know from the link. That also keeps each side from deleting the
+  other's evidence, and stops a manager's upload rewriting the author's «📷 Фото до
+  заявки» prompt in somebody else's chat.
 - **Photos go through the web, never the bot.** `ComplaintCreate` carries the mandatory
   `interceptConversationPhoto()` guard and has no photo step — it matters more here than
   anywhere else, because this conversation is *about* photographing something broken. A

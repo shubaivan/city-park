@@ -78,7 +78,7 @@ class ComplaintCleanupCommand extends Command
                 continue;
             }
 
-            foreach ($complaint->getPhotos() as $path) {
+            foreach ($complaint->getAllPhotos() as $path) {
                 $this->images->delete($path, ComplaintService::PHOTO_DIR);
                 $files++;
             }

@@ -348,6 +348,30 @@ class AdminController extends AbstractController
     }
 
     /**
+     * Hand the manager the same one-shot photo page the bot offers, from the desktop.
+     *
+     * A POST that mints and redirects rather than a link rendered into the page: a token
+     * is minted per use and burned on «Готово», so rendering one next to every card would
+     * put twenty live links on a screen that is often left open.
+     */
+    #[Route('/admin/complaints/{id}/result-photos', name: 'app_admin_complaint_result_photos', methods: [Request::METHOD_POST])]
+    public function complaintResultPhotos(
+        int $id,
+        ComplaintRepository $complaints,
+        ComplaintService $complaintService,
+    ): Response {
+        $complaint = $complaints->find($id);
+
+        if (!$complaint instanceof Complaint) {
+            return $this->redirectToRoute('app_admin_complaints');
+        }
+
+        return $this->redirectToRoute('complaint_photo_page', [
+            'token' => $complaintService->issuePhotoToken($complaint, Complaint::PHOTOS_RESULT),
+        ]);
+    }
+
+    /**
      * The desktop half of the official discussion.
      *
      * Typing a real answer — «майстер приїде у вівторок після 14:00» — on a phone keyboard
