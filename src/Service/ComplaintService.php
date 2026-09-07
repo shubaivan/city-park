@@ -177,7 +177,7 @@ class ComplaintService
      * config/telegram.php drops every update that arrives from a group, so a callback
      * button posted in the chat would simply never reach a handler.
      */
-    private function announceNew(Complaint $complaint): void
+    private function announceNew(Complaint $complaint, bool $silent = false): void
     {
         if (!$this->residentChat->isConfigured()) {
             return;
@@ -195,6 +195,11 @@ class ComplaintService
                 chat_id: (int)$this->residentChat->chatId(),
                 message_thread_id: $this->residentChat->topic(ResidentChatService::TOPIC_COMPLAINTS),
                 parse_mode: ParseMode::HTML,
+                // A new report rings the house on purpose — «ліфт не працює» is what a
+                // neighbour wants to know before they walk to the lift. Seeding entries
+                // the chat has already seen must not: five old complaints arriving at
+                // once would ring eighty phones about problems from last week.
+                disable_notification: $silent,
             );
 
             $complaint->setChatMessageId($message?->message_id);
@@ -513,7 +518,7 @@ class ComplaintService
             return false;
         }
 
-        $this->announceNew($complaint);
+        $this->announceNew($complaint, silent: true);
 
         return $complaint->getChatMessageId() !== null;
     }
