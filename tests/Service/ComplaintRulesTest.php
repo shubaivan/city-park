@@ -372,4 +372,28 @@ class ComplaintRulesTest extends TestCase
         $this->assertSame('ОСББ', $service->adminLabel('main_admin'));
         $this->assertSame('ОСББ', $service->adminLabel(null));
     }
+
+    /**
+     * The date leads the button, because Telegram cuts the end off.
+     *
+     * «Не працює ліфт» tells a resident nothing on its own: reported this morning it
+     * means wait, reported two weeks ago it means report it again. Whatever is at the
+     * end of a button caption is the first thing to disappear on a narrow screen, so the
+     * date goes in front of the text and the text is what gets shortened.
+     */
+    public function testTheListButtonKeepsTheDateInFrontOfTheText(): void
+    {
+        $service = $this->service();
+
+        $long = (new Complaint())->setText(str_repeat('ліфт ', 30));
+        $label = $service->label($long);
+
+        $this->assertLessThanOrEqual(Complaint::LABEL_MAX, mb_strlen($label));
+        $this->assertStringEndsWith('…', $label, 'the text is what gets cut, not the date');
+        $this->assertLessThanOrEqual(
+            48,
+            mb_strlen('🔧 07.09 · ' . $label),
+            'icon + date + text has to survive a phone-width button',
+        );
+    }
 }

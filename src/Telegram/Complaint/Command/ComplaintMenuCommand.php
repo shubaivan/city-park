@@ -242,7 +242,12 @@ class ComplaintMenuCommand
     }
 
     /**
-     * One button per complaint: status icon, the first words, and 📌 on your own.
+     * One button per complaint: status icon, the date, the first words, 📌 on your own.
+     *
+     * The date sits before the text and never after it. Telegram truncates a button
+     * caption, so anything at the end is the first thing to disappear — and the date is
+     * what turns «не працює ліфт» from a complaint into either «щойно» or «вже два тижні»,
+     * which is the difference between reporting it again and waiting.
      */
     private function listLabel(Complaint $complaint, ?Account $account): string
     {
@@ -250,8 +255,9 @@ class ComplaintMenuCommand
             && $complaint->getAccount()?->getId() === $account->getId();
 
         return sprintf(
-            '%s %s%s%s',
+            '%s %s · %s%s%s',
             $this->statusIcon($complaint),
+            $complaint->getCreatedAt()->setTimezone(new \DateTimeZone('Europe/Kyiv'))->format('d.m'),
             $this->service->label($complaint),
             $complaint->getPhotos() !== [] ? ' 📷' : '',
             $mine ? ' 📌' : '',

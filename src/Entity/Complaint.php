@@ -85,7 +85,14 @@ class Complaint
     public const STALE_OPEN_DAYS = 180;
 
     /** How much of the text becomes the button label in the list. */
-    public const LABEL_MAX = 40;
+    /**
+     * How much of the text fits on the list button next to the status icon and the date.
+     *
+     * Trimmed from 40 when the date joined them: a button caption is truncated by
+     * Telegram, and the choice is between eight more characters of the sentence and
+     * knowing whether the lift broke today or a fortnight ago.
+     */
+    public const LABEL_MAX = 32;
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
