@@ -152,6 +152,34 @@ class Complaint
     #[ORM\Column(length: 20)]
     private string $status = self::STATUS_NEW;
 
+    /**
+     * What the ОСББ did about it, in pictures — kept apart from the author's.
+     *
+     * Asked for by Сергій, 07.09.2026 («до статусу зробиш фотки?»). One array would have
+     * been less code and the wrong data: the whole value of these is «було / стало», and a
+     * single list makes the repaired lift and the broken one two pictures in a row with
+     * nothing saying which is which. Separate arrays also mean the author's evidence
+     * cannot be deleted from the manager's page, and the manager's cannot be deleted by
+     * the author.
+     *
+     * @var string[] public paths under public/uploads/complaint-photos
+     */
+    #[ORM\Column(type: 'json')]
+    private array $result_photos = [];
+
+    /**
+     * Which set the live one-shot link writes into.
+     *
+     * The link *is* the authorisation (see ComplaintPhotoController), so the target has to
+     * ride on the token rather than on who opens the page: nobody is logged in there. Null
+     * is the author's own set, which is what every token issued before 07.09.2026 meant.
+     */
+    #[ORM\Column(length: 10, nullable: true)]
+    private ?string $photo_token_target = null;
+
+    public const PHOTOS_AUTHOR = 'author';
+    public const PHOTOS_RESULT = 'result';
+
     /** @var string[] public paths under public/uploads/complaint-photos */
     #[ORM\Column(type: 'json')]
     private array $photos = [];
@@ -308,6 +336,49 @@ class Complaint
     public function setPhotos(array $photos): static
     {
         $this->photos = array_values($photos);
+
+        return $this;
+    }
+
+    /** @return string[] */
+    public function getResultPhotos(): array
+    {
+        return $this->result_photos;
+    }
+
+    /** @param string[] $photos */
+    public function setResultPhotos(array $photos): static
+    {
+        $this->result_photos = array_values($photos);
+
+        return $this;
+    }
+
+    /**
+     * Both sets, the author's first — the order the card leafs through them, and the order
+     * anybody reads them in: what was broken, then what was done about it.
+     *
+     * @return string[]
+     */
+    public function getAllPhotos(): array
+    {
+        return [...$this->photos, ...$this->result_photos];
+    }
+
+    /** Is the picture at this carousel position one of the ОСББ's, not the author's? */
+    public function isResultPhotoAt(int $index): bool
+    {
+        return $index >= count($this->photos);
+    }
+
+    public function getPhotoTokenTarget(): string
+    {
+        return $this->photo_token_target ?? self::PHOTOS_AUTHOR;
+    }
+
+    public function setPhotoTokenTarget(?string $target): static
+    {
+        $this->photo_token_target = $target;
 
         return $this;
     }

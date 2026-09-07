@@ -371,6 +371,47 @@ class ComplaintRulesTest extends TestCase
     }
 
     #############
+    # 🔧 Photos of the work that was done
+    #############
+
+    /**
+     * Two sets, never one. The value of these pictures is «було / стало», and a single
+     * list puts the repaired lift and the broken one next to each other with nothing
+     * saying which is which.
+     */
+    public function testTheResultPhotosAreASeparateSet(): void
+    {
+        $complaint = (new Complaint())->setText('Не працює ліфт');
+        $complaint->setPhotos(['/uploads/a.jpg']);
+        $complaint->setResultPhotos(['/uploads/b.jpg']);
+
+        $this->assertSame(['/uploads/a.jpg'], $complaint->getPhotos());
+        $this->assertSame(['/uploads/b.jpg'], $complaint->getResultPhotos());
+        // The card leafs through the problem first, then the repair.
+        $this->assertSame(['/uploads/a.jpg', '/uploads/b.jpg'], $complaint->getAllPhotos());
+        $this->assertFalse($complaint->isResultPhotoAt(0));
+        $this->assertTrue($complaint->isResultPhotoAt(1));
+    }
+
+    /**
+     * The target rides on the token because the token *is* the authorisation: nobody is
+     * logged in on that page, so the server cannot ask who is uploading.
+     */
+    public function testTheUploadTargetRidesOnTheToken(): void
+    {
+        $complaint = (new Complaint())->setText('Не працює ліфт');
+
+        // Null is what every token issued before this shipped meant: the author's own set.
+        $this->assertSame(Complaint::PHOTOS_AUTHOR, $complaint->getPhotoTokenTarget());
+
+        $complaint->setPhotoTokenTarget(Complaint::PHOTOS_RESULT);
+        $this->assertSame(Complaint::PHOTOS_RESULT, $complaint->getPhotoTokenTarget());
+
+        $complaint->setPhotoTokenTarget(null);
+        $this->assertSame(Complaint::PHOTOS_AUTHOR, $complaint->getPhotoTokenTarget());
+    }
+
+    #############
     # 💬 The official discussion
     #############
 

@@ -101,6 +101,16 @@
                         </a>
                     {% endfor %}
 
+                    {# What the ОСББ did, kept visibly apart from what the author sent. #}
+                    {% if complaint.resultPhotos is not empty %}
+                        <div class="small text-muted mt-2 mb-1">🔧 Зроблено:</div>
+                        {% for path in complaint.resultPhotos %}
+                            <a href="{{ path }}" target="_blank" rel="noopener">
+                                <img src="{{ path }}" alt="" class="cmp-shot">
+                            </a>
+                        {% endfor %}
+                    {% endif %}
+
                     {% if complaint.resolution %}
                         <div class="alert {{ complaint.status == 'on_hold' ? 'alert-info' : (complaint.status == 'rejected' ? 'alert-secondary' : 'alert-light') }} py-2 px-2 mt-2 mb-2 small">
                             {{ complaint.status == 'on_hold' ? '⏸ Чекає:' : (complaint.status == 'rejected' ? '❌ Причина:' : '💬 Нотатка:') }}
@@ -174,6 +184,19 @@
                             <div class="small text-muted mt-1">
                                 Автор і чат мешканців дізнаються про зміну статусу. «Відкладено»
                                 і «Відхилено» без причини не зберігаються.
+                            </div>
+                        </form>
+
+                        {# The same one-shot page the bot offers after «Виконано», for the
+                           half of the work that is done at a desk. #}
+                        <form method="post" class="mt-2"
+                              action="{{ path('app_admin_complaint_result_photos', {id: complaint.id}) }}">
+                            <button class="btn btn-sm btn-outline-secondary">
+                                🔧 Фото виконаної роботи ({{ complaint.resultPhotos|length }})
+                            </button>
+                            <div class="small text-muted mt-1">
+                                Відкриє сторінку завантаження. Ці фото бачить автор заявки і весь будинок,
+                                окремо від фото проблеми.
                             </div>
                         </form>
                     </details>

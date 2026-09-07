@@ -259,7 +259,7 @@ class ComplaintMenuCommand
             $this->statusIcon($complaint),
             $complaint->getCreatedAt()->setTimezone(new \DateTimeZone('Europe/Kyiv'))->format('d.m'),
             $this->service->label($complaint),
-            $complaint->getPhotos() !== [] ? ' 📷' : '',
+            $complaint->getAllPhotos() !== [] ? ' 📷' : '',
             $mine ? ' 📌' : '',
         );
     }
@@ -282,7 +282,7 @@ class ComplaintMenuCommand
         $caption = $this->describe($complaint);
         $markup = InlineKeyboardMarkup::make();
 
-        if ($complaint->getPhotos() !== []) {
+        if ($complaint->getAllPhotos() !== []) {
             $index = $this->normaliseIndex($complaint, $index);
             $this->addPhotoNav($markup, $complaint, $index);
             $this->addCardControls($bot, $markup, $complaint);
@@ -595,6 +595,14 @@ class ComplaintMenuCommand
 
         $bot->answerCallbackQuery(text: $this->service->statusLabel($status));
         $this->renderCard($bot, $complaintId);
+
+        // «Виконано» is a claim about work performed, and this is the one moment the
+        // person who did it is holding a phone in front of the thing they repaired.
+        // Offered, never demanded: a report with no picture is still a report, and a
+        // required photo is a status nobody sets.
+        if ($status === Complaint::STATUS_DONE) {
+            $this->offerResultPhotos($bot, $complaint);
+        }
     }
 
     /**
@@ -602,6 +610,50 @@ class ComplaintMenuCommand
      * the text being deleted, because the button was tapped from a list where every entry
      * looks much like the next.
      */
+    /**
+     * The one-shot link for photos of the finished work, pushed as its own message.
+     *
+     * Its own message rather than a button on the card, because the card at this moment is
+     * being redrawn with the new status and may be a photo caption — and because it has to
+     * be findable a minute later, when they have walked back to the lift.
+     */
+    private function offerResultPhotos(Nutgram $bot, Complaint $complaint): void
+    {
+        try {
+            $url = $this->urlGenerator->generate(
+                'complaint_photo_page',
+                ['token' => $this->service->issuePhotoToken($complaint, Complaint::PHOTOS_RESULT)],
+                UrlGeneratorInterface::ABSOLUTE_URL,
+            );
+
+            $bot->sendMessage(
+                text: sprintf(
+                    "🔧 <b>Заявку №%d закрито.</b>\n\n"
+                        . "Якщо є фото зробленої роботи — додайте, це видно автору заявки і "
+                        . "всім мешканцям. Не обовʼязково.",
+                    $complaint->getId(),
+                ),
+                parse_mode: ParseMode::HTML,
+                reply_markup: InlineKeyboardMarkup::make()
+                    ->addRow(InlineKeyboardButton::make(
+                        '📷 Додати фото роботи',
+                        web_app: new WebAppInfo($url),
+                    ))
+                    ->addRow(InlineKeyboardButton::make(
+                        '⬅️ До заявки',
+                        callback_data: 'cmp:view:' . $complaint->getId(),
+                    )),
+            );
+        } catch (\Throwable $e) {
+            // Never fatal: the status has already moved, and the author and the chat have
+            // already been told. An offer that fails to render must not undo that.
+            $this->logger->error('result photo offer failed', [
+                'complaint_id' => $complaint->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     private function confirmDelete(Nutgram $bot, int $complaintId): void
     {
         $complaint = $this->complaints->find($complaintId);
@@ -621,8 +673,8 @@ class ComplaintMenuCommand
                     . 'Її більше не побачить ніхто — ні сусіди, ні голова ОСББ. Це не скасувати.',
                 $complaint->getId(),
                 $this->esc($complaint->getText()),
-                $complaint->getPhotos() !== []
-                    ? sprintf("Разом із нею зникнуть %d фото.\n\n", count($complaint->getPhotos()))
+                $complaint->getAllPhotos() !== []
+                    ? sprintf("Разом із нею зникнуть %d фото.\n\n", count($complaint->getAllPhotos()))
                     : '',
             ),
             markup: InlineKeyboardMarkup::make()
@@ -747,7 +799,7 @@ class ComplaintMenuCommand
 
     private function addPhotoNav(InlineKeyboardMarkup $markup, Complaint $complaint, int $index): void
     {
-        $total = count($complaint->getPhotos());
+        $total = count($complaint->getAllPhotos());
 
         if ($total < 2) {
             return;
@@ -759,7 +811,15 @@ class ComplaintMenuCommand
         $markup->addRow(
             InlineKeyboardButton::make('⬅️', callback_data: sprintf('cmp:pic:%d:%d', $complaint->getId(), $prev)),
             InlineKeyboardButton::make(
-                sprintf('🖼 %d/%d', $index + 1, $total),
+                // 🔧 on the ОСББ's own pictures: the whole point of keeping the two sets
+                // apart is that «було» and «стало» are told apart at a glance, and on a
+                // photo card the counter is the only line that can say so.
+                sprintf(
+                    '%s %d/%d',
+                    $complaint->isResultPhotoAt($index) ? '🔧' : '🖼',
+                    $index + 1,
+                    $total,
+                ),
                 callback_data: self::NOOP_CALLBACK,
             ),
             InlineKeyboardButton::make('➡️', callback_data: sprintf('cmp:pic:%d:%d', $complaint->getId(), $next)),
@@ -815,7 +875,7 @@ class ComplaintMenuCommand
 
     private function normaliseIndex(Complaint $complaint, int $index): int
     {
-        $total = count($complaint->getPhotos());
+        $total = count($complaint->getAllPhotos());
 
         if ($total < 1) {
             return 0;
@@ -826,7 +886,7 @@ class ComplaintMenuCommand
 
     private function photoPath(Complaint $complaint, int $index): ?string
     {
-        $path = $complaint->getPhotos()[$index] ?? null;
+        $path = $complaint->getAllPhotos()[$index] ?? null;
         $abs = $path !== null ? $this->images->absolutePath($path, ComplaintService::PHOTO_DIR) : null;
 
         return $abs !== null && is_readable($abs) ? $abs : null;
