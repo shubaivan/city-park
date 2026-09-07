@@ -63,6 +63,16 @@ complaint with a photo instead of text threw the draft away and answered «Фо�
 отримано» to somebody who had never booked anything. That message is now split too: "вже
 отримано" only for a resident who actually had a session.
 
+**Guard on `PhotoUploadFlow::isIncomingPhoto($bot)`, never on `$bot->message()?->photo`.**
+On a callback query `$bot->message()` is the message the button hangs on — and a complaint
+or rental card that has pictures *is* a photo message. The naive check therefore fires on a
+**tap**: the conversation answers «📷 Фото сюди не додається», returns before
+`parent::__invoke()`, never advances its step, and every later text lands on a step waiting
+for a callback. From the outside it is «натискаю — нічого не міняється, ввожу текст —
+нічого», with nothing in the logs, because nothing failed. Found 07.09.2026 on complaint #6,
+which had photos; #11, which had none, worked perfectly and hid it for an afternoon.
+`BookingConversationPhotoGuardTest` walks every conversation and fails on the naive form.
+
 **Add that call to any new multi-step conversation**, and never end a conversation from `__invoke()` via `Conversation::end()`: it reads `$this->bot`, which Nutgram initialises only inside `parent::__invoke()` and strips in `__serialize()`, so on a cache-restored conversation it throws, `/hook` answers 500 and Telegram retries the same photo for an hour (incident 02–16.08.2026: 3 residents blocked for photos they had sent; regression test in `tests/Telegram/BookingConversationPhotoGuardTest`). Prod errors are persisted to `var/log/prod_errors.log` — php-fpm has no `catch_workers_output`, so the stderr handler alone loses everything.
 
 Sessions whose `end < OBLIGATION_START_AT` (constant in `PavilionPhotoService`, default `2026-05-24 00:00 Europe/Kyiv`) are grandfathered — no obligation, no badge. This is how pre-launch bookings stay "done".

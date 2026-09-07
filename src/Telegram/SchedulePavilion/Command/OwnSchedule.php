@@ -40,7 +40,7 @@ class OwnSchedule extends Conversation
      */
     public function __invoke(Nutgram $bot, ...$parameters): mixed
     {
-        if ($bot->message()?->photo) {
+        if (PhotoUploadFlow::isIncomingPhoto($bot)) {
             // Must never throw — see PhotoUploadFlow::interceptConversationPhoto().
             try {
                 $this->photoUploadFlow->interceptConversationPhoto(

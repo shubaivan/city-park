@@ -44,6 +44,26 @@ class PhotoUploadFlow
      * Telegram would retry the same photo update for an hour (incidents 02–03.08
      * and 16.08.2026, ~950 failed deliveries, 3 residents wrongly blocked).
      */
+    /**
+     * Did *this update* carry a photo the person just sent?
+     *
+     * `$bot->message()` on a callback query returns the message the button is attached
+     * to — and a complaint or rental card that has pictures **is** a photo message. So
+     * the obvious `$bot->message()?->photo` reads as "the user sent a photo" every time
+     * somebody presses a button on a card with a picture on it, and the conversation
+     * answers «📷 Фото сюди не додається» to a tap.
+     *
+     * That is not cosmetic: the guard returns before `parent::__invoke()`, so the step
+     * never runs, the conversation sits on its first step forever, and every later text
+     * lands on a step that expects a callback. From the outside: «натискаю — нічого не
+     * міняється, ввожу текст — нічого». Found 07.09.2026 on complaint #6, which had
+     * photos; #11, which had none, worked perfectly and hid the bug for an afternoon.
+     */
+    public static function isIncomingPhoto(Nutgram $bot): bool
+    {
+        return !$bot->isCallbackQuery() && $bot->message()?->photo !== null;
+    }
+
     public function interceptConversationPhoto(
         Nutgram $bot,
         ?string $step,
