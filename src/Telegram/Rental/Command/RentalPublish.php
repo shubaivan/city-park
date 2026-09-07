@@ -59,7 +59,7 @@ class RentalPublish extends Conversation
      */
     public function __invoke(Nutgram $bot, ...$parameters): mixed
     {
-        if ($bot->message()?->photo) {
+        if (PhotoUploadFlow::isIncomingPhoto($bot)) {
             // Must never throw — an exception here answers /hook with 500 and Telegram
             // retries the same photo for an hour.
             try {

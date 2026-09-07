@@ -115,4 +115,51 @@ class BookingConversationPhotoGuardTest extends KernelTestCase
             ],
         ]);
     }
+
+    /**
+     * The guard must read the update, not the message the button hangs on.
+     *
+     * `$bot->message()` on a callback query returns the card the button belongs to, and a
+     * complaint or rental card with pictures **is** a photo message. Guarding on
+     * `$bot->message()?->photo` therefore fires on a tap: the conversation answers «📷
+     * Фото сюди не додається», returns before parent::__invoke(), never advances its
+     * step, and every later text lands on a step waiting for a callback. Reported as
+     * «натискаю — нічого не міняється» on 07.09.2026, on the one complaint that had
+     * photos.
+     *
+     * @dataProvider conversationClasses
+     */
+    public function testTheGuardIgnoresTheCardABn(string $file): void
+    {
+        $source = (string)file_get_contents($file);
+
+        $this->assertStringNotContainsString(
+            'if ($bot->message()?->photo)',
+            $source,
+            basename($file) . ' guards on the callback\'s own card — use PhotoUploadFlow::isIncomingPhoto()',
+        );
+
+        $this->assertStringContainsString(
+            'PhotoUploadFlow::isIncomingPhoto($bot)',
+            $source,
+            basename($file) . ' must ask whether this update carried a photo',
+        );
+    }
+
+    /** @return array<string, array{string}> */
+    public static function conversationClasses(): array
+    {
+        $root = __DIR__ . '/../../src/Telegram';
+        $files = [
+            'SchedulePavilion/Command/SchedulePavilion.php',
+            'SchedulePavilion/Command/OwnSchedule.php',
+            'Complaint/Command/ComplaintCreate.php',
+            'Complaint/Command/ComplaintEdit.php',
+            'Complaint/Command/ComplaintHold.php',
+            'Complaint/Command/ComplaintReply.php',
+            'Rental/Command/RentalPublish.php',
+        ];
+
+        return array_combine($files, array_map(static fn (string $f): array => [$root . '/' . $f], $files));
+    }
 }

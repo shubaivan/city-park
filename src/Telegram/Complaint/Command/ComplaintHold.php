@@ -51,7 +51,7 @@ class ComplaintHold extends Conversation
      */
     public function __invoke(Nutgram $bot, ...$parameters): mixed
     {
-        if ($bot->message()?->photo) {
+        if (PhotoUploadFlow::isIncomingPhoto($bot)) {
             try {
                 $this->photoUploadFlow->interceptConversationPhoto(
                     $bot,
