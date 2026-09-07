@@ -251,12 +251,7 @@ class BookingHistory
             );
         }
 
-        $address = trim(sprintf(
-            '%s %s, кв. %s',
-            $account->getStreet() ?? '',
-            $account->getHouseNumber() ?? '',
-            $account->getApartmentNumber() ?? '',
-        ));
+        $address = $account->getStreetPlaceLabel();
 
         $uploader = $photo->getUploader();
         $uploaderLine = '';
@@ -532,12 +527,7 @@ class BookingHistory
         $phone = $tu->getPhoneNumber() ?: '—';
 
         if ($account) {
-            $address = trim(sprintf(
-                '%s %s, кв. %s',
-                $account->getStreet() ?? '',
-                $account->getHouseNumber() ?? '',
-                $account->getApartmentNumber() ?? '',
-            ));
+            $address = $account->getStreetPlaceLabel();
         } else {
             $address = '—';
         }

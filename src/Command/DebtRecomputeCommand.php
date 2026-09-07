@@ -72,15 +72,15 @@ class DebtRecomputeCommand extends Command
         $io->writeln(sprintf('Plan: block %d, unblock %d', count($toBlock), count($toUnblock)));
         foreach ($toBlock as $r) {
             $io->writeln(sprintf(
-                '  [BLOCK]   acc=%s кв.%s debt=%.2f > поріг=%.2f',
-                $r['account']->getAccountNumber(), $r['account']->getApartmentNumber(),
+                '  [BLOCK]   acc=%s %s debt=%.2f > поріг=%.2f',
+                $r['account']->getAccountNumber(), $r['account']->getPlaceLabel(),
                 $r['debt'], $r['threshold']
             ));
         }
         foreach ($toUnblock as $r) {
             $io->writeln(sprintf(
-                '  [UNBLOCK] acc=%s кв.%s debt=%.2f <= поріг=%.2f',
-                $r['account']->getAccountNumber(), $r['account']->getApartmentNumber(),
+                '  [UNBLOCK] acc=%s %s debt=%.2f <= поріг=%.2f',
+                $r['account']->getAccountNumber(), $r['account']->getPlaceLabel(),
                 $r['debt'], $r['threshold']
             ));
         }

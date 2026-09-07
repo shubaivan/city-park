@@ -302,14 +302,7 @@ class ComplaintMenuCommand
     private function describe(Complaint $complaint): string
     {
         $account = $complaint->getAccount();
-        $where = $account?->getApartmentNumber();
-        $house = $account?->getHouseNumber();
-
-        $from = match (true) {
-            $where !== null && $house !== null => sprintf('буд. %s, кв. %s', $this->esc($house), $this->esc($where)),
-            $where !== null => 'кв. ' . $this->esc($where),
-            default => 'мешканець',
-        };
+        $from = $account !== null ? $this->esc($account->getPlaceLabel()) : 'мешканець';
 
         $lines = [
             sprintf('%s <b>Заявка №%d</b>', $this->statusIcon($complaint), $complaint->getId()),

@@ -65,10 +65,10 @@ class EventApprovePhoneCommand extends Command
      */
     private function confirmedText(Account $account): string
     {
-        $address = trim(sprintf('%s %s', (string)$account->getStreet(), (string)$account->getHouseNumber()));
-        $where = $address !== ''
-            ? sprintf('%s, кв. %s', $address, (string)$account->getApartmentNumber())
-            : sprintf('кв. %s', (string)$account->getApartmentNumber());
+        // getStreetPlaceLabel(), never a hand-built «кв. %s»: this line is read by the
+        // owner of a паркомісце or a комірчина too, and telling them the bot matched
+        // "кв. 138" is exactly the confirmation they would (correctly) dispute.
+        $where = $account->getStreetPlaceLabel();
 
         return sprintf(
             "✅ <b>Підтверджено, дякуємо!</b>\n\n"

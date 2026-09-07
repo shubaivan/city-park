@@ -114,12 +114,12 @@ class DebtImportFileCommand extends Command
         $io->writeln(sprintf('• Not found in DB: %d', count($notFound)));
 
         foreach ($toBlock as $r) {
-            $io->writeln(sprintf('  [BLOCK]   acc=%s кв.%s debt=%.2f > поріг=%.2f',
-                $r['account']->getAccountNumber(), $r['account']->getApartmentNumber(), $r['debt'], $r['threshold']));
+            $io->writeln(sprintf('  [BLOCK]   acc=%s %s debt=%.2f > поріг=%.2f',
+                $r['account']->getAccountNumber(), $r['account']->getPlaceLabel(), $r['debt'], $r['threshold']));
         }
         foreach ($toUnblock as $r) {
-            $io->writeln(sprintf('  [UNBLOCK] acc=%s кв.%s debt=%.2f <= поріг=%.2f',
-                $r['account']->getAccountNumber(), $r['account']->getApartmentNumber(), $r['debt'], $r['threshold']));
+            $io->writeln(sprintf('  [UNBLOCK] acc=%s %s debt=%.2f <= поріг=%.2f',
+                $r['account']->getAccountNumber(), $r['account']->getPlaceLabel(), $r['debt'], $r['threshold']));
         }
 
         if ($dryRun) {
