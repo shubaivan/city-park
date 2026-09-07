@@ -546,6 +546,18 @@ whoever taps first.
   menu, under 🔑 Оренда — the announcement to residents tells them it is the second
   button, so the two orders have to stay in step.
 
+**The group runs in Topics mode since 07.09.2026**, switched on by hand in Telegram
+(«Edit group» → «Topics») — that toggle belongs to the owner, not to a migration. A
+message with no `message_thread_id` lands in **General**, so an unset topic is not a
+failure: it is exactly what the bot did before. `ResidentChatService::topic()` resolves
+`RESIDENT_CHAT_TOPIC_COMPLAINTS` / `RESIDENT_CHAT_TOPIC_DEBT` and returns **null for
+anything that is not a bare positive integer** — a wrong id makes Telegram reject the
+send outright, and a «🆕 Нова заявка» that throws is a broken lift nobody hears about,
+while one in the wrong tab is a nuisance. `resident-chat:topics` creates the two branches
+and prints the ids to paste, because Telegram has no way to *list* topics: `createForumTopic`
+returns the id once and never again (a topic made by hand has to have its id read out of a
+message link, `t.me/c/<chat>/<topic>/<message>`). Covered by `tests/Service/ResidentChatTopicsTest`.
+
 **`allowed_updates` must include `chat_join_request`** — Telegram's default list leaves it
 out, and the failure is silent: people queue at the door forever while the bot never hears
 them knock. `bin/console bot:webhook:update` re-registers the webhook with the four types

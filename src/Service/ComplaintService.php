@@ -193,6 +193,7 @@ class ComplaintService
                     htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 ),
                 chat_id: (int)$this->residentChat->chatId(),
+                message_thread_id: $this->residentChat->topic(ResidentChatService::TOPIC_COMPLAINTS),
                 parse_mode: ParseMode::HTML,
             );
         } catch (\Throwable $e) {
@@ -370,6 +371,7 @@ class ComplaintService
             $this->bot->sendMessage(
                 text: $text,
                 chat_id: (int)$this->residentChat->chatId(),
+                message_thread_id: $this->residentChat->topic(ResidentChatService::TOPIC_COMPLAINTS),
                 parse_mode: ParseMode::HTML,
                 disable_notification: true,
             );
