@@ -10,6 +10,10 @@ security:
                     main_admin: { password: "%env(MAIN_ADMIN_PASSWORD)%", roles: [ 'ROLE_ADMIN' ] }
                     alina:      { password: "%env(ALINA_ADMIN_PASSWORD)%", roles: [ 'ROLE_ADMIN' ] }
                     luda_boss:  { password: "%env(LUDA_ADMIN_PASSWORD)%", roles: [ 'ROLE_ADMIN' ] }
+                    # Complaints only: he answers for repairs, not for who lives where.
+                    # ROLE_ADMIN would hand him the resident register and the debt upload,
+                    # which is the accountant's work and nobody else's.
+                    serhii:     { password: "%env(SERHII_ADMIN_PASSWORD)%", roles: [ 'ROLE_COMPLAINTS' ] }
     firewalls:
         dev:
             pattern: ^/(_(profiler|wdt)|css|images|js)/
@@ -25,6 +29,17 @@ security:
                 path: app_logout
 
     access_control:
+        # Order matters — the first match wins. The complaints register and the dashboard
+        # that leads to it are open to both roles; everything else under /admin is the
+        # full administrator's.
+        - { path: ^/admin/complaints, roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        - { path: ^/admin$, roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        # Looking is allowed, acting is not: he answers for repairs and needs to know which
+        # flat reported what, but linking a resident, moving them or editing an object is
+        # the accountant's work. GET only — plus the table's own POST, or the list he opens
+        # comes up empty and looks broken rather than restricted.
+        - { path: ^/admin/(users|objects), methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        - { path: ^/admin/users/data-table$, methods: [POST], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
         - { path: ^/admin, roles: ROLE_ADMIN }
         # - { path: ^/profile, roles: ROLE_USER }
 

@@ -916,6 +916,7 @@ class ComplaintService
         return match ($login) {
             'luda_boss' => 'Людмила (голова ОСББ)',
             'alina' => 'Аліна (бухгалтер ОСББ)',
+            'serhii' => 'Сергій (технічні питання)',
             default => 'ОСББ',
         };
     }

@@ -59,64 +59,64 @@
 
         <div class="hub-h mb-2">Гроші</div>
         <div class="hub-grid mb-4">
-            <a class="card hub-card" href="{{ path('app_admin_debt') }}">
+            {% if is_granted('ROLE_ADMIN') %}<a class="card hub-card" href="{{ path('app_admin_debt') }}">
                 <div class="card-body">
                     <div class="hub-emoji">💰</div>
                     <b>Борги</b>
                     <div class="hub-note">Завантаження файлу боргів. Показує, скільки рахунків із файлу бот не знає і на яку суму.</div>
                 </div>
-            </a>
+            </a>{% endif %}
 
-            <a class="card hub-card" href="{{ path('app_admin_area') }}">
+            {% if is_granted('ROLE_ADMIN') %}<a class="card hub-card" href="{{ path('app_admin_area') }}">
                 <div class="card-body">
                     <div class="hub-emoji">📐</div>
                     <b>Реєстр площ</b>
                     <div class="hub-note">Площі квартир одним файлом. Від площі залежить персональний поріг блокування.</div>
                 </div>
-            </a>
+            </a>{% endif %}
 
-            <a class="card hub-card" href="{{ path('app_admin_tariff') }}">
+            {% if is_granted('ROLE_ADMIN') %}<a class="card hub-card" href="{{ path('app_admin_tariff') }}">
                 <div class="card-body">
                     <div class="hub-emoji">💵</div>
                     <b>Тариф</b>
                     <div class="hub-note">Ціна за м². Разом із площею дає поріг: площа × тариф × 1.5.</div>
                 </div>
-            </a>
+            </a>{% endif %}
         </div>
 
         <div class="hub-h mb-2">Альтанка і мешканці</div>
         <div class="hub-grid mb-4">
-            <a class="card hub-card" href="{{ path('app_admin_schedule') }}">
+            {% if is_granted('ROLE_ADMIN') %}<a class="card hub-card" href="{{ path('app_admin_schedule') }}">
                 <div class="card-body">
                     <div class="hub-emoji">📅</div>
                     <b>Бронювання</b>
                     <div class="hub-note">Хто і коли бронював альтанки.</div>
                 </div>
-            </a>
+            </a>{% endif %}
 
-            <a class="card hub-card" href="{{ path('app_admin_photo_requests') }}">
+            {% if is_granted('ROLE_ADMIN') %}<a class="card hub-card" href="{{ path('app_admin_photo_requests') }}">
                 <div class="card-body">
                     <div class="hub-emoji">📸</div>
                     <b>Запити на фото</b>
                     <div class="hub-note">Хто не надіслав фото після бронювання і кого через це заблоковано.</div>
                 </div>
-            </a>
+            </a>{% endif %}
 
-            <a class="card hub-card" href="{{ path('app_admin_block_votes') }}">
+            {% if is_granted('ROLE_ADMIN') %}<a class="card hub-card" href="{{ path('app_admin_block_votes') }}">
                 <div class="card-body">
                     <div class="hub-emoji">🗳️</div>
                     <b>Голосування за блокування</b>
                     <div class="hub-note">Рішення спільноти заблокувати аккаунт на 30 днів.</div>
                 </div>
-            </a>
+            </a>{% endif %}
 
-            <a class="card hub-card" href="{{ path('app_admin_rentals') }}">
+            {% if is_granted('ROLE_ADMIN') %}<a class="card hub-card" href="{{ path('app_admin_rentals') }}">
                 <div class="card-body">
                     <div class="hub-emoji">🔑</div>
                     <b>Оренда квартир</b>
                     <div class="hub-note">Оголошення мешканців. Можна зняти з публікації.</div>
                 </div>
-            </a>
+            </a>{% endif %}
 
             <a class="card hub-card" href="{{ path('app_admin_guide') }}">
                 <div class="card-body">
