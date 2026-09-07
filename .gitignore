@@ -32,3 +32,6 @@ yarn-error.log
 ###< symfony/webpack-encore-bundle ###
 docker/.claude/
 var/pools/
+
+# DM drafts — written for one message, never part of the app
+*-dm-*.txt

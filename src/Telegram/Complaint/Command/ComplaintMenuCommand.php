@@ -266,12 +266,7 @@ class ComplaintMenuCommand
 
     private function statusIcon(Complaint $complaint): string
     {
-        return match ($complaint->getStatus()) {
-            Complaint::STATUS_DONE => '✅',
-            Complaint::STATUS_IN_PROGRESS => '🔧',
-            Complaint::STATUS_ON_HOLD => '⏸',
-            default => '🆕',
-        };
+        return $this->service->statusIcon($complaint->getStatus());
     }
 
     private function renderCard(Nutgram $bot, int $complaintId, int $index = 0): void
@@ -332,8 +327,11 @@ class ComplaintMenuCommand
             $lines[] = '';
             // On a held complaint this line is the reason it is held — the half that keeps
             // «відкладено» from reading as "нам байдуже".
-            $lines[] = ($complaint->isOnHold() ? '⏸ <i>' : '💬 <i>')
-                . $this->esc($complaint->getResolution()) . '</i>';
+            $lines[] = match (true) {
+                $complaint->isOnHold() => '⏸ <i>',
+                $complaint->isRejected() => '❌ <i>',
+                default => '💬 <i>',
+            } . $this->esc($complaint->getResolution()) . '</i>';
         }
 
         // Who to ring, for the one person who has to. Every resident reads this register,
@@ -484,9 +482,10 @@ class ComplaintMenuCommand
         if ($this->service->isManager($user)) {
             $status = $complaint->getStatus();
 
-            if ($complaint->isDone()) {
-                // Reopening is one button, not the whole ladder: a finished entry that
-                // turns out unfinished goes back to work, and the rest follows from there.
+            if ($complaint->isClosed()) {
+                // Reopening is one button, not the whole ladder: an entry that turns out
+                // unfinished — or was rejected in error — goes back to work, and the rest
+                // follows from there.
                 $markup->addRow(InlineKeyboardButton::make(
                     '↩️ Повернути в роботу',
                     callback_data: sprintf('cmp:status:%d:%s', $complaint->getId(), Complaint::STATUS_IN_PROGRESS),
@@ -515,6 +514,14 @@ class ComplaintMenuCommand
                 $markup->addRow(InlineKeyboardButton::make(
                     '✅ Виконано',
                     callback_data: sprintf('cmp:status:%d:%s', $complaint->getId(), Complaint::STATUS_DONE),
+                ));
+
+                // A duplicate, a report about somebody's own flat, a row of letters. Not
+                // a flip either: telling a resident no in a register their neighbours read
+                // has to come with a reason, so this opens the conversation that asks.
+                $markup->addRow(InlineKeyboardButton::make(
+                    '❌ Відхилити',
+                    callback_data: ComplaintHold::REJECT_PREFIX . $complaint->getId(),
                 ));
             }
 
@@ -567,6 +574,15 @@ class ComplaintMenuCommand
         if ($status === Complaint::STATUS_ON_HOLD) {
             $bot->answerCallbackQuery(
                 text: 'Щоб відкласти заявку, натисніть «⏸ Відкласти» — бот запитає причину.',
+                show_alert: true,
+            );
+
+            return;
+        }
+
+        if ($status === Complaint::STATUS_REJECTED) {
+            $bot->answerCallbackQuery(
+                text: 'Щоб відхилити заявку, натисніть «❌ Відхилити» — бот запитає причину.',
                 show_alert: true,
             );
 

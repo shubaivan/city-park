@@ -52,11 +52,46 @@ class Complaint
 
     public const STATUS_DONE = 'done';
 
+    /**
+     * Not a problem the ОСББ is going to act on: the same lift reported for the fourth
+     * time, something that turns out to be inside somebody's own flat, a test entry, a
+     * row of letters.
+     *
+     * Asked for by the manager who works the register (Сергій, 07.09.2026) — «ним
+     * прибирати дубляжі і відсікати всяку діч». Without it the only ways to clear one
+     * were «✅ Виконано», which puts a repair that never happened in front of the whole
+     * house, and leaving it open forever, which is what the badge count is for.
+     *
+     * A rejection **must** carry a reason, for the same purpose the hold's does and a
+     * sharper one: this is the ОСББ telling a resident no, in a register their
+     * neighbours read. «Дубль заявки №11» is an answer; «Відхилено» on its own is a
+     * dismissal. `ComplaintService::changeStatus()` refuses it without one.
+     *
+     * Deleting is deliberately still the author's alone. A manager who could delete
+     * could make a report of something embarrassing disappear with no trace that it was
+     * ever filed; a rejection is on the record, with a name and a reason on it.
+     */
+    public const STATUS_REJECTED = 'rejected';
+
     public const STATUSES = [
         self::STATUS_NEW,
         self::STATUS_IN_PROGRESS,
         self::STATUS_ON_HOLD,
         self::STATUS_DONE,
+        self::STATUS_REJECTED,
+    ];
+
+    /**
+     * The two statuses that take a complaint off the list of live problems.
+     *
+     * Everything that used to compare against STATUS_DONE alone reads this instead — the
+     * badge count, the sort that sinks settled entries, the cleanup. A rejected duplicate
+     * that still counted as open would leave the badge saying «🔧 Заявки (3)» over two
+     * real problems, which is precisely the number the register exists to make true.
+     */
+    public const CLOSED_STATUSES = [
+        self::STATUS_DONE,
+        self::STATUS_REJECTED,
     ];
 
     /** Same ceiling and reasoning as a rental listing: three pictures say everything. */
@@ -246,10 +281,21 @@ class Complaint
         return $this->status === self::STATUS_ON_HOLD;
     }
 
+    public function isRejected(): bool
+    {
+        return $this->status === self::STATUS_REJECTED;
+    }
+
+    /** Settled one way or the other: done, or rejected with a reason. */
+    public function isClosed(): bool
+    {
+        return in_array($this->status, self::CLOSED_STATUSES, true);
+    }
+
     /** A held complaint is still an unsolved problem, so it counts as open everywhere. */
     public function isOpen(): bool
     {
-        return !$this->isDone();
+        return !$this->isClosed();
     }
 
     /** @return string[] */

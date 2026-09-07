@@ -52,6 +52,8 @@
                                 <span class="badge badge-warning">🔧 В роботі</span>
                             {% elseif complaint.status == 'on_hold' %}
                                 <span class="badge badge-info">⏸ Відкладено</span>
+                            {% elseif complaint.status == 'rejected' %}
+                                <span class="badge badge-dark">❌ Відхилено</span>
                             {% else %}
                                 <span class="badge badge-secondary">🆕 Нова</span>
                             {% endif %}
@@ -100,8 +102,8 @@
                     {% endfor %}
 
                     {% if complaint.resolution %}
-                        <div class="alert {{ complaint.status == 'on_hold' ? 'alert-info' : 'alert-light' }} py-2 px-2 mt-2 mb-2 small">
-                            {{ complaint.status == 'on_hold' ? '⏸ Чекає:' : '💬 Нотатка:' }}
+                        <div class="alert {{ complaint.status == 'on_hold' ? 'alert-info' : (complaint.status == 'rejected' ? 'alert-secondary' : 'alert-light') }} py-2 px-2 mt-2 mb-2 small">
+                            {{ complaint.status == 'on_hold' ? '⏸ Чекає:' : (complaint.status == 'rejected' ? '❌ Причина:' : '💬 Нотатка:') }}
                             {{ complaint.resolution }}
                         </div>
                     {% endif %}
@@ -161,16 +163,17 @@
                                 <option value="in_progress" {{ complaint.status == 'in_progress' ? 'selected' }}>🔧 В роботі</option>
                                 <option value="on_hold" {{ complaint.status == 'on_hold' ? 'selected' }}>⏸ Відкладено (потрібна причина)</option>
                                 <option value="done" {{ complaint.status == 'done' ? 'selected' }}>✅ Виконано</option>
+                                <option value="rejected" {{ complaint.status == 'rejected' ? 'selected' }}>❌ Відхилено (потрібна причина)</option>
                             </select>
 
                             <input type="text" name="resolution" class="form-control form-control-sm mb-2"
                                    value="{{ complaint.resolution }}"
-                                   placeholder="нотатка: що зробили / чого чекаємо">
+                                   placeholder="нотатка: що зробили / чого чекаємо / чому відхилено">
 
                             <button class="btn btn-sm btn-primary">Зберегти</button>
                             <div class="small text-muted mt-1">
-                                Автор і чат мешканців дізнаються про зміну статусу. «Відкладено» без
-                                причини не зберігається.
+                                Автор і чат мешканців дізнаються про зміну статусу. «Відкладено»
+                                і «Відхилено» без причини не зберігаються.
                             </div>
                         </form>
                     </details>

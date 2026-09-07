@@ -294,10 +294,15 @@ class AdminController extends AbstractController
 
         // A hold must say what it is waiting for. The service throws otherwise — which
         // would be a 500 on a form submit — so the panel catches it here and says so.
-        if ($status === Complaint::STATUS_ON_HOLD && $resolution === '') {
+        if (in_array($status, [Complaint::STATUS_ON_HOLD, Complaint::STATUS_REJECTED], true)
+            && $resolution === ''
+        ) {
             $this->addFlash('error', sprintf(
-                'Заявка №%d: щоб відкласти, напишіть у полі «нотатка», чого вона чекає. '
-                    . 'Без причини «відкладено» читається мешканцями як «нам байдуже».',
+                $status === Complaint::STATUS_ON_HOLD
+                    ? 'Заявка №%d: щоб відкласти, напишіть у полі «нотатка», чого вона чекає. '
+                        . 'Без причини «відкладено» читається мешканцями як «нам байдуже».'
+                    : 'Заявка №%d: щоб відхилити, напишіть у полі «нотатка», чому. '
+                        . 'Без причини «відхилено» читається мешканцями як «нам байдуже».',
                 $complaint->getId(),
             ));
 

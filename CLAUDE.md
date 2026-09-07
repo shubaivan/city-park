@@ -517,6 +517,22 @@ the whole house sees every entry and why the open count rides on the menu button
   status moved from `/admin/complaints` told nobody at all. Silent on purpose —
   `disable_notification: true` — since progress can wait until the chat is next opened,
   unlike the arrival of the problem itself.
+- **❌ Відхилено is for the entries that are not work**: the same lift reported a fourth
+  time, something inside somebody's own flat, a test message. Asked for by Сергій
+  (07.09.2026) — «ним прибирати дубляжі і відсікати всяку діч». Before it the only ways to
+  clear one were «✅ Виконано», which puts a repair that never happened in front of the
+  whole house, and leaving it open, which is what the badge counts. It carries a
+  **mandatory reason** for the same purpose the hold's does and a sharper one — this is
+  the ОСББ saying no to a resident in a register their neighbours read — enforced in
+  `changeStatus()` and in both entry points, and **cleared on reopen** so «дубль заявки
+  №11» cannot ride into «🔧 В роботі» as the work note. Deleting stays the author's alone:
+  a manager who could delete could make an awkward report vanish without trace, while a
+  rejection is on the record with a name and a reason on it. `Complaint::CLOSED_STATUSES`
+  (done + rejected) is what the badge, the list sort and the cleanup read — `isDone()`
+  still means «Виконано» alone, because that word is a claim about work performed.
+  `ComplaintHold` serves both buttons (`cmp:hold:` / `cmp:reject:`) and keeps its
+  now-inaccurate name on purpose: live conversations are serialised into `var/pools` by
+  class name, so a rename fatals for whoever was mid-hold across the deploy.
 - **⏸ Відкладено must say what it is waiting for.** The most common real state of a house
   problem — known, agreed, waiting on a part, a contractor or the money — had no word, so
   «в роботі» had to mean both "майстер їде зараз" and "чекаємо насос три тижні", and a

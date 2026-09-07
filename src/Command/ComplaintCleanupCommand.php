@@ -55,7 +55,7 @@ class ComplaintCleanupCommand extends Command
         $dryRun = (bool)$input->getOption('dry-run');
         $now = new \DateTimeImmutable();
 
-        $done = $this->complaints->findExpiredDone(
+        $closed = $this->complaints->findExpiredClosed(
             $now->modify(sprintf('-%d days', Complaint::DONE_RETENTION_DAYS)),
         );
 
@@ -65,7 +65,7 @@ class ComplaintCleanupCommand extends Command
 
         $files = 0;
 
-        foreach ([...$done, ...$stale] as $complaint) {
+        foreach ([...$closed, ...$stale] as $complaint) {
             $io->writeln(sprintf(
                 '  #%d [%s] %s — %s',
                 $complaint->getId(),
@@ -88,8 +88,8 @@ class ComplaintCleanupCommand extends Command
 
         if ($dryRun) {
             $io->success(sprintf(
-                '[DRY-RUN] Видалилось би: виконаних %d, без руху %d.',
-                count($done),
+                '[DRY-RUN] Видалилось би: закритих %d, без руху %d.',
+                count($closed),
                 count($stale),
             ));
 
@@ -99,14 +99,14 @@ class ComplaintCleanupCommand extends Command
         $this->em->flush();
 
         $this->logger->info('complaint:cleanup', [
-            'done_purged' => count($done),
+            'closed_purged' => count($closed),
             'stale_purged' => count($stale),
             'files_deleted' => $files,
         ]);
 
         $io->success(sprintf(
-            'Готово. Видалено виконаних: %d, без руху: %d, файлів: %d.',
-            count($done),
+            'Готово. Видалено закритих: %d, без руху: %d, файлів: %d.',
+            count($closed),
             count($stale),
             $files,
         ));
