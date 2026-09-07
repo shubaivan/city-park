@@ -1,0 +1,192 @@
+<?php
+
+namespace App\Service;
+
+use App\Entity\Account;
+use App\Entity\ScheduledSet;
+use App\Entity\TelegramUser;
+use App\Repository\ScheduledSetRepository;
+
+/**
+ * What the guard on the gate needs, and nothing else.
+ *
+ * His job is one sentence: walk up to the people in the альтанка, ask who they are, and
+ * check that against a list. Until now the list lived on the accountant's screen and in
+ * the bot of the person who booked, so the check was «зателефонуйте Аліні» or nothing at
+ * all — asked for on 07.09.2026 by Иван for «Охорона Ситипарк».
+ *
+ * Three deliberate limits:
+ *
+ * - **Today only, and mostly "now".** He is standing in front of the pavilion at 20:10;
+ *   next Saturday is not his business, and a full schedule is a page to scroll on a phone
+ *   in the dark. The board leads with what is running this minute and follows with the
+ *   rest of the evening.
+ * - **The flat, never a name or a phone.** «буд. 19, кв. 85» is exactly what the check
+ *   needs — the person says which flat they are from and it either matches or it does
+ *   not. The registry holds no owner names, and the phone in that row is there because
+ *   the resident gave it to the ОСББ for нарахування, not so that the gate can ring it.
+ *   (The same call the complaints register makes for the author's contact.)
+ * - **Guards are Telegram ids in `.env.local`** (`GUARD_TELEGRAM_IDS`), same shape as
+ *   COMPLAINT_MANAGER_TELEGRAM_IDS: one or two people who change about never. **An empty
+ *   list means nobody, never everybody** — this board names which flat is where at what
+ *   time, and a bug that opened it to the whole house would be a bug nobody could see.
+ */
+class GuardService
+{
+    /**
+     * How long before a session starts the guard already sees it as «зараз».
+     *
+     * People arrive early and the guard walks up when he sees them, not when the clock
+     * says 20:00. A board that answers «нікого не заброньовано» at 19:52 sends him to
+     * move along the very people whose booking is about to start.
+     */
+    public const EARLY_MINUTES = 20;
+
+    /**
+     * And how long after it ends it stays on the board. They are still packing up, and
+     * the pavilion photo is due within the hour — the guard telling them to leave while
+     * they are photographing it is the one interaction this feature exists to prevent.
+     */
+    public const GRACE_MINUTES = 20;
+
+    public function __construct(
+        private ScheduledSetRepository $bookings,
+        private string $guardIds = '',
+    ) {}
+
+    public function isGuard(?TelegramUser $user): bool
+    {
+        $id = $user?->getTelegramId();
+
+        if ($id === null || $id === '') {
+            return false;
+        }
+
+        return in_array((string)$id, $this->guardTelegramIds(), true);
+    }
+
+    /** @return string[] */
+    public function guardTelegramIds(): array
+    {
+        return array_values(array_filter(array_map('trim', explode(',', $this->guardIds))));
+    }
+
+    public function isConfigured(): bool
+    {
+        return $this->guardTelegramIds() !== [];
+    }
+
+    /**
+     * Every booking of the given Kyiv day, grouped into sessions.
+     *
+     * @return array<int, array{pavilion:int, start:\DateTimeImmutable, end:\DateTimeImmutable, account:?Account, user:TelegramUser}>
+     */
+    public function sessionsOfDay(\DateTimeInterface $day): array
+    {
+        $sets = $this->bookings->createQueryBuilder('ss')
+            ->join('ss.telegramUserId', 'tu')
+            ->andWhere('ss.year = :y')->setParameter('y', (int)$day->format('Y'))
+            ->andWhere('ss.month = :m')->setParameter('m', (int)$day->format('n'))
+            ->andWhere('ss.day = :d')->setParameter('d', (int)$day->format('j'))
+            ->orderBy('ss.pavilion', 'ASC')
+            ->addOrderBy('ss.hour', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return self::group($sets);
+    }
+
+    /**
+     * Consecutive hours on one pavilion by one household are one session.
+     *
+     * Static and free of the database on purpose: this is the half with a rule in it —
+     * «22:00 після 21:00 того самого мешканця» is the same evening, «22:00 після 20:00»
+     * is two — and a rule that needs a database to exercise is a rule nobody tests.
+     *
+     * @param ScheduledSet[] $sets ordered by pavilion, then hour
+     * @return array<int, array{pavilion:int, start:\DateTimeImmutable, end:\DateTimeImmutable, account:?Account, user:TelegramUser}>
+     */
+    public static function group(array $sets): array
+    {
+        $sessions = [];
+        $current = null;
+
+        foreach ($sets as $set) {
+            $user = $set->getTelegramUserId();
+            $account = $user->getAccount();
+            $start = \DateTimeImmutable::createFromMutable($set->getScheduledDateTime());
+            $end = $start->modify('+1 hour');
+            $who = $account?->getId() ?? ('u' . $user->getId());
+
+            if (
+                $current !== null
+                && $current['pavilion'] === $set->getPavilion()
+                && $current['who'] === $who
+                && $current['end']->getTimestamp() === $start->getTimestamp()
+            ) {
+                $current['end'] = $end;
+
+                continue;
+            }
+
+            if ($current !== null) {
+                $sessions[] = $current;
+            }
+
+            $current = [
+                'pavilion' => $set->getPavilion(),
+                'start' => $start,
+                'end' => $end,
+                'account' => $account,
+                'user' => $user,
+                'who' => $who,
+            ];
+        }
+
+        if ($current !== null) {
+            $sessions[] = $current;
+        }
+
+        return array_map(static function (array $s): array {
+            unset($s['who']);
+
+            return $s;
+        }, $sessions);
+    }
+
+    /**
+     * Is this session the one the guard is looking at right now?
+     *
+     * Widened at both ends — see EARLY_MINUTES / GRACE_MINUTES.
+     *
+     * @param array{start:\DateTimeImmutable, end:\DateTimeImmutable, ...} $session
+     */
+    public static function isRunning(array $session, \DateTimeInterface $now): bool
+    {
+        $from = $session['start']->modify('-' . self::EARLY_MINUTES . ' minutes');
+        $until = $session['end']->modify('+' . self::GRACE_MINUTES . ' minutes');
+
+        return $now->getTimestamp() >= $from->getTimestamp()
+            && $now->getTimestamp() < $until->getTimestamp();
+    }
+
+    /**
+     * @param array{end:\DateTimeImmutable, ...} $session
+     */
+    public static function isOver(array $session, \DateTimeInterface $now): bool
+    {
+        return $now->getTimestamp() >= $session['end']->modify('+' . self::GRACE_MINUTES . ' minutes')->getTimestamp();
+    }
+
+    /**
+     * The one line that answers «хто це». The building is never dropped: five buildings
+     * repeat their apartment numbers, so «кв. 85» names two flats and the guard cannot
+     * tell which of them is standing in front of him.
+     *
+     * @param array{account:?Account, ...} $session
+     */
+    public static function place(array $session): string
+    {
+        return $session['account']?->getPlaceLabel() ?? '❓ без особового рахунку';
+    }
+}

@@ -39,6 +39,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 | 🗳️ Голосування | `voting-menu` / `bvote:<id>:yes\|no` | `/vote` | `VotingMenuCommand` (community vote-to-block) |
 | 🏘 Чат мешканців | `resident-chat` | `/chat` | `ResidentChatCommand` (hands out the join-request link) |
 | 🔧 Заявки | `complaints-menu` / `cmp:{view,photos,page,del,delok,edit}:<id>` / `cmp:pic:<id>:<n>` / `cmp:status:<id>:<status>` / `cmp:new` | `/problem` | `ComplaintMenuCommand` + `ComplaintCreate` / `ComplaintEdit` (conversations) |
+| 🛡 Хто зараз в альтанці | `guard-board` | `/guard` | `GuardCommand` (guards only — **not** in the pushed slash menu) |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
 
 The menu header also names the head of the ОСББ (Людмила Осипенко) with her number and a
@@ -302,6 +303,9 @@ ungrouped — still resolving to the same `COALESCE(owner_group_id, id)`: its bo
 keep counting against the household it just left. `OwnerGroupService::unlink()` re-keys the
 remainder onto their own smallest member; `OwnerGroupRulesTest` pins it.
 
+**Nor a pavilion name.** `SchedulePavilionService::pavilionName()` is the one definition
+of «Перша» / «Друга»; the ternary behind it had been written out by hand in six files.
+
 **Nothing in the bot builds a place label of its own.** `Account::getUnitLabel()` is the one
 definition of «кв. 85» / «комірчина 168» / «паркомісце 138», `getPlaceLabel()` prefixes
 «буд. N» and `getStreetPlaceLabel()` the street. The menu header had its own hardcoded
@@ -342,6 +346,39 @@ the bot that the register does not carry is reported and left alone. The buildin
 from the first digit of the рахунок (1→17, 2→19, 3→21, 4→23, 5→27, 6→25), the type from
 the third, and on the day it first ran the type it derived agreed with the register's own
 wording in all 966 rows.
+
+## The gate («Охорона Ситипарк»)
+
+The guard's job is one sentence: walk up to whoever is in the альтанка, ask who they are,
+and check that against a list. The list lived on the accountant's screen and in the bot of
+the person who booked, so the check was «зателефонуйте Аліні» or nothing. `/guard` →
+`GuardCommand` renders what is running **now** and then the rest of today, with a 🔄 that
+edits the message in place.
+
+- **Guards are Telegram ids in `.env.local`** (`GUARD_TELEGRAM_IDS`), same shape as
+  `COMPLAINT_MANAGER_TELEGRAM_IDS`, and **an empty list means nobody, never everybody** —
+  this board says which flat is sitting in which pavilion at what time, so the permissive
+  default would be a leak that looks exactly like the feature working.
+  `GuardBoardRulesTest` pins it.
+- **The flat, never a name or a phone.** «буд. 19, кв. 85» is the whole check: the person
+  says which flat they are from and it matches or it does not. Same call the complaints
+  register makes about the author's contact, and the registry holds no owner names anyway.
+- **A session is running from 20 minutes before its start to 20 minutes after its end**
+  (`EARLY_MINUTES` / `GRACE_MINUTES`). People arrive early, and the pavilion photo is due
+  within the hour of the end — the guard moving them along while they photograph it is
+  the one interaction this feature exists to prevent.
+- **Consecutive hours merge only within one household on one pavilion.** Two flats booked
+  back to back must stay two lines, or the guard reads one apartment number and waves
+  through whoever is there at 21:30. The grouping is `GuardService::group()`, static and
+  database-free so the rule is testable.
+- The guard is **staff, not a resident**: no особовий рахунок, so `StartCommand` gives him
+  his own one-button menu and header instead of the resident menu over an empty header.
+- `/guard` is registered as a handler but deliberately **left out of
+  `BotMenuUpdateCommand::MENU`**, which is pushed to all private chats.
+
+Open: the QR half of Иван's idea (07.09.2026) — the resident generates a QR from their
+booking, the guard scans it and the bot answers «ці люди тут зараз законно». The board is
+the half that had to exist first: without a list there is nothing for a scan to confirm.
 
 ## Backups
 

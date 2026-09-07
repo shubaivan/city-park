@@ -106,6 +106,11 @@ $bot->onCallbackQueryData('^cmp:(?:hold|reject):\d+$', \App\Telegram\Complaint\C
 $bot->onCallbackQueryData(\App\Telegram\Complaint\Command\ComplaintCreate::START_CALLBACK, \App\Telegram\Complaint\Command\ComplaintCreate::class);
 $bot->onCommand('problem', \App\Telegram\Complaint\Command\ComplaintMenuCommand::class);
 
+// The gate. Deliberately not in BotMenuUpdateCommand::MENU — that list is pushed to all
+// private chats, and /guard belongs to two people. The handler checks the id itself.
+$bot->onCallbackQueryData(\App\Telegram\Guard\Command\GuardCommand::MENU_CALLBACK, \App\Telegram\Guard\Command\GuardCommand::class);
+$bot->onCommand('guard', \App\Telegram\Guard\Command\GuardCommand::class);
+
 // The debtors' board: the menu block is rendered by StartCommand, this is the full list.
 $bot->onCallbackQueryData(\App\Telegram\Debt\Command\DebtBoardCommand::MENU_CALLBACK, \App\Telegram\Debt\Command\DebtBoardCommand::class);
 // The report is 149 flats long and paged; the dead counter button answers with nothing.

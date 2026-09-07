@@ -219,7 +219,7 @@ class BookingHistory
     private function buildPhotoCaption(PavilionPhoto $photo): string
     {
         $start = $photo->getSessionStartAt();
-        $pavilionName = $photo->getPavilion() === 1 ? 'Перша' : 'Друга';
+        $pavilionName = SchedulePavilionService::pavilionName($photo->getPavilion());
         $account = $photo->getAccount();
 
         $bookers = $this->em->createQuery(

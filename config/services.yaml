@@ -27,6 +27,9 @@ services:
             # Telegram ids allowed to move a complaint's status — the head of the ОСББ.
             # One or two people who change about never, so this is config, not a column.
             $managerIds: '%env(string:COMPLAINT_MANAGER_TELEGRAM_IDS)%'
+            # Telegram ids of the gate. Same shape and the same rule: empty means nobody,
+            # never everybody — this board names which flat is in which pavilion.
+            $guardIds: '%env(string:GUARD_TELEGRAM_IDS)%'
             # Where the nightly database dump is sent. A backup that lives on the server
             # it protects is not a backup — if the machine goes, so does it.
             $backupChatId: '%env(string:BACKUP_TELEGRAM_CHAT_ID)%'

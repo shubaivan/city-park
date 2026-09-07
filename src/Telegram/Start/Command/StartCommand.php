@@ -7,10 +7,12 @@ use App\Entity\Account;
 use App\Service\ComplaintService;
 use App\Service\PropertyRegistry;
 use App\Service\DebtBoardService;
+use App\Service\GuardService;
 use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
 use App\Repository\ComplaintRepository;
 use App\Telegram\Complaint\Command\ComplaintMenuCommand;
+use App\Telegram\Guard\Command\GuardCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\ResidentChat\Command\ResidentChatCommand;
 use SergiX44\Nutgram\Handlers\Type\Command;
@@ -44,7 +46,13 @@ class StartCommand extends Command
         // all need it, and each lookup is a DB round-trip on every menu render.
         $account = self::currentAccount($bot);
 
-        $text = self::header($bot, $account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
+        // The guard has no особовий рахунок, so the ordinary header renders nothing and
+        // the menu would open on a bare «Оберіть:» over buttons he cannot use. He gets
+        // his own screen, with one thing on it.
+        $text = self::isGuard($bot)
+            ? "🛡 <b>Охорона ЖК City Park</b>\n\nТут видно, хто забронював альтанки — "
+                . "зараз і далі сьогодні, з номером квартири.\n\n"
+            : self::header($bot, $account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
         $markup = self::mainMenuMarkup($bot, $account);
 
         if ($edit) {
@@ -304,6 +312,18 @@ class StartCommand extends Command
 
     private static function mainMenuMarkup(Nutgram $bot, ?Account $account = null): InlineKeyboardMarkup
     {
+        // The gate's own button, above everything: he opens the bot for exactly one
+        // reason, and he does it standing outside in the dark. Nobody else sees it —
+        // isGuard() is a short list of Telegram ids in .env.local.
+        if (self::isGuard($bot)) {
+            return InlineKeyboardMarkup::make()
+                ->addRow(InlineKeyboardButton::make(
+                    '🛡 Хто зараз в альтанці',
+                    callback_data: GuardCommand::MENU_CALLBACK,
+                ))
+                ->addRow(InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'));
+        }
+
         $markup = InlineKeyboardMarkup::make()
             // Оренда sits first on purpose: it is the newest section and residents were
             // not finding it at the bottom of the menu, under three rows they already
@@ -384,6 +404,26 @@ class StartCommand extends Command
         }
 
         return '🔧 Заявки';
+    }
+
+    /**
+     * The guard is staff, not a resident: he has no особовий рахунок and the ordinary menu
+     * would offer him booking, debts and a chat he is not part of. Resolved through the
+     * container like the other two menu checks, and failing closed — a container that
+     * cannot answer must not hand somebody the flat-by-flat board.
+     */
+    private static function isGuard(Nutgram $bot): bool
+    {
+        try {
+            $guard = $bot->getContainer()->get(GuardService::class);
+            $users = $bot->getContainer()->get(TelegramUserService::class);
+
+            return $guard instanceof GuardService
+                && $users instanceof TelegramUserService
+                && $guard->isGuard($users->getCurrentUser());
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private static function residentChatOpen(Nutgram $bot): bool
