@@ -72,15 +72,10 @@ class GuardQrCommand
 
         $link = sprintf('https://t.me/%s?start=%s', $username, $this->guard->mintToken($account));
 
-        $png = Builder::create()
-            ->writer(new PngWriter())
-            ->data($link)
-            ->size(600)
-            ->margin(24)
-            ->build();
+        $png = self::render($link);
 
         $bot->sendPhoto(
-            photo: InputFile::make($png->getString(), 'qr.png'),
+            photo: InputFile::make($png, 'qr.png'),
             caption: sprintf(
                 "🔒 <b>QR для охорони</b>\n\n%s альтанка · <b>%s–%s</b>\n%s\n\n"
                     . "Покажіть цей екран охоронцю — він наведе камеру і бот підтвердить, "
@@ -94,5 +89,24 @@ class GuardQrCommand
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
         );
+    }
+
+    /**
+     * The PNG bytes for one link.
+     *
+     * Its own method so a test can actually build one: endroid/qr-code 6 dropped the
+     * `Builder::create()` fluent entry point that 5 had, and the first shape of this
+     * called it — nothing in the suite touched the line, so it reached prod and died
+     * there with «Call to undefined method». A picture nobody renders in a test is a
+     * picture nobody renders.
+     */
+    public static function render(string $link): string
+    {
+        return (new Builder(
+            writer: new PngWriter(),
+            data: $link,
+            size: 600,
+            margin: 24,
+        ))->build()->getString();
     }
 }
