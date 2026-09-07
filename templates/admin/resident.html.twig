@@ -146,6 +146,20 @@
                                 його, але не знає, з якої він квартири — тож не пускає ні в чат,
                                 ні в бронювання.
                             </p>
+                            {# The link form lives here, in the card that says the account is missing.
+                               It used to exist only as «Перенести на інший рахунок» — a red card whose
+                               first words are «якщо людина переїхала», which is not what somebody
+                               attaching a brand-new resident is looking for (Аліна, 07.09.2026). #}
+                            <form method="post" action="{{ path('app_admin_resident_move', {id: user.id}) }}"
+                                  class="form-inline">
+                                <input type="text" name="account_number" class="form-control form-control-sm mr-2 mb-1"
+                                       placeholder="особовий рахунок із квитанції" required>
+                                <button class="btn btn-sm btn-primary mb-1">🔗 Прив'язати</button>
+                            </form>
+                            <div class="small text-muted mt-2">
+                                Рахунок має вже існувати. Якщо його ще немає — створіть об'єкт у розділі
+                                <a href="{{ path('app_admin_objects') }}">«Об'єкти нерухомості»</a> і поверніться сюди.
+                            </div>
                         {% else %}
                             <dl class="res-kv">
                                 <dt>Особовий рахунок</dt>
@@ -345,6 +359,8 @@
                                     </li>
                                 {% endfor %}
                             </ul>
+                        {% elseif account is null %}
+                            <p class="text-muted mb-0 small">Мешканець ще не прив'язаний до рахунку.</p>
                         {% else %}
                             <p class="text-muted mb-0 small">Більше ніхто не прив'язаний до цього рахунку.</p>
                         {% endif %}
@@ -401,6 +417,10 @@
                 </div>
 
                 {# ---------- move ---------- #}
+                {# Only for somebody who already has an account: there is nothing to move a
+                   person off when they are not on anything. Attaching one is done in the
+                   «🏠 Об'єкт» card instead. #}
+                {% if account %}
                 <div class="card res-card res-danger">
                     <div class="card-header">📦 Перенести на інший рахунок</div>
                     <div class="card-body p-3">
@@ -418,6 +438,7 @@
                         </form>
                     </div>
                 </div>
+                {% endif %}
 
             </div>
         </div>
