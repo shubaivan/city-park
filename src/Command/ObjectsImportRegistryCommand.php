@@ -82,7 +82,7 @@ class ObjectsImportRegistryCommand extends Command
         }
 
         $created = $areaFilled = $labelsFixed = $unchanged = 0;
-        $unknownQueue = $samples = [];
+        $unknownQueue = $samples = $wrongHouse = [];
         $seen = [];
 
         foreach ($rows as $row) {
@@ -140,6 +140,20 @@ class ObjectsImportRegistryCommand extends Command
                 }
             }
 
+            // The building is derivable from the рахунок, so a row that disagrees is either
+            // a typo or a wrong рахунок — and either way it means two objects can end up
+            // wearing the same «буд. N, кв. M», which is how the debtors' board names the
+            // wrong household. Reported, never corrected silently: the address is what
+            // three residents read in their menu.
+            if (trim((string)$account->getHouseNumber()) !== $house) {
+                $wrongHouse[] = sprintf(
+                    '%s: у базі буд. %s, за рахунком буд. %s',
+                    $number,
+                    $account->getHouseNumber(),
+                    $house,
+                );
+            }
+
             $touched or $unchanged++;
         }
 
@@ -171,6 +185,11 @@ class ObjectsImportRegistryCommand extends Command
                 count($unknownQueue),
                 implode(', ', array_slice($unknownQueue, 0, 10)),
             ));
+        }
+
+        if ($wrongHouse !== []) {
+            $io->warning(sprintf('Будинок не збігається з особовим рахунком у %d рядках:', count($wrongHouse)));
+            $io->listing($wrongHouse);
         }
 
         $this->reportOrphans($io, $seen);
