@@ -42,6 +42,7 @@ class ComplaintHold extends Conversation
         private TelegramUserService $telegramUserService,
         private PhotoUploadFlow $photoUploadFlow,
         private ?LoggerInterface $photoLogger = null,
+        private ?LoggerInterface $chatLogger = null,
     ) {}
 
     /**
@@ -78,6 +79,19 @@ class ComplaintHold extends Conversation
         $this->complaintId = (int)substr($data, strlen(self::START_PREFIX));
 
         $complaint = $this->allowedComplaint();
+        $user = $this->telegramUserService->getCurrentUser();
+
+        // Which branch this took, in a channel that is written unbuffered. «Натискаю —
+        // нічого не міняється» is unfalsifiable from the outside: the refusal and a
+        // conversation that never started look identical to the person pressing, and
+        // neither leaves a trace. One line here turns the next report into a fact.
+        $this->chatLogger?->info('complaint hold requested', [
+            'complaint_id' => $this->complaintId,
+            'telegram_id' => $user?->getTelegramId(),
+            'is_manager' => $this->service->isManager($user),
+            'complaint_found' => $complaint instanceof Complaint,
+            'callback' => $data,
+        ]);
 
         if (!$complaint instanceof Complaint) {
             $bot->answerCallbackQuery(text: 'Статус може змінювати лише голова ОСББ.', show_alert: true);
