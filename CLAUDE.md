@@ -614,15 +614,18 @@ keeps returning the stale `"group"` card long after Telegram has upgraded the ch
 migration only surfaced as `migrate_to_chat_id` in a `createChatInviteLink` error, which is
 how the real supergroup id was found.
 
-**Moderation is a command, not a rule.** `resident-chat:ban <phone|о/р|@username|id>`
+**Moderation lives on the resident's card and in a command**, both calling `ResidentChatService::moderate()` so there is one path and one log line. `resident-chat:ban <phone|о/р|@username|id>`
 removes somebody from the group; the person is found the way the accountant knows them,
 and if the argument matches two people it prints both and stops rather than guessing.
 The distinction that matters is `--kick` versus the default: a kick is ban+unban, so they
 are removed and may ask to join again (the gate lets them back if they are still a
 resident) — the right tool for "cool off" and for somebody who sold their flat; a plain
 ban keeps them out until `--unban`, and Telegram will not even deliver a join request
-from them. `--notify` tells the person, because leaving somebody to discover a shut door
-is worse than saying why. Every use is logged to `resident-chat.log` with the reason.
+from them. `--notify` (a checkbox in the panel) tells the person, because leaving somebody to
+discover a shut door is worse than saying why. Every use is logged to
+`resident-chat.log` with the reason and who did it. The panel's buttons are
+«🚪 Видалити з чату» and «🚫 Заборонити вхід у чат» — deliberately not «Заблокувати»,
+which on that same card already means blocking the альтанка.
 
 **Open follow-up: the gate closes the entry, not the exit.** Someone who sells their flat
 stays in the group until removed by hand. Bot API cannot list members, so this needs our own
