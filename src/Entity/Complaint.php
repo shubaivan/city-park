@@ -132,6 +132,16 @@ class Complaint
     #[ORM\Column(nullable: true)]
     private ?int $photo_prompt_message_id = null;
 
+    /**
+     * The bot's «🆕 Нова заявка» post in the residents' chat.
+     *
+     * Kept so the post can be taken down when the author deletes the entry: the register
+     * is theirs to withdraw, and a chat that still shows a complaint the register no
+     * longer has sends neighbours looking for something that is not there.
+     */
+    #[ORM\Column(nullable: true)]
+    private ?int $chat_message_id = null;
+
     #[ORM\Column(type: 'datetime_immutable')]
     private \DateTimeImmutable $created_at;
 
@@ -302,6 +312,18 @@ class Complaint
     public function setResolution(?string $resolution): static
     {
         $this->resolution = $resolution;
+
+        return $this;
+    }
+
+    public function getChatMessageId(): ?int
+    {
+        return $this->chat_message_id;
+    }
+
+    public function setChatMessageId(?int $id): self
+    {
+        $this->chat_message_id = $id;
 
         return $this;
     }
