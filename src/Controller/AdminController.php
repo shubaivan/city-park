@@ -658,15 +658,45 @@ class AdminController extends AbstractController
      * paging is machinery for nothing, and a plain page with a filter box works on the
      * phone this is read on without a JS build step behind every change.
      */
+    /** Objects shown per page. The register is read on a phone; 60 cards is about 150 KB. */
+    private const OBJECTS_PER_PAGE = 60;
+
     #[Route('/admin/objects', name: 'app_admin_objects', methods: [Request::METHOD_GET])]
-    public function objects(PropertyRegistry $registry): Response
+    public function objects(Request $request, PropertyRegistry $registry): Response
     {
         $rows = $registry->overview();
 
+        // Arriving from a person's card: /admin/objects?object=<особовий рахунок>. It has
+        // always meant "find this one", and now that the search runs on the server it is
+        // simply the search term — still visible in the box, still clearable.
+        $query = trim((string)($request->query->get('q') ?? $request->query->get('object') ?? ''));
+        $chip = trim((string)$request->query->get('chip'));
+        $house = trim((string)$request->query->get('house'));
+
+        $found = PropertyRegistry::narrow($rows, $query, $chip, $house);
+
+        // The whole register grew from 172 objects to 966 when the ОСББ's own file was
+        // imported, and every card was being rendered: 2.4 MB of HTML and a page 117 000
+        // pixels tall, opened from a phone. Paging is shown, never silent — «показано
+        // 1–60 з 966» — because a filter that hides rows without saying so is how "я не
+        // знайшла" turns into "його немає в системі".
+        $pages = max(1, (int)ceil(count($found) / self::OBJECTS_PER_PAGE));
+        $page = max(1, min((int)$request->query->get('page', 1), $pages));
+        $offset = ($page - 1) * self::OBJECTS_PER_PAGE;
+
         return $this->render('admin/objects.html.twig', [
-            'rows' => $rows,
+            'rows' => array_slice($found, $offset, self::OBJECTS_PER_PAGE),
             'stats' => $registry->stats($rows),
             'houses' => $registry->houses($rows),
+            'found' => count($found),
+            'total' => count($rows),
+            'page' => $page,
+            'pages' => $pages,
+            'from' => $found === [] ? 0 : $offset + 1,
+            'to' => min($offset + self::OBJECTS_PER_PAGE, count($found)),
+            'q' => $query,
+            'chip' => $chip,
+            'house' => $house,
             // The template names sibling objects, and the label rules live in one place.
             'registry' => $registry,
         ]);

@@ -121,6 +121,85 @@ class PropertyRegistry
      *
      * @return array<int, array{house: string, count: int}>
      */
+    /**
+     * Narrow the register the way the filter bar reads: text AND kind AND building.
+     *
+     * It used to happen in the browser over every card in the DOM, which was fine while
+     * the house had 172 objects. The ОСББ register turned out to hold 966 — the page grew
+     * to 2.4 MB and 117 000 pixels — so the same three questions are answered here and
+     * only a page of cards is rendered. The rules are copied from that script deliberately,
+     * including the type label being searchable: «паркінг» is what somebody types.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    public static function narrow(array $rows, string $q, string $chip, string $house): array
+    {
+        $q = mb_strtolower(trim($q));
+
+        return array_values(array_filter($rows, static function (array $row) use ($q, $chip, $house): bool {
+            if ($house !== '' && trim((string)$row['account']->getHouseNumber()) !== $house) {
+                return false;
+            }
+
+            if ($chip !== '' && !self::matchesChip($row, $chip)) {
+                return false;
+            }
+
+            return $q === '' || str_contains(self::haystack($row), $q);
+        }));
+    }
+
+    /** @param array<string, mixed> $row */
+    private static function matchesChip(array $row, string $chip): bool
+    {
+        $owners = count($row['owners'] ?? []);
+
+        return match ($chip) {
+            'apartment', 'parking', 'storage' => ($row['type'] ?? '') === $chip,
+            'debt' => (float)($row['debt'] ?? 0) > 0,
+            'blocked' => !empty($row['block']),
+            'unowned' => $owners === 0,
+            'multi' => $owners >= 2,
+            'many' => $owners >= 3,
+            'grouped' => count($row['siblings'] ?? []) > 0,
+            default => true,
+        };
+    }
+
+    /** Everything a person might type into the box, lowercased once. @param array<string, mixed> $row */
+    private static function haystack(array $row): string
+    {
+        $account = $row['account'];
+        $parts = [
+            (string)$account->getAccountNumber(),
+            (string)($row['place'] ?? ''),
+            (string)$account->getStreet(),
+            (string)($row['type_label'] ?? ''),
+            (string)$account->getApartmentNumber(),
+            // The accountant's file says «паркінг», the bot says «паркомісце», the ОСББ
+            // register says «Комора» and the bot «комірчина» — whichever word somebody
+            // types has to find the object, so all of them are in the haystack.
+            match ($row['type'] ?? '') {
+                Account::UNIT_PARKING => 'паркінг паркомісце',
+                Account::UNIT_STORAGE => 'комірчина комора кладова',
+                default => 'квартира кв',
+            },
+        ];
+
+        foreach ($row['owners'] ?? [] as $owner) {
+            $parts[] = trim(sprintf(
+                '%s %s %s %s',
+                (string)$owner->getFirstName(),
+                (string)$owner->getLastName(),
+                (string)$owner->getPhoneNumber(),
+                (string)$owner->getUsername(),
+            ));
+        }
+
+        return mb_strtolower(implode(' ', $parts));
+    }
+
     public function houses(array $rows): array
     {
         $counts = [];
