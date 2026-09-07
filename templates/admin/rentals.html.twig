@@ -1,6 +1,6 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Оренда квартир · ОСББ City Park{% endblock %}
+{% block title %}Оренда та продаж · ОСББ City Park{% endblock %}
 
 {% block body %}
     {{ parent() }}
@@ -36,7 +36,8 @@
                         <tr>
                             <td>{{ listing.id }}</td>
                             <td>
-                                кв. {{ listing.account.apartmentNumber }}<br>
+                                {{ listing.dealIcon }} {{ listing.account.unitLabel }}<br>
+                                <small class="text-muted">{{ listing.dealLabel }}</small><br>
                                 <small class="text-muted">
                                     {{ listing.account.street }} {{ listing.account.houseNumber }} ·
                                     р/н {{ listing.account.accountNumber }}

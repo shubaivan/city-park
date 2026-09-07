@@ -27,6 +27,7 @@ class RentalListingService
         private Nutgram $bot,
         private LoggerInterface $logger,
         private RentalPhotoService $photoService,
+        private ResidentChatService $residentChat,
     ) {}
 
     public static function now(): \DateTime
@@ -77,6 +78,7 @@ class RentalListingService
         ?int $price,
         ?string $description,
         bool $showPhone = false,
+        string $deal = RentalListing::DEAL_RENT,
     ): RentalListing {
         $now = self::now();
 
@@ -95,12 +97,19 @@ class RentalListingService
             ->setRooms($rooms)
             ->setPrice($price)
             ->setDescription($description)
+            ->setDeal($deal)
             ->setShowPhone($phone !== null)
             ->setContactPhone($phone)
             ->setExpiresAt((clone $now)->modify('+' . RentalListing::LIFETIME_DAYS . ' days'));
 
         $this->em->persist($listing);
         $this->em->flush();
+
+        if ($existing) {
+            $this->unannounce($existing);
+        }
+
+        $this->announce($listing);
 
         $this->logger->info('rental listing published', [
             'listing_id' => $listing->getId(),
@@ -116,6 +125,7 @@ class RentalListingService
     {
         $listing->setStatus(RentalListing::STATUS_REMOVED);
         $listing->setClosedAt(self::now());
+        $this->unannounce($listing);
         // Files must not outlive the listing they belonged to. Admin take-downs are the
         // exception below: there the photo is often the reason it was taken down.
         $this->photoService->purge($listing);
@@ -128,6 +138,7 @@ class RentalListingService
         $listing->setStatus(RentalListing::STATUS_BLOCKED);
         $listing->setClosedAt(self::now());
         $listing->setClosedBy($adminLogin);
+        $this->unannounce($listing);
         $this->em->flush();
     }
 
@@ -157,7 +168,8 @@ class RentalListingService
         ]);
 
         $lines = [
-            '🏠 <b>' . implode(' · ', $head) . '</b>',
+            $listing->dealIcon() . ' <b>' . implode(' · ', $head) . '</b>',
+            '<i>' . $listing->dealVerb() . '</i>',
             '💰 ' . self::esc($listing->priceLabel()),
         ];
 
@@ -187,7 +199,12 @@ class RentalListingService
             $listing->priceLabel(),
         ]);
 
-        return ($own ? '📌 ' : '') . ($listing->hasPhotos() ? '📷 ' : '') . implode(' · ', $parts);
+        // The glyph first: with rent and sale in one list, «що це» has to be readable
+        // before the price, and a button caption is all Telegram gives us.
+        return $listing->dealIcon() . ' '
+            . ($own ? '📌 ' : '')
+            . ($listing->hasPhotos() ? '📷 ' : '')
+            . implode(' · ', $parts);
     }
 
     /**
@@ -376,6 +393,7 @@ class RentalListingService
             $listing->setStatus(RentalListing::STATUS_EXPIRED);
             $this->photoService->purge($listing);
             $listing->setClosedAt($now);
+            $this->unannounce($listing);
             $closed++;
 
             foreach ($this->recipients($listing) as $chatId) {
@@ -518,6 +536,94 @@ class RentalListingService
     }
 
     /**
+     * Put the advert in the residents' chat, in its own topic.
+     *
+     * Until this existed a listing was pull-only: it lived in the bot and was seen by
+     * whoever thought to open «🔑 Оренда». Meanwhile "здам квартиру" is the message the
+     * house chat gets anyway — so the post goes into the classifieds topic, where it can
+     * be scrolled past, muted, and taken down when the flat is gone.
+     *
+     * Never fatal: a chat that is unreachable must not stop somebody publishing.
+     */
+    public function announce(RentalListing $listing): void
+    {
+        if (!$this->residentChat->isConfigured()) {
+            return;
+        }
+
+        try {
+            $message = $this->bot->sendMessage(
+                text: $this->chatPost($listing),
+                chat_id: (int)$this->residentChat->chatId(),
+                message_thread_id: $this->residentChat->topic(ResidentChatService::TOPIC_RENTALS),
+                parse_mode: ParseMode::HTML,
+                disable_notification: true,
+            );
+
+            $listing->setChatMessageId($message?->message_id);
+            $this->em->flush();
+        } catch (\Throwable $e) {
+            $this->logger->warning('rental chat announcement failed', [
+                'listing_id' => $listing->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /** Take the post down with the listing — see RentalListing::$chat_message_id. */
+    public function unannounce(RentalListing $listing): void
+    {
+        $messageId = $listing->getChatMessageId();
+
+        if ($messageId === null || !$this->residentChat->isConfigured()) {
+            return;
+        }
+
+        try {
+            $this->bot->deleteMessage((int)$this->residentChat->chatId(), $messageId);
+        } catch (\Throwable $e) {
+            // Telegram refuses to delete anything older than 48 hours, and somebody may
+            // have removed it by hand. Either way the listing is closed; the stale post is
+            // not worth a failed take-down.
+            $this->logger->info('rental chat post not deleted', [
+                'listing_id' => $listing->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $listing->setChatMessageId(null);
+    }
+
+    /**
+     * The chat post. Short on purpose: the card in the bot is where the description,
+     * the photos and the contact live, and a classifieds thread is read by scrolling.
+     */
+    public function chatPost(RentalListing $listing): string
+    {
+        $account = $listing->getAccount();
+
+        $head = array_filter([
+            self::place($account),
+            $listing->roomsLabel(),
+            $account->getArea() ? rtrim(rtrim(number_format((float)$account->getArea(), 1, ',', ' '), '0'), ',') . ' м²' : null,
+        ]);
+
+        $lines = [
+            sprintf('%s <b>%s</b> · %s', $listing->dealIcon(), $listing->dealVerb(), implode(' · ', $head)),
+            '💰 ' . self::esc($listing->priceLabel()),
+        ];
+
+        if ($description = $listing->getDescription()) {
+            $lines[] = self::esc(mb_strimwidth($description, 0, 220, '…'));
+        }
+
+        $lines[] = '';
+        $lines[] = '<i>Деталі, фото і контакт власника — у боті, кнопка «🔑 Оренда».</i>';
+
+        return implode("\n", $lines);
+    }
+
+    /**
      * "буд. 21, кв. 45" — never the apartment on its own.
      *
      * The ЖК is five buildings on one street and the numbering repeats across them, so
@@ -541,14 +647,14 @@ class RentalListingService
             return '';
         }
 
-        $flat = 'кв. ' . $account->getApartmentNumber();
+        $unit = $account->getUnitLabel();
         $house = $account->getHouseNumber();
 
         if (!$house) {
-            return $flat;
+            return $unit;
         }
 
-        return ($short ? 'б. ' : 'буд. ') . $house . ', ' . $flat;
+        return ($short ? 'б. ' : 'буд. ') . $house . ', ' . $unit;
     }
 
     private static function esc(string $value): string

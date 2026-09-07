@@ -76,6 +76,14 @@ class RentalListing
     #[ORM\Column(type: Types::STRING, length: 16, options: ['default' => self::DEAL_RENT])]
     private string $deal = self::DEAL_RENT;
 
+    /**
+     * The bot's own post in the residents' chat, so it can be deleted when the listing
+     * closes. A classifieds thread that keeps flats which are long gone is worse than no
+     * thread: the reader cannot tell which of the two dozen posts is still true.
+     */
+    #[ORM\Column(type: Types::INTEGER, nullable: true)]
+    private ?int $chat_message_id = null;
+
     #[ORM\Column(type: 'string', length: 16, nullable: false, options: ['default' => self::STATUS_ACTIVE])]
     private string $status = self::STATUS_ACTIVE;
 
@@ -389,7 +397,26 @@ class RentalListing
             return 'ціна договірна';
         }
 
-        return number_format($this->price, 0, ',', ' ') . ' грн/міс';
+        // «грн/міс» on a sale would read as rent at a fantastic price, and the number is
+        // the first thing anyone looks at — so the suffix follows the deal, not the field.
+        return number_format($this->price, 0, ',', ' ') . ($this->isSale() ? ' грн' : ' грн/міс');
+    }
+
+    /** 🔑 / 🏷 — one glyph, because it rides in a button caption Telegram truncates. */
+    public function dealIcon(): string
+    {
+        return $this->isSale() ? '🏷' : '🔑';
+    }
+
+    public function dealLabel(): string
+    {
+        return $this->isSale() ? 'Продаж' : 'Оренда';
+    }
+
+    /** «Здається» / «Продається» — the verb the card and the chat post open with. */
+    public function dealVerb(): string
+    {
+        return $this->isSale() ? 'Продається' : 'Здається';
     }
 
     public function getDeal(): string
@@ -407,5 +434,17 @@ class RentalListing
     public function isSale(): bool
     {
         return $this->deal === self::DEAL_SALE;
+    }
+
+    public function getChatMessageId(): ?int
+    {
+        return $this->chat_message_id;
+    }
+
+    public function setChatMessageId(?int $id): self
+    {
+        $this->chat_message_id = $id;
+
+        return $this;
     }
 }
