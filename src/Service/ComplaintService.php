@@ -184,7 +184,7 @@ class ComplaintService
         }
 
         try {
-            $this->bot->sendMessage(
+            $message = $this->bot->sendMessage(
                 text: sprintf(
                     "🆕 <b>Нова заявка №%d</b> · %s\n\n%s\n\n"
                         . '<i>Стежити за нею — у боті, «🔧 Заявки».</i>',
@@ -196,6 +196,9 @@ class ComplaintService
                 message_thread_id: $this->residentChat->topic(ResidentChatService::TOPIC_COMPLAINTS),
                 parse_mode: ParseMode::HTML,
             );
+
+            $complaint->setChatMessageId($message?->message_id);
+            $this->em->flush();
         } catch (\Throwable $e) {
             $this->logger->warning('new complaint chat announcement failed', [
                 'complaint_id' => $complaint->getId(),
@@ -498,9 +501,51 @@ class ComplaintService
      * Photos go with it: nothing else references them, and orphaned files under
      * public/uploads are how a disk fills up quietly.
      */
+    /**
+     * Post an entry the chat never saw — the register predates the topic it belongs in.
+     *
+     * Public so a one-off command can seed the branch; `announceNew()` is what the normal
+     * path calls. Skips anything already posted, so it cannot double-post.
+     */
+    public function announceExisting(Complaint $complaint): bool
+    {
+        if ($complaint->getChatMessageId() !== null) {
+            return false;
+        }
+
+        $this->announceNew($complaint);
+
+        return $complaint->getChatMessageId() !== null;
+    }
+
+    /** Take the chat post down with the entry it announced. */
+    public function unannounce(Complaint $complaint): void
+    {
+        $messageId = $complaint->getChatMessageId();
+
+        if ($messageId === null || !$this->residentChat->isConfigured()) {
+            return;
+        }
+
+        try {
+            $this->bot->deleteMessage((int)$this->residentChat->chatId(), $messageId);
+        } catch (\Throwable $e) {
+            // Telegram refuses to delete anything older than 48 hours, and somebody may
+            // have removed it by hand. The entry is gone either way.
+            $this->logger->info('complaint chat post not deleted', [
+                'complaint_id' => $complaint->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $complaint->setChatMessageId(null);
+    }
+
     public function delete(Complaint $complaint): void
     {
         $id = $complaint->getId();
+
+        $this->unannounce($complaint);
 
         foreach ($complaint->getPhotos() as $path) {
             $this->images->delete($path, self::PHOTO_DIR);
