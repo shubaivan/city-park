@@ -33,13 +33,41 @@ use SergiX44\Nutgram\Telegram\Types\Chat\ChatJoinRequest;
  */
 class ResidentChatService
 {
+    /** What the house reports as broken. */
+    public const TOPIC_COMPLAINTS = 'complaints';
+
+    /** The monthly debt statement, which is also the one post that gets pinned. */
+    public const TOPIC_DEBT = 'debt';
+
     public function __construct(
         private TelegramUserRepository $telegramUserRepository,
         private TelegramUserService $telegramUserService,
         private LoggerInterface $chatLogger,
         private string $residentChatId = '',
         private string $residentChatInviteLink = '',
+        private string $topicComplaints = '',
+        private string $topicDebt = '',
     ) {}
+
+    /**
+     * Which forum topic a kind of post belongs in, or null for the chat's General thread.
+     *
+     * The group was switched to Topics on 07.09.2026. Telegram's rule is that a message
+     * without `message_thread_id` lands in General, so an unset topic is not a failure —
+     * it is the old behaviour, and that is deliberate: a wrong or deleted thread id makes
+     * the API reject the send outright, and losing a «нова заявка» is worse than posting
+     * it one tab over.
+     */
+    public function topic(string $kind): ?int
+    {
+        $value = match ($kind) {
+            self::TOPIC_COMPLAINTS => $this->topicComplaints,
+            self::TOPIC_DEBT => $this->topicDebt,
+            default => '',
+        };
+
+        return ctype_digit($value) && $value !== '0' ? (int)$value : null;
+    }
 
     /** The chat exists and the bot knows how to send people to it. */
     public function isConfigured(): bool

@@ -77,6 +77,7 @@ class DebtAnnouncer
             $message = $this->bot->sendMessage(
                 text: $text,
                 chat_id: $chatId,
+                message_thread_id: $this->residentChat->topic(ResidentChatService::TOPIC_DEBT),
                 parse_mode: ParseMode::HTML,
             );
         } catch (\Throwable $e) {

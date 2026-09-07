@@ -19,6 +19,10 @@ services:
             $pavilion2PhotoFileId: '%env(string:PAVILION2_PHOTO_FILE_ID)%'
             $residentChatId: '%env(string:RESIDENT_CHAT_ID)%'
             $residentChatInviteLink: '%env(string:RESIDENT_CHAT_INVITE_LINK)%'
+            # Forum topics of that group. Empty means «post into General», which is what
+            # the bot did before the group had topics at all.
+            $topicComplaints: '%env(string:RESIDENT_CHAT_TOPIC_COMPLAINTS)%'
+            $topicDebt: '%env(string:RESIDENT_CHAT_TOPIC_DEBT)%'
             # Telegram ids allowed to move a complaint's status — the head of the ОСББ.
             # One or two people who change about never, so this is config, not a column.
             $managerIds: '%env(string:COMPLAINT_MANAGER_TELEGRAM_IDS)%'
