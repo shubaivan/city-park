@@ -34,6 +34,18 @@ class AdminObjectsPageTest extends KernelTestCase
                 'stats' => $stats,
                 'houses' => $houses,
                 'registry' => self::getContainer()->get(PropertyRegistry::class),
+                // The filter bar and the pager are server-side since the ОСББ register
+                // brought the page from 172 objects to 966; the template now reads the
+                // current query back out of the controller.
+                'q' => '',
+                'chip' => '',
+                'house' => '',
+                'page' => 1,
+                'pages' => 1,
+                'found' => count($rows),
+                'total' => count($rows),
+                'from' => $rows === [] ? 0 : 1,
+                'to' => count($rows),
             ],
         );
     }

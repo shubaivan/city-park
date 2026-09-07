@@ -242,9 +242,28 @@ row silently sends somebody's arrears to the wrong place.
 `OwnerGroupService` is the only writer of `owner_group_id`; the users page reaches it over
 JSON and the objects page over a plain form, and the merge rules (an existing group beats a
 fresh id, the smaller id survives a merge, a group of one dissolves on unlink) live there
-once — `OwnerGroupRulesTest` pins each. `/admin/objects` is rendered server-side with a
-client-side filter box rather than as a third DataTable: 172 rows makes paging machinery for
-nothing, and it keeps the page free of the JS build step.
+once — `OwnerGroupRulesTest` pins each.
+
+**`/admin/objects` pages on the server, 60 cards at a time.** It was rendered whole with a
+client-side filter box — right while the bot knew 172 objects, wrong the moment
+`objects:import-registry` brought in the ОСББ's own register: 966 objects rendered to
+**2.4 MB of HTML, 969 cards and a page 117 000 px tall**, opened from the accountant's
+phone. The three questions (text, kind, building) are answered by
+`PropertyRegistry::narrow()` and AND together, the counter is always spelled out
+(«Показано 1–60 з 969»), and `?object=<о/р>` still lands in the search box rather than
+hiding everything else — a filter that quietly drops rows is how «я не знайшла» turns into
+«його немає в системі». The type is searchable by every word anyone uses for it: the
+accountant's file says «паркінг», the bot says «паркомісце», the register says «Комора».
+`PropertyRegistryNarrowTest` pins that.
+
+**`objects:import-registry <file.xlsx>`** creates the house's objects from the ОСББ's
+register of особові рахунки (`ID | Тип прим. | № прим. | Особовий рахунок | Загальна площа`).
+It creates and back-fills area, and does nothing else: never a debt (those come from the
+debt file), never `is_active`, never a link to a person, and **never a delete** — an о/р in
+the bot that the register does not carry is reported and left alone. The building comes
+from the first digit of the рахунок (1→17, 2→19, 3→21, 4→23, 5→27, 6→25), the type from
+the third, and on the day it first ran the type it derived agreed with the register's own
+wording in all 966 rows.
 
 ## Backups
 
