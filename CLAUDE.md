@@ -371,8 +371,12 @@ edits the message in place.
   back to back must stay two lines, or the guard reads one apartment number and waves
   through whoever is there at 21:30. The grouping is `GuardService::group()`, static and
   database-free so the rule is testable.
-- The guard is **staff, not a resident**: no особовий рахунок, so `StartCommand` gives him
-  his own one-button menu and header instead of the resident menu over an empty header.
+- The guard is **staff, not a resident**: with no особовий рахунок he gets his own
+  one-button menu and header, because the resident menu over an empty header is a screen
+  of buttons he cannot use. A guard who *is* a resident (which is how it gets tested, and
+  could be how a resident earns a shift) keeps the full resident menu with the guard
+  button on top — collapsing it would take his own flat, bookings and debts away the
+  moment his id joined the list.
 - `/guard` is registered as a handler but deliberately **left out of
   `BotMenuUpdateCommand::MENU`**, which is pushed to all private chats.
 
