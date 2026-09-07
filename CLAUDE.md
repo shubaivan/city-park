@@ -378,6 +378,14 @@ edits the message in place.
   back to back must stay two lines, or the guard reads one apartment number and waves
   through whoever is there at 21:30. The grouping is `GuardService::group()`, static and
   database-free so the rule is testable.
+- **Anything the menu resolves at render time must be `public: true`.** `StartCommand` is
+  static and reaches its collaborators through `$bot->getContainer()->get(...)`, which only
+  exposes public services; a private one is inlined at compile time and the lookup throws
+  into the `catch (\Throwable) { return false; }` that every one of those helpers carries.
+  Right for a decoration, and exactly why it fails silently: on 07.09.2026 both guard
+  buttons shipped and simply did not appear — no error, nothing in any log, indistinguishable
+  from «ще не задеплоїли». `MenuContainerLookupsTest` walks the lookups in `StartCommand`
+  against `config/services.yaml`.
 - The guard is **staff, not a resident**: with no особовий рахунок he gets his own
   one-button menu and header, because the resident menu over an empty header is a screen
   of buttons he cannot use. A guard who *is* a resident (which is how it gets tested, and
