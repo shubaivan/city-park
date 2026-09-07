@@ -720,7 +720,7 @@ sudo -u www-data php bin/console cache:clear --env=prod       # NOT `rm -rf var/
 php bin/console doctrine:migrations:migrate --no-interaction --env=prod   # if migration added
 sudo -u www-data php bin/console bot:menu:update --env=prod          # idempotent; safe every deploy
 mkdir -p public/uploads/pavilion-photos
-chown -R www-data:www-data var/cache var/log public/uploads
+chown -R www-data:www-data var/cache var/log var/pools public/uploads
 systemctl restart city-park-messenger.service                        # long-running worker; see above
 # NOTE: php-fpm is deliberately NOT restarted — see below
 ```
@@ -735,6 +735,17 @@ validate_timestamps On, neither is needed. Should that setting ever be turned of
 performance, the restart has to come back — and with it the 502s, so drain traffic first.)
 The **messenger worker is different**: it is a long-running process holding code loaded at
 start, and it must be restarted.
+
+**Conversation state lives in `var/pools/`, not in `var/cache/`.** Nutgram keeps it in the
+app cache pool — which step of «⏸ Відкласти» a manager is on, half a complaint somebody is
+typing — and Symfony's default puts that pool under `%kernel.cache_dir%`. So every
+`cache:clear` threw live conversations away. The failure is invisible from both ends: the
+prompt arrives, the answer goes nowhere, nothing is logged because nothing threw, and the
+person reports «натискаю — нічого не міняється». It cost an afternoon on 07.09.2026, with
+nine deploys in it, before `photo-check.log` showed `step: askReason` three times in a row
+for a manager who had already been asked for a reason. `framework.cache.directory` now
+points at `var/pools`; `ConversationCacheSurvivesDeployTest` pins it, and the directory
+needs the same `chown www-data` as `var/cache` and `var/log`.
 
 **Never `rm -rf var/cache/prod` on a live server.** php-fpm keeps serving `/hook` while the
 cache is missing, and every Telegram update that lands in that window answers 500. On

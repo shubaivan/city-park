@@ -3,6 +3,17 @@ framework:
         # Unique name of your app: used to compute stable namespaces for cache keys.
         #prefix_seed: your_vendor_name/app_name
 
+        # Where the filesystem pools live. Moved out of var/cache on 07.09.2026, and this
+        # is the line that makes the comment below true.
+        #
+        # Nutgram keeps conversation state in the app pool: which step of «⏸ Відкласти» a
+        # manager is on, what a resident has typed so far. The default put that under
+        # %kernel.cache_dir%/pools, so every `cache:clear` — nine of them during one
+        # afternoon of deploys — silently threw away whatever anybody was in the middle of.
+        # From the outside it looks like the bot ignoring the button: the prompt arrives,
+        # the answer goes nowhere, and nothing is logged, because nothing failed.
+        directory: '%kernel.project_dir%/var/pools'
+
         # The "app" cache stores to the filesystem by default.
         # The data in this cache should persist between deploys.
         # Other options include:
