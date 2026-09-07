@@ -53,6 +53,24 @@ class GuardWiringTest extends TestCase
     }
 
     /**
+     * The QR is actually rendered.
+     *
+     * endroid/qr-code 6 dropped the `Builder::create()` entry point that 5 had, and the
+     * first shape of this feature called it: nothing in the suite touched that line, so it
+     * shipped and died on prod with «Call to undefined method». A picture nobody renders
+     * in a test is a picture nobody renders.
+     */
+    public function testTheQrCodeIsActuallyRendered(): void
+    {
+        $png = \App\Telegram\Guard\Command\GuardQrCommand::render(
+            'https://t.me/che_city_park_bot?start=g-7-abcdef012345',
+        );
+
+        $this->assertNotSame('', $png);
+        $this->assertStringStartsWith("\x89PNG", $png);
+    }
+
+    /**
      * `/guard` must stay out of the slash menu, which is pushed to every private chat.
      * There it would be a command 457 residents can type and nobody but two people may
      * use — and each refusal is a message that reads like the bot is broken.
