@@ -103,4 +103,15 @@ class SchedulePavilionService
     {
         return (new \DateTime())->setTimezone(new \DateTimeZone($timeZone));
     }
+
+    /**
+     * «Перша» / «Друга». One definition, because the ternary that produces it was written
+     * out by hand in six files — the block notice, the overlap error, the photo reminder,
+     * the booking history, the photo flow and now the guard's board — and the day the ЖК
+     * gives the pavilions real names, five of them would keep saying «Друга».
+     */
+    public static function pavilionName(int $pavilion): string
+    {
+        return $pavilion === 1 ? 'Перша' : 'Друга';
+    }
 }

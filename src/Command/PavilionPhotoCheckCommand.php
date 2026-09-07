@@ -289,7 +289,7 @@ class PavilionPhotoCheckCommand extends Command
     {
         $account = $req->getAccount();
         $start = $req->getSessionStartAt();
-        $pavilionName = $req->getPavilion() === 1 ? 'Перша' : 'Друга';
+        $pavilionName = SchedulePavilionService::pavilionName($req->getPavilion());
         $totalReminders = count(PavilionPhotoService::REMINDER_OFFSETS_MIN);
         $blockAt = $this->photoService->blockAt($req);
 

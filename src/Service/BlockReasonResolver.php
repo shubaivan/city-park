@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Service\SchedulePavilionService;
 use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Repository\PhotoUploadRequestRepository;
@@ -50,7 +51,7 @@ final class BlockReasonResolver
 
         $blockedReq = $this->photoRequestRepository->findEarliestBlockedOpen($account);
         if ($blockedReq !== null) {
-            $pavilionName = $blockedReq->getPavilion() === 1 ? 'Перша' : 'Друга';
+            $pavilionName = SchedulePavilionService::pavilionName($blockedReq->getPavilion());
             return [
                 'code' => 'photo',
                 'label' => '📸 Не завантажене фото',
@@ -109,7 +110,7 @@ final class BlockReasonResolver
 
         $blockedReq = $this->photoRequestRepository->findEarliestBlockedOpen($account);
         if ($blockedReq !== null) {
-            $pavilionName = $blockedReq->getPavilion() === 1 ? 'Перша' : 'Друга';
+            $pavilionName = SchedulePavilionService::pavilionName($blockedReq->getPavilion());
             $sessionLabel = $blockedReq->getSessionStartAt()->format('d.m.Y H:i');
 
             $msg = $header

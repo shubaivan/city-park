@@ -73,7 +73,7 @@ class ScheduleLimitValidator extends ConstraintValidator
             $value->getId()
         );
         if ($overlap !== null) {
-            $pavilionName = $overlap->getPavilion() === 1 ? 'Перша' : 'Друга';
+            $pavilionName = SchedulePavilionService::pavilionName($overlap->getPavilion());
             $this->context
                 ->buildViolation($constraint->messageOverlap)
                 ->setParameters([
@@ -125,7 +125,7 @@ class ScheduleLimitValidator extends ConstraintValidator
     {
         $lines = [];
         foreach ($bookings as $b) {
-            $pav = $b->getPavilion() === 1 ? 'Перша' : 'Друга';
+            $pav = SchedulePavilionService::pavilionName($b->getPavilion());
             $hour = str_pad((string)$b->getHour(), 2, '0', STR_PAD_LEFT);
             $when = $includeDate
                 ? $b->getScheduledAt()->format('d.m') . ' о ' . $hour . ':00'

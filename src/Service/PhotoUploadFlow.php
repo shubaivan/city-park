@@ -297,7 +297,7 @@ class PhotoUploadFlow
         $bot->sendMessage(
             text: sprintf(
                 "✅ <b>Дякуємо! Фото отримано.</b>\n\n🏠 Альтанка: <b>%s</b>\n📅 <b>%s</b>\n⏰ <b>%s</b>",
-                $request->getPavilion() === 1 ? 'Перша' : 'Друга',
+                SchedulePavilionService::pavilionName($request->getPavilion()),
                 UkDateFormatter::dayDate($start),
                 UkDateFormatter::time($start),
             ),
