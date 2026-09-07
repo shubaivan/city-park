@@ -83,6 +83,14 @@ services:
     App\Repository\ComplaintRepository:
         public: true
 
+    # Same reason once more, and this one shipped broken for an evening: the menu asks it
+    # whether the reader is a guard and whether their booking is running right now. Both
+    # lookups are wrapped in `catch (\Throwable) { return false; }` — the right shape for a
+    # decoration, and the reason a private service failed *silently*: the buttons simply
+    # never appeared, with nothing in any log.
+    App\Service\GuardService:
+        public: true
+
     # Same reason: the menu header names every object the household owns, and the owner
     # group behind that list is only reachable through a service the bot container exposes.
     App\Service\PropertyRegistry:
