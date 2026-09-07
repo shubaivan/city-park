@@ -30,6 +30,9 @@ services:
             # Telegram ids of the gate. Same shape and the same rule: empty means nobody,
             # never everybody — this board names which flat is in which pavilion.
             $guardIds: '%env(string:GUARD_TELEGRAM_IDS)%'
+            # Signs the resident's QR code. Nothing is stored: the signature is the only
+            # thing that stops a code being drawn for a flat read off the debtors' board.
+            $appSecret: '%env(string:APP_SECRET)%'
             # Where the nightly database dump is sent. A backup that lives on the server
             # it protects is not a backup — if the machine goes, so does it.
             $backupChatId: '%env(string:BACKUP_TELEGRAM_CHAT_ID)%'

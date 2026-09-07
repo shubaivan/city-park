@@ -52,6 +52,7 @@ class GuardService
     public function __construct(
         private ScheduledSetRepository $bookings,
         private string $guardIds = '',
+        private string $appSecret = '',
     ) {}
 
     public function isGuard(?TelegramUser $user): bool
@@ -176,6 +177,81 @@ class GuardService
     public static function isOver(array $session, \DateTimeInterface $now): bool
     {
         return $now->getTimestamp() >= $session['end']->modify('+' . self::GRACE_MINUTES . ' minutes')->getTimestamp();
+    }
+
+    /**
+     * The session this household is in the middle of right now, if any.
+     *
+     * Read on every main-menu render to decide whether to offer «🔒 QR для охорони», and
+     * again when a guard scans one. Owner-group aware, like every other booking query:
+     * a flat and its parking space are one household and one person's phone.
+     *
+     * @return array{pavilion:int, start:\DateTimeImmutable, end:\DateTimeImmutable, account:?Account, user:TelegramUser}|null
+     */
+    public function runningSessionFor(Account $account, \DateTimeInterface $now): ?array
+    {
+        $sets = $this->bookings->createQueryBuilder('ss')
+            ->join('ss.telegramUserId', 'tu')
+            ->join('tu.account', 'a')
+            ->andWhere('ss.year = :y')->setParameter('y', (int)$now->format('Y'))
+            ->andWhere('ss.month = :m')->setParameter('m', (int)$now->format('n'))
+            ->andWhere('ss.day = :d')->setParameter('d', (int)$now->format('j'))
+            ->andWhere('COALESCE(a.owner_group_id, a.id) = :gid')
+            ->setParameter('gid', $account->getEffectiveGroupId())
+            ->orderBy('ss.pavilion', 'ASC')
+            ->addOrderBy('ss.hour', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        foreach (self::group($sets) as $session) {
+            if (self::isRunning($session, $now)) {
+                return $session;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The payload behind the resident's QR code: `g-<account>-<signature>`.
+     *
+     * **Signed, and deliberately not stored.** The особові рахунки of the largest debtors
+     * are published to the whole house every month, so a code that merely named a flat
+     * could be drawn by anyone who read the board — and a guard would then confirm it,
+     * because the flat really does have a booking. The HMAC is what makes the bot the
+     * only thing that can mint one. Nothing is written to the database: what the guard is
+     * asking is «is this household in the альтанка *now*», and that answer lives in the
+     * bookings table already.
+     *
+     * The code therefore does not expire and does not need to: it says nothing on its own,
+     * and the bot answers about the current minute or refuses.
+     */
+    public function mintToken(Account $account): string
+    {
+        $id = (int)$account->getId();
+
+        return sprintf('g-%d-%s', $id, $this->signature($id));
+    }
+
+    /**
+     * @return int|null the account id, or null when the payload is not one of ours
+     */
+    public function readToken(string $payload): ?int
+    {
+        if (!preg_match('/^g-(\d{1,10})-([a-f0-9]{12})$/', $payload, $m)) {
+            return null;
+        }
+
+        $id = (int)$m[1];
+
+        // hash_equals, not ===: a plain comparison on a signature leaks how much of it was
+        // right through how long it took to say no.
+        return hash_equals($this->signature($id), $m[2]) ? $id : null;
+    }
+
+    private function signature(int $accountId): string
+    {
+        return substr(hash_hmac('sha256', 'guard-qr:' . $accountId, $this->appSecret), 0, 12);
     }
 
     /**

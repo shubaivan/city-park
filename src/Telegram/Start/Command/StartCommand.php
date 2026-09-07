@@ -8,11 +8,13 @@ use App\Service\ComplaintService;
 use App\Service\PropertyRegistry;
 use App\Service\DebtBoardService;
 use App\Service\GuardService;
+use App\Service\SchedulePavilionService;
 use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
 use App\Repository\ComplaintRepository;
 use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\Guard\Command\GuardCommand;
+use App\Telegram\Guard\Command\GuardQrCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\ResidentChat\Command\ResidentChatCommand;
 use SergiX44\Nutgram\Handlers\Type\Command;
@@ -46,13 +48,7 @@ class StartCommand extends Command
         // all need it, and each lookup is a DB round-trip on every menu render.
         $account = self::currentAccount($bot);
 
-        // A guard with no особовий рахунок gets his own screen: the ordinary header
-        // renders nothing for him and the menu would open on a bare «Оберіть:» over
-        // buttons he cannot use. A guard who is also a resident keeps his own header.
-        $text = self::isGuard($bot) && !$account instanceof Account
-            ? "🛡 <b>Охорона ЖК City Park</b>\n\nТут видно, хто забронював альтанки — "
-                . "зараз і далі сьогодні, з номером квартири.\n\n"
-            : self::header($bot, $account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
+        $text = self::header($bot, $account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
         $markup = self::mainMenuMarkup($bot, $account);
 
         if ($edit) {
@@ -243,6 +239,8 @@ class StartCommand extends Command
         return OsbbContacts::chair() . "\n"
             . OsbbContacts::accountant() . "\n"
             . "<i>Особові рахунки, нарахування, борги, прив'язка квартири — до бухгалтера.</i>\n"
+            . OsbbContacts::repairs() . "\n"
+            . "<i>Що зламалось у будинку і що з цим робиться — до нього, або через «🔧 Заявки».</i>\n"
             . OsbbContacts::developer() . "\n"
             . "<i>Не працює кнопка, дивна відповідь бота, помилка в даних — до нього.</i>\n\n";
     }
@@ -316,10 +314,12 @@ class StartCommand extends Command
         // reason, and he does it standing outside in the dark. Nobody else sees it —
         // isGuard() is a short list of Telegram ids in .env.local.
         //
-        // A guard who is *also* a resident (which is how this gets tested, and could be
-        // how a resident earns a shift) keeps the whole resident menu with the guard
-        // button on top. Collapsing it would take his own flat, bookings and debts away
-        // the moment his id was added to the list.
+        // **Added to the menu, never replacing it.** The first shape returned a
+        // one-button menu to anybody in that list, which is wrong twice over: it takes
+        // a resident-guard's own flat, bookings and debts away the moment his id is
+        // added, and it would have taken «🔧 Заявки» from Сергій, who has no особовий
+        // рахунок and manages the register. What each person may use is decided by the
+        // rows below, every one of them already gated on what they actually have.
         $markup = InlineKeyboardMarkup::make();
 
         if (self::isGuard($bot)) {
@@ -327,14 +327,6 @@ class StartCommand extends Command
                 '🛡 Хто зараз в альтанці',
                 callback_data: GuardCommand::MENU_CALLBACK,
             ));
-
-            // Staff and nothing else: the rest of this menu is a resident's own flat,
-            // bookings and debts, and he has none.
-            if (!$account instanceof Account) {
-                return $markup->addRow(
-                    InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'),
-                );
-            }
         }
 
         $markup
@@ -386,6 +378,18 @@ class StartCommand extends Command
                 InlineKeyboardButton::make('🗳️ Голосування', callback_data: 'voting-menu'),
             );
 
+        // The QR for the gate, and only while a booking is actually running: it is on the
+        // menu exactly when you are sitting in the альтанка and gone the rest of the
+        // month, which is also why it needs no explaining. One indexed query per render.
+        if ($account instanceof Account && self::hasRunningBooking($bot, $account)) {
+            $markup->addRow(
+                InlineKeyboardButton::make(
+                    '🔒 QR для охорони',
+                    callback_data: GuardQrCommand::MENU_CALLBACK,
+                ),
+            );
+        }
+
         // Last row, and only for a verified resident: the full debtors' list is
         // house-internal, and somebody who opened the bot to browse 🔑 Оренда is not
         // part of the house. Shown even when the board above is hidden as stale — the
@@ -434,6 +438,22 @@ class StartCommand extends Command
             return $guard instanceof GuardService
                 && $users instanceof TelegramUserService
                 && $guard->isGuard($users->getCurrentUser());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Is this household in the альтанка right now? Decides whether «🔒 QR для охорони» is
+     * on the menu. Fails closed, like every other container lookup here.
+     */
+    private static function hasRunningBooking(Nutgram $bot, Account $account): bool
+    {
+        try {
+            $guard = $bot->getContainer()->get(GuardService::class);
+
+            return $guard instanceof GuardService
+                && $guard->runningSessionFor($account, SchedulePavilionService::createNewDate()) !== null;
         } catch (\Throwable) {
             return false;
         }
