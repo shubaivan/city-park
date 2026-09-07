@@ -74,10 +74,10 @@ class PhotoUnblockCommand extends Command
         }
 
         $io->writeln(sprintf(
-            'Акаунт #%d (%s, кв.%s) — is_active=%s, debt=%s, поріг=%s',
+            'Акаунт #%d (%s, %s) — is_active=%s, debt=%s, поріг=%s',
             $account->getId(),
             $account->getAccountNumber(),
-            $account->getApartmentNumber(),
+            $account->getPlaceLabel(),
             $account->isActive() ? 'true' : 'false',
             $account->getDebt(),
             $this->debtPolicy->getThresholdFor($account),

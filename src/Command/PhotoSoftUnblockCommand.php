@@ -91,10 +91,10 @@ class PhotoSoftUnblockCommand extends Command
             if ($this->debtPolicy->isAccountBlocked($account)) {
                 $skippedDebt++;
                 $io->writeln(sprintf(
-                    '  [skip-debt] acc=%d (%s, кв.%s) debt=%s — не чіпаю, бо борг ще над порогом.',
+                    '  [skip-debt] acc=%d (%s, %s) debt=%s — не чіпаю, бо борг ще над порогом.',
                     $account->getId(),
                     $account->getAccountNumber(),
-                    $account->getApartmentNumber(),
+                    $account->getPlaceLabel(),
                     $account->getDebt(),
                 ));
                 continue;
@@ -104,10 +104,10 @@ class PhotoSoftUnblockCommand extends Command
                 // NB: must NOT call forgiveBlockingRequests() here — it flushes
                 // resolved_at, so a "dry" run would mutate the DB. Preview only.
                 $io->writeln(sprintf(
-                    '  [DRY] acc=%d (%s, кв.%s) — буде розблоковано (відкриті блокуючі запити будуть закриті).',
+                    '  [DRY] acc=%d (%s, %s) — буде розблоковано (відкриті блокуючі запити будуть закриті).',
                     $account->getId(),
                     $account->getAccountNumber(),
-                    $account->getApartmentNumber(),
+                    $account->getPlaceLabel(),
                 ));
                 continue;
             }
