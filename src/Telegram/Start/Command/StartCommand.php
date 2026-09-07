@@ -46,10 +46,10 @@ class StartCommand extends Command
         // all need it, and each lookup is a DB round-trip on every menu render.
         $account = self::currentAccount($bot);
 
-        // The guard has no особовий рахунок, so the ordinary header renders nothing and
-        // the menu would open on a bare «Оберіть:» over buttons he cannot use. He gets
-        // his own screen, with one thing on it.
-        $text = self::isGuard($bot)
+        // A guard with no особовий рахунок gets his own screen: the ordinary header
+        // renders nothing for him and the menu would open on a bare «Оберіть:» over
+        // buttons he cannot use. A guard who is also a resident keeps his own header.
+        $text = self::isGuard($bot) && !$account instanceof Account
             ? "🛡 <b>Охорона ЖК City Park</b>\n\nТут видно, хто забронював альтанки — "
                 . "зараз і далі сьогодні, з номером квартири.\n\n"
             : self::header($bot, $account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
@@ -315,16 +315,29 @@ class StartCommand extends Command
         // The gate's own button, above everything: he opens the bot for exactly one
         // reason, and he does it standing outside in the dark. Nobody else sees it —
         // isGuard() is a short list of Telegram ids in .env.local.
+        //
+        // A guard who is *also* a resident (which is how this gets tested, and could be
+        // how a resident earns a shift) keeps the whole resident menu with the guard
+        // button on top. Collapsing it would take his own flat, bookings and debts away
+        // the moment his id was added to the list.
+        $markup = InlineKeyboardMarkup::make();
+
         if (self::isGuard($bot)) {
-            return InlineKeyboardMarkup::make()
-                ->addRow(InlineKeyboardButton::make(
-                    '🛡 Хто зараз в альтанці',
-                    callback_data: GuardCommand::MENU_CALLBACK,
-                ))
-                ->addRow(InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'));
+            $markup->addRow(InlineKeyboardButton::make(
+                '🛡 Хто зараз в альтанці',
+                callback_data: GuardCommand::MENU_CALLBACK,
+            ));
+
+            // Staff and nothing else: the rest of this menu is a resident's own flat,
+            // bookings and debts, and he has none.
+            if (!$account instanceof Account) {
+                return $markup->addRow(
+                    InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'),
+                );
+            }
         }
 
-        $markup = InlineKeyboardMarkup::make()
+        $markup
             // Оренда sits first on purpose: it is the newest section and residents were
             // not finding it at the bottom of the menu, under three rows they already
             // know by heart. Booking is the everyday action and stays one tap away.
