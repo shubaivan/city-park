@@ -163,6 +163,22 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
   and an owner cannot tell who wrote. Same rule as `DebtBoardService::place()`, which this
   feature was missing until 03.09.2026. Regression test:
   `RentalListingRulesTest::testEveryRentalLabelNamesTheBuilding`.
+- **Rent and sale are one entity, told apart by `deal`.** Everything around the advert is
+  identical — 30 days, the renewal prompt, three photos, the phone consent, the admin
+  take-down — and what differs is one word and whether the price is per month, so
+  `priceLabel()` drops «/міс» on a sale and `dealIcon()` puts 🔑 or 🏷 first in the index
+  button, before the price, because «що це» has to read before the number. Two buttons
+  under the list («🔑 Здаю квартиру», «🏷 Продаю») rather than a first question inside the
+  conversation: the owner already knows which they came to do.
+- **Every listing is also posted to the residents' chat**, into the `🔑 Оренда` topic
+  (`RESIDENT_CHAT_TOPIC_RENTALS`), silently, and the post is **deleted when the listing
+  closes** — withdrawn, replaced, taken down or expired (`RentalListing.chat_message_id`).
+  A classifieds thread holding flats that are long gone is worse than none: the reader
+  cannot tell which of two dozen posts is still true. The post carries the building, the
+  deal and the price and **never a phone** — consent was for the card, not for a message
+  the whole house reads — and sends the reader to the bot for the contact. Neither the
+  post nor its deletion is ever fatal: an unreachable chat must not stop somebody
+  publishing. `RentalListingRulesTest` pins both rules.
 - Listings expire after `RentalListing::LIFETIME_DAYS` (30). `rental:expire` (daily) sends a one-shot "ще актуально?" prompt `RENEW_PROMPT_BEFORE_DAYS` (3) before that and closes the rest. Queries filter on `expires_at` too, so a stale listing disappears even if the cron hasn't run.
 - Publishing again **replaces** the account's active listing rather than being rejected — that is the edit path.
 

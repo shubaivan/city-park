@@ -29,8 +29,16 @@ class RentalPublish extends Conversation
 {
     public const START_CALLBACK = 'rent:new';
 
+    /**
+     * Selling has its own button rather than a first question inside the conversation:
+     * the owner already knows which of the two they are doing, and a step that asks it
+     * back is a step they can abandon on.
+     */
+    public const START_SALE_CALLBACK = 'rent:new-sale';
+
     protected ?string $step = 'askRooms';
 
+    public string $deal = RentalListing::DEAL_RENT;
     public ?int $rooms = null;
     public ?int $price = null;
     public ?string $description = null;
@@ -71,6 +79,10 @@ class RentalPublish extends Conversation
             return null;
         }
 
+        if ($bot->isCallbackQuery() && ($bot->callbackQuery()->data ?? '') === self::START_SALE_CALLBACK) {
+            $this->deal = RentalListing::DEAL_SALE;
+        }
+
         return parent::__invoke($bot, ...$parameters);
     }
 
@@ -91,7 +103,7 @@ class RentalPublish extends Conversation
 
         if (!$this->rentalService->canPublish($account)) {
             $bot->sendMessage(
-                text: 'Оголошення про оренду доступні лише для квартир.',
+                text: 'Оголошення доступні лише для квартир.',
                 parse_mode: ParseMode::HTML,
             );
             $this->end();
@@ -108,8 +120,10 @@ class RentalPublish extends Conversation
             ->addRow(InlineKeyboardButton::make('Не вказувати', callback_data: 'rooms:0'))
             ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel'));
 
+        $sale = $this->deal === RentalListing::DEAL_SALE;
+
         $bot->sendMessage(
-            text: "🔑 <b>Оголошення про оренду</b>\n\n"
+            text: ($sale ? "🏷 <b>Оголошення про продаж</b>\n\n" : "🔑 <b>Оголошення про оренду</b>\n\n")
                 . 'Квартиру, адресу та площу візьмемо з вашого особового рахунку — '
                 . "їх вводити не треба.\n\n"
                 . 'Скільки кімнат?',
@@ -138,8 +152,9 @@ class RentalPublish extends Conversation
         $this->rooms = $rooms > 0 ? min($rooms, 4) : null;
 
         $bot->editMessageText(
-            text: "💰 Яка ціна, грн на місяць?\n\n"
-                . '<i>Надішліть число, наприклад 12000.</i>',
+            text: $this->deal === RentalListing::DEAL_SALE
+                ? "💰 Яка ціна, грн?\n\n<i>Надішліть число, наприклад 1850000.</i>"
+                : "💰 Яка ціна, грн на місяць?\n\n<i>Надішліть число, наприклад 12000.</i>",
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()
                 ->addRow(InlineKeyboardButton::make('Договірна', callback_data: 'price:none'))
@@ -327,6 +342,7 @@ class RentalPublish extends Conversation
             $this->price,
             $this->description,
             $this->showPhone,
+            $this->deal,
         );
 
         $bot->sendMessage(

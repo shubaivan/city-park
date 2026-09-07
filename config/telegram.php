@@ -87,6 +87,7 @@ $bot->onCommand('info', \App\Telegram\Info\Command\InfoCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalMenuCommand::MENU_CALLBACK, \App\Telegram\Rental\Command\RentalMenuCommand::class);
 $bot->onCallbackQueryData('^rent:(?:(?:view|page|photos|contact|phone|extend|remove):\d+|pic:\d+:\d+|noop)$', \App\Telegram\Rental\Command\RentalMenuCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalPublish::START_CALLBACK, \App\Telegram\Rental\Command\RentalPublish::class);
+$bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalPublish::START_SALE_CALLBACK, \App\Telegram\Rental\Command\RentalPublish::class);
 $bot->onCommand('rent', \App\Telegram\Rental\Command\RentalMenuCommand::class);
 
 $bot->onCallbackQueryData(\App\Telegram\Voting\Command\VotingMenuCommand::MENU_CALLBACK, \App\Telegram\Voting\Command\VotingMenuCommand::class);

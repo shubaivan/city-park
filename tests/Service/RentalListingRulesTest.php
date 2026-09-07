@@ -114,15 +114,28 @@ class RentalListingRulesTest extends KernelTestCase
             ->setRooms(1)
             ->setPrice(20000);
 
-        $this->assertSame('б. 1, кв. 85 · 1-кімн. · 20 000 грн/міс', $service->buttonLabel($listing));
-        $this->assertSame('📌 б. 1, кв. 85 · 1-кімн. · 20 000 грн/міс', $service->buttonLabel($listing, own: true));
+        $this->assertSame('🔑 б. 1, кв. 85 · 1-кімн. · 20 000 грн/міс', $service->buttonLabel($listing));
+        $this->assertSame('🔑 📌 б. 1, кв. 85 · 1-кімн. · 20 000 грн/міс', $service->buttonLabel($listing, own: true));
         $this->assertLessThan(64, mb_strlen($service->buttonLabel($listing, own: true)));
 
         $open = (new RentalListing())
             ->setAccount($this->account('1-1-0-012', '12'))
             ->setPrice(null);
 
-        $this->assertSame('б. 1, кв. 12 · ціна договірна', $service->buttonLabel($open), 'rooms may be absent');
+        $this->assertSame('🔑 б. 1, кв. 12 · ціна договірна', $service->buttonLabel($open), 'rooms may be absent');
+
+        // Selling: the glyph changes and the price stops being per month. Both matter in
+        // the index, where the two kinds of advert now sit in one list.
+        $sale = (new RentalListing())
+            ->setAccount($this->account('1-1-0-085', '85'))
+            ->setDeal(RentalListing::DEAL_SALE)
+            ->setRooms(2)
+            ->setPrice(1850000);
+
+        $this->assertSame('🏷 б. 1, кв. 85 · 2-кімн. · 1 850 000 грн', $service->buttonLabel($sale));
+        $this->assertSame('Продається', $sale->dealVerb());
+        $this->assertSame('Здається', $listing->dealVerb());
+        $this->assertSame('1 850 000 грн', $sale->priceLabel(), 'a sale price is not per month');
     }
 
     /**
@@ -215,5 +228,55 @@ class RentalListingRulesTest extends KernelTestCase
         $this->assertSame('ціна договірна', $open->priceLabel());
 
         $this->assertNull((new RentalListing())->roomsLabel());
+    }
+
+    /**
+     * The post that goes into the residents' chat.
+     *
+     * Two things it must never lose: the building (five buildings repeat their apartment
+     * numbers, so «кв. 85» names two flats and a reader cannot tell which door to knock
+     * on) and the deal — «Продається» at 20 000 would read as a bargain rent.
+     */
+    public function testTheChatPostNamesTheBuildingAndTheDeal(): void
+    {
+        self::bootKernel();
+        $service = self::getContainer()->get(RentalListingService::class);
+
+        $rent = (new RentalListing())
+            ->setAccount($this->account('1-1-0-085', '85'))
+            ->setRooms(1)
+            ->setPrice(20000);
+
+        $post = $service->chatPost($rent);
+
+        $this->assertStringContainsString('буд.', $post, 'the building is never dropped');
+        $this->assertStringContainsString('кв. 85', $post);
+        $this->assertStringContainsString('Здається', $post);
+        $this->assertStringContainsString('20 000 грн/міс', $post);
+        $this->assertStringContainsString('🔑 Оренда', $post, 'the reader is sent to the bot for the contact');
+
+        $sale = (new RentalListing())
+            ->setAccount($this->account('1-1-0-085', '85'))
+            ->setDeal(RentalListing::DEAL_SALE)
+            ->setPrice(1850000);
+
+        $this->assertStringContainsString('Продається', $service->chatPost($sale));
+        $this->assertStringContainsString('1 850 000 грн', $service->chatPost($sale));
+        $this->assertStringNotContainsString('грн/міс', $service->chatPost($sale));
+    }
+
+    /** A phone is opt-in on the card and must not leak into a post the whole house reads. */
+    public function testTheChatPostNeverPrintsAPhone(): void
+    {
+        self::bootKernel();
+        $service = self::getContainer()->get(RentalListingService::class);
+
+        $listing = (new RentalListing())
+            ->setAccount($this->account('1-1-0-085', '85'))
+            ->setPrice(20000)
+            ->setShowPhone(true)
+            ->setContactPhone('+380 50 111 22 33');
+
+        $this->assertStringNotContainsString('380', $service->chatPost($listing));
     }
 }

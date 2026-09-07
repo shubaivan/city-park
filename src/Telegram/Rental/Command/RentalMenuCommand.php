@@ -141,7 +141,7 @@ class RentalMenuCommand
             $lines[] = $notice;
             $lines[] = '';
         }
-        $lines[] = '🔑 <b>Здаються квартири</b>';
+        $lines[] = '🔑 <b>Оренда та продаж квартир</b>';
         $lines[] = '';
 
         $markup = InlineKeyboardMarkup::make();
@@ -151,7 +151,7 @@ class RentalMenuCommand
 
             if ($account) {
                 $lines[] = '';
-                $lines[] = '<i>Якщо ви здаєте свою квартиру — розкажіть про це сусідам тут, '
+                $lines[] = '<i>Якщо ви здаєте або продаєте свою квартиру — розкажіть про це сусідам тут, '
                     . 'замість того щоб шукати охочих у чаті.</i>';
             }
         } else {
@@ -159,7 +159,7 @@ class RentalMenuCommand
             $page = max(1, min($page, $pages));
             $shown = array_slice($listings, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE);
 
-            $lines[] = 'Оберіть квартиру, щоб побачити деталі та контакт.';
+            $lines[] = 'Оберіть квартиру, щоб побачити деталі та контакт. 🔑 — здається, 🏷 — продається.';
 
             $anyPhotos = false;
 
@@ -212,8 +212,11 @@ class RentalMenuCommand
         }
 
         if (!$mine && $account && $this->rentalService->canPublish($account)) {
+            // Two buttons rather than one that asks: the owner already knows which of the
+            // two they came to do, and the question would be a step to abandon on.
             $markup->addRow(
-                InlineKeyboardButton::make('➕ Здаю квартиру', callback_data: RentalPublish::START_CALLBACK),
+                InlineKeyboardButton::make('🔑 Здаю квартиру', callback_data: RentalPublish::START_CALLBACK),
+                InlineKeyboardButton::make('🏷 Продаю', callback_data: RentalPublish::START_SALE_CALLBACK),
             );
         }
 

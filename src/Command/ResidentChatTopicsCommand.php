@@ -34,11 +34,13 @@ class ResidentChatTopicsCommand extends Command
     private const TOPICS = [
         ResidentChatService::TOPIC_COMPLAINTS => ['🔧 Заявки', 0xFB6F5F],
         ResidentChatService::TOPIC_DEBT => ['💸 Борги', 0xF8AB00],
+        ResidentChatService::TOPIC_RENTALS => ['🔑 Оренда та продаж', 0x6FB9F0],
     ];
 
     private const ENV_KEYS = [
         ResidentChatService::TOPIC_COMPLAINTS => 'RESIDENT_CHAT_TOPIC_COMPLAINTS',
         ResidentChatService::TOPIC_DEBT => 'RESIDENT_CHAT_TOPIC_DEBT',
+        ResidentChatService::TOPIC_RENTALS => 'RESIDENT_CHAT_TOPIC_RENTALS',
     ];
 
     public function __construct(

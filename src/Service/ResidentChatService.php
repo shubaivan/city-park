@@ -39,6 +39,9 @@ class ResidentChatService
     /** The monthly debt statement, which is also the one post that gets pinned. */
     public const TOPIC_DEBT = 'debt';
 
+    /** Flats offered for rent or sale — the classifieds that used to clog the chat. */
+    public const TOPIC_RENTALS = 'rentals';
+
     public function __construct(
         private TelegramUserRepository $telegramUserRepository,
         private TelegramUserService $telegramUserService,
@@ -47,6 +50,7 @@ class ResidentChatService
         private string $residentChatInviteLink = '',
         private string $topicComplaints = '',
         private string $topicDebt = '',
+        private string $topicRentals = '',
     ) {}
 
     /**
@@ -63,6 +67,7 @@ class ResidentChatService
         $value = match ($kind) {
             self::TOPIC_COMPLAINTS => $this->topicComplaints,
             self::TOPIC_DEBT => $this->topicDebt,
+            self::TOPIC_RENTALS => $this->topicRentals,
             default => '',
         };
 

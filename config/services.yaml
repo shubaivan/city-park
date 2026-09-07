@@ -23,6 +23,7 @@ services:
             # the bot did before the group had topics at all.
             $topicComplaints: '%env(string:RESIDENT_CHAT_TOPIC_COMPLAINTS)%'
             $topicDebt: '%env(string:RESIDENT_CHAT_TOPIC_DEBT)%'
+            $topicRentals: '%env(string:RESIDENT_CHAT_TOPIC_RENTALS)%'
             # Telegram ids allowed to move a complaint's status — the head of the ОСББ.
             # One or two people who change about never, so this is config, not a column.
             $managerIds: '%env(string:COMPLAINT_MANAGER_TELEGRAM_IDS)%'
