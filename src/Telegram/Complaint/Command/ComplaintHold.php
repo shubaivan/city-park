@@ -16,25 +16,41 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 /**
- * «⏸ Відкласти» — the one status change that asks a question first.
+ * The two status changes that ask a question before they move anything: «⏸ Відкласти»
+ * and «❌ Відхилити».
  *
  * Most house problems spend their life in a state the register had no word for: known,
  * agreed, and waiting on a part, a contractor or the money. Held under «в роботі» it looks
  * to a resident reading it a second week running exactly like nothing happening — which is
  * the conclusion the whole register exists to prevent. Called «відкладено» with no reason
- * given, it looks like the ОСББ shrugging in public, which is worse.
+ * given, it looks like the ОСББ shrugging in public, which is worse. A rejection is the
+ * same shape and one degree sharper: it is the ОСББ telling somebody no, in a register
+ * their neighbours read, so «дубль заявки №11» is an answer and a bare «Відхилено» is a
+ * dismissal.
  *
- * So the reason is mandatory, and enforced twice: here, where the button leads to a
+ * Both reasons are mandatory, and enforced twice: here, where the button leads to a
  * question instead of a status flip, and in ComplaintService::changeStatus(), which
- * refuses a hold with an empty note no matter who calls it.
+ * refuses either with an empty note no matter who calls it.
+ *
+ * One class rather than two near-identical ones, and it keeps this name rather than a
+ * truer one: live conversations are serialised into var/pools by class, so renaming it
+ * would fatal on the first update of anybody who was mid-hold across the deploy.
  */
 class ComplaintHold extends Conversation
 {
     public const START_PREFIX = 'cmp:hold:';
 
+    public const REJECT_PREFIX = 'cmp:reject:';
+
     protected ?string $step = 'askReason';
 
     public ?int $complaintId = null;
+
+    /**
+     * Which of the two this run is. Null on a conversation restored from before this
+     * shipped, which is exactly a hold — hence the fallback rather than a hard read.
+     */
+    public ?string $target = null;
 
     public function __construct(
         private ComplaintRepository $complaints,
@@ -58,7 +74,7 @@ class ComplaintHold extends Conversation
                     $this->step,
                     '📷 Ви надіслали фото — обробляємо його як фото альтанки, статус заявки не змінено.',
                     keptNotice: '📷 Фото сюди не додається. Напишіть, будь ласка, текстом, '
-                        . 'чого чекає ця заявка.',
+                        . 'причину — одним повідомленням.',
                 );
             } catch (\Throwable $e) {
                 $this->photoLogger?->error('photo interception failed outright', [
@@ -76,7 +92,12 @@ class ComplaintHold extends Conversation
     public function askReason(Nutgram $bot): void
     {
         $data = $bot->isCallbackQuery() ? (string)($bot->callbackQuery()->data ?? '') : '';
-        $this->complaintId = (int)substr($data, strlen(self::START_PREFIX));
+        $reject = str_starts_with($data, self::REJECT_PREFIX);
+        $this->target = $reject ? Complaint::STATUS_REJECTED : Complaint::STATUS_ON_HOLD;
+        $this->complaintId = (int)substr(
+            $data,
+            strlen($reject ? self::REJECT_PREFIX : self::START_PREFIX),
+        );
 
         $complaint = $this->allowedComplaint();
         $user = $this->telegramUserService->getCurrentUser();
@@ -87,6 +108,7 @@ class ComplaintHold extends Conversation
         // neither leaves a trace. One line here turns the next report into a fact.
         $this->chatLogger?->info('complaint hold requested', [
             'complaint_id' => $this->complaintId,
+            'target' => $this->target,
             'telegram_id' => $user?->getTelegramId(),
             'is_manager' => $this->service->isManager($user),
             'complaint_found' => $complaint instanceof Complaint,
@@ -100,15 +122,24 @@ class ComplaintHold extends Conversation
             return;
         }
 
+        $prompt = $reject
+            ? "❌ <b>Відхилити заявку №%d</b>\n\n<i>%s</i>\n\n"
+                . "Напишіть одним повідомленням, чому.\n\n"
+                . "Наприклад: «дубль заявки №11», «це всередині квартири — питання до власника», "
+                . "«не стосується ОСББ».\n\n"
+                . '<i>Причину побачать автор заявки і всі мешканці. Без неї «відхилено» '
+                . 'читається як «нам байдуже» — тому вона обов\'язкова.</i>'
+            : "⏸ <b>Відкласти заявку №%d</b>\n\n<i>%s</i>\n\n"
+                . "Напишіть одним повідомленням, чого вона чекає.\n\n"
+                . "Наприклад: «чекаємо насос, буде за два тижні», «підрядник приїде після 15-го», "
+                . "«внесено в кошторис на жовтень».\n\n"
+                . '<i>Причину побачать автор заявки і всі мешканці. Без неї «відкладено» '
+                . 'читається як «нам байдуже» — тому вона обов\'язкова.</i>';
+
         $bot->answerCallbackQuery();
         $bot->sendMessage(
             text: sprintf(
-                "⏸ <b>Відкласти заявку №%d</b>\n\n<i>%s</i>\n\n"
-                    . "Напишіть одним повідомленням, чого вона чекає.\n\n"
-                    . "Наприклад: «чекаємо насос, буде за два тижні», «підрядник приїде після 15-го», "
-                    . "«внесено в кошторис на жовтень».\n\n"
-                    . '<i>Причину побачать автор заявки і всі мешканці. Без неї «відкладено» '
-                    . 'читається як «нам байдуже» — тому вона обов\'язкова.</i>',
+                $prompt,
                 $complaint->getId(),
                 htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
             ),
@@ -132,10 +163,13 @@ class ComplaintHold extends Conversation
             return;
         }
 
+        $reject = $this->target === Complaint::STATUS_REJECTED;
         $reason = $this->service->trimComment((string)$bot->message()?->text);
 
         if ($reason === '') {
-            $bot->sendMessage(text: 'Напишіть, будь ласка, чого чекає заявка — без причини відкласти не можна.');
+            $bot->sendMessage(text: $reject
+                ? 'Напишіть, будь ласка, чому заявку відхилено — без причини відхилити не можна.'
+                : 'Напишіть, будь ласка, чого чекає заявка — без причини відкласти не можна.');
             $this->next('save');
 
             return;
@@ -154,14 +188,14 @@ class ComplaintHold extends Conversation
 
         $this->service->changeStatus(
             $complaint,
-            Complaint::STATUS_ON_HOLD,
+            $reject ? Complaint::STATUS_REJECTED : Complaint::STATUS_ON_HOLD,
             $this->service->authorName($user) ?: 'ОСББ',
             actor: $user,
             note: $reason,
         );
 
         $this->finish($bot, sprintf(
-            "⏸ <b>Заявку №%d відкладено</b>\n\n%s",
+            $reject ? "❌ <b>Заявку №%d відхилено</b>\n\n%s" : "⏸ <b>Заявку №%d відкладено</b>\n\n%s",
             (int)$this->complaintId,
             htmlspecialchars($reason, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
         ));

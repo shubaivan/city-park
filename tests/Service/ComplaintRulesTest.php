@@ -282,6 +282,95 @@ class ComplaintRulesTest extends TestCase
     }
 
     #############
+    # ❌ Відхилено
+    #############
+
+    /**
+     * Rejecting is telling a resident no in a register their neighbours read, so the
+     * reason is enforced in the service — the bot's button and /admin/complaints both
+     * reach this method by different roads.
+     */
+    public function testARejectionWithoutAReasonIsRefused(): void
+    {
+        $complaint = (new Complaint())->setText('ліфт ліфт ліфт');
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->service()->changeStatus($complaint, Complaint::STATUS_REJECTED, 'serhii');
+    }
+
+    /**
+     * A rejected duplicate is off the list of live problems: it must not keep the menu
+     * badge saying «🔧 Заявки (3)» over two real ones.
+     */
+    public function testARejectedComplaintIsClosedButNotDone(): void
+    {
+        $complaint = (new Complaint())->setText('Не працює ліфт');
+
+        $this->service()->changeStatus(
+            $complaint,
+            Complaint::STATUS_REJECTED,
+            'serhii',
+            note: 'дубль заявки №11',
+        );
+
+        $this->assertTrue($complaint->isRejected());
+        $this->assertTrue($complaint->isClosed());
+        $this->assertFalse($complaint->isOpen());
+        // «Виконано» is a statement that the ОСББ repaired something. A rejection is not
+        // one, and nothing that reads isDone() may start claiming it is.
+        $this->assertFalse($complaint->isDone());
+        $this->assertSame('дубль заявки №11', $complaint->getResolution());
+    }
+
+    /**
+     * Reopening a rejected entry must not carry «дубль заявки №11» into «🔧 В роботі» —
+     * the note always describes where the complaint stands now, and that one would be
+     * sent to the author and posted in the chat as if it were the work note.
+     */
+    public function testReopeningARejectionClearsItsReason(): void
+    {
+        $service = $this->service();
+        $complaint = (new Complaint())->setText('Не працює ліфт');
+
+        $service->changeStatus($complaint, Complaint::STATUS_REJECTED, 'serhii', note: 'дубль заявки №11');
+        $service->changeStatus($complaint, Complaint::STATUS_IN_PROGRESS, 'serhii');
+
+        $this->assertNull($complaint->getResolution());
+        $this->assertTrue($complaint->isOpen());
+    }
+
+    public function testRejectedIsAKnownStatus(): void
+    {
+        $this->assertContains(Complaint::STATUS_REJECTED, Complaint::STATUSES);
+        $this->assertContains(Complaint::STATUS_REJECTED, Complaint::CLOSED_STATUSES);
+        $this->assertSame('❌ Відхилено', $this->service()->statusLabel(Complaint::STATUS_REJECTED));
+        $this->assertSame('❌', $this->service()->statusIcon(Complaint::STATUS_REJECTED));
+    }
+
+    /**
+     * Every status the register can be in has a label and a glyph of its own. A status
+     * that falls through to the default renders as its raw English name on the card, in
+     * the chat post and in the author's DM.
+     */
+    public function testEveryStatusHasItsOwnLabelAndIcon(): void
+    {
+        $service = $this->service();
+        $labels = [];
+        $icons = [];
+
+        foreach (Complaint::STATUSES as $status) {
+            $label = $service->statusLabel($status);
+            $this->assertNotSame($status, $label, 'Status without a label: ' . $status);
+            $labels[] = $label;
+            $icons[] = $service->statusIcon($status);
+        }
+
+        $this->assertSame($labels, array_unique($labels));
+        $this->assertSame($icons, array_unique($icons));
+    }
+
+    #############
     # 💬 The official discussion
     #############
 

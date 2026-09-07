@@ -34,6 +34,10 @@ security:
         # full administrator's.
         - { path: ^/admin/complaints, roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
         - { path: ^/admin$, roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        # The sign-in log is read by everyone who can sign in, deliberately: four
+        # colleagues seeing each other's visits is what makes an entry nobody recognises
+        # get mentioned the same day. Nothing here is anybody's to change, so GET only.
+        - { path: ^/admin/logins$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
         # Looking is allowed, acting is not: he answers for repairs and needs to know which
         # flat reported what, but linking a resident, moving them or editing an object is
         # the accountant's work. GET only — plus the table's own POST, or the list he opens

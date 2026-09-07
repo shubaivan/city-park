@@ -27,8 +27,8 @@ class ComplaintRepository extends ServiceEntityRepository
     public function findForList(int $limit, int $offset = 0, ?Account $only = null): array
     {
         $qb = $this->createQueryBuilder('c')
-            ->addSelect("CASE WHEN c.status = :done THEN 1 ELSE 0 END AS HIDDEN done_sort")
-            ->setParameter('done', Complaint::STATUS_DONE)
+            ->addSelect("CASE WHEN c.status IN (:closed) THEN 1 ELSE 0 END AS HIDDEN done_sort")
+            ->setParameter('closed', Complaint::CLOSED_STATUSES)
             ->orderBy('done_sort', 'ASC')
             ->addOrderBy('c.created_at', 'DESC')
             ->setMaxResults($limit)
@@ -56,8 +56,8 @@ class ComplaintRepository extends ServiceEntityRepository
     {
         $qb = $this->createQueryBuilder('c')
             ->select('COUNT(c.id)')
-            ->andWhere('c.status <> :done')
-            ->setParameter('done', Complaint::STATUS_DONE);
+            ->andWhere('c.status NOT IN (:closed)')
+            ->setParameter('closed', Complaint::CLOSED_STATUSES);
 
         if ($only instanceof Account) {
             $qb->andWhere('c.account = :only')->setParameter('only', $only);
@@ -91,19 +91,21 @@ class ComplaintRepository extends ServiceEntityRepository
     }
 
     /**
-     * Finished complaints whose retention month is up.
+     * Settled complaints — done or rejected — whose retention month is up.
      *
      * Measured from status_changed_at — the day it was closed — not from when it was
      * filed: a problem reported in January and fixed in June is worth keeping until July.
+     * A rejected duplicate is on the same clock: long enough to answer «а чому мою
+     * заявку прибрали», short enough that it is not a permanent exhibit.
      *
      * @return Complaint[]
      */
-    public function findExpiredDone(\DateTimeImmutable $before): array
+    public function findExpiredClosed(\DateTimeImmutable $before): array
     {
         return $this->createQueryBuilder('c')
-            ->andWhere('c.status = :done')
+            ->andWhere('c.status IN (:closed)')
             ->andWhere('c.status_changed_at < :before')
-            ->setParameter('done', Complaint::STATUS_DONE)
+            ->setParameter('closed', Complaint::CLOSED_STATUSES)
             ->setParameter('before', $before)
             ->getQuery()
             ->getResult();
@@ -117,9 +119,9 @@ class ComplaintRepository extends ServiceEntityRepository
     public function findStaleOpen(\DateTimeImmutable $before): array
     {
         return $this->createQueryBuilder('c')
-            ->andWhere('c.status <> :done')
+            ->andWhere('c.status NOT IN (:closed)')
             ->andWhere('c.status_changed_at < :before')
-            ->setParameter('done', Complaint::STATUS_DONE)
+            ->setParameter('closed', Complaint::CLOSED_STATUSES)
             ->setParameter('before', $before)
             ->getQuery()
             ->getResult();

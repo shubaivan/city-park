@@ -121,20 +121,26 @@ class ComplaintService
         $from = $complaint->getStatus();
         $note = $note === null ? null : trim($note);
 
-        if ($status === Complaint::STATUS_ON_HOLD) {
-            $reason = $note ?? '';
-
-            // «Відкладено» with nothing after it reads, from a resident's side of the
-            // screen, as the ОСББ giving up in public. The reason is the whole difference
-            // between a hold and a shrug, so it is a hard requirement, not a nudge.
-            if ($reason === '') {
-                throw new \InvalidArgumentException('A hold must say why: complaint ' . $complaint->getId());
+        // The two statuses that must say why, for the same reason and with different
+        // sharpness. «Відкладено» with nothing after it reads, from a resident's side of
+        // the screen, as the ОСББ giving up in public; «Відхилено» with nothing after it
+        // is the ОСББ telling somebody no in front of their neighbours. The reason is the
+        // whole difference between an answer and a shrug, so it is a hard requirement.
+        if (in_array($status, [Complaint::STATUS_ON_HOLD, Complaint::STATUS_REJECTED], true)) {
+            if (($note ?? '') === '') {
+                throw new \InvalidArgumentException(sprintf(
+                    '%s must say why: complaint %d',
+                    $status === Complaint::STATUS_ON_HOLD ? 'A hold' : 'A rejection',
+                    (int)$complaint->getId(),
+                ));
             }
         }
 
         if ($note !== null) {
             $complaint->setResolution($note !== '' ? $note : null);
-        } elseif ($from === Complaint::STATUS_ON_HOLD && $from !== $status) {
+        } elseif (in_array($from, [Complaint::STATUS_ON_HOLD, Complaint::STATUS_REJECTED], true)
+            && $from !== $status
+        ) {
             // Leaving a hold with nothing new to say: the old reason must go with it.
             // «✅ Виконано» carrying «чекаємо насос із Польщі» as its "що зробили" note is
             // read by the author and posted in the chat, and it says the opposite of what
@@ -363,7 +369,7 @@ class ComplaintService
 
         $text = sprintf(
             "%s <b>Заявка №%d</b> · %s\n\n%s\n\n%s → <b>%s</b>",
-            $complaint->isDone() ? '✅' : '🔧',
+            $this->statusIcon($complaint->getStatus()),
             $complaint->getId(),
             $this->where($complaint),
             htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
@@ -1070,7 +1076,26 @@ class ComplaintService
             Complaint::STATUS_IN_PROGRESS => '🔧 В роботі',
             Complaint::STATUS_ON_HOLD => '⏸ Відкладено',
             Complaint::STATUS_DONE => '✅ Виконано',
+            Complaint::STATUS_REJECTED => '❌ Відхилено',
             default => $status,
+        };
+    }
+
+    /**
+     * The glyph that goes in front of a complaint wherever it is named — the list button,
+     * the chat post, the author's DM.
+     *
+     * One definition, because the chat post used to carry its own two-way «done or not»
+     * check and would have announced a rejection under the 🔧 of a live repair.
+     */
+    public function statusIcon(string $status): string
+    {
+        return match ($status) {
+            Complaint::STATUS_DONE => '✅',
+            Complaint::STATUS_REJECTED => '❌',
+            Complaint::STATUS_ON_HOLD => '⏸',
+            Complaint::STATUS_NEW => '🆕',
+            default => '🔧',
         };
     }
 }

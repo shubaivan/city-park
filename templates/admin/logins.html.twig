@@ -1,0 +1,94 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Входи в панель · ОСББ City Park{% endblock %}
+
+{#
+    Who signed in, and who tried to.
+
+    Read on a phone as often as on a desktop, so the rows are cards on a narrow screen
+    and a table on a wide one — same call as /admin/complaints, and for the same reason:
+    a six-column table on a phone keeps the column that matters off the right edge.
+#}
+{% block body %}
+    {{ parent() }}
+
+    <div class="container-fluid py-3" style="max-width: 900px;">
+        <p class="mb-2"><a href="{{ path('app_admin') }}">← На головну адмінки</a></p>
+
+        <h4 class="mb-1">🔐 Входи в панель</h4>
+        <p class="text-muted small mb-3">
+            Хто і коли заходив. Видно всім, хто має доступ до панелі — щоб запис, якого ніхто
+            не впізнає, помітили того ж дня.
+        </p>
+
+        {% if last_seen is not empty %}
+            <div class="card mb-3">
+                <div class="card-body py-2 px-3">
+                    <div class="small text-muted mb-1">Останній вхід</div>
+                    {% for login, seen in last_seen %}
+                        <div class="d-flex justify-content-between small py-1"
+                             style="border-bottom:1px solid rgba(0,0,0,.05)">
+                            <span><b>{{ login }}</b>{% if app.user and login == app.user.userIdentifier %}
+                                <span class="text-muted">· це ви</span>{% endif %}</span>
+                            <span class="text-muted">{{ seen|date('d.m.Y H:i', 'Europe/Kyiv') }}</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        {% if failed_week > 0 %}
+            {#
+                Not an alarm — a wrong password is usually somebody's own typo, and saying
+                «зламують!» over four of them would train everybody to ignore the line.
+                It is here so that thirty of them are not invisible.
+            #}
+            <div class="alert alert-warning py-2 px-3 small">
+                ❗ Невдалих спроб за тиждень: <b>{{ failed_week }}</b>.
+                Якщо це не ви помилялись паролем — скажіть Івану.
+            </div>
+        {% endif %}
+
+        {% if entries is empty %}
+            <div class="alert alert-light py-2 px-3 small mb-0">
+                Поки що порожньо. Записи зʼявляться з наступного входу в панель.
+            </div>
+        {% else %}
+            <div class="card">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 small">
+                        <thead>
+                            <tr>
+                                <th>Коли</th>
+                                <th>Логін</th>
+                                <th class="d-none d-sm-table-cell">Звідки</th>
+                                <th class="d-none d-md-table-cell">Пристрій</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in entries %}
+                                <tr class="{{ entry.success ? '' : 'table-warning' }}">
+                                    <td class="text-nowrap">{{ entry.at|date('d.m.Y H:i', 'Europe/Kyiv') }}</td>
+                                    <td>
+                                        {{ entry.success ? '✅' : '⛔' }} <b>{{ entry.login }}</b>
+                                        {% if not entry.success %}
+                                            <span class="text-muted">· невдало</span>
+                                        {% endif %}
+                                        <div class="d-sm-none text-muted">{{ entry.ip ?? '—' }} · {{ entry.device }}</div>
+                                    </td>
+                                    <td class="d-none d-sm-table-cell text-muted">{{ entry.ip ?? '—' }}</td>
+                                    <td class="d-none d-md-table-cell text-muted">{{ entry.device }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <p class="small text-muted mt-2 mb-0">
+                Показано останні {{ entries|length }} записів{% if entries|length == shown %} (більше не вміщається на сторінку){% endif %}.
+                Час київський.
+            </p>
+        {% endif %}
+    </div>
+{% endblock %}
