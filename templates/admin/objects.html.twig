@@ -97,6 +97,7 @@
             кладова, which would take its owner off their flat. Objects that exist on paper
             and have nobody in the bot had no way in at all.
         #}
+        {% if is_granted('ROLE_ADMIN') %}
         <details class="mb-3">
             <summary class="btn btn-sm btn-outline-success">➕ Додати обʼєкт</summary>
             <form method="post" action="{{ path('app_admin_objects_create') }}" class="mt-2" style="max-width:46rem">
@@ -136,6 +137,7 @@
                 </div>
             </form>
         </details>
+        {% endif %}
 
         {% set base = {'q': q, 'chip': chip, 'house': house} %}
         <div class="obj-filters">

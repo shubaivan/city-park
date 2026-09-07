@@ -201,6 +201,20 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
 
 Admin: `/admin/rentals` lists everything with a take-down button (status `blocked`, stamped with the admin login). Debt is shown for context only.
 
+**The panel has two roles, not one.** `ROLE_ADMIN` (main_admin, alina, luda_boss) is
+everything. `ROLE_COMPLAINTS` (serhii, added 07.09.2026 — he answers for repairs) gets the
+complaints register in full, plus **read-only** people and objects: he needs to see which
+flat reported what, and nothing else. Everything that changes a resident — linking them to
+a flat, moving them, the role, the conditional phones, blocking, chat moderation, the owner
+group, the debt upload, the tariff, the area registry — stays with the accountant, because
+those are the actions that decide who gets into the house chat and whose booking is
+blocked. The boundary is enforced twice: in `access_control` (GET-only on
+`^/admin/(users|objects)`, plus the DataTables POST or his list comes up empty and looks
+broken rather than restricted) and in the templates, which hide every control he cannot
+submit — a form that renders and then 403s is reported as «панель не працює».
+`ComplaintsRoleTest` pins the routes; `AdminResidentPageTest` pins that the card renders
+without a single one of its forms.
+
 ## Two registers: people and objects
 
 `/admin/users` is the register of **people**, `/admin/objects` the register of **objects**,

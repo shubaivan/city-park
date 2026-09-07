@@ -20,12 +20,12 @@ use Twig\Environment;
  */
 class AdminResidentPageTest extends KernelTestCase
 {
-    private function render(TelegramUser $user, ?Account $account, array $extra = []): string
+    private function render(TelegramUser $user, ?Account $account, array $extra = [], string $role = 'ROLE_ADMIN'): string
     {
         self::bootKernel();
 
         self::getContainer()->get('security.token_storage')->setToken(
-            new UsernamePasswordToken(new InMemoryUser('alina', null, ['ROLE_ADMIN']), 'main', ['ROLE_ADMIN']),
+            new UsernamePasswordToken(new InMemoryUser('alina', null, [$role]), 'main', [$role]),
         );
 
         return self::getContainer()->get(Environment::class)->render('admin/resident.html.twig', array_merge([
@@ -123,5 +123,35 @@ class AdminResidentPageTest extends KernelTestCase
         $this->assertStringContainsString('💰 Борг понад поріг', $html);
         $this->assertStringContainsString('Розблокувати', $html);
         $this->assertStringNotContainsString('⛔ Заблокувати', $html);
+    }
+
+    /**
+     * The complaints role reads this card; it does not act on it.
+     *
+     * A form that renders and then answers 403 is worse than no form: the person presses
+     * it, nothing happens, and they report the panel as broken. Every control that changes
+     * a resident — the ПІБ, the role, the link to a flat, the conditional phones, the
+     * booking block, the chat moderation, the owner group, the move — is hidden, and the
+     * card keeps everything that is worth reading.
+     */
+    public function testTheComplaintsRoleSeesTheCardWithoutASingleControl(): void
+    {
+        $account = $this->account();
+        $html = $this->render($this->user(1, account: $account), $account, [], 'ROLE_COMPLAINTS');
+
+        foreach ([
+            'app_admin_resident_name', 'app_admin_resident_role', 'app_admin_resident_move',
+            'app_admin_resident_phones', 'app_admin_resident_status', 'app_admin_resident_chat',
+            'app_admin_resident_group_link', 'app_admin_resident_group_unlink',
+        ] as $route) {
+            $this->assertStringNotContainsString(
+                $route,
+                $html,
+                $route . ' must not render for a role that cannot submit it',
+            );
+        }
+
+        $this->assertStringContainsString('буд. 19, кв. 85', $html, 'the address still has to be readable');
+        $this->assertStringContainsString('Контакти', $html, 'and so does the contact block');
     }
 }
