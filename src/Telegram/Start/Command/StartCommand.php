@@ -378,6 +378,18 @@ class StartCommand extends Command
             );
         }
 
+        // The same board the guard reads, without the flat numbers: a resident opens it
+        // asking «вільно чи ні», which the hours answer on their own. It sits directly
+        // above «Бронювання» because that is the sequence — look, then book — and it is
+        // hidden from a guard, who already has his own copy of it at the top of the menu
+        // under a name that says what his version is for.
+        if ($account instanceof Account && !self::isGuard($bot)) {
+            $markup->addRow(InlineKeyboardButton::make(
+                '🏛 Альтанки зараз',
+                callback_data: GuardCommand::MENU_CALLBACK,
+            ));
+        }
+
         $markup
             ->addRow(
                 InlineKeyboardButton::make('Бронювання', callback_data: 'schedule-pavilion'),

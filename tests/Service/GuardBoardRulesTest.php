@@ -9,7 +9,8 @@ use App\Service\GuardService;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The gate's board: who it admits, what it groups, and what it must never leave out.
+ * The pavilion board: who it admits, what it groups, what it must never leave out — and,
+ * since 08.09.2026, what it must never show the wrong reader.
  */
 class GuardBoardRulesTest extends TestCase
 {
@@ -193,7 +194,7 @@ class GuardBoardRulesTest extends TestCase
             $this->set($this->user(2), 2, 22),
         ]);
 
-        $board = $this->commandWith($sessions)->board($now);
+        $board = $this->commandWith($sessions)->board($now, namesFlats: true);
 
         $this->assertStringContainsString('🔴 <b>Зараз</b>', $board);
         $this->assertStringContainsString('⏭ <b>Далі сьогодні</b>', $board);
@@ -213,7 +214,7 @@ class GuardBoardRulesTest extends TestCase
     public function testAnEmptyEveningSaysTheePavilionsAreFree(): void
     {
         $now = new \DateTimeImmutable('2026-09-07 20:30', new \DateTimeZone('Europe/Kyiv'));
-        $board = $this->commandWith([])->board($now);
+        $board = $this->commandWith([])->board($now, namesFlats: true);
 
         $this->assertStringContainsString('вільні', $board);
         $this->assertStringNotContainsString('🔴', $board);
@@ -225,10 +226,125 @@ class GuardBoardRulesTest extends TestCase
         $now = new \DateTimeImmutable('2026-09-07 22:30', new \DateTimeZone('Europe/Kyiv'));
         $sessions = GuardService::group([$this->set($this->user(1), 1, 20)]);
 
-        $board = $this->commandWith($sessions)->board($now);
+        $board = $this->commandWith($sessions)->board($now, namesFlats: true);
 
         $this->assertStringNotContainsString('20:00–21:00', $board);
         $this->assertStringContainsString('вільні', $board);
+    }
+
+    #############
+    # 🏛 The resident's view of the same board
+    #############
+
+    /**
+     * The board is open to every confirmed resident, and it does not name their
+     * neighbours.
+     *
+     * A resident opens it asking «вільно чи ні» — a question the hours answer on their
+     * own. Printing the flat would publish to 457 people that a named household is out of
+     * its flat between 18:00 and 21:00, on a screen with a refresh button. That is a
+     * different feature from the one that was asked for, and `board()` takes the switch as
+     * a **required** argument so no call site can arrive at it by forgetting.
+     */
+    public function testAResidentSeesTheHoursButNotTheFlats(): void
+    {
+        $now = new \DateTimeImmutable('2026-09-07 20:30', new \DateTimeZone('Europe/Kyiv'));
+
+        $sessions = GuardService::group([
+            $this->set($this->user(1), 1, 20),
+            $this->set($this->user(2), 2, 22),
+        ]);
+
+        $board = $this->commandWith($sessions)->board($now, namesFlats: false);
+
+        $this->assertStringContainsString('20:00–21:00', $board);
+        $this->assertStringContainsString('Перша альтанка', $board);
+        $this->assertStringContainsString('зайнято', $board);
+
+        $this->assertStringNotContainsString('кв. 41', $board, 'a neighbour\'s flat is not the resident\'s business');
+        $this->assertStringNotContainsString('кв. 42', $board);
+        $this->assertStringNotContainsString('буд. 19', $board);
+    }
+
+    /**
+     * Their own booking is theirs to see: five near-identical «зайнято» lines and no way
+     * to tell which one you booked is the same complaint the debtors' podium answered
+     * with «📌 (це ви)».
+     */
+    public function testAResidentSeesTheirOwnBookingMarked(): void
+    {
+        $now = new \DateTimeImmutable('2026-09-07 20:30', new \DateTimeZone('Europe/Kyiv'));
+
+        $mine = $this->user(1);
+        $sessions = GuardService::group([
+            $this->set($mine, 1, 20),
+            $this->set($this->user(2), 2, 20),
+        ]);
+
+        $board = $this->commandWith($sessions)->board($now, namesFlats: false, viewer: $mine->getAccount());
+
+        $this->assertStringContainsString('📌 це ви', $board);
+        $this->assertStringContainsString('зайнято', $board, 'the other flat stays anonymous');
+        $this->assertStringNotContainsString('кв. 4', $board, 'not even their own flat needs printing');
+    }
+
+    /**
+     * A flat and a parking space are two Accounts tied by owner_group_id, and booking
+     * limits already count across the group — so a booking made from the flat has to read
+     * as yours when you open the board from the parking space.
+     */
+    public function testTheOwnMarkFollowsTheWholeHousehold(): void
+    {
+        $now = new \DateTimeImmutable('2026-09-07 20:30', new \DateTimeZone('Europe/Kyiv'));
+
+        $booker = $this->user(1);
+        $booker->getAccount()->setOwnerGroupId(1);
+
+        $sibling = new Account();
+        $sibling->setAccountNumber('317144');
+        $sibling->setHouseNumber('19');
+        $sibling->setApartmentNumber('144');
+        $sibling->setOwnerGroupId(1);
+
+        $board = $this->commandWith(GuardService::group([$this->set($booker, 1, 20)]))
+            ->board($now, namesFlats: false, viewer: $sibling);
+
+        $this->assertStringContainsString('📌 це ви', $board);
+    }
+
+    /**
+     * A household is an explicit `owner_group_id` on both sides, never a bare id.
+     *
+     * The naive form — `owner_group_id ?? id` on each side, the shape the booking queries
+     * use through COALESCE — reads a group number and an account id as the same kind of
+     * number, and then an ungrouped account marks somebody else's evening as its own.
+     * DebtBoardService::isViewer() is written around exactly this.
+     */
+    public function testAnUnrelatedFlatIsNotMarkedAsYours(): void
+    {
+        $now = new \DateTimeImmutable('2026-09-07 20:30', new \DateTimeZone('Europe/Kyiv'));
+
+        $booker = $this->user(1);
+        $booker->getAccount()->setOwnerGroupId(1);
+
+        $stranger = $this->user(9)->getAccount();
+
+        $board = $this->commandWith(GuardService::group([$this->set($booker, 1, 20)]))
+            ->board($now, namesFlats: false, viewer: $stranger);
+
+        $this->assertStringNotContainsString('📌', $board);
+        $this->assertStringContainsString('зайнято', $board);
+    }
+
+    /** The guard's closing instruction is for the guard; a resident gets a next action. */
+    public function testEachReaderGetsTheirOwnClosingLine(): void
+    {
+        $now = new \DateTimeImmutable('2026-09-07 20:30', new \DateTimeZone('Europe/Kyiv'));
+        $command = $this->commandWith([]);
+
+        $this->assertStringContainsString('передайте в ОСББ', $command->board($now, namesFlats: true));
+        $this->assertStringNotContainsString('передайте в ОСББ', $command->board($now, namesFlats: false));
+        $this->assertStringContainsString('Бронювання', $command->board($now, namesFlats: false));
     }
 
     #############

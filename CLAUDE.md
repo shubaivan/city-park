@@ -421,11 +421,27 @@ the person who booked, so the check was «зателефонуйте Аліні�
 `GuardCommand` renders what is running **now** and then the rest of today, with a 🔄 that
 edits the message in place.
 
+- **The board has two readers and two versions** (since 08.09.2026). The guard's, «🛡 Хто
+  зараз в альтанці», names the flat — that *is* his check. Every confirmed resident gets
+  «🏛 Альтанки зараз», the same board with «зайнято» where the flat would be, because the
+  question they open it with is «вільно чи ні, і коли звільниться» and the hours answer it
+  on their own. Printing the flat there would publish to 457 people that a named household
+  is out of its flat between 18:00 and 21:00, on a screen with a refresh button — a
+  different feature from the one that was asked for. Their **own** booking is marked
+  «📌 це ви», matched across the whole `owner_group_id` household and on an explicit group
+  id on both sides, never a bare one (the trap `DebtBoardService::isViewer()` is written
+  around). `board()` takes `namesFlats` as a **required** argument, not a defaulted one:
+  this is precisely the switch whose permissive default would leak while looking like the
+  feature working.
 - **Guards are Telegram ids in `.env.local`** (`GUARD_TELEGRAM_IDS`), same shape as
   `COMPLAINT_MANAGER_TELEGRAM_IDS`, and **an empty list means nobody, never everybody** —
-  this board says which flat is sitting in which pavilion at what time, so the permissive
-  default would be a leak that looks exactly like the feature working.
-  `GuardBoardRulesTest` pins it.
+  that list is what decides who sees flat numbers, so the permissive default would be a
+  leak that looks exactly like the feature working. `GuardBoardRulesTest` pins it, and
+  pins the resident's view alongside.
+- **An unlinked visitor gets neither version.** Like the debtors' board and the complaints
+  register, this says what is happening in the ЖК's own yard; somebody who opened the bot
+  through 🔑 Оренда to browse flats is not part of the house. A guard is admitted whether
+  or not he has an особовий рахунок — he is staff.
 - **The flat, never a name or a phone.** «буд. 19, кв. 85» is the whole check: the person
   says which flat they are from and it matches or it does not. Same call the complaints
   register makes about the author's contact, and the registry holds no owner names anyway.
@@ -452,7 +468,10 @@ edits the message in place.
   button on top — collapsing it would take his own flat, bookings and debts away the
   moment his id joined the list.
 - `/guard` is registered as a handler but deliberately **left out of
-  `BotMenuUpdateCommand::MENU`**, which is pushed to all private chats.
+  `BotMenuUpdateCommand::MENU`**, which is pushed to all private chats. The resident's
+  «🏛 Альтанки зараз» sits directly above «Бронювання» — look, then book — and is hidden
+  from a guard, who already has his own copy at the top of the menu under a name that says
+  what his version is for.
 
 **The QR half** (Иван's idea, same day): «🔒 QR для охорони» appears on the resident's own
 menu **only while their booking is running**, which is why it needs no explaining — it is
