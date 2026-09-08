@@ -107,6 +107,32 @@ class BlockVoteCampaign
     #[ORM\Column(type: Types::INTEGER, nullable: true)]
     private ?int $chat_message_id = null;
 
+    /**
+     * The resident who proposed this question. NULL when an admin opened it from the panel.
+     *
+     * Kept separate from `created_by` (an admin login) because they answer different
+     * questions: who may withdraw it, and who is accountable for it having been sent.
+     */
+    #[ORM\ManyToOne(targetEntity: TelegramUser::class)]
+    #[ORM\JoinColumn(name: 'author_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?TelegramUser $author = null;
+
+    /**
+     * When this vote was pushed to everybody — a DM to each voter and a post in the chat.
+     * NULL means it is live but quiet: it sits in «🗳 Голосування» for anybody who opens
+     * the section, and no phone has rung.
+     *
+     * **Creating a vote and broadcasting it are different acts, and separating them is the
+     * whole design.** Any resident may ask the house something — their wording, no
+     * permission needed, visible immediately. Ringing 171 phones is the part that needs
+     * somebody accountable, so an admin approves it — or the vote earns the broadcast
+     * itself by collecting {@see BlockVoteService::AUTO_BROADCAST_VOTES} ballots without
+     * one, which is the half that matters: a question people actually care about cannot be
+     * buried by nobody approving it.
+     */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTime $broadcast_at = null;
+
     /** Admin login that opened the campaign. */
     #[ORM\Column(type: 'string', length: 64, nullable: true)]
     private ?string $created_by = null;
@@ -190,6 +216,34 @@ class BlockVoteCampaign
         return $this->isQuestion()
             ? (string)$this->question
             : ($this->candidate?->getPlaceLabel() ?? 'невідомий об’єкт');
+    }
+
+    public function getAuthor(): ?TelegramUser
+    {
+        return $this->author;
+    }
+
+    public function setAuthor(?TelegramUser $author): self
+    {
+        $this->author = $author;
+        return $this;
+    }
+
+    public function getBroadcastAt(): ?\DateTime
+    {
+        return $this->broadcast_at;
+    }
+
+    public function setBroadcastAt(?\DateTime $at): self
+    {
+        $this->broadcast_at = $at;
+        return $this;
+    }
+
+    /** Has the house been told about this, or is it still only in the list? */
+    public function isBroadcast(): bool
+    {
+        return $this->broadcast_at !== null;
     }
 
     public function getChatMessageId(): ?int

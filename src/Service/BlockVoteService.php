@@ -34,6 +34,22 @@ class BlockVoteService
     /** Duration of the block a passed campaign applies. */
     public const BLOCK_DAYS = 30;
 
+    /**
+     * Ballots a quiet question needs before it broadcasts itself.
+     *
+     * This is the half of the design that matters. Anybody may ask the house something and
+     * it is visible at once; ringing 171 phones waits for an admin. Without this number
+     * that would make the admins a gate, and an awkward question could be buried simply by
+     * nobody ever approving it. With it, the house decides: a question fifteen neighbours
+     * have already answered has proved it matters better than any approval could, and it
+     * goes out on its own.
+     *
+     * Fifteen because it is roughly a tenth of who can vote — enough that one annoyed
+     * person and two friends cannot trigger a broadcast, few enough to be reachable by a
+     * question that genuinely interests people.
+     */
+    public const AUTO_BROADCAST_VOTES = 15;
+
     /** How long before the deadline the one-shot last-day reminder fires (to non-voters). */
     public const FINAL_REMINDER_BEFORE_HOURS = 24;
 
@@ -135,17 +151,77 @@ class BlockVoteService
      * and the ОСББ acts on them. Deliberately advisory. A bot that could enact a house
      * decision off a yes/no with no quorum would be a worse thing than no bot.
      */
-    public function openQuestion(string $question, ?string $details, ?string $createdBy): BlockVoteCampaign
-    {
-        $campaign = $this->openCampaign(null, $createdBy, BlockVoteCampaign::KIND_QUESTION);
+    public function openQuestion(
+        string $question,
+        ?string $details,
+        ?string $createdBy,
+        ?TelegramUser $author = null,
+        bool $broadcast = true,
+    ): BlockVoteCampaign {
+        $campaign = $this->openCampaign(null, $createdBy, BlockVoteCampaign::KIND_QUESTION, $broadcast);
         $campaign->setQuestion($question);
         $campaign->setDetails($details);
+        $campaign->setAuthor($author);
         $this->em->flush();
+
+        if ($broadcast) {
+            $this->broadcast($campaign);
+        }
 
         return $campaign;
     }
 
-    public function openCampaign(?Account $candidate, ?string $createdBy, string $kind = BlockVoteCampaign::KIND_BLOCK): BlockVoteCampaign
+    /**
+     * Tell the house about a vote that has been sitting quietly: a DM to every voter and a
+     * post in the chat.
+     *
+     * Idempotent — a second approval, or an approval racing the auto-promotion, must not
+     * ring the same phones twice.
+     */
+    public function broadcast(BlockVoteCampaign $campaign): void
+    {
+        if ($campaign->isBroadcast() || !$campaign->isOpen()) {
+            return;
+        }
+
+        $campaign->setBroadcastAt($this->now());
+        $this->em->flush();
+
+        $this->announce($campaign);
+
+        foreach ($this->eligibleVoters($campaign->getCandidate()) as $voter) {
+            /** @var Account $voter */
+            $this->bus->dispatch(new VoteBroadcastMessage($campaign->getId(), (int)$voter->getId()));
+        }
+
+        $this->logger->info('block-vote: broadcast', [
+            'campaign_id' => $campaign->getId(),
+            'author_id' => $campaign->getAuthor()?->getId(),
+        ]);
+    }
+
+    /** A resident's live question, if they have one — one open per account. */
+    public function openQuestionOf(?Account $account): ?BlockVoteCampaign
+    {
+        if (!$account instanceof Account) {
+            return null;
+        }
+
+        foreach ($this->campaignRepository->findOpen() as $campaign) {
+            if ($campaign->getAuthor()?->getAccount()?->getId() === $account->getId()) {
+                return $campaign;
+            }
+        }
+
+        return null;
+    }
+
+    public function openCampaign(
+        ?Account $candidate,
+        ?string $createdBy,
+        string $kind = BlockVoteCampaign::KIND_BLOCK,
+        bool $broadcast = true,
+    ): BlockVoteCampaign
     {
         // Only a block campaign is one-per-candidate; two questions can sensibly run at
         // once, and there is no candidate to collide on anyway.
@@ -161,21 +237,26 @@ class BlockVoteService
             ->setStatus(BlockVoteCampaign::STATUS_OPEN)
             ->setEligibleCount(count($voters))
             ->setDeadlineAt((clone $this->now())->modify('+' . self::VOTE_DAYS . ' days'))
-            ->setCreatedBy($createdBy);
+            ->setCreatedBy($createdBy)
+            // Stamped up front for an admin-opened campaign; a resident's question stays
+            // quiet until somebody approves it or it earns the push itself.
+            ->setBroadcastAt($broadcast ? $this->now() : null);
 
         $this->em->persist($campaign);
         $this->em->flush();
 
-        // Hand the broadcast off to the async (Doctrine) transport — one message per voter,
-        // each independently retryable — so the admin's "open vote" request returns instantly
-        // instead of blocking on ~hundreds of sequential Telegram sends. The city-park-messenger
-        // systemd worker delivers them.
-        foreach ($voters as $voter) {
-            /** @var Account $voter */
-            $this->bus->dispatch(new VoteBroadcastMessage($campaign->getId(), (int)$voter->getId()));
-        }
+        if ($broadcast) {
+            // Hand the broadcast off to the async (Doctrine) transport — one message per
+            // voter, each independently retryable — so the request returns instantly
+            // instead of blocking on hundreds of sequential Telegram sends. The
+            // city-park-messenger systemd worker delivers them.
+            foreach ($voters as $voter) {
+                /** @var Account $voter */
+                $this->bus->dispatch(new VoteBroadcastMessage($campaign->getId(), (int)$voter->getId()));
+            }
 
-        $this->announce($campaign);
+            $this->announce($campaign);
+        }
 
         $this->logger->info('block-vote: campaign opened', [
             'campaign_id' => $campaign->getId(),
@@ -228,6 +309,17 @@ class BlockVoteService
         // A question has no threshold to cross: it closes at its deadline and nothing
         // happens to anybody. Only a block campaign can end early, the moment the vote it
         // needs has been cast.
+        // A quiet question that neighbours are answering anyway has proved it matters
+        // better than an approval could. Checked on the total, not on «за»: interest is
+        // interest, and a question fifteen people voted *against* is exactly as worth
+        // putting in front of the house as one they voted for.
+        if ($campaign->isQuestion()
+            && !$campaign->isBroadcast()
+            && ($tally['yes'] + $tally['no']) >= self::AUTO_BROADCAST_VOTES
+        ) {
+            $this->broadcast($campaign);
+        }
+
         if ($campaign->isBlock() && $tally['yes'] >= $campaign->yesNeeded()) {
             $this->closeCampaign($campaign, BlockVoteCampaign::STATUS_PASSED, $tally);
             $this->applyBlock($campaign);

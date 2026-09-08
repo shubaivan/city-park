@@ -44,6 +44,11 @@ class VotingMenuCommand
             return;
         }
 
+        if (str_starts_with($data, 'vote:drop:')) {
+            $this->dropOwn($bot, (int)substr($data, strlen('vote:drop:')));
+            return;
+        }
+
         if (str_starts_with($data, 'bvote:')) {
             $this->castVote($bot, $data);
             return;
@@ -113,7 +118,8 @@ class VotingMenuCommand
                 $edit,
                 ($notice ? $notice . "\n\n" : '')
                 . "🗳️ <b>Голосування</b>\n\nНаразі немає відкритих голосувань.",
-                $this->withArchive(InlineKeyboardMarkup::make())->addRow(StartCommand::homeButton())
+                $this->withArchive($this->withAsk(InlineKeyboardMarkup::make(), $account))
+                    ->addRow(StartCommand::homeButton())
             );
             return;
         }
@@ -202,9 +208,57 @@ class VotingMenuCommand
             );
         }
 
+        $this->withAsk($markup, $account);
         $this->withArchive($markup)->addRow(StartCommand::homeButton());
 
         $this->respond($bot, $edit, implode("\n", $lines), $markup);
+    }
+
+    /**
+     * «➕ Запропонувати питання», or the way to withdraw the one you already asked.
+     *
+     * One open question per **account**: a household asking three things at once is the
+     * failure mode this stops, and a family sharing one рахунок shares one turn. When they
+     * have one, the button becomes the way to take it down — an author must always be able
+     * to withdraw their own question, or the only route out is asking an admin.
+     */
+    private function withAsk(InlineKeyboardMarkup $markup, ?Account $account): InlineKeyboardMarkup
+    {
+        $mine = $this->voteService->openQuestionOf($account);
+
+        if ($mine !== null) {
+            return $markup->addRow(InlineKeyboardButton::make(
+                '🗑 Зняти моє питання',
+                callback_data: 'vote:drop:' . $mine->getId(),
+            ));
+        }
+
+        return $markup->addRow(InlineKeyboardButton::make(
+            '➕ Запропонувати питання',
+            callback_data: VoteAsk::START_CALLBACK,
+        ));
+    }
+
+    /**
+     * The author takes their own question down.
+     *
+     * Only theirs, and only while it is open — checked here rather than trusted from the
+     * callback, because a button id is not an authorisation.
+     */
+    private function dropOwn(Nutgram $bot, int $campaignId): void
+    {
+        $account = $this->currentAccount($bot);
+        $mine = $this->voteService->openQuestionOf($account);
+
+        if ($mine === null || $mine->getId() !== $campaignId) {
+            $this->renderMenu($bot, edit: true, notice: '⚠️ Це питання вже неактуальне.');
+
+            return;
+        }
+
+        $this->voteService->cancelCampaign($mine);
+
+        $this->renderMenu($bot, edit: true, notice: '🗑 Ваше питання знято.');
     }
 
     /**
