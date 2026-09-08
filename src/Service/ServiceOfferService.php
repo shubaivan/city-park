@@ -16,7 +16,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Publishing and lifecycle of "🛠 Послуги мешканців" — the house's own list of who does
+ * Publishing and lifecycle of "🛠 Послуги" — the house's own list of who does
  * what: плиточник з 23-го, електрик, манікюр, репетитор з англійської.
  *
  * It exists for the same reason the complaints register does: the answer already lives in

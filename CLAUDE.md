@@ -209,7 +209,7 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
 
 Admin: `/admin/rentals` lists everything with a take-down button (status `blocked`, stamped with the admin login). Debt is shown for context only.
 
-## Послуги мешканців («🛠 Послуги»)
+## Послуги («🛠 Послуги»)
 
 The house's own list of who does what: плиточник, електрик, манікюр вдома, репетитор.
 `ServiceOffer` is the entity, `ServiceOfferService` the whole of the judgement, and the

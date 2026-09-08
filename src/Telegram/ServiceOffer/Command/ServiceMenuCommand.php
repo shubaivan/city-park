@@ -20,7 +20,7 @@ use SergiX44\Nutgram\Telegram\Types\WebApp\WebAppInfo;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
- * "🛠 Послуги мешканців" — who in the house does what, plus the author's controls for
+ * "🛠 Послуги" — who in the house does what, plus the author's controls for
  * their own advert. Callbacks:
  *   services-menu        — render the list
  *   svc:view:<id>        — one offer's card
@@ -139,7 +139,7 @@ class ServiceMenuCommand
             $this->respond(
                 $bot,
                 $edit,
-                "🛠 <b>Послуги мешканців</b>\n\n"
+                "🛠 <b>Послуги</b>\n\n"
                 . "Це список сусідів, які пропонують свої послуги — ремонт, електрика, "
                 . "манікюр, репетиторство. Він доступний лише підтвердженим мешканцям "
                 . "будинку, бо в кожному оголошенні вказано квартиру автора.\n\n"
@@ -161,7 +161,7 @@ class ServiceMenuCommand
             $lines[] = '';
         }
 
-        $lines[] = '🛠 <b>Послуги мешканців</b>';
+        $lines[] = '🛠 <b>Послуги</b>';
         $lines[] = '';
 
         $markup = InlineKeyboardMarkup::make();
