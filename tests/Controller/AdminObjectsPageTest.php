@@ -149,10 +149,19 @@ class AdminObjectsPageTest extends KernelTestCase
     }
 
     /**
-     * Creating an object was possible only by moving a person onto a new особовий рахунок,
-     * which is the wrong tool for a кладова — it would take its owner off their flat.
+     * Objects are the ОСББ's register, and nothing else creates one.
+     *
+     * The house's 966 objects were imported whole by `objects:import-registry`, площа and
+     * type included, and every object anybody is linked to came from it. A row typed by
+     * hand arrives with no площа — so its blocking threshold silently falls back to the
+     * flat `DEBT_BLOCK_THRESHOLD` instead of `area × tariff × 1.5` — and a mistyped
+     * особовий рахунок is a row the debt import will never match, which reads on every
+     * screen as an object that owes nothing rather than as one whose arrears reach nobody.
+     *
+     * Closed on 08.09.2026 (Иван's call). The five objects on prod with no площа are the
+     * leftovers of that form; not one of them has a resident linked to it.
      */
-    public function testThePageOffersAWayToAddAnObject(): void
+    public function testThePageDoesNotCreateObjectsAndSaysWhereTheyComeFrom(): void
     {
         $html = $this->render([], [
             'objects' => 0, 'apartments' => 0, 'parking' => 0, 'storage' => 0,
@@ -160,9 +169,12 @@ class AdminObjectsPageTest extends KernelTestCase
             'multi_owner' => 0, 'many_owner' => 0,
         ]);
 
-        $this->assertStringContainsString('Додати обʼєкт', $html);
-        $this->assertStringContainsString('name="account_number"', $html);
-        $this->assertStringContainsString('name="unit_type"', $html);
-        $this->assertStringContainsString('name="area"', $html);
+        $this->assertStringNotContainsString('Додати обʼєкт', $html);
+        $this->assertStringNotContainsString('name="unit_type"', $html);
+
+        // Removed, and said out loud: a control that simply disappears is reported as the
+        // panel being broken, and the accountant is left with no idea what to do instead.
+        $this->assertStringContainsString('не створюються вручну', $html);
+        $this->assertStringContainsString('реєстр', $html);
     }
 }

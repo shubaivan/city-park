@@ -992,7 +992,7 @@ class AdminController extends AbstractController
     /** Objects shown per page. The register is read on a phone; 60 cards is about 150 KB. */
     private const OBJECTS_PER_PAGE = 60;
 
-    /** Rows the object picker returns for one search. */
+    /** Rows the object picker returns per page; it pages on scroll, it does not cap. */
     private const OBJECTS_SEARCH_LIMIT = 30;
 
     #[Route('/admin/objects', name: 'app_admin_objects', methods: [Request::METHOD_GET])]
@@ -1056,9 +1056,17 @@ class AdminController extends AbstractController
         $query = trim((string)$request->query->get('q'));
         $found = PropertyRegistry::narrow($registry->overview(), $query, '', '');
 
+        // Paged, not capped. The first shape answered the first thirty and said how many
+        // it had matched, which on an empty search reads as «у нас тільки тридцять
+        // квартир» — the register is 966 and the picker is now the only way an object is
+        // ever chosen, so all of it has to be reachable. Scrolling the dropdown asks for
+        // the next page; nothing is loaded until somebody scrolls that far.
+        $page = max(1, (int)$request->query->get('page', 1));
+        $offset = ($page - 1) * self::OBJECTS_SEARCH_LIMIT;
+
         $results = [];
 
-        foreach (array_slice($found, 0, self::OBJECTS_SEARCH_LIMIT) as $row) {
+        foreach (array_slice($found, $offset, self::OBJECTS_SEARCH_LIMIT) as $row) {
             /** @var Account $account */
             $account = $row['account'];
             $owners = count($row['owners'] ?? []);
@@ -1079,10 +1087,10 @@ class AdminController extends AbstractController
 
         return $this->json([
             'results' => $results,
-            // Said out loud rather than silently truncated: a picker that shows the first
-            // thirty of six hundred and says nothing is how "я не знайшла" happens.
+            'pagination' => ['more' => $offset + count($results) < count($found)],
+            // The count is drawn above the list as «знайдено N» — a picker that shows part
+            // of a set and says nothing about the rest is how "я не знайшла" happens.
             'total' => count($found),
-            'shown' => count($results),
         ]);
     }
 
@@ -1138,80 +1146,21 @@ class AdminController extends AbstractController
      * A plain form post rather than the JSON endpoint the users page uses, because this
      * page has no JavaScript of its own. Both go through OwnerGroupService.
      */
-    /**
-     * Add an object nobody lives in yet.
+    /*
+     * There is no `objectsCreate` here any more (08.09.2026).
      *
-     * Creating an `Account` was possible before only as a side effect of *moving a person*:
-     * typing an unknown особовий рахунок into a resident's card creates the row and drags
-     * that resident onto it. That is right for "цей мешканець насправді у кв. 86" and wrong
-     * for everything else — a кладова entered that way would take its owner off their flat.
+     * The register of objects is the ОСББ's, imported whole by `objects:import-registry`:
+     * 966 rows with their площа and their type, and every object anybody is linked to came
+     * from it. A row created by hand arrives without площа — so its blocking threshold
+     * quietly falls back to the flat `DEBT_BLOCK_THRESHOLD` rather than
+     * `area × tariff × 1.5` — and a mistyped особовий рахунок is a row the debt import will
+     * never match, which reads on every screen as an object that owes nothing rather than
+     * as one whose arrears reach nobody. Иван's call: the file is the source, so the file
+     * is the only way in.
      *
-     * So objects that exist on paper but have no linked resident — a storage room, a parking
-     * space, a flat whose owner has never opened the bot — had no way in at all, and those
-     * are precisely the rows whose debt reaches nobody.
+     * The five objects on prod with no площа are exactly the leftovers of the old form and
+     * of the days before that import; not one of them has a resident linked to it.
      */
-    #[Route('/admin/objects/create', name: 'app_admin_objects_create', methods: [Request::METHOD_POST])]
-    public function objectsCreate(
-        Request $request,
-        AccountRepository $accountRepository,
-        EntityManagerInterface $em,
-    ): Response {
-        $number = trim((string)$request->request->get('account_number'));
-        $house = trim((string)$request->request->get('house_number'));
-        $unit = trim((string)$request->request->get('apartment_number'));
-        $street = trim((string)$request->request->get('street')) ?: 'Козацька';
-        $type = (string)$request->request->get('unit_type');
-        $area = str_replace(',', '.', trim((string)$request->request->get('area')));
-
-        if ($number === '' || $house === '' || $unit === '') {
-            $this->addFlash('error', 'Потрібні особовий рахунок, будинок і номер обʼєкта.');
-
-            return $this->redirectToRoute('app_admin_objects');
-        }
-
-        // The особовий рахунок is what the debt import matches on, so a duplicate silently
-        // sends somebody's arrears to the wrong row. Refuse rather than create a second one.
-        if ($accountRepository->findOneBy(['account_number' => $number]) instanceof Account) {
-            $this->addFlash('error', sprintf('Рахунок %s уже є в базі.', $number));
-
-            return $this->redirectToRoute('app_admin_objects');
-        }
-
-        $account = (new Account())
-            ->setAccountNumber($number)
-            ->setHouseNumber($house)
-            ->setApartmentNumber($unit)
-            ->setStreet($street);
-
-        // Active, because a row created by hand must not arrive already blocked.
-        //
-        // The debt is deliberately NOT set: `setDebt()` stamps `debt_updated_at`, and an
-        // object that has never been in an import would then claim «боргу немає станом на
-        // сьогодні» — a statement about a file nobody ever uploaded. The column defaults to
-        // '0' with no date, which is exactly the "we have not been told" the screens now
-        // render.
-        $account->setIsActive(true);
-
-        if (isset(Account::UNIT_TYPES[$type])) {
-            $account->setUnitType($type);
-        }
-
-        if ($area !== '' && is_numeric($area) && (float)$area > 0) {
-            $account->setArea($area);
-        }
-
-        $em->persist($account);
-        $em->flush();
-
-        $this->addFlash('notice', sprintf(
-            'Додано: %s — %s. Прив’язати мешканця можна в розділі «Люди».',
-            $number,
-            Account::UNIT_TYPES[$account->getUnitType()],
-        ));
-
-        return $this->redirectToRoute('app_admin_object', ['id' => $account->getId()]);
-    }
-
     /**
      * Correct what kind of property an object is.
      *

@@ -86,7 +86,9 @@ class ComplaintsRoleTest extends WebTestCase
             'unlinking a resident from their flat' => ['POST', '/admin/users/1/account/unlink'],
             'changing somebody\'s role' => ['POST', '/admin/users/1/role'],
             'blocking a resident' => ['POST', '/admin/users/1/status'],
-            'creating an object' => ['POST', '/admin/objects/create'],
+            // No 'creating an object' row: that route is gone (08.09.2026) — the register
+            // is imported from the ОСББ's file and nothing in the panel creates a row.
+            'grouping two objects' => ['POST', '/admin/objects/group/link'],
         ];
     }
 
