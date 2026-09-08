@@ -831,14 +831,32 @@ forbidden — sometimes that is the intent. `AdminResidentPageTest` pins the but
 warning and its absence for somebody with no flat; `ComplaintsRoleTest` pins that Сергій
 gets 403.
 
-**Objects are created on `/admin/objects`, not by moving a person.** Typing an unknown
-особовий рахунок into a resident's card creates the row *and drags that resident onto it* —
-right for "цей мешканець насправді у кв. 86", wrong for anything else: a кладова entered
-that way takes its owner off their flat. So an object that exists on paper and has nobody in
-the bot (a storage room, a parking space, a flat whose owner never opened it) had no way in
-at all, and those are exactly the rows whose debt reaches nobody. The form refuses a
-duplicate особовий рахунок outright — that is what the debt import matches on, and a second
-row silently sends somebody's arrears to the wrong place.
+**Objects are created on `/admin/objects`, not by moving a person.** A resident's card can
+only ever attach somebody to an object that already exists — «Прив'язати» and «Перенести»
+answer «Рахунку N немає в базі» rather than creating one, because a кладова entered on a
+person's card would take its owner off their flat, and because an object that exists on
+paper and has nobody in the bot (a storage room, a parking space, a flat whose owner never
+opened it) still has to be creatable: those are exactly the rows whose debt reaches nobody.
+(This file said the opposite until 08.09.2026 — that a typed unknown number creates the row
+and drags the resident onto it. It has not done that for some time.) The objects form
+refuses a duplicate особовий рахунок outright — that is what the debt import matches on, and
+a second row silently sends somebody's arrears to the wrong place.
+
+**And the object is picked from a search, never typed.** All three forms that attach a
+person to an object — «🔗 Прив'язати», «📦 Перенести» and the owner group — were a bare text
+box asking for an особовий рахунок. Nobody knows 966 of them, so the actual workflow was to
+open the register in a second tab, search, copy the number and come back; and a mistyped
+number that happens to exist is accepted in silence, attaching somebody to another
+household's flat. Every other mistake on that card is visible on it — this one is only
+visible from the *other* flat, whose owner is not looking. They are select2 pickers over
+`/admin/objects/search` now (`PropertyRegistry::narrow()`, so a word that finds an object in
+the register finds it here: «85», «комірчина», «Козацька 19»), and each line carries the
+address, the kind and how many people are on it, because «230085» is exactly the string
+nobody can check. The picker posts the особовий рахунок, so every controller behind these
+forms is untouched, and it returns the first `OBJECTS_SEARCH_LIMIT` (30) with the match
+count beside them — a picker that truncates in silence is the same «я не знайшла» failure
+`/admin/objects` was paged for. `AdminResidentPageTest` pins that none of the three is a
+bare `<input>` again.
 
 `OwnerGroupService` is the only writer of `owner_group_id`; the users page reaches it over
 JSON and the objects page over a plain form, and the merge rules (an existing group beats a
@@ -865,6 +883,40 @@ the bot that the register does not carry is reported and left alone. The buildin
 from the first digit of the рахунок (1→17, 2→19, 3→21, 4→23, 5→27, 6→25), the type from
 the third, and on the day it first ran the type it derived agreed with the register's own
 wording in all 966 rows.
+
+## The panel is read on a phone
+
+Аліна searches a resident while standing in the під'їзд and Людмила moves a заявка from
+her sofa, so every page here is a phone page that also happens to work on a desktop.
+`base.html.twig` carries the viewport meta and the 16px minimum on inputs (iOS zooms the
+whole page in on anything smaller); what kept breaking on top of that was the filter
+furniture.
+
+**A row of filter buttons is a `.chip-row`, never a `.btn-group`.** Bootstrap squares a
+group's inner corners, which is right exactly while the group fits on one line: wrapped, it
+is a grid of square blocks with borders in the wrong places, and both admin tables shipped
+that way — six status filters and six buildings on `/admin/users`, four groups in one flex
+row on `/admin/schedule` (08.09.2026). Separate chips with a gap wrap the way
+`/admin/objects` — the page that never had the problem, because it was written as plain
+chips — always did. `.chip-row` lives in `base.html.twig` with the DataTables mobile
+rules, because **both tables render as `#telegramUserTable`** and two copies of that CSS is
+one copy that gets fixed.
+
+**DataTables centres its own controls under 767px, and again under 640px**, so «Пошук:» and
+the length select sat on the centre line above a table that starts at the left edge. They
+are re-aligned there too, with the search input `box-sizing: border-box` (its own 5px
+padding pushed a `width: 100%` box off the screen).
+
+**The table scrolls inside its own box; the page does not widen.** Everything above it is
+laid out against the DataTables wrapper, and the wrapper is as wide as whatever the table
+needs — so one long cell was sizing the search input and wrapping the filter chips off the
+right edge, three screens above the data that caused it.
+
+**`/admin/users` folds its seven per-field boxes behind «🔎 Пошук за полями» under 768px**
+and opens them by itself above it. The summary says «· активний» while something inside is
+filtering: a folded panel that quietly narrows the list is a short list with nothing on
+screen explaining why. The Bootstrap 5 utility names (`me-2`, `ms-auto`) that had been
+written into `/admin/schedule` against Bootstrap 4 did nothing at all and are gone.
 
 ## The gate («Охорона Ситипарк»)
 
