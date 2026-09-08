@@ -229,15 +229,28 @@ class ServiceOfferService
     /**
      * One-line label for the index.
      *
-     * The trade and nothing else: that is the whole question the reader is scanning for,
-     * and it is the only thing that tells one row from another. Telegram truncates long
-     * button captions, which is also why ServiceOffer::TITLE_MAX is short.
+     * `08.09 · Двері, монтаж 📷 📌` — the same shape the complaints register uses, and for
+     * the same reasons.
+     *
+     * **Date first**, in `d.m`: a classifieds list is read for freshness as much as for
+     * content, «Електрик 08.09» and «Електрик 12.08» being different offers to somebody
+     * deciding who to ring. At a fixed width and a fixed position the dates line up down
+     * the column and the list can be scanned in one movement, which is what a trailing date
+     * cannot do. Day and month only — an advert lives 30 days, so the year is never in
+     * question and would cost six characters of the title.
+     *
+     * **Badges last.** They qualify the row rather than identify it, and Telegram truncates
+     * long captions from the right, so the two things that must survive — when and what —
+     * sit where they cannot be cut. That is also why ServiceOffer::TITLE_MAX is short.
      */
     public function buttonLabel(ServiceOffer $offer, bool $own = false): string
     {
-        return ($own ? '📌 ' : '')
-            . ($offer->hasPhotos() ? '📷 ' : '')
-            . $offer->getTitle();
+        $published = $offer->getCreatedAt();
+
+        return ($published !== null ? $published->format('d.m') . ' · ' : '')
+            . $offer->getTitle()
+            . ($offer->hasPhotos() ? ' 📷' : '')
+            . ($own ? ' 📌' : '');
     }
 
     /**

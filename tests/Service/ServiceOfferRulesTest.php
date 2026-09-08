@@ -137,12 +137,21 @@ class ServiceOfferRulesTest extends KernelTestCase
      * The button is the trade and nothing else: it is the whole question a reader is
      * scanning for, and the only thing that tells one row from another.
      */
-    public function testTheButtonIsTheTrade(): void
+    public function testTheButtonIsTheDateThenTheTrade(): void
     {
         $offer = $this->offer($this->account('2-1-0-076', '76'), 'Плиточник');
 
+        // Unsaved: no date yet, and the label must not fall over on that.
         $this->assertSame('Плиточник', $this->service()->buttonLabel($offer));
-        $this->assertStringStartsWith('📌 ', $this->service()->buttonLabel($offer, own: true));
+
+        $offer->setCreatedAt(new \DateTime('2026-09-08'));
+
+        // Same shape as the complaints register: date, trade, then badges.
+        $this->assertSame('08.09 · Плиточник', $this->service()->buttonLabel($offer));
+        $this->assertSame('08.09 · Плиточник 📌', $this->service()->buttonLabel($offer, own: true));
+
+        // The date leads at a fixed width so the column lines up and can be scanned.
+        $this->assertStringStartsWith('08.09 · ', $this->service()->buttonLabel($offer));
     }
 
     /**

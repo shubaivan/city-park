@@ -385,6 +385,30 @@ submit — a form that renders and then 403s is reported as «панель не 
 `ComplaintsRoleTest` pins the routes; `AdminResidentPageTest` pins that the card renders
 without a single one of its forms.
 
+## Every published thing shows when it was published
+
+**Rule: a list of things residents publish is a list of buttons, and every button leads
+with the date.** `08.09 · Двері, монтаж 📷 📌` on the services board, `🆕 08.09 · Ліфт не
+працює 📷 📌` in the complaints register.
+
+These lists are read for freshness as much as for content: «Електрик 08.09» and «Електрик
+12.08» are different offers to somebody deciding who to ring, and «ліфт не працює» from
+yesterday is a different thing from the same words from March. Without a date the reader
+has to open a card to find out how old it is, which is the one thing the index exists to
+save them.
+
+**Date first, at a fixed width**, so the dates line up down the column and the list is
+scanned in one movement — a trailing date cannot do that, because the titles are ragged.
+`d.m` only: nothing on these boards outlives its year, and the four extra characters come
+straight out of the title. **Badges last** (📷, 📌): they qualify a row rather than identify
+it, and Telegram truncates captions from the right, so the two things that must survive —
+when and what — sit where they cannot be cut.
+
+The rental board is the deliberate exception: its buttons carry the flat, the rooms and the
+price, and a flat is chosen on those rather than on freshness.
+
+`ListButtonShapeTest` pins the shape on both boards that follow it.
+
 ## Every post in the residents' chat links back into the bot
 
 **Rule, not a preference: a post the bot puts in the group must carry «↗️ Відкрити в боті»,
