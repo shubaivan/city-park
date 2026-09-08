@@ -619,6 +619,17 @@ link (08.09.2026). The icon, the word and the destination now come from three ma
 an explicit branch per kind and a neutral «↗️ посилання» fallback, and
 `AdminLinksPageTest::testEveryRecordedKindIsNamedByThePage` walks `DeepLink::PREFIXES`.
 
+**The row it sends you to is marked.** `#offer-4` / `#listing-9` / `#complaint-11` scrolled
+the page and then said nothing about which of a dozen near-identical lines was meant — a
+scroll position, not an answer. One `:target` rule in `base.html.twig` (a soft fill, a bar
+on the first cell, a flash that fades) covers the table, the other table and the stack of
+cards, so the next page to receive an anchor gets it for free. No `!important` on that
+background: an important declaration beats an animation in the cascade and the flash would
+never play, and it is not needed anyway — the stripe rule paints the `tr` while this paints
+the `td`. `AdminLinksPageTest` pins that every anchor the log builds still exists on the
+page it points at; renaming one is a one-word change over there with nothing else to catch
+it.
+
 **The per-board totals print the zeroes.** «За розділами» lists every kind — послуги,
 оренда, заявки, голосування, борги — including the boards nobody has opened, because the
 per-post table below only holds posts that were clicked, and a board with no row reads as

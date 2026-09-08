@@ -140,6 +140,47 @@ class AdminLinksPageTest extends WebTestCase
         }
     }
 
+    /**
+     * The anchors this page links to must exist on the pages it links to, and the row they
+     * land on must be marked.
+     *
+     * A link to `#offer-4` on a page whose rows carry no such id is not an error: the
+     * browser opens the page at the top and the reader is left scanning a table of
+     * near-identical lines for the one they were sent to — which is exactly what linking
+     * straight to the row was for. Renaming an id is a one-word change on the other page
+     * and there is nothing else to notice it.
+     */
+    public function testTheAnchorsItLinksToExistAndAreMarked(): void
+    {
+        $template = $this->template();
+
+        $pages = [
+            'offer-' => 'templates/admin/services.html.twig',
+            'listing-' => 'templates/admin/rentals.html.twig',
+            'complaint-' => 'templates/admin/complaints.html.twig',
+        ];
+
+        foreach ($pages as $prefix => $page) {
+            $this->assertStringContainsString(
+                '#' . $prefix,
+                $template,
+                'the click log builds this anchor',
+            );
+
+            $this->assertStringContainsString(
+                'id="' . $prefix . '{{',
+                (string)file_get_contents(__DIR__ . '/../../' . $page),
+                $page . ': nothing on that page carries the id the log links to',
+            );
+        }
+
+        $this->assertStringContainsString(
+            ':target',
+            (string)file_get_contents(__DIR__ . '/../../templates/base.html.twig'),
+            'the row somebody was sent to has to be marked, or the link is only a scroll position',
+        );
+    }
+
     private function template(): string
     {
         return (string)file_get_contents(__DIR__ . '/../../templates/admin/links.html.twig');
