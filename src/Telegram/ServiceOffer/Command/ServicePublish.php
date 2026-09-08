@@ -334,6 +334,14 @@ class ServicePublish extends Conversation
                     '📷 Додати фото робіт',
                     callback_data: 'svc:photos:' . $offer->getId(),
                 ))
+                // The card, not the list. Everything the author might now want — change
+                // the wording, change the number, take it down — lives on it, and from
+                // «До списку» they had to know that their own row, the one marked 📌, is
+                // where those buttons hide. Three taps and a guess.
+                ->addRow(InlineKeyboardButton::make(
+                    '📌 Моє оголошення (змінити / зняти)',
+                    callback_data: 'svc:view:' . $offer->getId(),
+                ))
                 ->addRow(InlineKeyboardButton::make(
                     '🛠 До списку',
                     callback_data: ServiceMenuCommand::MENU_CALLBACK,

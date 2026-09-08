@@ -98,10 +98,25 @@ class ServiceOfferService
         $now = self::now();
 
         $existing = $this->activeForAuthor($author);
+
+        // Republishing IS the edit path — «✏️ Змінити» on the card restarts this
+        // conversation — so the photos have to come across. Purging them here (which is
+        // what the first version did, by symmetry with a withdrawal) meant that fixing a
+        // typo in «Електрик» silently deleted three pictures of the author's work, files
+        // and all. A withdrawal is the author saying they are done; a republish is them
+        // saying it differently.
+        $photos = [];
+
         if ($existing) {
+            $photos = $existing->getPhotos();
+
             $existing->setStatus(ServiceOffer::STATUS_REMOVED);
             $existing->setClosedAt($now);
-            $this->purgePhotos($existing);
+            // Detach without deleting: the files now belong to the new offer. The old row
+            // keeps no reference, so the withdrawal/expiry purges cannot reach them either.
+            $existing->setPhotos([]);
+            $existing->setPhotoToken(null);
+            $existing->setPhotoTokenExpiresAt(null);
         }
 
         $offer = (new ServiceOffer())
@@ -112,6 +127,7 @@ class ServiceOfferService
             // and «380…», and formatPhone() returns null for anything that is not a
             // plausible Ukrainian number — better no number than half of one.
             ->setContactPhone(RentalListingService::formatPhone($contactPhone))
+            ->setPhotos($photos)
             ->setExpiresAt((clone $now)->modify('+' . ServiceOffer::LIFETIME_DAYS . ' days'));
 
         $this->em->persist($offer);
@@ -127,6 +143,7 @@ class ServiceOfferService
             'offer_id' => $offer->getId(),
             'account_id' => $account->getId(),
             'replaced' => $existing?->getId(),
+            'photos_carried' => count($photos),
         ]);
 
         return $offer;
