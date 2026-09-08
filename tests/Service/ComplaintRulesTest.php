@@ -9,6 +9,7 @@ use App\Repository\ComplaintCommentRepository;
 use App\Repository\ComplaintRepository;
 use App\Repository\TelegramUserRepository;
 use App\Service\ComplaintService;
+use App\Service\DeepLink;
 use App\Service\ImageStore;
 use App\Service\ResidentChatService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -31,6 +32,7 @@ class ComplaintRulesTest extends TestCase
             $this->createMock(ComplaintRepository::class),
             $this->createMock(ComplaintCommentRepository::class),
             $this->createMock(ImageStore::class),
+            $this->createMock(DeepLink::class),
             $this->createMock(EntityManagerInterface::class),
             new NullLogger(),
             $this->createMock(Nutgram::class),

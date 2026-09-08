@@ -357,6 +357,37 @@ submit — a form that renders and then 403s is reported as «панель не 
 `ComplaintsRoleTest` pins the routes; `AdminResidentPageTest` pins that the card renders
 without a single one of its forms.
 
+## Who followed a link out of the chat
+
+`/admin/links` — every tap on «↗️ Відкрити в боті» under a post in the residents' chat:
+which advert, who, when, plus a per-post summary of **natискань** and **людей** (a
+neighbour who opens the same electrician three times is interested, not three people).
+
+**It exists because Telegram answers nothing else.** The read list of a message is shown
+only to whoever sent it, these posts are sent by the bot, and the Bot API has no
+read-receipt method at all — so «did anybody look at this» has exactly one available
+answer. It is also the better one: «seen» means somebody scrolled past, a tap means they
+wanted the thing. Do not go looking for a read-receipt API; there is none, and the group
+would have to be under 100 members for even a human sender to get one.
+
+**Only links are recorded.** Opening the same card from inside the bot writes nothing, and
+the guard's QR scan is excluded outright. The question is «did the chat post work», not
+«what is this resident reading» — four people can read this table, and that boundary is
+the whole reason it is defensible. Иван was told plainly what it records before it was
+built and said «пусть будет»; do not widen it to card renders for the sake of a bigger
+number.
+
+`LinkClick.user` is nullable and SET NULL: a click is a fact about the post and must
+survive the person being unlinked or removed. Read by both roles, GET only — same call as
+the sign-in log. No retention job; a few hundred rows a year.
+
+**`DeepLink` is the only place a link is built or read.** The prefix map lives next to both
+halves so a new board cannot add a button the router does not understand — the failure that
+would cause is a link opening the main menu, which reads as the bot forgetting what you
+tapped. `StartPayloadRoutingTest` walks the map and fails on a kind the router never
+mentions. All three boards now carry the button; the guard's QR shares the router and
+nothing else.
+
 ## Who signed in to the panel
 
 `/admin/logins` — one row per sign-in attempt: the login as typed, when, the IP and a

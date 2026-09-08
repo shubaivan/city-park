@@ -47,6 +47,9 @@ class ComplaintsRoleTest extends WebTestCase
             // Read by everyone who can sign in, on purpose: a log only the owner opens is
             // an audit trail nobody reads.
             'the sign-in log' => ['/admin/logins'],
+            # Whether the chat posts are working is as useful to the person answering
+            # the complaints as to the accountant, and nothing on it is anybody's to change.
+            'the link-click log' => ['/admin/links'],
         ];
     }
 

@@ -38,6 +38,9 @@ security:
         # colleagues seeing each other's visits is what makes an entry nobody recognises
         # get mentioned the same day. Nothing here is anybody's to change, so GET only.
         - { path: ^/admin/logins$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        # Same call: it says whether the chat posts are working, which is as useful to
+        # the person answering the complaints as to the accountant. Nothing to change.
+        - { path: ^/admin/links$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
         # Looking is allowed, acting is not: he answers for repairs and needs to know which
         # flat reported what, but linking a resident, moving them or editing an object is
         # the accountant's work. GET only — plus the table's own POST, or the list he opens

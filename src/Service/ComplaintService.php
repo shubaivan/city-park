@@ -41,6 +41,7 @@ class ComplaintService
         private ComplaintRepository $complaints,
         private ComplaintCommentRepository $comments,
         private ImageStore $images,
+        private DeepLink $links,
         private EntityManagerInterface $em,
         private LoggerInterface $logger,
         private Nutgram $bot,
@@ -193,7 +194,7 @@ class ComplaintService
             $message = $this->bot->sendMessage(
                 text: sprintf(
                     "🆕 <b>Нова заявка №%d</b> · %s\n\n%s\n\n"
-                        . '<i>Стежити за нею — у боті, «🔧 Заявки».</i>',
+                        . '<i>Стежити за нею — кнопка нижче.</i>',
                     $complaint->getId(),
                     $this->where($complaint),
                     htmlspecialchars($complaint->getText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
@@ -201,6 +202,7 @@ class ComplaintService
                 chat_id: (int)$this->residentChat->chatId(),
                 message_thread_id: $this->residentChat->topic(ResidentChatService::TOPIC_COMPLAINTS),
                 parse_mode: ParseMode::HTML,
+                reply_markup: $this->links->button(DeepLink::KIND_COMPLAINT, $complaint->getId()),
                 // A new report rings the house on purpose — «ліфт не працює» is what a
                 // neighbour wants to know before they walk to the lift. Seeding entries
                 // the chat has already seen must not: five old complaints arriving at
@@ -388,6 +390,7 @@ class ComplaintService
                 message_thread_id: $this->residentChat->topic(ResidentChatService::TOPIC_COMPLAINTS),
                 parse_mode: ParseMode::HTML,
                 disable_notification: true,
+                reply_markup: $this->links->button(DeepLink::KIND_COMPLAINT, $complaint->getId()),
             );
         } catch (\Throwable $e) {
             $this->logger->warning('complaint chat announcement failed', [
