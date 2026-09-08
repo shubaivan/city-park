@@ -51,6 +51,9 @@ class ResidentChatService
      */
     public const TOPIC_SERVICES = 'services';
 
+    /** Votes of the house: what is being asked, and how it ended. */
+    public const TOPIC_VOTES = 'votes';
+
     public function __construct(
         private TelegramUserRepository $telegramUserRepository,
         private TelegramUserService $telegramUserService,
@@ -61,6 +64,7 @@ class ResidentChatService
         private string $topicDebt = '',
         private string $topicRentals = '',
         private string $topicServices = '',
+        private string $topicVotes = '',
     ) {}
 
     /**
@@ -79,6 +83,7 @@ class ResidentChatService
             self::TOPIC_DEBT => $this->topicDebt,
             self::TOPIC_RENTALS => $this->topicRentals,
             self::TOPIC_SERVICES => $this->topicServices,
+            self::TOPIC_VOTES => $this->topicVotes,
             default => '',
         };
 

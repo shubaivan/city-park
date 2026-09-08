@@ -35,6 +35,7 @@ class DeepLink
         self::KIND_RENTAL => 'r-',
         self::KIND_COMPLAINT => 'c-',
         self::KIND_DEBT => 'd-',
+        self::KIND_VOTE => 'v-',
         self::KIND_GUARD => 'g-',
     ];
 
@@ -51,6 +52,12 @@ class DeepLink
      * interesting question about a post that repeats.
      */
     public const KIND_DEBT = 'debt';
+
+    /**
+     * A vote of the house. The id is the campaign, so a link forwarded a week later still
+     * says which vote it was about even after it has closed.
+     */
+    public const KIND_VOTE = 'vote';
 
     /** The guard's QR. Signed, not an id — it is here so the router has one list. */
     public const KIND_GUARD = 'guard';

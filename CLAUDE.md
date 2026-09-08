@@ -115,6 +115,17 @@ that machinery and one of them would rot.
   `HouseQuestionRulesTest` pins that, and pins the absent threshold, because "make the two
   kinds consistent" is a tempting and wrong tidy-up.
 
+**Every vote is posted into the chat's `🗳 Голосування` topic** and the *same message* is
+edited with the result when it closes — `editMessageText` has none of `deleteMessage`'s
+48-hour limit and a vote runs for seven days, so the announcement stays where the discussion
+under it is. A thread carrying «відкрито голосування» and no ending is exactly how the same
+question comes back next spring. The «↗️ Проголосувати в боті» button goes when the vote does:
+a live one under a closed vote is worse than none. The DM broadcast is **not** replaced by
+this — a DM reaches the people who may vote, the post is what makes the vote something the
+house can see happening and carries the result to everyone afterwards, including the flats
+with nobody in the bot who cannot vote but live here. Silent when
+`RESIDENT_CHAT_TOPIC_VOTES` is unset, and never fatal.
+
 **📜 Минулі голосування** — the archive, in the bot for everyone and on `/admin/block-votes`
 in full. Both kinds in one list: they are the same act, and splitting them would hide how
 rarely either happens. Cancelled campaigns are left out — one an admin withdrew before the

@@ -99,6 +99,14 @@ class BlockVoteCampaign
     #[ORM\Column(type: 'integer', nullable: true)]
     private ?int $result_no = null;
 
+    /**
+     * The bot's own post in the residents' chat, so the result can be written back into it
+     * when the vote closes. Editing rather than posting again: a thread with «відкрито
+     * голосування» and no ending is how the same question comes back next spring.
+     */
+    #[ORM\Column(type: Types::INTEGER, nullable: true)]
+    private ?int $chat_message_id = null;
+
     /** Admin login that opened the campaign. */
     #[ORM\Column(type: 'string', length: 64, nullable: true)]
     private ?string $created_by = null;
@@ -182,6 +190,17 @@ class BlockVoteCampaign
         return $this->isQuestion()
             ? (string)$this->question
             : ($this->candidate?->getPlaceLabel() ?? 'невідомий об’єкт');
+    }
+
+    public function getChatMessageId(): ?int
+    {
+        return $this->chat_message_id;
+    }
+
+    public function setChatMessageId(?int $id): self
+    {
+        $this->chat_message_id = $id;
+        return $this;
     }
 
     public function getStatus(): string
