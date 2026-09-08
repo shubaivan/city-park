@@ -550,6 +550,13 @@ first one created the day `/admin/objects` shipped):
   and no figure is printed at all unless `DebtBoardService::isAvailable()` says so, since
   the «станом на» date lives one block below in the same message and a sum without one is
   what the board's staleness rule exists to prevent.
+- **the header also names everyone else on the рахунок** («👥 На цьому рахунку також:
+  Конакбаєва Марина Василівна (член сім'ї)»), through `TelegramUser::getDisplayName()` — the
+  registry name when the ОСББ knows it, the Telegram one otherwise. The bot is the only
+  place a resident can check that a linking actually happened: on 08.09.2026 Віталій asked
+  for his wife to be added, she was, and nothing on his screen changed — so the next thing
+  he does is ask again. It also lets somebody notice a name that should not be on their
+  flat, which is otherwise visible only to an admin. Silent for a household of one.
   `TelegramUser.account_id` points at one Account, so before 04.09.2026 the other objects
   of a household existed nowhere in the bot at all — and that number is exactly what the
   accountant asks for on the phone. A household of one keeps the old singular wording word

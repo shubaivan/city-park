@@ -4,6 +4,7 @@ namespace App\Telegram\Start\Command;
 
 use App\Service\OsbbContacts;
 use App\Entity\Account;
+use App\Entity\TelegramUser;
 use App\Service\ComplaintService;
 use App\Service\PropertyRegistry;
 use App\Service\DebtBoardService;
@@ -77,7 +78,11 @@ class StartCommand extends Command
      */
     private static function header(Nutgram $bot, ?Account $account): string
     {
-        return self::renderHeader(self::objects($bot, $account), self::debtFiguresArePublishable($bot));
+        return self::renderHeader(
+            self::objects($bot, $account),
+            self::debtFiguresArePublishable($bot),
+            self::household($bot, $account),
+        );
     }
 
     /**
@@ -101,8 +106,11 @@ class StartCommand extends Command
      *
      * @param Account[] $objects
      */
-    public static function renderHeader(array $objects, bool $withDebt = false): string
-    {
+    public static function renderHeader(
+        array $objects,
+        bool $withDebt = false,
+        array $household = [],
+    ): string {
         $objects = array_values(array_filter(
             $objects,
             static fn (Account $account): bool => (string)$account->getAccountNumber() !== '',
@@ -116,9 +124,10 @@ class StartCommand extends Command
             return sprintf(
                 "🏠 <b>%s</b>\n"
                 . "🧾 Ваш особовий рахунок: <code>%s</code>\n"
-                . "<i>Це ваш номер в ОСББ (не банківський) — називайте його, коли звертаєтесь до бухгалтера.</i>\n\n",
+                . "<i>Це ваш номер в ОСББ (не банківський) — називайте його, коли звертаєтесь до бухгалтера.</i>\n%s\n",
                 self::esc($objects[0]->getStreetPlaceLabel()),
                 self::esc((string)$objects[0]->getAccountNumber()),
+                self::householdLine($household),
             );
         }
 
@@ -136,7 +145,84 @@ class StartCommand extends Command
 
         $lines[] = '<i>Це ваші номери в ОСББ (не банківські) — називайте той, про який питаєте бухгалтера.</i>';
 
+        $others = self::householdLine($household);
+
+        if ($others !== '') {
+            $lines[] = rtrim($others, "\n");
+        }
+
         return implode("\n", $lines) . "\n\n";
+    }
+
+    /**
+     * «👥 На цьому рахунку також: Марина (родич)».
+     *
+     * The bot is the only place a resident can check that the accountant's linking actually
+     * happened. Vitalii asked on 08.09.2026 to have his wife added; she was added, and
+     * nothing on his screen changed — so the next thing he does is ask again. One line
+     * closes that loop, and it also lets somebody notice a name that should not be on their
+     * flat, which is otherwise visible only to an admin.
+     *
+     * Names go through `TelegramUser::getDisplayName()` — the registry name when the ОСББ
+     * knows it, the Telegram one otherwise. `full_name` is what the accountant typed off a
+     * квитанція, while the other is whatever the person chose to call themselves, and
+     * «Vitalii» is a worse answer to «хто ще на моєму рахунку» than «Конакбаєв Віталій
+     * Петрович». The role is appended when it is known, because
+     * «орендар» is exactly the kind of thing an owner should see and be able to correct.
+     *
+     * Silent for a household of one — «на рахунку більше нікого» is noise on 268 of the
+     * rows that have anybody at all.
+     *
+     * @param TelegramUser[] $household everyone on the account except the reader
+     */
+    private static function householdLine(array $household): string
+    {
+        $names = [];
+
+        foreach ($household as $person) {
+            if (!$person instanceof TelegramUser) {
+                continue;
+            }
+
+            // getDisplayName() is the one definition of "the registry name when the ОСББ
+            // knows it, the Telegram one otherwise", and it also survives an entity whose
+            // last_name was never initialised.
+            $name = $person->getDisplayName();
+
+            $role = TelegramUser::ROLES[(string)$person->getRole()] ?? null;
+            $names[] = self::esc($name) . ($role !== null ? ' <i>(' . self::esc(mb_strtolower($role)) . ')</i>' : '');
+        }
+
+        return $names === []
+            ? ''
+            : '👥 <i>На цьому рахунку також:</i> ' . implode(', ', $names) . "\n";
+    }
+
+    /**
+     * Everyone else on the reader's account.
+     *
+     * Resolved through the container at render time like the other menu lookups, and
+     * failing to an empty list: a decoration must never cost somebody the menu.
+     *
+     * @return TelegramUser[]
+     */
+    private static function household(Nutgram $bot, ?Account $account): array
+    {
+        if (!$account instanceof Account) {
+            return [];
+        }
+
+        try {
+            $me = $bot->getContainer()->get(TelegramUserService::class);
+            $current = $me instanceof TelegramUserService ? $me->getCurrentUser() : null;
+
+            return array_values(array_filter(
+                $account->getUsers()->toArray(),
+                static fn (TelegramUser $u): bool => $u->getId() !== $current?->getId(),
+            ));
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**
