@@ -11,6 +11,7 @@ use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
 use App\Repository\ComplaintRepository;
+use App\Repository\DebtSnapshotRepository;
 use App\Repository\AccountStatusLogRepository;
 use App\Repository\AdminLoginRepository;
 use App\Repository\PavilionPhotoRepository;
@@ -595,22 +596,74 @@ class AdminController extends AbstractController
      * Read by both roles. Nothing here is anybody's to change, so GET only — same call as
      * the sign-in log.
      */
+    /**
+     * Clicks per board, **including the boards nobody has opened**.
+     *
+     * The table below it lists posts that got a click, so a board whose posts are being
+     * ignored has no row at all — and "no row" reads as "no such thing", not as zero. That
+     * is the one number this page exists to produce: whether the chat post is doing
+     * anything for that board. A zero here is the answer, not a missing entry.
+     *
+     * The guard's QR is left out on purpose: it is signed, carries no id and is never
+     * recorded — see DeepLink.
+     */
+    private static function clicksByKind(array $summary): array
+    {
+        $kinds = [
+            DeepLink::KIND_SERVICE => 'послуги',
+            DeepLink::KIND_RENTAL => 'оренда',
+            DeepLink::KIND_COMPLAINT => 'заявки',
+            DeepLink::KIND_VOTE => 'голосування',
+            DeepLink::KIND_DEBT => 'борги',
+        ];
+
+        $out = [];
+
+        foreach ($kinds as $kind => $word) {
+            $rows = array_filter($summary, static fn (array $row): bool => $row['kind'] === $kind);
+
+            $out[] = [
+                'kind' => $kind,
+                'word' => $word,
+                'posts' => count($rows),
+                'clicks' => array_sum(array_map(static fn (array $r): int => (int)$r['clicks'], $rows)),
+                // Summed per post: the same neighbour opening two adverts is two rows here
+                // and one person in each. There is no honest way to de-duplicate across
+                // posts without a second query, and the per-post figure is the one that
+                // answers «чи спрацював пост».
+                'people' => array_sum(array_map(static fn (array $r): int => (int)$r['people'], $rows)),
+            ];
+        }
+
+        return $out;
+    }
+
     #[Route('/admin/links', name: 'app_admin_links', methods: [Request::METHOD_GET])]
     public function links(
         LinkClickRepository $clicks,
         ServiceOfferRepository $offers,
         RentalListingRepository $listings,
         ComplaintRepository $complaints,
+        BlockVoteCampaignRepository $campaigns,
+        DebtSnapshotRepository $snapshots,
     ): Response {
         $summary = $clicks->summary();
 
-        // What each row is about, resolved in three queries rather than one per row.
+        // What each row is about, resolved in one query per kind rather than one per row.
+        //
+        // **Every kind `DeepLink` can mint must be here.** Votes and the debtors' post were
+        // missing until 08.09.2026, so 56 clicks on the Face ID vote were drawn as
+        // «🔧 заявка #4 (видалено)» and linked to the rental register — the template's
+        // if/else ended in an unguarded `else`, and an unlisted kind fell into it looking
+        // exactly like a complaint.
         $titles = [];
 
         foreach ([
             DeepLink::KIND_SERVICE => $offers,
             DeepLink::KIND_RENTAL => $listings,
             DeepLink::KIND_COMPLAINT => $complaints,
+            DeepLink::KIND_VOTE => $campaigns,
+            DeepLink::KIND_DEBT => $snapshots,
         ] as $kind => $repository) {
             $ids = array_values(array_map(
                 static fn (array $row): int => (int)$row['target_id'],
@@ -625,6 +678,7 @@ class AdminController extends AbstractController
         return $this->render('admin/links.html.twig', [
             'summary' => $summary,
             'titles' => $titles,
+            'by_kind' => self::clicksByKind($summary),
             'recent' => $clicks->recent(),
         ]);
     }

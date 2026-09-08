@@ -1,5 +1,51 @@
 {% extends 'base.html.twig' %}
 
+{#
+    One place that knows what each kind of link is and where it goes.
+
+    It used to be an if/else ending in a bare `else`, twice — so a kind nobody had added
+    (votes, the debtors' post) was drawn as «🔧 заявка» and linked to the rental register.
+    That is not a cosmetic slip: the row said 56 people had opened a complaint that does
+    not exist, and the link took every one of them somewhere unrelated. A kind this file
+    does not know now says so.
+#}
+{% macro kindIcon(kind) %}
+    {%- if kind == 'service' -%}🛠
+    {%- elseif kind == 'rental' -%}🔑
+    {%- elseif kind == 'complaint' -%}🔧
+    {%- elseif kind == 'vote' -%}🗳
+    {%- elseif kind == 'debt' -%}💸
+    {%- else -%}↗️
+    {%- endif -%}
+{% endmacro %}
+
+{% macro kindWord(kind) %}
+    {%- if kind == 'service' -%}послуга
+    {%- elseif kind == 'rental' -%}оренда
+    {%- elseif kind == 'complaint' -%}заявка
+    {%- elseif kind == 'vote' -%}голосування
+    {%- elseif kind == 'debt' -%}борги
+    {%- else -%}посилання
+    {%- endif -%}
+{% endmacro %}
+
+{#
+    The complaints register is open to both roles; the rest of the panel is the
+    accountant's alone. A link that renders and then answers 403 is reported as «панель не
+    працює», so `ROLE_COMPLAINTS` gets plain text everywhere else.
+#}
+{% macro targetHref(kind, id) %}
+    {%- if kind == 'complaint' -%}{{ path('app_admin_complaints') }}#complaint-{{ id }}
+    {%- elseif not is_granted('ROLE_ADMIN') -%}
+    {%- elseif kind == 'service' -%}{{ path('app_admin_services') }}#offer-{{ id }}
+    {%- elseif kind == 'rental' -%}{{ path('app_admin_rentals') }}#listing-{{ id }}
+    {%- elseif kind == 'vote' -%}{{ path('app_admin_block_votes') }}
+    {%- elseif kind == 'debt' -%}{{ path('app_admin_debt') }}
+    {%- endif -%}
+{% endmacro %}
+
+{% import _self as link %}
+
 {% block title %}Переходи з чату · ОСББ City Park{% endblock %}
 
 {% block body %}
@@ -19,6 +65,42 @@
             карток усередині бота не пишеться — питання тут «чи спрацював пост», а не
             «що читає цей мешканець».
         </p>
+
+        {#
+            Every board, including the ones nobody has opened.
+
+            The table under this one lists posts that got a click, so a board being ignored
+            has no row at all — and «немає рядка» reads as «немає такого», not as nought.
+            Whether the chat post works for that board is the one question this page exists
+            to answer, so the zero has to be printed.
+        #}
+        <h5 class="mt-4">За розділами</h5>
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm">
+                <thead>
+                <tr>
+                    <th>Розділ</th>
+                    <th>Постів із переходами</th>
+                    <th>Натискань</th>
+                    <th>Людей</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in by_kind %}
+                    <tr{% if row.clicks == 0 %} class="text-muted"{% endif %}>
+                        <td>{{ link.kindIcon(row.kind) }} {{ row.word }}</td>
+                        <td>{{ row.posts }}</td>
+                        <td>
+                            {% if row.clicks > 0 %}
+                                <span class="badge badge-primary">{{ row.clicks }}</span>
+                            {% else %}0{% endif %}
+                        </td>
+                        <td>{{ row.people }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
 
         <h5 class="mt-4">За оголошеннями</h5>
         {% if summary|length == 0 %}
@@ -42,22 +124,10 @@
                             to scan: this table is read to answer «а що це було», and the
                             answer is one click away or it is not an answer.
                         #}
-                        {#
-                            The complaints register is open to both roles; the other two
-                            pages are the accountant's alone. A link that renders and then
-                            answers 403 is reported as «панель не працює», so the complaints
-                            role simply gets plain text there.
-                        #}
-                        {% set href = row.kind == 'complaint'
-                            ? path('app_admin_complaints') ~ '#complaint-' ~ row.target_id
-                            : (is_granted('ROLE_ADMIN')
-                                ? (row.kind == 'service'
-                                    ? path('app_admin_services') ~ '#offer-' ~ row.target_id
-                                    : path('app_admin_rentals') ~ '#listing-' ~ row.target_id)
-                                : null) %}
+                        {% set href = link.targetHref(row.kind, row.target_id)|trim %}
                         <tr>
                             <td>
-                                {% if row.kind == 'service' %}🛠{% elseif row.kind == 'rental' %}🔑{% else %}🔧{% endif %}
+                                {{ link.kindIcon(row.kind) }}
                                 {% if target %}
                                     {% if href %}<a href="{{ href }}">{% endif %}
                                     {% if row.kind == 'service' %}
@@ -65,17 +135,25 @@
                                     {% elseif row.kind == 'rental' %}
                                         <b>{{ target.account.unitLabel }}</b>
                                         <small class="text-muted">{{ target.priceLabel }}</small>
-                                    {% else %}
+                                    {% elseif row.kind == 'complaint' %}
                                         <b>№{{ target.id }}</b>
                                         <small class="text-muted">{{ target.text|slice(0, 70) }}</small>
+                                    {% elseif row.kind == 'vote' %}
+                                        <b>{{ target.question ?? 'Блокування' }}</b>
+                                    {% elseif row.kind == 'debt' %}
+                                        {# The link always opens the current board; the snapshot says which post it was. #}
+                                        <b>Оголошення про борги</b>
+                                        <small class="text-muted">{{ target.takenAt|date('d.m.Y') }}</small>
+                                    {% else %}
+                                        <b>#{{ row.target_id }}</b>
                                     {% endif %}
                                     {% if href %}</a>{% endif %}
                                 {% else %}
                                     {# Deleted since — the click is still a fact about the post. #}
-                                    <span class="text-muted">#{{ row.target_id }} (видалено)</span>
+                                    <span class="text-muted">{{ link.kindWord(row.kind) }} #{{ row.target_id }} (видалено)</span>
                                 {% endif %}
                             </td>
-                            <td><span class="badge bg-primary">{{ row.clicks }}</span></td>
+                            <td><span class="badge badge-primary">{{ row.clicks }}</span></td>
                             <td>{{ row.people }}</td>
                             <td><small>{{ row.last_at|date('d.m.Y H:i') }}</small></td>
                         </tr>
@@ -121,18 +199,9 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% set clickHref = click.kind == 'complaint'
-                                    ? path('app_admin_complaints') ~ '#complaint-' ~ click.targetId
-                                    : (is_granted('ROLE_ADMIN')
-                                        ? (click.kind == 'service'
-                                            ? path('app_admin_services') ~ '#offer-' ~ click.targetId
-                                            : path('app_admin_rentals') ~ '#listing-' ~ click.targetId)
-                                        : null) %}
+                                {% set clickHref = link.targetHref(click.kind, click.targetId)|trim %}
                                 {% if clickHref %}<a href="{{ clickHref }}">{% endif %}
-                                    {% if click.kind == 'service' %}🛠 послуга
-                                    {% elseif click.kind == 'rental' %}🔑 оренда
-                                    {% else %}🔧 заявка
-                                    {% endif %}#{{ click.targetId }}
+                                    {{ link.kindIcon(click.kind) }} {{ link.kindWord(click.kind) }} #{{ click.targetId }}
                                 {% if clickHref %}</a>{% endif %}
                             </td>
                         </tr>
