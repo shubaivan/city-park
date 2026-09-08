@@ -853,10 +853,17 @@ visible from the *other* flat, whose owner is not looking. They are select2 pick
 the register finds it here: «85», «комірчина», «Козацька 19»), and each line carries the
 address, the kind and how many people are on it, because «230085» is exactly the string
 nobody can check. The picker posts the особовий рахунок, so every controller behind these
-forms is untouched, and it returns the first `OBJECTS_SEARCH_LIMIT` (30) with the match
-count beside them — a picker that truncates in silence is the same «я не знайшла» failure
-`/admin/objects` was paged for. `AdminResidentPageTest` pins that none of the three is a
-bare `<input>` again.
+forms is untouched.
+
+It **pages on scroll and never caps** — `OBJECTS_SEARCH_LIMIT` (30) a page, with
+«знайдено об'єктів: N» drawn over the list. The first shape answered the first thirty and
+said how many it had matched, and on an empty search that reads as «у нас тільки тридцять
+квартир» — asked within the hour of it shipping — and now that the picker is the only way
+an object is ever chosen, all 966 have to be reachable. **Occupied objects stay in the
+list on purpose**: attaching a family member to the flat their mother is already on is the
+commonest linking there is, and each line says which case it is — «👤 2» or «❓ без
+власника». Filtering the taken ones out would break exactly that.
+`AdminResidentPageTest` pins that none of the three fields is a bare `<input>` again.
 
 `OwnerGroupService` is the only writer of `owner_group_id`; the users page reaches it over
 JSON and the objects page over a plain form, and the merge rules (an existing group beats a
