@@ -28,6 +28,9 @@ class VotingMenuCommand
     /** Finished votes: what the house decided, and how it split. */
     public const PAST_CALLBACK = 'voting-past';
 
+    /** The «you voted» pill is a label, not a button — it answers with nothing. */
+    private const NOOP_CALLBACK = 'vote:noop';
+
     public function __construct(
         private TelegramUserService $telegramUserService,
         private BlockVoteService $voteService,
@@ -38,6 +41,11 @@ class VotingMenuCommand
     public function __invoke(Nutgram $bot): void
     {
         $data = $bot->isCallbackQuery() ? ($bot->callbackQuery()->data ?? '') : '';
+
+        if ($data === self::NOOP_CALLBACK) {
+            $bot->answerCallbackQuery();
+            return;
+        }
 
         if ($data === self::PAST_CALLBACK) {
             $this->renderArchive($bot);
@@ -131,7 +139,7 @@ class VotingMenuCommand
         }
         $lines[] = '🗳️ <b>Голосування</b>';
         $lines[] = '';
-        $lines[] = 'Один аккаунт — один голос. Свій вибір можна змінити до завершення голосування.';
+        $lines[] = 'Один аккаунт — один голос. Голос остаточний: змінити його не можна.';
         $lines[] = '';
 
         $markup = InlineKeyboardMarkup::make();
@@ -166,15 +174,17 @@ class VotingMenuCommand
                 $lines[] = '';
 
                 $id = $campaign->getId();
-                $markup->addRow(
-                    InlineKeyboardButton::make(
-                        ($mine === true ? '✅ ' : '') . '👍 За',
-                        callback_data: 'bvote:' . $id . ':yes'
+                // Once cast, the row becomes a statement rather than a choice: a live
+                // button under a final vote invites a tap that can only be refused.
+                $markup->addRow($mine === null
+                    ? InlineKeyboardButton::make('👍 За', callback_data: 'bvote:' . $id . ':yes')
+                    : InlineKeyboardButton::make(
+                        $mine ? '✅ Ви проголосували: За' : '✅ Ви проголосували: Проти',
+                        callback_data: self::NOOP_CALLBACK,
                     ),
-                    InlineKeyboardButton::make(
-                        ($mine === false ? '✅ ' : '') . '👎 Проти',
-                        callback_data: 'bvote:' . $id . ':no'
-                    ),
+                    ...($mine === null
+                        ? [InlineKeyboardButton::make('👎 Проти', callback_data: 'bvote:' . $id . ':no')]
+                        : []),
                 );
 
                 continue;
@@ -196,15 +206,15 @@ class VotingMenuCommand
             $lines[] = '';
 
             $id = $campaign->getId();
-            $markup->addRow(
-                InlineKeyboardButton::make(
-                    ($mine === true ? '✅ ' : '') . 'За блокування',
-                    callback_data: 'bvote:' . $id . ':yes'
+            $markup->addRow($mine === null
+                ? InlineKeyboardButton::make('За блокування', callback_data: 'bvote:' . $id . ':yes')
+                : InlineKeyboardButton::make(
+                    $mine ? '✅ Ви проголосували: За' : '✅ Ви проголосували: Проти',
+                    callback_data: self::NOOP_CALLBACK,
                 ),
-                InlineKeyboardButton::make(
-                    ($mine === false ? '✅ ' : '') . 'Проти',
-                    callback_data: 'bvote:' . $id . ':no'
-                ),
+                ...($mine === null
+                    ? [InlineKeyboardButton::make('Проти', callback_data: 'bvote:' . $id . ':no')]
+                    : []),
             );
         }
 
@@ -358,15 +368,29 @@ class VotingMenuCommand
             return;
         }
 
-        $result = $this->voteService->recordVote($campaign, $account, $value);
+        $result = $this->voteService->recordVote(
+            $campaign,
+            $account,
+            $value,
+            $this->telegramUserService->getCurrentUser(),
+        );
+
+        if (($result['already'] ?? false) === true) {
+            // Says what their vote is rather than only refusing: somebody tapping again is
+            // usually checking, not attacking the rule.
+            $this->renderMenu($bot, edit: true, notice: sprintf(
+                'ℹ️ Ви вже проголосували: <b>%s</b>. Голос змінити не можна.',
+                $result['value'] ? 'За' : 'Проти',
+            ));
+
+            return;
+        }
 
         if ($result['passed']) {
             $notice = sprintf(
                 '✅ Ваш голос враховано. Рішення ухвалено: <b>%s</b> заблоковано.',
                 $this->voteService->candidateLabel($campaign->getCandidate())
             );
-        } elseif ($result['changed']) {
-            $notice = '🔁 Ваш голос змінено.';
         } else {
             $notice = '✅ Ваш голос враховано.';
         }

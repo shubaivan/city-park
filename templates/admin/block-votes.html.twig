@@ -126,6 +126,17 @@
                                     <input type="hidden" name="campaign_id" value="{{ c.id }}">
                                     <button type="submit" class="btn btn-sm btn-outline-primary">📣 Нагадати тим, хто не голосував</button>
                                 </form>
+                                {#
+                                    A resident's question is live but quiet until somebody
+                                    accountable sends it — see BlockVoteService::broadcast().
+                                #}
+                                {% if not c.broadcast %}
+                                    <form method="post" action="{{ path('app_admin_block_vote_broadcast') }}" class="mb-1"
+                                          onsubmit="return confirm('Розіслати це питання всім мешканцям з правом голосу? Відкликати розсилку не можна.');">
+                                        <input type="hidden" name="campaign_id" value="{{ c.id }}">
+                                        <button type="submit" class="btn btn-sm btn-success">📣 Розіслати всім</button>
+                                    </form>
+                                {% endif %}
                                 <form method="post" action="{{ path('app_admin_block_vote_cancel') }}"
                                       onsubmit="return confirm('Скасувати це голосування?');">
                                     <input type="hidden" name="campaign_id" value="{{ c.id }}">
@@ -133,6 +144,23 @@
                                 </form>
                             </td>
                         </tr>
+                        {% if c.ballots|length %}
+                            <tr>
+                                <td colspan="10" class="bg-light">
+                                    <small class="text-muted">Хто як проголосував:</small><br>
+                                    {% for b in c.ballots %}
+                                        <span class="badge {{ b.value ? 'bg-success' : 'bg-secondary' }} mr-1 mb-1">
+                                            {{ b.value ? '👍' : '👎' }}
+                                            {{ b.voterAccount.unitLabel }}
+                                            {%- if b.voterUser %} · {{ b.voterUser.displayName }}
+                                                {%- if b.voterUser.username %} (@{{ b.voterUser.username }}){% endif %}
+                                            {%- endif %}
+                                            {%- if b.castAt %} · {{ b.castAt|date('d.m H:i') }}{% endif %}
+                                        </span>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                        {% endif %}
                     {% endfor %}
                     </tbody>
                 </table>
@@ -148,7 +176,8 @@
             <div class="card-header">❓ Поставити питання мешканцям</div>
             <div class="card-body">
                 <p class="small text-muted">
-                    Так / Ні, {{ vote_days }} днів, один голос від рахунку. Нічого не блокує і
+                    Так / Ні, {{ vote_days }} днів, один голос від рахунку, і він остаточний
+                    — у панелі видно, хто як проголосував. Нічого не блокує і
                     нічого не вмикає автоматично — це опитування, рішення ухвалює ОСББ, а
                     результат лишається в архіві голосувань, який бачать усі мешканці.
                     Питання на три варіанти — це питання на збори, а не сюди.
@@ -204,6 +233,22 @@
                             <td>{{ c.kind == 'question' ? '—' : c.needed }}</td>
                             <td>{{ c.closed_at ? c.closed_at|date('d.m.Y H:i') : '—' }}</td>
                         </tr>
+                        {% if c.ballots|length %}
+                            <tr>
+                                <td colspan="8" class="bg-light">
+                                    <small class="text-muted">Хто як проголосував:</small><br>
+                                    {% for b in c.ballots %}
+                                        <span class="badge {{ b.value ? 'bg-success' : 'bg-secondary' }} mr-1 mb-1">
+                                            {{ b.value ? '👍' : '👎' }}
+                                            {{ b.voterAccount.unitLabel }}
+                                            {%- if b.voterUser %} · {{ b.voterUser.displayName }}
+                                                {%- if b.voterUser.username %} (@{{ b.voterUser.username }}){% endif %}
+                                            {%- endif %}
+                                        </span>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                        {% endif %}
                     {% endfor %}
                     </tbody>
                 </table>

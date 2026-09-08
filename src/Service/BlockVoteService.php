@@ -287,15 +287,41 @@ class BlockVoteService
      *
      * @return array{recorded:bool, changed:bool, passed:bool, yes:int, no:int}
      */
-    public function recordVote(BlockVoteCampaign $campaign, Account $voter, bool $value): array
-    {
+    public function recordVote(
+        BlockVoteCampaign $campaign,
+        Account $voter,
+        bool $value,
+        ?TelegramUser $castBy = null,
+    ): array {
         $ballot = $this->ballotRepository->findOneByCampaignAndVoter($campaign, $voter);
 
+        // **A vote is final.** It used to be changeable until the deadline, which is a
+        // reasonable rule for an anonymous poll and a bad one for a recorded ballot: the
+        // panel now shows which household voted how, and a record that can be rewritten
+        // until the last minute is not a record. It also removes the shape where somebody
+        // watches the tally and flips at the end.
+        if ($ballot !== null) {
+            $tally = $this->ballotRepository->tally($campaign);
+
+            return [
+                'recorded' => false,
+                'already'  => true,
+                'changed'  => false,
+                'passed'   => false,
+                'value'    => $ballot->getValue(),
+                'yes'      => $tally['yes'],
+                'no'       => $tally['no'],
+            ];
+        }
+
         $changed = false;
+
         if ($ballot === null) {
             $ballot = (new BlockVoteBallot())
                 ->setCampaign($campaign)
                 ->setVoterAccount($voter)
+                ->setVoterUser($castBy)
+                ->setCastAt($this->now())
                 ->setValue($value);
             $this->em->persist($ballot);
             try {
@@ -308,10 +334,6 @@ class BlockVoteService
                 $this->em->clear();
                 $campaign = $this->campaignRepository->find($campaign->getId());
             }
-        } elseif ($ballot->getValue() !== $value) {
-            $ballot->setValue($value);
-            $changed = true;
-            $this->em->flush();
         }
 
         $tally = $this->ballotRepository->tally($campaign);
