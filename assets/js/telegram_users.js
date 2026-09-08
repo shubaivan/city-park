@@ -188,12 +188,27 @@ document.addEventListener("DOMContentLoaded", function () {
             // ПІБ from the ОСББ registry leads when it exists — that is the name on a
             // квитанція. The Telegram name stays underneath: it is how the accountant
             // recognises who is writing in the residents' chat, and the two rarely match.
-            if (registry) {
-                return '<b>' + registry + '</b>'
-                    + (telegramName ? '<div class="text-muted small">' + telegramName + '</div>' : '');
+            var names = registry
+                ? '<b>' + registry + '</b>'
+                    + (telegramName ? '<div class="text-muted small">' + telegramName + '</div>' : '')
+                : (telegramName || '<span class="text-muted">—</span>');
+
+            // Sorting and filtering get the text; only the drawn cell gets the picture.
+            if (type !== 'display') {
+                return registry || telegramName || '';
             }
 
-            return telegramName || '<span class="text-muted">—</span>';
+            // The face, or two letters on a circle coloured from the id — the same person
+            // is the same colour on every page, which is what makes it worth anything in a
+            // list of 462. Most rows are initials: «Фото профілю: Мої контакти» hides the
+            // photo from a bot as firmly as from a stranger.
+            var avatar = row.avatar
+                ? '<img class="tg-avatar" alt="" loading="lazy" src="' + row.avatar + '">'
+                : '<span class="tg-avatar tg-initials" style="background:hsl('
+                    + ((row.id * 47) % 360) + ',42%,52%)">'
+                    + (row.initials || '?') + '</span>';
+
+            return '<div class="tg-name">' + avatar + '<div>' + names + '</div></div>';
         }
     });
 

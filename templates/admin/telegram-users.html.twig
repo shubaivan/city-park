@@ -8,6 +8,23 @@
 {% endblock %}
 
 {% block body %}
+    {#
+        The face in the name cell. Small — 28px — because this is a table of 462 rows read
+        on a phone as often as on a desktop, and the picture is here to be recognised in
+        passing, not looked at. The full-size one is on the resident's card.
+    #}
+    <style>
+        .tg-name { display: flex; align-items: center; gap: .5rem; }
+        .tg-avatar {
+            width: 28px; height: 28px; border-radius: 50%;
+            object-fit: cover; flex: 0 0 auto; background: #e9ecef;
+        }
+        .tg-initials {
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: .72rem; font-weight: 600; color: #fff;
+        }
+    </style>
+
     {{ parent() }}
 
     {#

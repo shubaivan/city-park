@@ -673,11 +673,14 @@ colour every time) and it has to look deliberate rather than like an image that 
   is worse than one with none. `telegram:avatars:sync` skips anybody asked about inside
   `AvatarService::STALE_AFTER_DAYS` (7); `--all` re-asks about everybody, `--dry-run` says
   who would be asked.
-- **Not in the list of 449.** Иван's own call when it was scoped: on the card a face helps,
-  in a table where over half the rows would be initials it is noise. The service knows
-  nothing about where it is drawn, so adding it there later is a template change and a
-  renderer in `telegram_users.js` — which would mean `npx encore production` on the deploy,
-  and a new column must be appended **last** (`columnDefs` target by index).
+- **In the list too, and as a row key rather than a column.** It was scoped to the card
+  first and Иван asked for the table the same evening. The picture rides on the JSON row
+  (`avatar`, `initials`) and is drawn inside the name cell by the renderer at index 11 —
+  DataTables hands the whole row to a renderer, so it needs no `<th>`, no hidden
+  `columnDef` and, above all, no shifting of the indexes every other def in
+  `telegram_users.js` is written against. `block_reason_label` travels the same way for the
+  same reason. 28px in the table, 72px on the card. Editing that JS means
+  **`npx encore production` on the deploy**.
 
 ## Who signed in to the panel
 
