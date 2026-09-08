@@ -278,6 +278,19 @@ opt-in phone, admin take-down. What differs from it differs on purpose:
   bot merely took that over; this board exists to *reduce* «хто робив вам ремонт?» traffic,
   so posting every advert into General unasked would add exactly the noise it removes.
   Create the topic with `resident-chat:topics`.
+- **Editing is republishing, and it must keep the photos.** «✏️ Змінити» on the card
+  restarts the publish conversation, and `publish()` closes the author's previous offer —
+  so the first version purged its photos by symmetry with a withdrawal, which meant fixing
+  a typo in «Електрик» silently deleted three pictures of the author's work, files and all.
+  The photos are now carried across and the replaced row is detached from them without
+  deleting (so the withdrawal/expiry purges cannot reach them either). A withdrawal is the
+  author saying they are done; a republish is them saying it differently. Verified against
+  a real file on disk.
+- **The owner's own card is one tap from everywhere.** «📌 Моє оголошення (змінити / зняти)»
+  sits under the list and on the publish confirmation. Before that, the only route was
+  «До списку» → find your own row, the one marked 📌 → tap it, which is three taps and a
+  guess that tapping your own advert is where «змінити» and «зняти» hide. The legend now
+  says so in words too.
 - Photos matter more here than on any other board, because they are the only thing on a
   card besides the trade and the number. Offered right after publishing, while the author is
   still holding the phone. They go through the web (`/service/photo/{token}`), never the bot — same invariant as

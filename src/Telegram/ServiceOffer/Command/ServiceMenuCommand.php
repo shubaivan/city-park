@@ -194,7 +194,8 @@ class ServiceMenuCommand
             $legend = [];
 
             if ($mine) {
-                $legend[] = '<i>Ваше оголошення позначене 📌.</i>';
+                $legend[] = '<i>Ваше оголошення позначене 📌 — відкрийте його, щоб змінити '
+                    . 'текст, номер, фото або зняти з публікації.</i>';
             }
 
             if ($anyPhotos) {
@@ -226,7 +227,17 @@ class ServiceMenuCommand
             }
         }
 
-        if (!$mine) {
+        if ($mine) {
+            // Your own advert is already in the list above, marked 📌 — but only somebody
+            // who has read the legend knows that tapping it is where «змінити» and
+            // «зняти» live. Spelling it out on its own row costs one line and removes the
+            // guess; on a second page it is also the only way to reach your own card
+            // without hunting for it.
+            $markup->addRow(InlineKeyboardButton::make(
+                '📌 Моє оголошення (змінити / зняти)',
+                callback_data: 'svc:view:' . $mine->getId(),
+            ));
+        } else {
             $markup->addRow(InlineKeyboardButton::make(
                 '➕ Пропоную послугу',
                 callback_data: ServicePublish::START_CALLBACK,
