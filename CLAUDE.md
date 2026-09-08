@@ -461,6 +461,16 @@ or the tariff is missing, and explaining a sum with numbers that did not make it
 than not explaining it. The factor is read from `DebtPolicy::OVER_FACTOR`, never retyped
 into the copy.
 
+**And it names every object of the household that owes, not only the one the reader is
+linked to.** A debt on any object blocks booking for the whole owner group while
+`TelegramUser` points at exactly one Account — so somebody whose flat was clean and whose
+комірчина was over its threshold read «заборгованість понад допустимий поріг» beside a flat
+with no debt on it. `DebtPolicy::getBlockingSiblings()` was written for exactly this and was
+never called. **The debts are not summed and must not be:** each threshold comes from that
+object's own area (50.6 м² → 1 024 грн, a 4 м² комірчина → 81), so adding two debts to compare
+against one threshold compares a total against half a rule. Each object gets its own line,
+its own threshold and its own arithmetic. `BlockNamesEveryDebtorTest` pins it.
+
 `NumbersExplainThemselvesTest` pins this, and it is not decoration: both numbers it covers
 decide whether somebody may use the альтанка.
 
