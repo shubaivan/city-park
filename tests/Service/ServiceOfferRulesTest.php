@@ -108,19 +108,29 @@ class ServiceOfferRulesTest extends KernelTestCase
     }
 
     /**
-     * The number was given for the card in the bot, which only confirmed residents open —
-     * not for a message the whole house reads and can forward anywhere, and least of all
-     * when it is somebody's electrician who never agreed to either.
+     * The chat post carries the number — the one place this board parts company with the
+     * rental one, which never prints a phone.
+     *
+     * That rule is right there and was copied here by reflex. A rental listing is readable
+     * by anybody who opens the bot, linked or not, so its post can reach a stranger. The
+     * residents' chat is gated by the same list as this board, so the post and the card are
+     * read by exactly the same people, and an extra tap between a neighbour and an
+     * electrician's number protects nobody.
      */
-    public function testTheChatPostNeverCarriesAPhone(): void
+    public function testTheChatPostCarriesTheNumber(): void
     {
         $offer = $this->offer($this->account('2-1-0-076', '76'), 'Електрик')
             ->setContactPhone('+380 50 313 37 05');
 
-        $post = $this->service()->chatPost($offer);
+        $this->assertStringContainsString('+380 50 313 37 05', $this->service()->chatPost($offer));
+    }
 
-        $this->assertStringNotContainsString('313', $post);
-        $this->assertStringNotContainsString('380', $post);
+    /** A card with no number is a post with no number, not a post with an empty line. */
+    public function testAChatPostWithoutANumberSaysNothingAboutOne(): void
+    {
+        $post = $this->service()->chatPost($this->offer($this->account('2-1-0-076', '76'), 'Електрик'));
+
+        $this->assertStringNotContainsString('📞', $post);
     }
 
     /**

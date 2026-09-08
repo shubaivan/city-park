@@ -296,6 +296,14 @@ opt-in phone, admin take-down. What differs from it differs on purpose:
   instead of leaving a live-looking advert.
 - **Adding photos changes nothing in the chat.** The post is text and never carried them;
   the author gets a DM with the updated card instead.
+- **The chat post carries the number** — the one place this board parts company with the
+  rental one, which prints only a number the owner opted into. Both follow from the same
+  question, «who reads this post compared with who reads the card»: the services board and
+  the residents' chat are gated by the same list, so an extra tap protects nobody; the
+  rental board is open to *anybody* who opens the bot, so its post is the **smaller**
+  audience and a number already on the card has been seen more widely. What does not move
+  on either board is the consent gate itself — an owner who kept their number private keeps
+  it private everywhere.
 - **The chat post is skipped entirely when `RESIDENT_CHAT_TOPIC_SERVICES` is unset**, where
   a rental listing falls back to General. Rentals were always written in the chat and the
   bot merely took that over; this board exists to *reduce* «хто робив вам ремонт?» traffic,
@@ -877,6 +885,17 @@ the whole house sees every entry and why the open count rides on the menu button
   stale ones instead of deleting them, since a six-month-old open entry is a record of
   nobody having done anything; Иван's call (02.09.2026) was that such a problem was not a
   real one and will be filed again if it still matters. Photos are deleted with the row.
+
+**The three tokenised upload pages are near-twins by copy, and drift.** Complaints,
+rental listings and service offers each have their own `photo_upload.html.twig` — a
+deliberate call, since each is standalone, opened inside Telegram on a phone, with no
+Encore and no shared layout — and on 08.09.2026 the rental one, the original the other two
+were copied from, was still letting a resident tap «Готово» mid-upload and lose the
+picture. On a phone an upload is seconds of nothing happening, which is exactly when
+somebody presses it. All three now hide the button while a request is in flight, restore it
+on **both** the success and the error path, and spin the status line in red so it reads as
+"wait". `PhotoUploadPagesTest` walks all three and pins only the rules that cost somebody a
+photo; the copy and the headings stay each page's own.
 
 `ImageStore` holds the upload rules shared with the rental noticeboard — size cap, GD
 re-encode (which is what strips EXIF/GPS), 1600px downscale, and the prefix check that
