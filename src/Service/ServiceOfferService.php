@@ -658,8 +658,20 @@ class ServiceOfferService
 
                 return;
             } catch (\Throwable $e) {
-                // Somebody deleted it by hand, or the text came out identical. Fall through
-                // and post a fresh one rather than leave the advert unannounced.
+                // «message is not modified» is not a failure — it is Telegram saying the
+                // post already reads exactly like this. Falling through on it posts a
+                // second copy of an advert that is already standing, which is the
+                // classifieds rot the edit-in-place rule exists to prevent: a republish
+                // that changes only the photos, or a repair run over posts that are
+                // already right, would duplicate every one of them. Same trap the voting
+                // menu's 🔄 was written around.
+                if (str_contains($e->getMessage(), 'not modified')) {
+                    return;
+                }
+
+                // Anything else — most often somebody deleted the post by hand. Fall
+                // through and publish a fresh one rather than leave the advert
+                // unannounced.
                 $this->logger->info('service chat post not edited, posting fresh', [
                     'offer_id' => $offer->getId(),
                     'error' => $e->getMessage(),
