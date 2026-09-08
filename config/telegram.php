@@ -90,6 +90,15 @@ $bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalPublish::START_CALL
 $bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalPublish::START_SALE_CALLBACK, \App\Telegram\Rental\Command\RentalPublish::class);
 $bot->onCommand('rent', \App\Telegram\Rental\Command\RentalMenuCommand::class);
 
+// The house's own trade board. Same button shapes as the rental noticeboard, one prefix
+// apart — an unrouted `svc:` callback errors nowhere, it just spins, which from the
+// resident's side is indistinguishable from the bot being down. ServiceCallbackWiringTest
+// walks the literals in the sources against the regex below.
+$bot->onCallbackQueryData(\App\Telegram\ServiceOffer\Command\ServiceMenuCommand::MENU_CALLBACK, \App\Telegram\ServiceOffer\Command\ServiceMenuCommand::class);
+$bot->onCallbackQueryData('^svc:(?:(?:view|page|photos|contact|phone|extend|remove):\d+|pic:\d+:\d+|noop)$', \App\Telegram\ServiceOffer\Command\ServiceMenuCommand::class);
+$bot->onCallbackQueryData(\App\Telegram\ServiceOffer\Command\ServicePublish::START_CALLBACK, \App\Telegram\ServiceOffer\Command\ServicePublish::class);
+$bot->onCommand('services', \App\Telegram\ServiceOffer\Command\ServiceMenuCommand::class);
+
 $bot->onCallbackQueryData(\App\Telegram\Voting\Command\VotingMenuCommand::MENU_CALLBACK, \App\Telegram\Voting\Command\VotingMenuCommand::class);
 $bot->onCallbackQueryData('^bvote:\d+:(yes|no)$', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 $bot->onCommand('vote', \App\Telegram\Voting\Command\VotingMenuCommand::class);

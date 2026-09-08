@@ -24,6 +24,7 @@ services:
             $topicComplaints: '%env(string:RESIDENT_CHAT_TOPIC_COMPLAINTS)%'
             $topicDebt: '%env(string:RESIDENT_CHAT_TOPIC_DEBT)%'
             $topicRentals: '%env(string:RESIDENT_CHAT_TOPIC_RENTALS)%'
+            $topicServices: '%env(string:RESIDENT_CHAT_TOPIC_SERVICES)%'
             # Telegram ids allowed to move a complaint's status — the head of the ОСББ.
             # One or two people who change about never, so this is config, not a column.
             $managerIds: '%env(string:COMPLAINT_MANAGER_TELEGRAM_IDS)%'
@@ -81,6 +82,13 @@ services:
     # The menu button carries the open-complaint count, and StartCommand's static helpers
     # can only reach services the bot container exposes.
     App\Repository\ComplaintRepository:
+        public: true
+
+    # And once more for «🛠 Послуги (7)»: the menu asks it how many offers are live at
+    # render time. Private, it would be inlined away and the button would silently lose
+    # its count — or, since the lookup is wrapped in a catch, quietly render the label
+    # without one and look like nobody in the house does anything.
+    App\Repository\ServiceOfferRepository:
         public: true
 
     # Same reason once more, and this one shipped broken for an evening: the menu asks it

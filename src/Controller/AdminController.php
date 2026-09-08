@@ -6,6 +6,7 @@ use App\Entity\Account;
 use App\Entity\Complaint;
 use App\Entity\AccountStatusLog;
 use App\Entity\RentalListing;
+use App\Entity\ServiceOffer;
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
@@ -15,6 +16,7 @@ use App\Repository\AdminLoginRepository;
 use App\Repository\PavilionPhotoRepository;
 use App\Repository\PhotoUploadRequestRepository;
 use App\Repository\RentalListingRepository;
+use App\Repository\ServiceOfferRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Repository\TariffRepository;
 use App\Repository\TelegramUserRepository;
@@ -33,6 +35,7 @@ use App\Service\ComplaintService;
 use App\Service\DebtPolicy;
 use App\Service\PavilionPhotoService;
 use App\Service\RentalListingService;
+use App\Service\ServiceOfferService;
 use App\Service\ResidentChatService;
 use App\Service\SchedulePavilionService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -448,6 +451,44 @@ class AdminController extends AbstractController
         $this->addFlash('success', 'Оголошення знято зі списку.');
 
         return $this->redirectToRoute('app_admin_rentals');
+    }
+
+    /**
+     * The trade board, for the one action an admin has on it: taking an advert down.
+     *
+     * Unlike the rental page there is no debt column. A debt is context for a flat being
+     * rented out — the ОСББ takes calls about it — but what a resident charges for laying
+     * tiles is between them and their neighbour, and putting their arrears next to it on
+     * the same screen invites a decision nobody asked the panel to make.
+     */
+    #[Route('/admin/services', name: 'app_admin_services', methods: [Request::METHOD_GET])]
+    public function services(ServiceOfferRepository $offers): Response
+    {
+        return $this->render('admin/services.html.twig', [
+            'offers' => $offers->findRecent(),
+            'lifetimeDays' => ServiceOffer::LIFETIME_DAYS,
+        ]);
+    }
+
+    #[Route('/admin/services/block', name: 'app_admin_service_block', methods: [Request::METHOD_POST])]
+    public function serviceBlock(
+        Request $request,
+        ServiceOfferRepository $offers,
+        ServiceOfferService $offerService,
+    ): Response {
+        $id = (int)$request->request->get('offer_id');
+        $offer = $id > 0 ? $offers->find($id) : null;
+
+        if (!$offer instanceof ServiceOffer || !$offer->isActive()) {
+            $this->addFlash('error', 'Оголошення не знайдено або вже неактивне.');
+
+            return $this->redirectToRoute('app_admin_services');
+        }
+
+        $offerService->block($offer, (string)$this->getUser()?->getUserIdentifier());
+        $this->addFlash('success', 'Оголошення знято зі списку.');
+
+        return $this->redirectToRoute('app_admin_services');
     }
 
     #############

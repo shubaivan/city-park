@@ -42,6 +42,15 @@ class ResidentChatService
     /** Flats offered for rent or sale — the classifieds that used to clog the chat. */
     public const TOPIC_RENTALS = 'rentals';
 
+    /**
+     * Residents offering their trade.
+     *
+     * Unlike the others this one has no General fallback: see
+     * ServiceOfferService::announce() — a board that exists to take «хто робив вам
+     * ремонт?» out of the chat must not start by posting every advert into it.
+     */
+    public const TOPIC_SERVICES = 'services';
+
     public function __construct(
         private TelegramUserRepository $telegramUserRepository,
         private TelegramUserService $telegramUserService,
@@ -51,6 +60,7 @@ class ResidentChatService
         private string $topicComplaints = '',
         private string $topicDebt = '',
         private string $topicRentals = '',
+        private string $topicServices = '',
     ) {}
 
     /**
@@ -68,6 +78,7 @@ class ResidentChatService
             self::TOPIC_COMPLAINTS => $this->topicComplaints,
             self::TOPIC_DEBT => $this->topicDebt,
             self::TOPIC_RENTALS => $this->topicRentals,
+            self::TOPIC_SERVICES => $this->topicServices,
             default => '',
         };
 
