@@ -61,6 +61,20 @@ class VotingMenuCommand
         return $this->telegramUserService->resolveAccount($user);
     }
 
+    /**
+     * Somebody tapped «↗️ Проголосувати в боті» under the post in the residents' chat.
+     *
+     * The open list, not the campaign in isolation: a vote is cast from the menu and the
+     * menu already shows every vote this person may cast, marked with how they voted. When
+     * the one they came for is over, the archive is where it went — and renderMenu()
+     * already offers that row, so they land one tap from the answer rather than on an
+     * error.
+     */
+    public function openFromDeepLink(Nutgram $bot, int $campaignId): void
+    {
+        $this->renderMenu($bot, edit: false);
+    }
+
     private function renderMenu(Nutgram $bot, bool $edit, ?string $notice = null): void
     {
         $account = $this->currentAccount($bot);

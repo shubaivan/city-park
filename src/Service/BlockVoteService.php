@@ -48,6 +48,8 @@ class BlockVoteService
         private DebtPolicy $debtPolicy,
         private PavilionPhotoService $photoService,
         private MessageBusInterface $bus,
+        private ResidentChatService $residentChat,
+        private DeepLink $links,
     ) {}
 
     private function now(): \DateTime
@@ -173,6 +175,8 @@ class BlockVoteService
             $this->bus->dispatch(new VoteBroadcastMessage($campaign->getId(), (int)$voter->getId()));
         }
 
+        $this->announce($campaign);
+
         $this->logger->info('block-vote: campaign opened', [
             'campaign_id' => $campaign->getId(),
             'kind' => $kind,
@@ -295,6 +299,121 @@ class BlockVoteService
             ->setResultYes($tally['yes'])
             ->setResultNo($tally['no']);
         $this->em->flush();
+
+        $this->announce($campaign);
+    }
+
+    /**
+     * The vote in the residents' chat — posted when it opens, and the same message edited
+     * when it closes.
+     *
+     * Edited, not re-posted: a thread carrying «відкрито голосування» and no ending is how
+     * the same question comes back next spring, and `editMessageText` has none of
+     * `deleteMessage`'s 48-hour limit while a vote runs for seven days. It also keeps the
+     * announcement where the discussion under it is.
+     *
+     * The DM broadcast is not replaced by this. A DM reaches the people who may vote; the
+     * post is what makes the vote a thing the house can see happening, and what carries the
+     * result to everyone afterwards — including the flats with nobody in the bot, who
+     * cannot vote but live here.
+     *
+     * Never fatal, and silent when no topic is configured: an unreachable chat must not
+     * stop a vote from opening.
+     */
+    private function announce(BlockVoteCampaign $campaign): void
+    {
+        $topic = $this->residentChat->topic(ResidentChatService::TOPIC_VOTES);
+
+        if (!$this->residentChat->isConfigured() || $topic === null) {
+            return;
+        }
+
+        $text = $this->chatPost($campaign);
+        $markup = $this->links->button(
+            DeepLink::KIND_VOTE,
+            $campaign->getId(),
+            '↗️ Проголосувати в боті',
+        );
+        $chatId = (int)$this->residentChat->chatId();
+
+        if ($campaign->getChatMessageId() !== null) {
+            try {
+                $this->bot->editMessageText(
+                    text: $text,
+                    chat_id: $chatId,
+                    message_id: $campaign->getChatMessageId(),
+                    parse_mode: ParseMode::HTML,
+                    // The button goes when the vote does: a live «Проголосувати» under a
+                    // closed vote is the one thing worse than no button.
+                    reply_markup: $campaign->isOpen() ? $markup : null,
+                );
+
+                return;
+            } catch (\Throwable $e) {
+                $this->logger->info('block-vote: chat post not edited', [
+                    'campaign_id' => $campaign->getId(),
+                    'error' => $e->getMessage(),
+                ]);
+
+                return;
+            }
+        }
+
+        try {
+            $message = $this->bot->sendMessage(
+                text: $text,
+                chat_id: $chatId,
+                message_thread_id: $topic,
+                parse_mode: ParseMode::HTML,
+                reply_markup: $markup,
+            );
+
+            $campaign->setChatMessageId($message?->message_id);
+            $this->em->flush();
+        } catch (\Throwable $e) {
+            $this->logger->warning('block-vote: chat announcement failed', [
+                'campaign_id' => $campaign->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /** What the chat sees: the question while it runs, the result once it is over. */
+    public function chatPost(BlockVoteCampaign $campaign): string
+    {
+        $yes = (int)($campaign->getResultYes() ?? $this->ballotRepository->tally($campaign)['yes']);
+        $no = (int)($campaign->getResultNo() ?? $this->ballotRepository->tally($campaign)['no']);
+        $subject = htmlspecialchars($this->subjectLabel($campaign), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        if ($campaign->isOpen()) {
+            $details = $campaign->getDetails();
+
+            return sprintf(
+                "🗳 <b>%s</b>\n%s\n%s\n🗓 Голосування до <b>%s</b>\n\n<i>%s</i>",
+                $campaign->isQuestion() ? 'Питання до мешканців' : 'Голосування за блокування',
+                $subject,
+                $details !== null
+                    ? '<i>' . htmlspecialchars($details, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</i>'
+                    : '',
+                $campaign->getDeadlineAt()->format('d.m.Y'),
+                $campaign->isQuestion()
+                    ? 'Рішення ухвалює ОСББ — результат покаже, чого хочуть мешканці.'
+                    : 'Голосують власники квартир і паркомісць, один голос від рахунку.',
+            );
+        }
+
+        return sprintf(
+            "🗳 <b>Голосування завершено</b>\n%s\n\n📊 За: <b>%d</b> · Проти: <b>%d</b>\n<i>%s</i>",
+            $subject,
+            $yes,
+            $no,
+            match ($campaign->getStatus()) {
+                BlockVoteCampaign::STATUS_PASSED => 'Рішення: заблокувати на ' . self::BLOCK_DAYS . ' днів.',
+                BlockVoteCampaign::STATUS_FAILED => 'Рішення: не блокувати — голосів не вистачило.',
+                BlockVoteCampaign::STATUS_CANCELLED => 'Голосування скасовано.',
+                default => 'Це опитування — рішення ухвалює ОСББ, спираючись на цей результат.',
+            },
+        );
     }
 
     /**

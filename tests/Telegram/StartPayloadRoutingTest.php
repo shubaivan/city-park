@@ -6,6 +6,7 @@ use App\Service\DeepLink;
 use App\Service\TelegramUserService;
 use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
+use App\Telegram\Voting\Command\VotingMenuCommand;
 use App\Telegram\Guard\Command\GuardScanCommand;
 use App\Telegram\Rental\Command\RentalMenuCommand;
 use App\Telegram\ServiceOffer\Command\ServiceMenuCommand;
@@ -35,6 +36,7 @@ class StartPayloadRoutingTest extends KernelTestCase
         ?RentalMenuCommand $rentals = null,
         ?ComplaintMenuCommand $complaints = null,
         ?DebtBoardCommand $debts = null,
+        ?VotingMenuCommand $votes = null,
     ): StartPayloadCommand {
         return new StartPayloadCommand(
             $guard ?? $this->createMock(GuardScanCommand::class),
@@ -42,6 +44,7 @@ class StartPayloadRoutingTest extends KernelTestCase
             $rentals ?? $this->createMock(RentalMenuCommand::class),
             $complaints ?? $this->createMock(ComplaintMenuCommand::class),
             $debts ?? $this->createMock(DebtBoardCommand::class),
+            $votes ?? $this->createMock(VotingMenuCommand::class),
             $this->createMock(DeepLink::class),
             $this->createMock(TelegramUserService::class),
         );
@@ -88,6 +91,14 @@ class StartPayloadRoutingTest extends KernelTestCase
         $this->command(debts: $debts)($this->bot(), 'd-3');
     }
 
+    public function testAVoteLinkOpensTheVotingMenu(): void
+    {
+        $votes = $this->createMock(VotingMenuCommand::class);
+        $votes->expects($this->once())->method('openFromDeepLink')->with($this->anything(), 5);
+
+        $this->command(votes: $votes)($this->bot(), 'v-5');
+    }
+
     /**
      * An unknown payload opens the main menu rather than erroring.
      *
@@ -120,6 +131,7 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(RentalMenuCommand::class),
             $this->createMock(ComplaintMenuCommand::class),
             $this->createMock(DebtBoardCommand::class),
+            $this->createMock(VotingMenuCommand::class),
             $links,
             $this->createMock(TelegramUserService::class),
         ))($this->bot(), 'r-7');
@@ -142,6 +154,7 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(RentalMenuCommand::class),
             $this->createMock(ComplaintMenuCommand::class),
             $this->createMock(DebtBoardCommand::class),
+            $this->createMock(VotingMenuCommand::class),
             $links,
             $this->createMock(TelegramUserService::class),
         ))($this->bot(), 'g-7-abcdef012345');

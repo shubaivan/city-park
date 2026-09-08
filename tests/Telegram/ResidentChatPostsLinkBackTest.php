@@ -40,6 +40,7 @@ class ResidentChatPostsLinkBackTest extends TestCase
             'rental listings' => [$root . '/RentalListingService.php'],
             'complaints' => [$root . '/ComplaintService.php'],
             'the debtors\' board' => [$root . '/DebtAnnouncer.php'],
+            'votes of the house' => [$root . '/BlockVoteService.php'],
         ];
     }
 
@@ -69,9 +70,13 @@ class ResidentChatPostsLinkBackTest extends TestCase
                 continue;
             }
 
+            // The method around the send, not the send itself: a post that is both created
+            // and later edited builds its button once into a variable, and demanding the
+            // literal inside the call would push that into being built twice — an extra
+            // getMe() per edit — to satisfy a test.
             $this->assertStringContainsString(
                 'links->button(',
-                $call,
+                self::methodAround($source, $call),
                 $name . ": a post into the residents' chat must carry «↗️ Відкрити в боті». "
                     . 'The post is a summary; everything it leaves out is on a card the reader '
                     . 'would otherwise have to hunt for. If this one truly has no target, add it '
@@ -108,6 +113,40 @@ class ResidentChatPostsLinkBackTest extends TestCase
         }
 
         return $found;
+    }
+
+    /**
+     * The body of the method a given call sits in.
+     *
+     * Walks back to the nearest `function ` and forward by brace depth, which is enough
+     * here: these are ordinary methods, not closures inside closures.
+     */
+    private static function methodAround(string $source, string $call): string
+    {
+        $at = strpos($source, $call);
+
+        if ($at === false) {
+            return $call;
+        }
+
+        $start = strrpos(substr($source, 0, $at), 'function ');
+
+        if ($start === false) {
+            return $call;
+        }
+
+        $i = strpos($source, '{', $start);
+        $depth = 0;
+
+        for ($j = (int)$i; $j < strlen($source); $j++) {
+            $depth += match ($source[$j]) { '{' => 1, '}' => -1, default => 0 };
+
+            if ($depth === 0) {
+                return substr($source, $start, $j - $start + 1);
+            }
+        }
+
+        return substr($source, $start);
     }
 
     /** The link is built and read from one map, so a new kind cannot be half-added. */
