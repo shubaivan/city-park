@@ -6,6 +6,7 @@ use App\Entity\Account;
 use App\Entity\ServiceOffer;
 use App\Entity\TelegramUser;
 use App\Repository\ServiceOfferRepository;
+use App\Telegram\Start\Command\StartPayloadCommand;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
@@ -106,6 +107,7 @@ class ServiceOfferService
         // and all. A withdrawal is the author saying they are done; a republish is them
         // saying it differently.
         $photos = [];
+        $chatMessageId = null;
 
         if ($existing) {
             $photos = $existing->getPhotos();
@@ -117,9 +119,19 @@ class ServiceOfferService
             $existing->setPhotos([]);
             $existing->setPhotoToken(null);
             $existing->setPhotoTokenExpiresAt(null);
+
+            // The post in the chat is carried over and edited in place, not deleted and
+            // re-posted. Telegram refuses to delete a message older than 48 hours, so the
+            // delete-then-post shape left the old advert standing and added a second one
+            // beside it — two posts for one service, which is exactly the classifieds rot
+            // this thread is deleted-on-close to avoid. Editing also keeps the post where
+            // it was, instead of bumping it to the bottom of the topic on every typo fix.
+            $chatMessageId = $existing->getChatMessageId();
+            $existing->setChatMessageId(null);
         }
 
         $offer = (new ServiceOffer())
+            ->setChatMessageId($chatMessageId ?? null)
             ->setAccount($account)
             ->setAuthor($author)
             ->setTitle($title)
@@ -132,10 +144,6 @@ class ServiceOfferService
 
         $this->em->persist($offer);
         $this->em->flush();
-
-        if ($existing) {
-            $this->unannounce($existing);
-        }
 
         $this->announce($offer);
 
@@ -619,13 +627,43 @@ class ServiceOfferService
             return;
         }
 
+        $chatId = (int)$this->residentChat->chatId();
+        $existingMessage = $offer->getChatMessageId();
+
+        // An offer that already has a post is being republished — edit it where it stands.
+        // Editing has none of deleteMessage's 48-hour limit, so this is also the only
+        // shape that cannot leave two posts for one service behind.
+        if ($existingMessage !== null) {
+            try {
+                $this->bot->editMessageText(
+                    text: $this->chatPost($offer),
+                    chat_id: $chatId,
+                    message_id: $existingMessage,
+                    parse_mode: ParseMode::HTML,
+                    reply_markup: $this->chatPostMarkup($offer),
+                );
+
+                return;
+            } catch (\Throwable $e) {
+                // Somebody deleted it by hand, or the text came out identical. Fall through
+                // and post a fresh one rather than leave the advert unannounced.
+                $this->logger->info('service chat post not edited, posting fresh', [
+                    'offer_id' => $offer->getId(),
+                    'error' => $e->getMessage(),
+                ]);
+
+                $offer->setChatMessageId(null);
+            }
+        }
+
         try {
             $message = $this->bot->sendMessage(
                 text: $this->chatPost($offer),
-                chat_id: (int)$this->residentChat->chatId(),
+                chat_id: $chatId,
                 message_thread_id: $topic,
                 parse_mode: ParseMode::HTML,
                 disable_notification: true,
+                reply_markup: $this->chatPostMarkup($offer),
             );
 
             $offer->setChatMessageId($message?->message_id);
@@ -638,6 +676,43 @@ class ServiceOfferService
         }
     }
 
+    /**
+     * One button under the chat post: straight into this offer's card in the bot.
+     *
+     * A **url** button, which is the only kind that works in the group — the global
+     * middleware drops every update arriving from a group, so a callback button there
+     * spins forever, while a `t.me/…?start=…` link never sends an update at all.
+     *
+     * It matters more here than anywhere: the post deliberately carries no phone and no
+     * photos, so «деталі — у боті» was the whole payload, and it asked the reader to go
+     * find one row among a list. Now they tap and land on the card.
+     *
+     * Null when the bot's own username cannot be read — the post still goes out, minus the
+     * button, because a missing shortcut must not cost the house the advert.
+     */
+    private function chatPostMarkup(ServiceOffer $offer): ?InlineKeyboardMarkup
+    {
+        try {
+            $username = $this->bot->getMe()?->username;
+        } catch (\Throwable) {
+            $username = null;
+        }
+
+        if ($username === null || $username === '' || $offer->getId() === null) {
+            return null;
+        }
+
+        return InlineKeyboardMarkup::make()->addRow(InlineKeyboardButton::make(
+            '🛠 Відкрити в боті',
+            url: sprintf(
+                'https://t.me/%s?start=%s%d',
+                $username,
+                StartPayloadCommand::SERVICE_PREFIX,
+                $offer->getId(),
+            ),
+        ));
+    }
+
     /** Take the post down with the offer — see ServiceOffer::$chat_message_id. */
     public function unannounce(ServiceOffer $offer): void
     {
@@ -647,16 +722,32 @@ class ServiceOfferService
             return;
         }
 
+        $chatId = (int)$this->residentChat->chatId();
+
         try {
-            $this->bot->deleteMessage((int)$this->residentChat->chatId(), $messageId);
+            $this->bot->deleteMessage($chatId, $messageId);
         } catch (\Throwable $e) {
-            // Telegram refuses to delete anything older than 48 hours, and somebody may
-            // have removed it by hand. Either way the offer is closed; a stale post is not
-            // worth a failed take-down.
-            $this->logger->info('service chat post not deleted', [
+            // Telegram refuses to delete anything older than 48 hours — which is most
+            // closed offers, since they live 30 days. Leaving the post standing is the
+            // failure this thread is deleted-on-close to avoid: a reader cannot tell which
+            // of two dozen adverts is still true. So strike it through instead, which says
+            // the same thing and cannot fail on age.
+            $this->logger->info('service chat post not deleted, striking it through', [
                 'offer_id' => $offer->getId(),
                 'error' => $e->getMessage(),
             ]);
+
+            try {
+                $this->bot->editMessageText(
+                    text: '⛔ <s>' . self::esc($offer->getTitle()) . '</s>'
+                        . "\n<i>Оголошення знято.</i>",
+                    chat_id: $chatId,
+                    message_id: $messageId,
+                    parse_mode: ParseMode::HTML,
+                );
+            } catch (\Throwable) {
+                // Already gone, or removed by hand. Nothing left to do about it.
+            }
         }
 
         $offer->setChatMessageId(null);
@@ -678,7 +769,7 @@ class ServiceOfferService
         ];
 
         $lines[] = '';
-        $lines[] = '<i>Деталі, фото і контакт — у боті, кнопка «🛠 Послуги».</i>';
+        $lines[] = '<i>Телефон і фото робіт — у боті, кнопка нижче.</i>';
 
         return implode("\n", $lines);
     }

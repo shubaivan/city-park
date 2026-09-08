@@ -273,6 +273,29 @@ opt-in phone, admin take-down. What differs from it differs on purpose:
   blocking a debtor from advertising their labour takes away the thing that lets them pay.
   And unlike a rental listing — whose card is written about a flat — somebody whose only
   object is a паркомісце can still lay tiles. `ServiceOfferRulesTest` pins both.
+- **The chat post carries a deep link into the card.** `t.me/<bot>?start=s-<id>` as a
+  **url** button — the only kind that works in a group, since the global middleware drops
+  every update from there and a callback button would spin forever. It matters more here
+  than anywhere: the post deliberately carries no phone and no photos, so «деталі — у боті»
+  was the whole payload and it asked the reader to go find one row in a list. `start
+  {payload}` is now routed by `StartPayloadCommand` on the payload's prefix (`g-` guard QR,
+  `s-` service advert), because the QR was wired straight to its handler and the day a
+  second link appeared everything that was not a QR would have been answered «цей QR-код
+  зчитує охорона». An unknown payload opens the main menu. `openFromDeepLink()` re-checks
+  the account: a link is forwardable and renderCard() would otherwise walk straight past
+  the residents-only rule. `StartPayloadRoutingTest` pins each prefix — `GuardWiringTest`
+  only asserts the config *string*, which stayed true through the rewiring and would stay
+  true through a broken router.
+- **A republish edits the chat post in place; it never deletes and re-posts.** Telegram
+  refuses to delete a message older than 48 hours and an offer lives 30 days, so the
+  delete-then-post shape left the old advert standing and added a second one beside it —
+  two posts for one service, which is the classifieds rot the deleted-on-close rule exists
+  to prevent. Editing has no age limit and keeps the post where it was rather than bumping
+  it to the bottom of the topic on every typo fix. When a **close** cannot delete for the
+  same reason, `unannounce()` strikes the post through («⛔ <s>…</s> Оголошення знято»)
+  instead of leaving a live-looking advert.
+- **Adding photos changes nothing in the chat.** The post is text and never carried them;
+  the author gets a DM with the updated card instead.
 - **The chat post is skipped entirely when `RESIDENT_CHAT_TOPIC_SERVICES` is unset**, where
   a rental listing falls back to General. Rentals were always written in the chat and the
   bot merely took that over; this board exists to *reduce* «хто робив вам ремонт?» traffic,

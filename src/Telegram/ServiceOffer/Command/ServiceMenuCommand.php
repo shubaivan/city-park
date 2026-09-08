@@ -121,6 +121,35 @@ class ServiceMenuCommand
         $this->renderMenu($bot, edit: $bot->isCallbackQuery());
     }
 
+    /**
+     * Somebody tapped «🛠 Відкрити в боті» under the advert in the residents' chat.
+     *
+     * The card is rendered directly — the post in the chat carries no number and no photos
+     * on purpose, so the link is the whole point of it, and landing on the list instead
+     * would make the reader hunt for the row they just tapped.
+     *
+     * **The account check cannot be skipped here.** renderMenu() refuses an unlinked
+     * visitor, but a deep link goes straight to a card and would walk right past that: the
+     * board names which flat each poster lives in, and the link is forwardable to anybody.
+     * An offer that has since closed falls back to the list, which then explains itself.
+     */
+    public function openFromDeepLink(Nutgram $bot, int $offerId): void
+    {
+        if (!$this->currentAccount($bot) instanceof Account) {
+            $this->renderMenu($bot, edit: false);
+
+            return;
+        }
+
+        if (!$this->liveOffer($offerId)) {
+            $this->renderMenu($bot, edit: false, notice: '⚠️ Це оголошення вже неактуальне.');
+
+            return;
+        }
+
+        $this->renderCard($bot, $offerId, edit: false);
+    }
+
     private function currentAccount(Nutgram $bot): ?Account
     {
         $user = $this->telegramUserService->getCurrentUser();
@@ -255,12 +284,12 @@ class ServiceMenuCommand
      * The author's own card carries the management controls instead of a "write to me"
      * button — they cannot be interested in their own service.
      */
-    private function renderCard(Nutgram $bot, int $offerId, int $index = 0): void
+    private function renderCard(Nutgram $bot, int $offerId, int $index = 0, bool $edit = true): void
     {
         $offer = $this->liveOffer($offerId);
 
         if (!$offer) {
-            $this->renderMenu($bot, edit: true, notice: '⚠️ Це оголошення вже неактуальне.');
+            $this->renderMenu($bot, edit: $edit, notice: '⚠️ Це оголошення вже неактуальне.');
 
             return;
         }
@@ -275,11 +304,11 @@ class ServiceMenuCommand
 
         $text = implode("\n", $lines);
 
-        if ($offer->hasPhotos() && $this->sendPhotoCard($bot, $offer, $index, $text, $markup)) {
+        if ($offer->hasPhotos() && $this->sendPhotoCard($bot, $offer, $index, $text, $markup, $edit)) {
             return;
         }
 
-        $this->respond($bot, edit: true, text: $text, markup: $markup);
+        $this->respond($bot, edit: $edit, text: $text, markup: $markup);
     }
 
     /**
@@ -337,6 +366,7 @@ class ServiceMenuCommand
         int $index,
         string $caption,
         InlineKeyboardMarkup $markup,
+        bool $replacing = true,
     ): bool {
         $abs = $this->photoPath($offer, $index);
 
@@ -370,10 +400,15 @@ class ServiceMenuCommand
         }
 
         // Only now — if sending failed we still have the message the user was looking at.
-        try {
-            $bot->deleteMessage($bot->chatId(), $bot->messageId());
-        } catch (\Throwable) {
-            // A message older than 48h cannot be deleted; leaving it is harmless.
+        // Nothing to replace when the card is the first message of the conversation, which
+        // is what a deep link from the chat is: deleting there would take out whatever the
+        // person happened to be reading.
+        if ($replacing) {
+            try {
+                $bot->deleteMessage($bot->chatId(), $bot->messageId());
+            } catch (\Throwable) {
+                // A message older than 48h cannot be deleted; leaving it is harmless.
+            }
         }
 
         return true;
