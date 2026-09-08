@@ -644,6 +644,46 @@ class RentalListingService
     }
 
     /**
+     * A block to paste somewhere that is not Telegram — see ServiceOfferService::shareText().
+     *
+     * The Viber group of the ЖК is 653 people and it is where «хто здає однокімнатну?» is
+     * still asked. An inline button does not survive being forwarded there; a spelled-out
+     * url does.
+     */
+    public function shareText(RentalListing $listing): string
+    {
+        $account = $listing->getAccount();
+
+        $head = array_filter([
+            self::placePlain($account),
+            $listing->roomsLabel(),
+            $account->getArea() ? rtrim(rtrim(number_format((float)$account->getArea(), 1, ',', ' '), '0'), ',') . ' м²' : null,
+        ]);
+
+        $lines = [
+            $listing->dealIcon() . ' ' . $listing->dealVerb() . ' · ' . implode(' · ', $head),
+            '💰 ' . $listing->priceLabel(),
+        ];
+
+        if ($phone = $listing->publicPhone()) {
+            $lines[] = '📞 ' . $phone;
+        }
+
+        if ($description = $listing->getDescription()) {
+            $lines[] = '';
+            $lines[] = mb_strimwidth($description, 0, 220, '…');
+        }
+
+        if ($url = $this->links->url(DeepLink::KIND_RENTAL, $listing->getId())) {
+            $lines[] = '';
+            $lines[] = 'Фото і контакт власника — у боті ЖК «City Park»:';
+            $lines[] = $url;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
      * "буд. 21, кв. 45" — never the apartment on its own.
      *
      * The ЖК is five buildings on one street and the numbering repeats across them, so

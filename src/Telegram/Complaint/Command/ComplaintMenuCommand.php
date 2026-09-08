@@ -17,6 +17,7 @@ use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Input\InputMediaPhoto;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
+use SergiX44\Nutgram\Telegram\Types\Message\LinkPreviewOptions;
 use SergiX44\Nutgram\Telegram\Types\WebApp\WebAppInfo;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
@@ -94,6 +95,12 @@ class ComplaintMenuCommand
 
         if (str_starts_with($data, 'cmp:talk:')) {
             $this->renderThread($bot, (int)substr($data, strlen('cmp:talk:')));
+
+            return;
+        }
+
+        if (str_starts_with($data, 'cmp:share:')) {
+            $this->share($bot, (int)substr($data, strlen('cmp:share:')));
 
             return;
         }
@@ -488,6 +495,11 @@ class ComplaintMenuCommand
         $canComment = $this->service->mayComment($complaint, $user, $account);
         $comments = $this->service->countComments($complaint);
 
+        $markup->addRow(InlineKeyboardButton::make(
+            '🔗 Поділитися (Viber тощо)',
+            callback_data: 'cmp:share:' . $complaint->getId(),
+        ));
+
         if ($comments > 0 || $canComment) {
             $markup->addRow(InlineKeyboardButton::make(
                 $comments > 0 ? sprintf('💬 Обговорення (%d)', $comments) : '💬 Обговорення',
@@ -819,6 +831,26 @@ class ComplaintMenuCommand
         }
 
         return true;
+    }
+
+    /** Hand over a block that survives leaving Telegram — see ServiceMenuCommand::share(). */
+    private function share(Nutgram $bot, int $complaintId): void
+    {
+        $complaint = $this->complaints->find($complaintId);
+
+        if (!$complaint instanceof Complaint) {
+            $bot->answerCallbackQuery(text: '⚠️ Таку заявку не знайдено.', show_alert: true);
+
+            return;
+        }
+
+        $bot->answerCallbackQuery();
+
+        $bot->sendMessage(
+            text: "🔗 Скопіюйте і надішліть у Viber, WhatsApp або будь-де:\n\n"
+                . $this->service->shareText($complaint),
+            link_preview_options: LinkPreviewOptions::make(is_disabled: true),
+        );
     }
 
     private function addPhotoNav(InlineKeyboardMarkup $markup, Complaint $complaint, int $index): void

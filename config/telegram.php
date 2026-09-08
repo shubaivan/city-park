@@ -85,7 +85,7 @@ $bot->onCallbackQueryData('^info-topic:.+$', \App\Telegram\Info\Command\InfoComm
 $bot->onCommand('info', \App\Telegram\Info\Command\InfoCommand::class);
 
 $bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalMenuCommand::MENU_CALLBACK, \App\Telegram\Rental\Command\RentalMenuCommand::class);
-$bot->onCallbackQueryData('^rent:(?:(?:view|page|photos|contact|phone|extend|remove):\d+|pic:\d+:\d+|deal:(?:all|rent|sale):\d+|noop)$', \App\Telegram\Rental\Command\RentalMenuCommand::class);
+$bot->onCallbackQueryData('^rent:(?:(?:view|page|photos|contact|phone|extend|remove|share):\d+|pic:\d+:\d+|deal:(?:all|rent|sale):\d+|noop)$', \App\Telegram\Rental\Command\RentalMenuCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalPublish::START_CALLBACK, \App\Telegram\Rental\Command\RentalPublish::class);
 $bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalPublish::START_SALE_CALLBACK, \App\Telegram\Rental\Command\RentalPublish::class);
 $bot->onCommand('rent', \App\Telegram\Rental\Command\RentalMenuCommand::class);
@@ -109,7 +109,7 @@ $bot->onCommand('vote', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 // The house's problem register. cmp:status is guarded inside the handler, not here:
 // a callback from anyone else has to answer with an explanation, not silence.
 $bot->onCallbackQueryData(\App\Telegram\Complaint\Command\ComplaintMenuCommand::MENU_CALLBACK, \App\Telegram\Complaint\Command\ComplaintMenuCommand::class);
-$bot->onCallbackQueryData('^cmp:(?:(?:view|photos|page|del|delok|my|talk):\d+|pic:\d+:\d+|status:\d+:[a-z_]+|noop|cancel)$', \App\Telegram\Complaint\Command\ComplaintMenuCommand::class);
+$bot->onCallbackQueryData('^cmp:(?:(?:view|photos|page|del|delok|my|talk|share):\d+|pic:\d+:\d+|status:\d+:[a-z_]+|noop|cancel)$', \App\Telegram\Complaint\Command\ComplaintMenuCommand::class);
 $bot->onCallbackQueryData('^cmp:edit:\d+$', \App\Telegram\Complaint\Command\ComplaintEdit::class);
 // The official discussion, and the two status changes that have to ask why first. Both are
 // guarded inside their conversation: a tap from the wrong person gets an explanation.

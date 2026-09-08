@@ -399,6 +399,21 @@ afterwards; writing the rule down is cheaper than removing it a fifth time.
 `$this->links->button(...)`. A post that genuinely has nowhere to point goes in that test's
 `NO_TARGET` with its reason.
 
+**The other half of the rule: every board can hand over a paste-ready block.** An inline
+button is Telegram's alone — forwarded into Viber it is simply not there, leaving a summary
+that ends «кнопка нижче» under nothing — and the ЖК's Viber group still holds 653 people,
+which is where «хто дасть номер майстра з дверей?» is still asked. So each board has
+`shareText()` and a «🔗 Поділитися» button: plain text, url spelled out, **no markup at
+all**, sent with the link preview disabled so Telegram does not stack a bot card over the
+text somebody is trying to select. Offered to everyone, not only the author. The complaint
+block carries the status (that is the whole point of the register) and never the author's
+contact. `ShareBlocksTest` pins all three.
+
+**Ids are never reused** (`SERIAL`), so a shared link is either the advert it was made for
+or plainly stale — never somebody else's. It survives an edit, because editing changes the
+row in place; it dies when the advert is withdrawn or expires, and then opens the list with
+«вже неактуальне» rather than an error.
+
 `DeepLink` is the one place a link is built *or* read — prefix map, button, and the click
 record together, so a new board cannot add a button the router does not understand. A **url**
 button is the only kind that works in a group: the global middleware drops every update

@@ -400,6 +400,45 @@ class ComplaintService
         }
     }
 
+    /**
+     * A block to paste somewhere that is not Telegram — see ServiceOfferService::shareText().
+     *
+     * Carries the status, because that is the whole reason this register exists: «ліфт
+     * не працює» pasted into Viber without «🔧 в роботі» beside it just starts the thread
+     * over again somewhere the ОСББ is not reading.
+     *
+     * Never the author's contact. That is shown to the head of the ОСББ and to nobody
+     * else, and a block built for pasting into a group of 653 is the last place to relax
+     * that.
+     */
+    public function shareText(Complaint $complaint): string
+    {
+        $lines = [
+            sprintf(
+                '%s Заявка №%d · %s',
+                $this->statusIcon($complaint->getStatus()),
+                $complaint->getId(),
+                $this->where($complaint),
+            ),
+            $this->statusLabel($complaint->getStatus()),
+            '',
+            $complaint->getText(),
+        ];
+
+        if ($complaint->getResolution() !== null && $complaint->getResolution() !== '') {
+            $lines[] = '';
+            $lines[] = '💬 ' . $complaint->getResolution();
+        }
+
+        if ($url = $this->links->url(DeepLink::KIND_COMPLAINT, $complaint->getId())) {
+            $lines[] = '';
+            $lines[] = 'Фото і статус — у боті ЖК «City Park»:';
+            $lines[] = $url;
+        }
+
+        return implode("\n", $lines);
+    }
+
     public function trimText(string $text): string
     {
         $text = trim(preg_replace('/\s+/u', ' ', $text) ?? '');

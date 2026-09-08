@@ -14,6 +14,7 @@ use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
+use SergiX44\Nutgram\Telegram\Types\Message\LinkPreviewOptions;
 use SergiX44\Nutgram\Telegram\Types\Input\InputMediaPhoto;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\WebApp\WebAppInfo;
@@ -74,6 +75,11 @@ class RentalMenuCommand
         if (str_starts_with($data, 'rent:pic:')) {
             [$id, $index] = array_pad(explode(':', substr($data, strlen('rent:pic:'))), 2, '0');
             $this->showPhoto($bot, (int)$id, (int)$index);
+            return;
+        }
+
+        if (str_starts_with($data, 'rent:share:')) {
+            $this->share($bot, (int)substr($data, strlen('rent:share:')));
             return;
         }
 
@@ -352,11 +358,36 @@ class RentalMenuCommand
             $markup->addRow($this->rentalService->contactButton($listing));
         }
 
+        $markup->addRow(InlineKeyboardButton::make(
+            '🔗 Поділитися (Viber тощо)',
+            callback_data: 'rent:share:' . $listing->getId(),
+        ));
+
         // Back always lands on page 1: the card does not know which page it was opened
         // from, and with a house this size a second page is rare.
         $markup->addRow(
             InlineKeyboardButton::make('⬅️ До списку', callback_data: self::MENU_CALLBACK),
             StartCommand::homeButton(),
+        );
+    }
+
+    /** Hand over a block that survives leaving Telegram — see ServiceMenuCommand::share(). */
+    private function share(Nutgram $bot, int $listingId): void
+    {
+        $listing = $this->liveListing($listingId);
+
+        if (!$listing) {
+            $bot->answerCallbackQuery(text: '⚠️ Це оголошення вже неактуальне.', show_alert: true);
+
+            return;
+        }
+
+        $bot->answerCallbackQuery();
+
+        $bot->sendMessage(
+            text: "🔗 Скопіюйте і надішліть у Viber, WhatsApp або будь-де:\n\n"
+                . $this->rentalService->shareText($listing),
+            link_preview_options: LinkPreviewOptions::make(is_disabled: true),
         );
     }
 
