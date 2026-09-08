@@ -34,12 +34,23 @@ class DeepLink
         self::KIND_SERVICE => 's-',
         self::KIND_RENTAL => 'r-',
         self::KIND_COMPLAINT => 'c-',
+        self::KIND_DEBT => 'd-',
         self::KIND_GUARD => 'g-',
     ];
 
     public const KIND_SERVICE = 'service';
     public const KIND_RENTAL = 'rental';
     public const KIND_COMPLAINT = 'complaint';
+
+    /**
+     * The monthly debtors' announcement.
+     *
+     * The id is the `DebtSnapshot`, not the destination: the board it opens is always the
+     * current one, and there is only ever one of those. Carrying the snapshot means the
+     * click log answers «which month's post did people actually open», which is the only
+     * interesting question about a post that repeats.
+     */
+    public const KIND_DEBT = 'debt';
 
     /** The guard's QR. Signed, not an id — it is here so the router has one list. */
     public const KIND_GUARD = 'guard';

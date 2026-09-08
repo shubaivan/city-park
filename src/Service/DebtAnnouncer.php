@@ -28,6 +28,7 @@ class DebtAnnouncer
     public function __construct(
         private AccountRepository $accountRepository,
         private DebtSnapshotRepository $snapshots,
+        private DeepLink $links,
         private DebtBoardService $board,
         private ResidentChatService $residentChat,
         private EntityManagerInterface $em,
@@ -78,6 +79,10 @@ class DebtAnnouncer
                 text: $text,
                 chat_id: $chatId,
                 message_thread_id: $this->residentChat->topic(ResidentChatService::TOPIC_DEBT),
+                // Straight into the full report. Without it the post ends on a figure and
+                // a name, and «де я в цьому списку» — the first question anybody has —
+                // costs four taps through the main menu.
+                reply_markup: $this->links->button(DeepLink::KIND_DEBT, $snapshot->getId()),
                 parse_mode: ParseMode::HTML,
             );
         } catch (\Throwable $e) {
