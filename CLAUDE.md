@@ -668,6 +668,17 @@ colour every time) and it has to look deliberate rather than like an image that 
 - **A photo that disappears from Telegram is deleted here.** Somebody who closes their
   profile has taken it back, and a copy that outlives the withdrawal is the panel keeping
   something the person withdrew. `sync()` returns `removed` for exactly that case.
+- **Tapping a face opens it full size.** Two files are cached, not one: the middle size
+  draws the 28px circle and the 72px card, the largest opens in the lightbox. Serving the
+  large one everywhere would put ~60 KB per row on a page of 25 circles, on the
+  accountant's phone, to make a rare click instant. `/admin/avatar/{id}/full` **falls back
+  to the small file** rather than 404 — the big copy only exists for people synced since it
+  was added. The trigger is a real `<a href>`, which matters twice: without JS it still
+  opens the picture, and the users table's row handler opens the resident's card on a click
+  anywhere *except* inside `a, button, input, …`, so the link is what stops one tap doing
+  both. The overlay itself is plain JS in `base.html.twig`, delegated from the document so
+  it covers rows DataTables draws later.
+
 - **Weekly, by cron, never on page render.** Three Telegram calls per person against 449 of
   them is minutes; a table that renders in eight seconds because it is downloading pictures
   is worse than one with none. `telegram:avatars:sync` skips anybody asked about inside

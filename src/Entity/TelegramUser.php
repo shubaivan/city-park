@@ -106,6 +106,17 @@ class TelegramUser
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $photo_path = null;
 
+    /**
+     * The same photo at the largest size Telegram offers, for the tap-to-enlarge.
+     *
+     * Kept as a second file rather than serving one big picture everywhere: a page of 25
+     * rows draws 25 circles 28 pixels across, and paying ~60 KB apiece for them on the
+     * accountant's phone to make a rarely-used click instant is the wrong trade. The big
+     * one is fetched by the browser only when somebody actually taps.
+     */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $photo_full_path = null;
+
     /** When we last asked Telegram — so the sync can skip what it looked at this week. */
     #[ORM\Column(type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $photo_checked_at = null;
@@ -118,6 +129,18 @@ class TelegramUser
     public function setPhotoPath(?string $photo_path): self
     {
         $this->photo_path = $photo_path;
+
+        return $this;
+    }
+
+    public function getPhotoFullPath(): ?string
+    {
+        return $this->photo_full_path;
+    }
+
+    public function setPhotoFullPath(?string $path): self
+    {
+        $this->photo_full_path = $path;
 
         return $this;
     }

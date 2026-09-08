@@ -59,6 +59,17 @@
                 0%, 30% { background-color: #ffe08a; }
                 100% { background-color: #fff3cd; }
             }
+
+            #avatar-lightbox {
+                position: fixed; inset: 0; z-index: 2000;
+                display: flex; align-items: center; justify-content: center;
+                background: rgba(0, 0, 0, .82); padding: 1.5rem; cursor: zoom-out;
+            }
+            #avatar-lightbox img {
+                max-width: min(92vw, 640px); max-height: 88vh;
+                border-radius: .5rem; box-shadow: 0 .5rem 2rem rgba(0, 0, 0, .5);
+            }
+            [data-avatar-full] { cursor: zoom-in; }
         </style>
         <link rel="shortcut icon" type="image/x-icon" href="{{ asset('admin.jpg') }}">
     {% endblock %}
@@ -126,6 +137,23 @@
             </div>
         {% endfor %}
     {% endfor %}
+
+    {#
+        Tap a face to see it full size.
+
+        Plain JS and a plain overlay rather than a Bootstrap modal: this has to work on the
+        resident's card and inside a DataTables-rendered cell, and the two pages load
+        different scripts. Delegated from the document, so it also covers rows drawn after
+        the page was (paging, search).
+
+        The trigger is a real `<a href>` to the picture — if this script never runs, the
+        link still opens it. That also keeps the users table honest: its row handler opens
+        the resident's card on a click anywhere *except* `a, button, input, …`, so wrapping
+        the avatar in a link is what stops a tap doing both things at once.
+    #}
+    <div id="avatar-lightbox" hidden role="dialog" aria-modal="true" aria-label="Фото">
+        <img alt="">
+    </div>
 {% endblock %}
 {% block javascripts %}
     {{ encore_entry_script_tags('app') }}
@@ -134,6 +162,37 @@
     {#    <script src="{{ path('fos_js_routing_js', { callback: 'fos.Router.setData' }) }}"></script>#}
     <script src="/bundles/fosjsrouting/js/router.min.js"></script>
     <script src="/js/fos_js_routes.js"></script>
+
+    <script>
+        (function () {
+            var box = document.getElementById('avatar-lightbox');
+            if (!box) { return; }
+
+            var img = box.querySelector('img');
+
+            function close() { box.hidden = true; img.removeAttribute('src'); }
+
+            document.addEventListener('click', function (event) {
+                var trigger = event.target.closest('[data-avatar-full]');
+
+                if (trigger) {
+                    event.preventDefault();
+                    // Stopped here as well: in the users table the row's own handler would
+                    // otherwise open the resident's card behind the picture.
+                    event.stopPropagation();
+                    img.src = trigger.getAttribute('href') || trigger.dataset.avatarFull;
+                    box.hidden = false;
+                    return;
+                }
+
+                if (!box.hidden) { close(); }
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && !box.hidden) { close(); }
+            });
+        })();
+    </script>
 
 {% endblock %}
 </body>

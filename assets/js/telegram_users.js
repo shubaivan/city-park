@@ -202,8 +202,13 @@ document.addEventListener("DOMContentLoaded", function () {
             // is the same colour on every page, which is what makes it worth anything in a
             // list of 462. Most rows are initials: «Фото профілю: Мої контакти» hides the
             // photo from a bot as firmly as from a stranger.
+            // A real link to the full-size copy: the lightbox in base.html.twig intercepts
+            // it, and without JS it still opens the picture. It is also what keeps the row
+            // handler from opening the resident's card at the same time — that handler
+            // ignores clicks landing inside an <a>.
             var avatar = row.avatar
-                ? '<img class="tg-avatar" alt="" loading="lazy" src="' + row.avatar + '">'
+                ? '<a href="' + row.avatar + '/full" data-avatar-full>'
+                    + '<img class="tg-avatar" alt="" loading="lazy" src="' + row.avatar + '"></a>'
                 : '<span class="tg-avatar tg-initials" style="background:hsl('
                     + ((row.id * 47) % 360) + ',42%,52%)">'
                     + (row.initials || '?') + '</span>';

@@ -653,11 +653,20 @@ class AdminController extends AbstractController
      *
      * The role split is in `access_control` with every other one, not in an attribute here
      * — one place to read the whole boundary.
+     *
+     * `/full` is the tap-to-enlarge copy, and it **falls back to the small file** rather
+     * than answering 404: the big one only exists for people synced since it was added.
      */
-    #[Route('/admin/avatar/{id}', name: 'app_admin_avatar', requirements: ['id' => '\d+'], methods: [Request::METHOD_GET])]
-    public function avatar(TelegramUser $user, AvatarService $avatars): Response
+    #[Route(
+        '/admin/avatar/{id}/{size}',
+        name: 'app_admin_avatar',
+        requirements: ['id' => '\d+', 'size' => 'full'],
+        defaults: ['size' => null],
+        methods: [Request::METHOD_GET],
+    )]
+    public function avatar(TelegramUser $user, AvatarService $avatars, ?string $size = null): Response
     {
-        $file = $avatars->fileFor($user);
+        $file = $avatars->fileFor($user, full: $size === 'full');
 
         if ($file === null) {
             throw $this->createNotFoundException();

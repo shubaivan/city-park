@@ -48,10 +48,16 @@ class AvatarService
         return $this->projectDir . '/var/avatars';
     }
 
-    /** Absolute path of a cached avatar, or null when there is none on disk. */
-    public function fileFor(TelegramUser $user): ?string
+    /**
+     * Absolute path of a cached avatar, or null when there is none on disk.
+     *
+     * `$full` asks for the tap-to-enlarge copy and **falls back to the small one**: the
+     * big file only exists for people synced since it was added, and an enlarge that 404s
+     * is worse than one that opens a 160px picture.
+     */
+    public function fileFor(TelegramUser $user, bool $full = false): ?string
     {
-        $path = $user->getPhotoPath();
+        $path = $full ? ($user->getPhotoFullPath() ?? $user->getPhotoPath()) : $user->getPhotoPath();
 
         if ($path === null || $path === '') {
             return null;
@@ -85,25 +91,32 @@ class AvatarService
                 return $this->forget($user) ? 'removed' : 'none';
             }
 
-            // Telegram sends the same picture in several sizes, smallest first. The panel
-            // draws it at 96px, so the largest is a waste of disk and of the download.
-            $wanted = $sizes[min(1, count($sizes) - 1)];
+            $this->ensureDirectory();
 
-            $file = $this->bot->getFile($wanted->file_id);
-
-            if (!$file) {
-                return 'failed';
-            }
+            // Telegram sends the same picture in several sizes, smallest first. Two of
+            // them are worth keeping: the middle one is what a 28px circle and a 72px card
+            // are drawn from, and the largest is what opens when somebody taps it. Serving
+            // the large one everywhere would put ~60 KB per row on a page of 25 circles.
+            $small = $sizes[min(1, count($sizes) - 1)];
+            $large = $sizes[count($sizes) - 1];
 
             $name = $telegramId . '.jpg';
-            $this->ensureDirectory();
-            $target = $this->directory() . '/' . $name;
 
-            if (!$this->bot->downloadFile($file, $target)) {
+            if (!$this->fetch($small->file_id, $name)) {
                 return 'failed';
             }
 
             $user->setPhotoPath($name);
+
+            // The big copy is a nicety, not the feature: if it fails the small one still
+            // renders everywhere and the tap opens that instead.
+            $fullName = $telegramId . '-full.jpg';
+            $user->setPhotoFullPath(
+                $large->file_id !== $small->file_id && $this->fetch($large->file_id, $fullName)
+                    ? $fullName
+                    : null
+            );
+
             $this->stamp($user);
 
             return 'saved';
@@ -117,17 +130,26 @@ class AvatarService
         }
     }
 
-    /** True when something was actually thrown away. */
+    private function fetch(string $fileId, string $name): bool
+    {
+        $file = $this->bot->getFile($fileId);
+
+        return $file !== null && $this->bot->downloadFile($file, $this->directory() . '/' . $name);
+    }
+
+    /** True when something was actually thrown away. Both copies go — see the class note. */
     private function forget(TelegramUser $user): bool
     {
-        $file = $this->fileFor($user);
-        $had = $user->getPhotoPath() !== null;
+        $had = $user->getPhotoPath() !== null || $user->getPhotoFullPath() !== null;
 
-        if ($file !== null) {
-            @unlink($file);
+        foreach ([$this->fileFor($user), $this->fileFor($user, full: true)] as $file) {
+            if ($file !== null) {
+                @unlink($file);
+            }
         }
 
         $user->setPhotoPath(null);
+        $user->setPhotoFullPath(null);
         $this->stamp($user);
 
         return $had;
