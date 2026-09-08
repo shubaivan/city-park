@@ -165,9 +165,16 @@ class TelegramUser
         return $this;
     }
 
+    /**
+     * `?? null` because the property is typed and has no default: reading it on an entity
+     * that was never persisted throws instead of returning null. Every other nullable
+     * reader on this class already does it (see getDisplayName, and the created_at trait);
+     * this one did not, and a menu that named the household fell over on the first row
+     * built in memory.
+     */
     public function getUsername(): ?string
     {
-        return $this->username;
+        return $this->username ?? null;
     }
 
     public function setUsername(?string $username): TelegramUser

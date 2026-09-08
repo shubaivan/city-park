@@ -197,6 +197,33 @@ class StartMenuHeaderTest extends TestCase
         );
     }
 
+    /**
+     * A Telegram name is whatever the person chose, and on прод one of them is «💰».
+     *
+     * That is a useless answer to «хто ще на моєму рахунку», so the @username goes beside
+     * it — the one other handle a reader can match to a person. When the accountant has
+     * typed the ПІБ there is nothing to add, and the line stays clean.
+     */
+    public function testAnUnhelpfulTelegramNameIsBackedByTheUsername(): void
+    {
+        $emoji = new TelegramUser();
+        $emoji->setFirstName('💰');
+        $emoji->setUsername('sashq');
+
+        $header = StartCommand::renderHeader([$this->account('230085', '85')], false, [$emoji]);
+
+        $this->assertStringContainsString('💰 (@sashq)', $header);
+
+        $named = $this->person('Шуба Іван Вікторович');
+        $named->setUsername('shubaivan');
+
+        $this->assertStringNotContainsString(
+            '@shubaivan',
+            StartCommand::renderHeader([$this->account('230085', '85')], false, [$named]),
+            'a registry name needs no handle beside it',
+        );
+    }
+
     /** Silent for a household of one — «на рахунку більше нікого» is noise. */
     public function testItSaysNothingWhenNobodyElseIsOnTheAccount(): void
     {

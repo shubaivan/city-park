@@ -189,6 +189,17 @@ class StartCommand extends Command
             // last_name was never initialised.
             $name = $person->getDisplayName();
 
+            // Without a registry name all we have is whatever the person called themselves
+            // in Telegram, and that is sometimes «💰» — a real row on прод, and a useless
+            // answer to «хто ще на моєму рахунку». The @username is the one other handle a
+            // reader can actually match to a person, so it goes alongside. When the
+            // accountant has typed the ПІБ there is nothing to add.
+            $username = $person->getUsername();
+
+            if ($person->getFullName() === null && $username !== null && $username !== '') {
+                $name .= ' (@' . $username . ')';
+            }
+
             $role = TelegramUser::ROLES[(string)$person->getRole()] ?? null;
             $names[] = self::esc($name) . ($role !== null ? ' <i>(' . self::esc(mb_strtolower($role)) . ')</i>' : '');
         }
