@@ -105,7 +105,8 @@ class BlockVoteService
         if (!self::mayVote($voter)) {
             return false;
         }
-        return $voter->getId() !== $campaign->getCandidate()->getId();
+        // A question excludes nobody — there is no candidate to keep out of their own vote.
+        return $campaign->getCandidate()?->getId() !== $voter->getId();
     }
 
     /**
@@ -123,15 +124,37 @@ class BlockVoteService
      *
      * @throws \RuntimeException when the candidate already has an open campaign.
      */
-    public function openCampaign(Account $candidate, ?string $createdBy): BlockVoteCampaign
+    /**
+     * Put a question to the house.
+     *
+     * Same machinery as a block campaign — the eligible count is snapshotted, the deadline
+     * is the same seven days, every voter is notified through the queue — and it ends by
+     * simply closing: nothing is blocked, nothing is enacted, the counts go in the archive
+     * and the ОСББ acts on them. Deliberately advisory. A bot that could enact a house
+     * decision off a yes/no with no quorum would be a worse thing than no bot.
+     */
+    public function openQuestion(string $question, ?string $details, ?string $createdBy): BlockVoteCampaign
     {
-        if ($this->campaignRepository->findOpenForCandidate($candidate) !== null) {
+        $campaign = $this->openCampaign(null, $createdBy, BlockVoteCampaign::KIND_QUESTION);
+        $campaign->setQuestion($question);
+        $campaign->setDetails($details);
+        $this->em->flush();
+
+        return $campaign;
+    }
+
+    public function openCampaign(?Account $candidate, ?string $createdBy, string $kind = BlockVoteCampaign::KIND_BLOCK): BlockVoteCampaign
+    {
+        // Only a block campaign is one-per-candidate; two questions can sensibly run at
+        // once, and there is no candidate to collide on anyway.
+        if ($candidate !== null && $this->campaignRepository->findOpenForCandidate($candidate) !== null) {
             throw new \RuntimeException('Для цього аккаунта вже відкрите голосування.');
         }
 
         $voters = $this->eligibleVoters($candidate);
 
         $campaign = (new BlockVoteCampaign())
+            ->setKind($kind)
             ->setCandidate($candidate)
             ->setStatus(BlockVoteCampaign::STATUS_OPEN)
             ->setEligibleCount(count($voters))
@@ -152,8 +175,9 @@ class BlockVoteService
 
         $this->logger->info('block-vote: campaign opened', [
             'campaign_id' => $campaign->getId(),
-            'candidate_account_id' => $candidate->getId(),
-            'candidate_account_number' => $candidate->getAccountNumber(),
+            'kind' => $kind,
+            'candidate_account_id' => $candidate?->getId(),
+            'candidate_account_number' => $candidate?->getAccountNumber(),
             'eligible_count' => $campaign->getEligibleCount(),
             'yes_needed' => $campaign->yesNeeded(),
             'created_by' => $createdBy,
@@ -197,7 +221,10 @@ class BlockVoteService
         $tally = $this->ballotRepository->tally($campaign);
         $passed = false;
 
-        if ($tally['yes'] >= $campaign->yesNeeded()) {
+        // A question has no threshold to cross: it closes at its deadline and nothing
+        // happens to anybody. Only a block campaign can end early, the moment the vote it
+        // needs has been cast.
+        if ($campaign->isBlock() && $tally['yes'] >= $campaign->yesNeeded()) {
             $this->closeCampaign($campaign, BlockVoteCampaign::STATUS_PASSED, $tally);
             $this->applyBlock($campaign);
             $passed = true;
@@ -221,6 +248,20 @@ class BlockVoteService
         $blocked = 0;
         foreach ($this->campaignRepository->findExpiredOpen($this->now()) as $campaign) {
             $tally = $this->ballotRepository->tally($campaign);
+
+            // A question is recorded, not judged. «Рішення прийнято» off three ballots out
+            // of a hundred and eighty would be the bot inventing a mandate nobody gave it,
+            // so the result is the counts and the ОСББ reads them.
+            if ($campaign->isQuestion()) {
+                $this->closeCampaign($campaign, BlockVoteCampaign::STATUS_CLOSED, $tally);
+                $this->logger->info('block-vote: question closed at deadline', [
+                    'campaign_id' => $campaign->getId(),
+                    'yes' => $tally['yes'], 'no' => $tally['no'],
+                ]);
+
+                continue;
+            }
+
             if ($tally['yes'] >= $campaign->yesNeeded()) {
                 $this->closeCampaign($campaign, BlockVoteCampaign::STATUS_PASSED, $tally);
                 $this->applyBlock($campaign);
@@ -262,6 +303,13 @@ class BlockVoteService
     private function applyBlock(BlockVoteCampaign $campaign): void
     {
         $account = $campaign->getCandidate();
+
+        // Belt and braces: a question can never reach here (recordVote and
+        // closeExpiredCampaigns both check the kind first), and if one ever did, blocking
+        // nobody must not become blocking somebody at random.
+        if (!$account instanceof Account || !$campaign->isBlock()) {
+            return;
+        }
         $until = (clone $this->now())->modify('+' . self::BLOCK_DAYS . ' days');
 
         // Every passed campaign counts as a community-block decision against this account,
@@ -400,8 +448,26 @@ class BlockVoteService
      * Human label for a candidate: street + house + unit (privacy: no personal name).
      * The house matters — "кв. 109" alone is ambiguous across буд., so voters must see which.
      */
-    public function candidateLabel(Account $account): string
+    /**
+     * What this vote is about, in one line — a flat on trial or the question itself.
+     *
+     * One method so every surface (the menu, the archive, the broadcast, the admin table)
+     * says the same thing about the same campaign; the block half already had this problem
+     * solved and the question half would otherwise grow its own copy.
+     */
+    public function subjectLabel(BlockVoteCampaign $campaign): string
     {
+        return $campaign->isQuestion()
+            ? (string)$campaign->getQuestion()
+            : $this->candidateLabel($campaign->getCandidate());
+    }
+
+    public function candidateLabel(?Account $account): string
+    {
+        if (!$account instanceof Account) {
+            return 'невідомий об’єкт';
+        }
+
         $num = trim((string)$account->getApartmentNumber());
         $unit = $account->isParking()
             ? ($num !== '' ? 'паркомісце ' . $num : 'паркомісце')
@@ -498,17 +564,43 @@ class BlockVoteService
     }
 
     /**
-     * Shared detailed body for the opened/reminder notices: who, current tally, how many "За"
-     * are needed, the deadline, and what happens to the candidate if it passes.
+     * Shared body for the opened / reminder notices.
+     *
+     * Two shapes, because the two kinds of vote promise different things. A block campaign
+     * has to say what crossing the threshold does to a named household, and how many votes
+     * that takes. A question has none of that: it decides nothing on its own, and printing
+     * «потрібно 55 голосів» beside it would be a promise the bot cannot keep — so it says
+     * plainly that the ОСББ will read the result.
      */
     private function noticeBody(BlockVoteCampaign $campaign): string
     {
         $tally = $this->ballotRepository->tally($campaign);
+
+        if ($campaign->isQuestion()) {
+            $details = $campaign->getDetails();
+
+            return sprintf(
+                "<b>%s</b>\n%s\n📊 Зараз: «За» <b>%d</b> · «Проти» <b>%d</b> (мешканців з правом голосу: %d)\n"
+                . "🗓 До: <b>%s</b>\n\n"
+                . "Один аккаунт — один голос; свій вибір можна змінити до завершення.\n"
+                . "<i>Це опитування: рішення ухвалює ОСББ, а результат голосування — те, на що воно спиратиметься.</i>\n"
+                . "👉 Проголосувати: меню «🗳️ Голосування» або команда /vote.",
+                htmlspecialchars((string)$campaign->getQuestion(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                $details !== null
+                    ? '<i>' . htmlspecialchars($details, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</i>\n\n"
+                    : "\n",
+                $tally['yes'],
+                $tally['no'],
+                $campaign->getEligibleCount(),
+                $campaign->getDeadlineAt()->format('d.m.Y'),
+            );
+        }
+
         return sprintf(
             "Пропонується тимчасово заблокувати: <b>%s</b>.\n\n"
             . "📊 Зараз: «За» <b>%d</b> · «Проти» <b>%d</b>\n"
-            . "✅ Щоб ухвалити рішення, потрібно «За»: <b>%d</b> з %d квартир та паркомісць (понад 30%%).\n"
-            . "⏳ Голосування триває до <b>%s</b>.\n\n"
+            . "Треба «За»: <b>%d</b> з %d\n"
+            . "🗓 До: <b>%s</b>\n\n"
             . "Якщо «За» набере понад 30%%, аккаунт буде <b>заблоковано на %d днів</b> — бронювання альтанок стане недоступним. Після цього строку доступ відновиться <b>автоматично</b>.\n\n"
             . "Один аккаунт — один голос; свій вибір можна змінити до завершення.\n"
             . "👉 Проголосувати: меню «🗳️ Голосування» або команда /vote.",

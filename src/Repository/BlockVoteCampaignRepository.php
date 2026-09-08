@@ -88,6 +88,31 @@ class BlockVoteCampaignRepository extends ServiceEntityRepository
      *
      * @return BlockVoteCampaign[]
      */
+    /**
+     * Finished votes, newest first — what the house decided and when.
+     *
+     * Cancelled ones are left out: a campaign an admin withdrew before the deadline is not
+     * a decision the house took, and listing it as one would put a name in the archive
+     * beside a result nobody voted for.
+     *
+     * @return BlockVoteCampaign[]
+     */
+    public function findFinished(int $limit = 50): array
+    {
+        return $this->createQueryBuilder('c')
+            ->andWhere('c.status IN (:done)')
+            ->setParameter('done', [
+                BlockVoteCampaign::STATUS_PASSED,
+                BlockVoteCampaign::STATUS_FAILED,
+                BlockVoteCampaign::STATUS_CLOSED,
+            ])
+            ->orderBy('c.closed_at', 'DESC')
+            ->addOrderBy('c.id', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     public function findRecent(int $limit = 100): array
     {
         return $this->createQueryBuilder('c')

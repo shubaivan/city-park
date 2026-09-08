@@ -10,11 +10,15 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * A community vote-to-block campaign: admins (Alina / Luda / main_admin) open one
- * per candidate Account. Every eligible voter (active apartment account, the candidate
- * excluded) may cast a single ballot. When YES > 30% of the eligible count snapshotted
- * at creation, the candidate is auto-blocked for 30 days. Tallied either the instant the
- * threshold is crossed or when the 7-day deadline passes (block-vote:tally cron).
+ * A vote of the house. Two kinds, one entity — see {@see KIND_BLOCK} and
+ * {@see KIND_QUESTION}.
+ *
+ * Everything around a vote is identical for both: who may vote, one ballot per account
+ * changeable until the deadline, the eligible count snapshotted at open so a vote cannot
+ * become un-winnable mid-run, the 7-day deadline, the broadcast, the reminder, the tally
+ * cron, the archive. What differs is what the vote is *about* and what happens when it
+ * ends. That is the same call the rental board made about rent and sale, for the same
+ * reason: two entities would be two copies of the machinery and one of them would rot.
  */
 #[ORM\Entity(repositoryClass: BlockVoteCampaignRepository::class)]
 #[ORM\Table(name: 'block_vote_campaign')]
@@ -29,15 +33,50 @@ class BlockVoteCampaign
     public const STATUS_FAILED    = 'failed';
     public const STATUS_CANCELLED = 'cancelled';
 
+    /**
+     * A question that reached its deadline. Deliberately not «passed» or «failed».
+     *
+     * A block campaign has a threshold and crossing it *does* something, so passed/failed
+     * is a statement about an action taken. A question does nothing on its own: it records
+     * what the house answered, and the ОСББ decides. Declaring «рішення прийнято» off 3
+     * ballots out of 180 would be the bot inventing a mandate nobody gave it — so the
+     * result is the counts, and the counts are what the archive shows.
+     */
+    public const STATUS_CLOSED = 'closed';
+
+    /** Somebody is proposed for a 30-day block from booking the альтанка. */
+    public const KIND_BLOCK = 'block';
+
+    /**
+     * A question put to the house — шлагбаум, тариф, дитячий майданчик.
+     *
+     * Yes/no, because that is what this bot can ask honestly with one tap per person and
+     * one ballot per flat. A question needing three options is a question needing a
+     * meeting, and pretending otherwise would produce a number the ОСББ then has to
+     * explain away.
+     */
+    public const KIND_QUESTION = 'question';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
     private ?int $id = null;
 
-    /** The account proposed for blocking. */
+    #[ORM\Column(type: 'string', length: 16, nullable: false, options: ['default' => self::KIND_BLOCK])]
+    private string $kind = self::KIND_BLOCK;
+
+    /** The account proposed for blocking. NULL on a question — there is nobody on trial. */
     #[ORM\ManyToOne(targetEntity: Account::class)]
-    #[ORM\JoinColumn(name: 'candidate_account_id', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
-    private Account $candidate;
+    #[ORM\JoinColumn(name: 'candidate_account_id', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    private ?Account $candidate = null;
+
+    /** What the house is being asked. NULL on a block — the candidate is the subject. */
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $question = null;
+
+    /** Optional background: why this is being asked, what the options mean. */
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $details = null;
 
     #[ORM\Column(type: 'string', length: 16, nullable: false, options: ['default' => self::STATUS_OPEN])]
     private string $status = self::STATUS_OPEN;
@@ -81,15 +120,68 @@ class BlockVoteCampaign
         return $this->id;
     }
 
-    public function getCandidate(): Account
+    public function getKind(): string
+    {
+        return $this->kind;
+    }
+
+    public function setKind(string $kind): self
+    {
+        $this->kind = in_array($kind, [self::KIND_BLOCK, self::KIND_QUESTION], true) ? $kind : self::KIND_BLOCK;
+        return $this;
+    }
+
+    public function isQuestion(): bool
+    {
+        return $this->kind === self::KIND_QUESTION;
+    }
+
+    public function isBlock(): bool
+    {
+        return $this->kind === self::KIND_BLOCK;
+    }
+
+    public function getCandidate(): ?Account
     {
         return $this->candidate;
     }
 
-    public function setCandidate(Account $candidate): self
+    public function setCandidate(?Account $candidate): self
     {
         $this->candidate = $candidate;
         return $this;
+    }
+
+    public function getQuestion(): ?string
+    {
+        return $this->question;
+    }
+
+    public function setQuestion(?string $question): self
+    {
+        $question = $question === null ? null : trim($question);
+        $this->question = ($question === null || $question === '') ? null : $question;
+        return $this;
+    }
+
+    public function getDetails(): ?string
+    {
+        return $this->details;
+    }
+
+    public function setDetails(?string $details): self
+    {
+        $details = $details === null ? null : trim($details);
+        $this->details = ($details === null || $details === '') ? null : $details;
+        return $this;
+    }
+
+    /** One line naming what this vote is about, whichever kind it is. */
+    public function subject(): string
+    {
+        return $this->isQuestion()
+            ? (string)$this->question
+            : ($this->candidate?->getPlaceLabel() ?? 'невідомий об’єкт');
     }
 
     public function getStatus(): string
@@ -122,10 +214,18 @@ class BlockVoteCampaign
     /** Fraction of the eligible snapshot YES must exceed for the campaign to pass. */
     public const PASS_FRACTION = 0.30;
 
-    /** Smallest YES count that strictly exceeds PASS_FRACTION of the eligible snapshot. */
+    /**
+     * Smallest YES count that strictly exceeds PASS_FRACTION of the eligible snapshot.
+     *
+     * Zero for a question: nothing is triggered by crossing a line, so there is no line.
+     * Callers must not print «треба N» for one — «потрібно 55 голосів» beside a question
+     * that decides nothing is a promise the bot cannot keep.
+     */
     public function yesNeeded(): int
     {
-        return (int) floor($this->eligible_count * self::PASS_FRACTION) + 1;
+        return $this->isQuestion()
+            ? 0
+            : (int) floor($this->eligible_count * self::PASS_FRACTION) + 1;
     }
 
     public function getDeadlineAt(): \DateTime

@@ -104,6 +104,7 @@ $bot->onCommand('services', \App\Telegram\ServiceOffer\Command\ServiceMenuComman
 
 $bot->onCallbackQueryData(\App\Telegram\Voting\Command\VotingMenuCommand::MENU_CALLBACK, \App\Telegram\Voting\Command\VotingMenuCommand::class);
 $bot->onCallbackQueryData('^bvote:\d+:(yes|no)$', \App\Telegram\Voting\Command\VotingMenuCommand::class);
+$bot->onCallbackQueryData(\App\Telegram\Voting\Command\VotingMenuCommand::PAST_CALLBACK, \App\Telegram\Voting\Command\VotingMenuCommand::class);
 $bot->onCommand('vote', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 
 // The house's problem register. cmp:status is guarded inside the handler, not here:

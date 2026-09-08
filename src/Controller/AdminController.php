@@ -170,9 +170,11 @@ class AdminController extends AbstractController
             $tally = $ballotRepository->tally($campaign);
             $open[] = [
                 'id' => $campaign->getId(),
-                'label' => $voteService->candidateLabel($campaign->getCandidate()),
-                'account_number' => $campaign->getCandidate()->getAccountNumber(),
-                'blocks' => $campaign->getCandidate()->getVoteBlockCount(),
+                'kind' => $campaign->getKind(),
+                'label' => $voteService->subjectLabel($campaign),
+                'details' => $campaign->getDetails(),
+                'account_number' => $campaign->getCandidate()?->getAccountNumber(),
+                'blocks' => $campaign->getCandidate()?->getVoteBlockCount() ?? 0,
                 'eligible' => $campaign->getEligibleCount(),
                 'yes' => $tally['yes'],
                 'no' => $tally['no'],
@@ -188,9 +190,10 @@ class AdminController extends AbstractController
                 continue;
             }
             $recent[] = [
-                'label' => $voteService->candidateLabel($campaign->getCandidate()),
-                'account_number' => $campaign->getCandidate()->getAccountNumber(),
-                'blocks' => $campaign->getCandidate()->getVoteBlockCount(),
+                'kind' => $campaign->getKind(),
+                'label' => $voteService->subjectLabel($campaign),
+                'account_number' => $campaign->getCandidate()?->getAccountNumber(),
+                'blocks' => $campaign->getCandidate()?->getVoteBlockCount() ?? 0,
                 'status' => $campaign->getStatus(),
                 'eligible' => $campaign->getEligibleCount(),
                 'yes' => $campaign->getResultYes(),
@@ -241,6 +244,45 @@ class AdminController extends AbstractController
             $campaign->yesNeeded(),
             $campaign->getEligibleCount(),
         ));
+        return $this->redirectToRoute('app_admin_block_votes');
+    }
+
+    /**
+     * Put a question to the house.
+     *
+     * Same machinery as a block campaign and deliberately no more: it is advisory. Nothing
+     * is enacted when it closes — the counts go in the archive and the ОСББ decides. A bot
+     * that could enact a house decision off a yes/no with no quorum would be a worse thing
+     * than no bot at all.
+     */
+    #[Route('/admin/block-vote/question', name: 'app_admin_block_vote_question', methods: [Request::METHOD_POST])]
+    public function blockVoteQuestion(
+        Request $request,
+        BlockVoteService $voteService,
+    ): Response {
+        $question = trim((string)$request->request->get('question'));
+        $details = trim((string)$request->request->get('details'));
+
+        if (mb_strlen($question) < 10) {
+            $this->addFlash('error', 'Сформулюйте питання — принаймні 10 символів.');
+
+            return $this->redirectToRoute('app_admin_block_votes');
+        }
+
+        try {
+            $campaign = $voteService->openQuestion($question, $details !== '' ? $details : null, (string)$this->getUser()?->getUserIdentifier());
+        } catch (\Throwable $e) {
+            $this->addFlash('error', $e->getMessage());
+
+            return $this->redirectToRoute('app_admin_block_votes');
+        }
+
+        $this->addFlash('success', sprintf(
+            'Питання поставлено. Голосування триває %d днів, право голосу мають %d мешканців.',
+            BlockVoteService::VOTE_DAYS,
+            $campaign->getEligibleCount(),
+        ));
+
         return $this->redirectToRoute('app_admin_block_votes');
     }
 

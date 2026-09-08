@@ -25,6 +25,9 @@ class VotingMenuCommand
 {
     public const MENU_CALLBACK = 'voting-menu';
 
+    /** Finished votes: what the house decided, and how it split. */
+    public const PAST_CALLBACK = 'voting-past';
+
     public function __construct(
         private TelegramUserService $telegramUserService,
         private BlockVoteService $voteService,
@@ -35,6 +38,11 @@ class VotingMenuCommand
     public function __invoke(Nutgram $bot): void
     {
         $data = $bot->isCallbackQuery() ? ($bot->callbackQuery()->data ?? '') : '';
+
+        if ($data === self::PAST_CALLBACK) {
+            $this->renderArchive($bot);
+            return;
+        }
 
         if (str_starts_with($data, 'bvote:')) {
             $this->castVote($bot, $data);
@@ -91,7 +99,7 @@ class VotingMenuCommand
                 $edit,
                 ($notice ? $notice . "\n\n" : '')
                 . "🗳️ <b>Голосування</b>\n\nНаразі немає відкритих голосувань.",
-                InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton())
+                $this->withArchive(InlineKeyboardMarkup::make())->addRow(StartCommand::homeButton())
             );
             return;
         }
@@ -101,7 +109,7 @@ class VotingMenuCommand
             $lines[] = $notice;
             $lines[] = '';
         }
-        $lines[] = '🗳️ <b>Голосування за блокування</b>';
+        $lines[] = '🗳️ <b>Голосування</b>';
         $lines[] = '';
         $lines[] = 'Один аккаунт — один голос. Свій вибір можна змінити до завершення голосування.';
         $lines[] = '';
@@ -113,7 +121,42 @@ class VotingMenuCommand
             $ballot = $this->ballotRepository->findOneByCampaignAndVoter($campaign, $account);
             $mine = $ballot === null ? null : $ballot->getValue();
 
-            $priorBlocks = $campaign->getCandidate()->getVoteBlockCount();
+            $voted = $mine === null ? '' : ($mine ? "\n<i>Ваш голос: За</i>" : "\n<i>Ваш голос: Проти</i>");
+
+            if ($campaign->isQuestion()) {
+                // No «треба N»: a question crosses no line and enacts nothing, so a target
+                // beside it would be a promise the bot cannot keep. What it does say is
+                // who decides — otherwise a resident reasonably reads a vote as binding.
+                $details = $campaign->getDetails();
+
+                $lines[] = sprintf(
+                    "❓ <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b>\nДо: <b>%s</b>%s",
+                    self::esc((string)$campaign->getQuestion()),
+                    $details !== null ? "\n<i>" . self::esc($details) . '</i>' : '',
+                    $tally['yes'],
+                    $tally['no'],
+                    $campaign->getDeadlineAt()->format('d.m.Y'),
+                    $voted,
+                );
+                $lines[] = '<i>Рішення ухвалює ОСББ — результат голосування покаже, чого хочуть мешканці.</i>';
+                $lines[] = '';
+
+                $id = $campaign->getId();
+                $markup->addRow(
+                    InlineKeyboardButton::make(
+                        ($mine === true ? '✅ ' : '') . '👍 За',
+                        callback_data: 'bvote:' . $id . ':yes'
+                    ),
+                    InlineKeyboardButton::make(
+                        ($mine === false ? '✅ ' : '') . '👎 Проти',
+                        callback_data: 'bvote:' . $id . ':no'
+                    ),
+                );
+
+                continue;
+            }
+
+            $priorBlocks = $campaign->getCandidate()?->getVoteBlockCount() ?? 0;
             $lines[] = sprintf(
                 "👤 <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b> · Треба «За»: <b>%d</b> з %d\nДо: <b>%s</b>%s",
                 $this->voteService->candidateLabel($campaign->getCandidate()),
@@ -123,7 +166,7 @@ class VotingMenuCommand
                 $campaign->yesNeeded(),
                 $campaign->getEligibleCount(),
                 $campaign->getDeadlineAt()->format('d.m.Y'),
-                $mine === null ? '' : ($mine ? "\n<i>Ваш голос: За</i>" : "\n<i>Ваш голос: Проти</i>")
+                $voted,
             );
             $lines[] = '';
 
@@ -140,9 +183,91 @@ class VotingMenuCommand
             );
         }
 
-        $markup->addRow(StartCommand::homeButton());
+        $this->withArchive($markup)->addRow(StartCommand::homeButton());
 
         $this->respond($bot, $edit, implode("\n", $lines), $markup);
+    }
+
+    /**
+     * The archive row, offered only when there is something in it.
+     *
+     * A vote that is over is the only evidence the house has that voting does anything —
+     * «за це вже голосували, ось як» is what stops the same question being asked in the
+     * chat every spring. An empty «Минулі голосування» would just be a dead button.
+     */
+    private function withArchive(InlineKeyboardMarkup $markup): InlineKeyboardMarkup
+    {
+        if ($this->campaignRepository->findFinished(1) === []) {
+            return $markup;
+        }
+
+        return $markup->addRow(InlineKeyboardButton::make(
+            '📜 Минулі голосування',
+            callback_data: self::PAST_CALLBACK,
+        ));
+    }
+
+    /**
+     * What the house has decided, newest first.
+     *
+     * Both kinds in one list: they are the same act — the house was asked something and
+     * answered — and splitting them would hide how rarely either happens.
+     */
+    private function renderArchive(Nutgram $bot): void
+    {
+        $finished = $this->campaignRepository->findFinished(20);
+
+        $lines = ['📜 <b>Минулі голосування</b>', ''];
+
+        if ($finished === []) {
+            $lines[] = 'Поки що жодного завершеного голосування.';
+        }
+
+        foreach ($finished as $campaign) {
+            $yes = (int)$campaign->getResultYes();
+            $no = (int)$campaign->getResultNo();
+            $closed = $campaign->getClosedAt()?->format('d.m.Y') ?? '—';
+
+            if ($campaign->isQuestion()) {
+                $lines[] = sprintf(
+                    "❓ <b>%s</b>\nЗа: <b>%d</b> · Проти: <b>%d</b> · %s",
+                    self::esc((string)$campaign->getQuestion()),
+                    $yes,
+                    $no,
+                    $closed,
+                );
+            } else {
+                // The outcome in a word, then the numbers behind it. «Заблоковано» without
+                // the split reads as an accusation the house cannot check.
+                $lines[] = sprintf(
+                    "%s <b>%s</b>\nЗа: <b>%d</b> · Проти: <b>%d</b> · %s",
+                    $campaign->getStatus() === \App\Entity\BlockVoteCampaign::STATUS_PASSED ? '🚫' : '✅',
+                    self::esc($this->voteService->candidateLabel($campaign->getCandidate())),
+                    $yes,
+                    $no,
+                    $closed,
+                );
+                $lines[] = $campaign->getStatus() === \App\Entity\BlockVoteCampaign::STATUS_PASSED
+                    ? '<i>Рішення: заблокувати на 30 днів.</i>'
+                    : '<i>Рішення: не блокувати — голосів не вистачило.</i>';
+            }
+
+            $lines[] = '';
+        }
+
+        $this->respond(
+            $bot,
+            edit: true,
+            text: implode("\n", $lines),
+            markup: InlineKeyboardMarkup::make()
+                ->addRow(InlineKeyboardButton::make('🗳️ Відкриті голосування', callback_data: self::MENU_CALLBACK))
+                ->addRow(StartCommand::homeButton()),
+        );
+    }
+
+    private static function esc(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 
     private function castVote(Nutgram $bot, string $data): void

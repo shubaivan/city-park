@@ -93,6 +93,36 @@ A user who uploads a photo **after** `blocked_at` triggers auto-unblock in `Pavi
 
 One-off bulk unblock: `bin/console pavilion:photo:bulk-unblock [--dry-run]` resolves every open blocked request, restores `is_active` (debt-permitting) and notifies users by Telegram. Used once on 2026-05-25 to forgive day-one missed-photo blocks.
 
+## Votes of the house (block, and questions)
+
+**One entity, two kinds** (`BlockVoteCampaign.kind`, since 08.09.2026), the same call the
+rental board made about rent and sale: everything around a vote is identical — who may vote,
+one ballot per account changeable until the deadline, the eligible count snapshotted at open,
+the 7-day deadline, the async broadcast, the final-day reminder, the tally cron, the archive
+— and what differs is the subject and the consequence. Two entities would be two copies of
+that machinery and one of them would rot.
+
+- **`block`** — somebody is proposed for a 30-day block. Has a threshold, and crossing it
+  *does* something, so it ends `passed` (and blocks) or `failed`.
+- **`question`** — «Чи встановлюємо шлагбаум?». **Advisory, and that is the design.** No
+  threshold (`yesNeeded()` is 0 and callers must not print «треба N» — a target beside
+  something that enacts nothing is a promise the bot cannot keep), no candidate, ends
+  `STATUS_CLOSED` with the counts. Declaring «рішення прийнято» off three ballots out of a
+  hundred and eighty would be the bot inventing a mandate nobody gave it, so the ОСББ reads
+  the numbers and decides. Yes/no only: a question needing three options is a question
+  needing a meeting, and pretending otherwise produces a figure the ОСББ then has to explain
+  away. `applyBlock()` refuses a question outright whatever calls it —
+  `HouseQuestionRulesTest` pins that, and pins the absent threshold, because "make the two
+  kinds consistent" is a tempting and wrong tidy-up.
+
+**📜 Минулі голосування** — the archive, in the bot for everyone and on `/admin/block-votes`
+in full. Both kinds in one list: they are the same act, and splitting them would hide how
+rarely either happens. Cancelled campaigns are left out — one an admin withdrew before the
+deadline is not a decision the house took, and listing it would put a name beside a result
+nobody voted for. It is also the only evidence the house has that voting does anything:
+«за це вже голосували, ось як» is what stops the same question returning to the chat every
+spring.
+
 ## Community vote-to-block lifecycle
 
 Admins open a `BlockVoteCampaign` per candidate via `/admin/block-votes` (by особовий рахунок). Eligible voters = everyone who may book the pavilion (`canBookPavilion()` — apartments +
