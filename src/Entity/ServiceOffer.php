@@ -21,12 +21,18 @@ use Doctrine\ORM\Mapping as ORM;
  * them by will be visible in the data — the same rule by which the «Продаж» tab appeared
  * on the rental board only once flats were actually being sold.
  *
+ * **The advert is not necessarily about the person posting it.** «Я хочу розмістити
+ * телефон свого друга електрика» — so the phone is a plain field, typed in, and the
+ * resident's own number is only the one-tap default. That is why the flat on the card is
+ * labelled «👤 Розмістив», never left bare under the trade: a bare «буд. 19, кв. 85» under
+ * «Електрик» says the electrician lives there, which is false as soon as somebody
+ * recommends a friend. Labelled, the flat says who vouches for this — which is the whole
+ * reason to trust a card in a house bot rather than a number off a lamppost.
+ *
  * **One active offer per person, not per account.** A rental listing belongs to the flat
- * (the flat is what is on offer, and its address and area come from the Account). A
- * service belongs to whoever performs it: father is an electrician and daughter does
- * manicures on the same особовий рахунок, and one-per-account would make them take turns.
- * The Account is still required — it is where «буд. 19, кв. 85» comes from, and that line
- * is most of why a neighbour trusts the advert.
+ * (the flat is what is on offer, and its address and area come from the Account). An offer
+ * belongs to whoever posted it: father recommends his electrician and daughter posts her
+ * manicurist on the same особовий рахунок, and one-per-account would make them take turns.
  */
 #[ORM\Entity(repositoryClass: ServiceOfferRepository::class)]
 #[ORM\Table(name: 'service_offer')]
@@ -57,18 +63,6 @@ class ServiceOffer
      * enough that nobody has to abbreviate themselves into a category.
      */
     public const TITLE_MAX = 60;
-
-    public const DESCRIPTION_MAX = 400;
-
-    /**
-     * Free text, not a number.
-     *
-     * A flat has one rent; a trade has «від 500 грн», «300 грн/год», «за домовленістю»,
-     * «безкоштовно сусідам». Forcing that into an integer would make every honest answer
-     * a lie, so the field takes what the person actually says and caps it at a length
-     * that still fits under the title.
-     */
-    public const PRICE_MAX = 48;
 
     /** Max photos — enough to show finished work, few enough to keep the card fast. */
     public const PHOTOS_MAX = 3;
@@ -101,13 +95,6 @@ class ServiceOffer
 
     #[ORM\Column(type: Types::STRING, length: 80, nullable: false)]
     private string $title = '';
-
-    #[ORM\Column(type: Types::TEXT, nullable: true)]
-    private ?string $description = null;
-
-    /** NULL means "договірна" — the same thing, said by not saying it. */
-    #[ORM\Column(type: Types::STRING, length: 64, nullable: true)]
-    private ?string $price_note = null;
 
     /**
      * The bot's own post in the residents' chat, so it can be deleted when the offer
@@ -157,18 +144,16 @@ class ServiceOffer
     private ?\DateTime $photo_token_expires_at = null;
 
     /**
-     * Whether the author agreed to publish their phone in the offer.
+     * The number to ring, display-formatted — whoever's it is.
      *
-     * Opt-in, never inferred — the number is in our database because the resident gave it
-     * to the ОСББ for нарахування. It matters more here than on a rental board: a plumber
-     * usually *wants* to be phoned, but that is still their decision and not ours.
-     */
-    #[ORM\Column(type: 'boolean', nullable: false, options: ['default' => false])]
-    private bool $show_phone = false;
-
-    /**
-     * Display-formatted snapshot of the number taken at publish time — consent was given
-     * for THIS number, so a later registry change does not silently republish another.
+     * A snapshot and a plain field, not a flag over the registry: the poster may be
+     * publishing their own number, and may equally be publishing their electrician's. NULL
+     * means no number was given, and the card falls back to reaching the poster through
+     * Telegram.
+     *
+     * When it *is* their own, it still comes from an explicit tap rather than being filled
+     * in for them — the number is in our database because they gave it to the ОСББ for
+     * нарахування, not for publication.
      */
     #[ORM\Column(type: 'string', length: 32, nullable: true)]
     private ?string $contact_phone = null;
@@ -224,40 +209,6 @@ class ServiceOffer
         $this->title = mb_substr(trim($title), 0, self::TITLE_MAX, 'UTF-8');
 
         return $this;
-    }
-
-    public function getDescription(): ?string
-    {
-        return $this->description;
-    }
-
-    public function setDescription(?string $description): static
-    {
-        $this->description = $description;
-
-        return $this;
-    }
-
-    public function getPriceNote(): ?string
-    {
-        return $this->price_note;
-    }
-
-    public function setPriceNote(?string $price_note): static
-    {
-        $price_note = $price_note === null ? null : trim($price_note);
-
-        $this->price_note = ($price_note === null || $price_note === '')
-            ? null
-            : mb_substr($price_note, 0, self::PRICE_MAX, 'UTF-8');
-
-        return $this;
-    }
-
-    /** What goes on the card and the button. NULL is spelled out, never left blank. */
-    public function priceLabel(): string
-    {
-        return $this->price_note ?? 'ціна договірна';
     }
 
     public function getChatMessageId(): ?int
@@ -381,18 +332,6 @@ class ServiceOffer
             && $this->photo_token_expires_at > $now;
     }
 
-    public function isShowPhone(): bool
-    {
-        return $this->show_phone;
-    }
-
-    public function setShowPhone(bool $show_phone): static
-    {
-        $this->show_phone = $show_phone;
-
-        return $this;
-    }
-
     public function getContactPhone(): ?string
     {
         return $this->contact_phone;
@@ -405,9 +344,9 @@ class ServiceOffer
         return $this;
     }
 
-    /** The number to render in the offer, or NULL when the author kept it private. */
+    /** The number to render in the offer, or NULL when none was given. */
     public function publicPhone(): ?string
     {
-        return $this->show_phone ? $this->contact_phone : null;
+        return $this->contact_phone;
     }
 }

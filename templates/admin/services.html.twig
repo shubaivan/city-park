@@ -10,8 +10,10 @@
         <p class="text-muted">
             Мешканці публікують їх самі через бот («🛠 Послуги»). Оголошення живе {{ lifetimeDays }} днів,
             потім бот питає автора, чи ще актуально. ОСББ нікого тут не рекомендує і ні за що не
-            відповідає — це дошка оголошень сусідів, а не список підрядників. Єдина дія тут — зняти
-            оголошення, якщо воно не про послугу.
+            відповідає — це дошка оголошень сусідів, а не список підрядників. Номер в оголошенні
+            може бути як власний, так і майстра, якого мешканець радить, тому «Розмістив» —
+            це той, хто за оголошення відповідає, а не обов'язково той, хто виконує роботу.
+            Єдина дія тут — зняти оголошення, якщо воно не про послугу.
         </p>
 
         {% if offers|length == 0 %}
@@ -23,9 +25,9 @@
                     <tr>
                         <th>ID</th>
                         <th>Послуга</th>
-                        <th>Ціна</th>
-                        <th>Опис</th>
-                        <th>Автор</th>
+                        <th>Телефон в оголошенні</th>
+                        <th>Фото</th>
+                        <th>Розмістив</th>
                         <th>Статус</th>
                         <th>Дія</th>
                     </tr>
@@ -41,9 +43,14 @@
                                     {{ offer.account.unitLabel }} · р/н {{ offer.account.accountNumber }}
                                 </small>
                             </td>
-                            <td><small>{{ offer.priceLabel }}</small></td>
-                            <td style="max-width:320px;">
-                                <small>{{ offer.description ?? '—' }}</small>
+                            {#
+                                The number may be the poster's own or the electrician they
+                                are recommending — the board allows either on purpose. It is
+                                the first thing to look at on a «чому мій номер видно?»
+                                call, so it gets a column of its own.
+                            #}
+                            <td><small>{{ offer.contactPhone ?? '—' }}</small></td>
+                            <td style="max-width:220px;">
                                 {# Resident-supplied and visible to the whole house — this is where a complaint gets checked. #}
                                 {% if offer.photos %}
                                     <div class="d-flex gap-1 mt-2 flex-wrap">
@@ -53,6 +60,8 @@
                                             </a>
                                         {% endfor %}
                                     </div>
+                                {% else %}
+                                    <span class="text-muted">—</span>
                                 {% endif %}
                             </td>
                             <td>
@@ -60,10 +69,6 @@
                                     {{ offer.author.firstName }} {{ offer.author.lastName }}
                                     {% if offer.author.username %}<br><small>@{{ offer.author.username }}</small>{% endif %}
                                     {% if offer.author.phoneNumber %}<br><small>{{ offer.author.phoneNumber }}</small>{% endif %}
-                                    {# Whether the number is in the public advert or admin-only — the first question on any "чому мій номер видно?" complaint. #}
-                                    <br><small class="badge {{ offer.showPhone ? 'bg-info text-dark' : 'bg-secondary' }}">
-                                        {{ offer.showPhone ? '📞 номер в оголошенні' : '✈️ тільки Telegram' }}
-                                    </small>
                                 {% else %}
                                     <span class="text-muted">—</span>
                                 {% endif %}

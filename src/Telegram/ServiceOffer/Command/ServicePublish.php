@@ -17,22 +17,39 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 /**
- * "➕ Пропоную послугу": four short steps — what you do, price, description, phone
- * consent — then the offer is live for ServiceOffer::LIFETIME_DAYS days.
+ * "➕ Пропоную послугу": what you do, and how to reach you. Two questions, and the second
+ * one is a yes/no.
  *
- * **The first question is not a category.** The obvious design was a keyboard of trades
- * («Сантехніка», «Електрика», «Ремонт») and it fails on the first плиточник: they are
- * none of those, so either the keyboard grows a button per trade until it is unreadable,
- * or they pick the closest wrong one and become invisible to whoever searches for tiling.
- * A free line in their own words fits everybody, is what the index button shows, and —
- * unlike a fixed list — does not have to be guessed right in advance. See the ServiceOffer
- * class comment for when categories would earn their place.
+ * **The advert need not be about the person posting it.** «Я хочу розмістити телефон свого
+ * друга електрика» — so the number is a plain field. Their own is offered as a one-tap
+ * button because it is the common case and it is already in our database, but it is a tap
+ * and not a default: that number is there because they gave it to the ОСББ for
+ * нарахування. Any other number is typed in, and the prompt says out loud that somebody
+ * else's number goes on a board the house reads, so ask them first — the responsibility
+ * sits with the person publishing it, which is the only place it can honestly sit.
  *
- * No photo step, on purpose. A photo here would collide with the pavilion-photo
- * obligation: an active conversation swallows every photo the user sends, and telling
- * "фото моєї роботи" apart from "фото альтанки" inside a ~1-hour obligation window is not
- * worth blocking a resident who did send their evidence. Work photos are added afterwards
- * from a web page — see ServiceMenuCommand::photoLink().
+ * **The price is deliberately not asked.** It shipped as a step on 08.09.2026 and came
+ * straight back out the same day: what a job costs is settled between the two people, after
+ * one of them has said what needs doing, and a number written a month earlier into a
+ * classified is either a guess or a promise nobody meant to make. «від 500 грн» on a card
+ * does not save the conversation that follows it — it only gives the reader a figure to be
+ * disappointed by. The same reasoning took out the free-text «розкажіть про себе»: the
+ * board is an index of who does what, not a CV, and every extra step is a reason to close
+ * the bot and write in the chat instead. What is left is the two facts a neighbour actually
+ * needs — the trade and a way to reach the person — plus photos, which are added afterwards
+ * and say more about a плиточник than any paragraph.
+ *
+ * **The first question is not a category.** A keyboard of trades («Сантехніка»,
+ * «Електрика», «Ремонт») fails on the first плиточник: he is none of those, so either the
+ * keyboard grows a button per trade until it is unreadable, or he picks the closest wrong
+ * one and becomes invisible to whoever searched for tiling. A free line in his own words
+ * fits everybody and is what the index button shows.
+ *
+ * No photo step, on purpose. A photo here would collide with the pavilion-photo obligation:
+ * an active conversation swallows every photo the user sends, and telling "фото моєї
+ * роботи" apart from "фото альтанки" inside a ~1-hour obligation window is not worth
+ * blocking a resident who did send their evidence. Work photos are added afterwards from a
+ * web page — see ServiceMenuCommand::photoLink().
  */
 class ServicePublish extends Conversation
 {
@@ -41,9 +58,7 @@ class ServicePublish extends Conversation
     protected ?string $step = 'askTitle';
 
     public ?string $title = null;
-    public ?string $priceNote = null;
-    public ?string $description = null;
-    public bool $showPhone = false;
+    public ?string $phone = null;
 
     public function __construct(
         private TelegramUserService $telegramUserService,
@@ -108,19 +123,34 @@ class ServicePublish extends Conversation
         $bot->sendMessage(
             text: "🛠 <b>Оголошення про послугу</b>\n\n"
                 . "Напишіть одним рядком, що ви робите — так, як сказали б сусідові.\n\n"
-                . "<i>Наприклад: Плиточник · Електрик · Манікюр вдома · "
+                . '<i>Наприклад: Плиточник · Електрик · Манікюр вдома · '
                 . "Репетитор з англійської · Вигул собак</i>\n\n"
                 . 'Цей рядок буде на кнопці у списку, тому коротко — до '
-                . ServiceOffer::TITLE_MAX . ' символів.',
+                . ServiceOffer::TITLE_MAX . " символів.\n\n"
+                . '<i>Про ціну не питаємо — її ви обговорите із замовником напряму, '
+                . 'коли він скаже, що саме треба.</i>',
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()
                 ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel')),
         );
 
-        $this->next('askPrice');
+        $this->next('askPhone');
     }
 
-    public function askPrice(Nutgram $bot): void
+    /**
+     * The number to ring — theirs, or their electrician's.
+     *
+     * Their own is a button rather than a default: it sits in our database because they
+     * gave it to the ОСББ for нарахування, and publishing it to the house is a separate
+     * decision. Any other number is typed in, and the prompt says plainly that it goes on a
+     * board the whole house reads — the person publishing it is the one who can ask its
+     * owner, so that is where the sentence puts the responsibility.
+     *
+     * Skipping is allowed. Roughly half of residents have no @username, so for them the
+     * «✍️ Написати» button does not exist and the bot relays instead; a card with no number
+     * still reaches its poster.
+     */
+    public function askPhone(Nutgram $bot): void
     {
         if ($bot->isCallbackQuery()) {
             if (($bot->callbackQuery()->data ?? '') === 'cancel') {
@@ -150,116 +180,30 @@ class ServicePublish extends Conversation
 
         $this->title = mb_substr($title, 0, ServiceOffer::TITLE_MAX, 'UTF-8');
 
-        $bot->sendMessage(
-            text: "💰 <b>Скільки це коштує?</b>\n\n"
-                . "Напишіть як вам зручно — точну суму, «від», за годину чи за метр.\n\n"
-                . '<i>Наприклад: від 500 грн · 300 грн/год · 250 грн/м² · по домовленості</i>',
-            parse_mode: ParseMode::HTML,
-            reply_markup: InlineKeyboardMarkup::make()
-                ->addRow(InlineKeyboardButton::make('Договірна', callback_data: 'price:none'))
-                ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel')),
-        );
-
-        $this->next('askDescription');
-    }
-
-    public function askDescription(Nutgram $bot): void
-    {
-        if ($bot->isCallbackQuery()) {
-            $data = $bot->callbackQuery()->data ?? '';
-
-            if ($data === 'cancel') {
-                $this->cancel($bot);
-
-                return;
-            }
-
-            if ($data !== 'price:none') {
-                return;
-            }
-
-            $this->priceNote = null;
-        } else {
-            $raw = trim((string)$bot->message()?->text);
-
-            if ($raw === '') {
-                return;
-            }
-
-            $this->priceNote = mb_substr($raw, 0, ServiceOffer::PRICE_MAX, 'UTF-8');
-        }
-
-        $bot->sendMessage(
-            text: "📝 <b>Розкажіть трохи більше</b> (до " . ServiceOffer::DESCRIPTION_MAX . " символів).\n\n"
-                . "Що саме робите, скільки років цим займаєтесь, чи є свій інструмент, "
-                . "коли зручно — все, що допоможе сусідові вирішити.\n\n"
-                . '<i>Номер телефону сюди писати не треба — про нього спитаємо окремо '
-                . 'на наступному кроці.</i>',
-            parse_mode: ParseMode::HTML,
-            reply_markup: InlineKeyboardMarkup::make()
-                ->addRow(InlineKeyboardButton::make('Пропустити', callback_data: 'desc:none'))
-                ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel')),
-        );
-
-        $this->next('askContact');
-    }
-
-    /**
-     * The one question that decides whether a neighbour can actually reach this person.
-     *
-     * Roughly half the residents have no @username, so for them the "✍️ Написати" button
-     * does not exist and the bot falls back to relaying. The number is already in our
-     * database; what is missing is permission to publish it. Ask once, show it in full so
-     * nobody is surprised by what goes out, and default to keeping it private.
-     */
-    public function askContact(Nutgram $bot): void
-    {
-        if ($bot->isCallbackQuery()) {
-            $data = $bot->callbackQuery()->data ?? '';
-
-            if ($data === 'cancel') {
-                $this->cancel($bot);
-
-                return;
-            }
-
-            if ($data !== 'desc:none') {
-                return;
-            }
-
-            $this->description = null;
-        } else {
-            $text = trim((string)$bot->message()?->text);
-
-            if ($text === '') {
-                return;
-            }
-
-            $this->description = mb_substr($text, 0, ServiceOffer::DESCRIPTION_MAX, 'UTF-8');
-        }
-
-        $phone = RentalListingService::formatPhone(
+        $own = RentalListingService::formatPhone(
             $this->telegramUserService->getCurrentUser()?->getPhoneNumber()
         );
 
-        // Nothing to offer — skip the question rather than ask about a number we don't have.
-        if ($phone === null) {
-            $this->showPhone = false;
-            $this->showPreview($bot);
+        $markup = InlineKeyboardMarkup::make();
 
-            return;
+        if ($own !== null) {
+            $markup->addRow(InlineKeyboardButton::make(
+                '📞 Мій номер: ' . $own,
+                callback_data: 'phone:own',
+            ));
         }
 
+        $markup
+            ->addRow(InlineKeyboardButton::make('✈️ Без номера — писати мені в Telegram', callback_data: 'phone:none'))
+            ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel'));
+
         $bot->sendMessage(
-            text: "📞 <b>Як з вами зв'язуватись?</b>\n\n"
-                . 'Оголошення бачать усі підтверджені мешканці будинку. '
-                . 'Показати в ньому ваш номер <b>' . self::esc($phone) . "</b>?\n\n"
-                . "<i>Якщо ні — з вами зв'яжуться через Telegram.</i>",
+            text: "📞 <b>Який номер показувати?</b>\n\n"
+                . "Надішліть номер повідомленням — свій або майстра, якого ви радите.\n\n"
+                . '<i>Оголошення бачать усі підтверджені мешканці будинку. Якщо номер не ваш — '
+                . "спитайте спершу в його власника.</i>",
             parse_mode: ParseMode::HTML,
-            reply_markup: InlineKeyboardMarkup::make()
-                ->addRow(InlineKeyboardButton::make('📞 Так, показувати номер', callback_data: 'contact:phone'))
-                ->addRow(InlineKeyboardButton::make('✈️ Ні, тільки Telegram', callback_data: 'contact:tg'))
-                ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel')),
+            reply_markup: $markup,
         );
 
         $this->next('confirm');
@@ -267,29 +211,58 @@ class ServicePublish extends Conversation
 
     public function confirm(Nutgram $bot): void
     {
-        if (!$bot->isCallbackQuery()) {
+        if ($bot->isCallbackQuery()) {
+            $data = $bot->callbackQuery()->data ?? '';
+
+            if ($data === 'cancel') {
+                $this->cancel($bot);
+
+                return;
+            }
+
+            if ($data === 'publish') {
+                $this->publish($bot);
+
+                return;
+            }
+
+            if ($data === 'phone:own') {
+                $this->phone = RentalListingService::formatPhone(
+                    $this->telegramUserService->getCurrentUser()?->getPhoneNumber()
+                );
+                $this->showPreview($bot);
+
+                return;
+            }
+
+            if ($data === 'phone:none') {
+                $this->phone = null;
+                $this->showPreview($bot);
+            }
+
             return;
         }
 
-        $data = $bot->callbackQuery()->data ?? '';
+        // A typed number. Only reachable before the preview — afterwards the step accepts
+        // callbacks only, so a stray message cannot drop a half-built offer.
+        if ($this->phone !== null) {
+            return;
+        }
 
-        if ($data === 'cancel') {
-            $this->cancel($bot);
+        $typed = RentalListingService::formatPhone((string)$bot->message()?->text);
+
+        if ($typed === null) {
+            $bot->sendMessage(
+                text: '⚠️ Не схоже на український номер. Надішліть у вигляді '
+                    . '<b>0501234567</b> або <b>+380501234567</b>, '
+                    . 'або оберіть кнопку нижче.',
+                parse_mode: ParseMode::HTML,
+            );
 
             return;
         }
 
-        if ($data === 'publish') {
-            $this->publish($bot);
-
-            return;
-        }
-
-        if ($data !== 'contact:phone' && $data !== 'contact:tg') {
-            return;
-        }
-
-        $this->showPhone = $data === 'contact:phone';
+        $this->phone = $typed;
         $this->showPreview($bot);
     }
 
@@ -320,14 +293,7 @@ class ServicePublish extends Conversation
             return;
         }
 
-        $offer = $this->offerService->publish(
-            $account,
-            $user,
-            $this->title,
-            $this->priceNote,
-            $this->description,
-            $this->showPhone,
-        );
+        $offer = $this->offerService->publish($account, $user, $this->title, $this->phone);
 
         $bot->sendMessage(
             text: "✅ <b>Оголошення опубліковано</b>\n\n"
@@ -337,8 +303,9 @@ class ServicePublish extends Conversation
                 . 'запитаємо, чи ще актуально.',
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()
-                // Photos are the single biggest thing an offer can gain, and this is the
-                // one moment the author is definitely still holding the phone.
+                // Photos are the single biggest thing an offer can gain now that the card
+                // carries nothing but the trade — and this is the one moment the author is
+                // definitely still holding the phone.
                 ->addRow(InlineKeyboardButton::make(
                     '📷 Додати фото робіт',
                     callback_data: 'svc:photos:' . $offer->getId(),
@@ -374,24 +341,13 @@ class ServicePublish extends Conversation
         $user = $this->telegramUserService->getCurrentUser();
         $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
 
-        $lines = [
-            '🛠 <b>' . self::esc((string)$this->title) . '</b>',
-            '🏠 <i>' . ServiceOfferService::place($account) . '</i>',
-            '💰 ' . self::esc($this->priceNote ?? 'ціна договірна'),
-        ];
+        $lines = ['🛠 <b>' . self::esc((string)$this->title) . '</b>'];
 
-        if ($this->description) {
-            $lines[] = '';
-            $lines[] = self::esc($this->description);
+        if ($this->phone !== null) {
+            $lines[] = '📞 ' . self::esc($this->phone);
         }
 
-        if ($this->showPhone) {
-            $phone = RentalListingService::formatPhone($user?->getPhoneNumber());
-
-            if ($phone) {
-                $lines[] = '📞 ' . self::esc($phone);
-            }
-        }
+        $lines[] = '👤 <i>Розмістив: ' . ServiceOfferService::place($account) . '</i>';
 
         return implode("\n", $lines);
     }
