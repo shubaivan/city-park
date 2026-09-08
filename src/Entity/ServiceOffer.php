@@ -8,7 +8,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * "🛠 Послуги мешканців" — a resident offering what they do: плиточник, електрик,
+ * "🛠 Послуги" — a resident offering what they do: плиточник, електрик,
  * манікюр, репетитор, вигул собак.
  *
  * **There is no category list, and that is the design.** The obvious first shape was a

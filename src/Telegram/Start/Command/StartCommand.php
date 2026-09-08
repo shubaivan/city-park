@@ -450,13 +450,13 @@ class StartCommand extends Command
             if ($repo instanceof ServiceOfferRepository) {
                 $open = $repo->countActive(new \DateTime());
 
-                return $open > 0 ? sprintf('🛠 Послуги (%d)', $open) : '🛠 Послуги мешканців';
+                return $open > 0 ? sprintf('🛠 Послуги (%d)', $open) : '🛠 Послуги';
             }
         } catch (\Throwable) {
             // A count is decoration; the button must appear either way.
         }
 
-        return '🛠 Послуги мешканців';
+        return '🛠 Послуги';
     }
 
     private static function complaintsLabel(Nutgram $bot): string
