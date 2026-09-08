@@ -126,6 +126,19 @@ house can see happening and carries the result to everyone afterwards, including
 with nobody in the bot who cannot vote but live here. Silent when
 `RESIDENT_CHAT_TOPIC_VOTES` is unset, and never fatal.
 
+**A vote is final, and it is on the record.** `BlockVoteBallot` stores who cast it
+(`voter_user`, SET NULL) and when, and `/admin/block-votes` lists every ballot under its
+campaign — flat, name, @username, time. Changing a vote used to be allowed until the
+deadline, which is a fair rule for an anonymous poll and a bad one for a recorded ballot: a
+record that can be rewritten until the last minute is not a record, and it removes the shape
+where somebody watches the tally and flips at the end. `recordVote()` refuses a second
+ballot and answers with what the account already voted, since a repeat tap is usually
+somebody checking. In the bot the row becomes «✅ Ви проголосували: За» — an inert pill, not
+a button, because a live button under a final vote invites a tap that can only be refused.
+**Residents never see who voted how**; only the four panel logins do. That is a real change
+for a block campaign — voting to block a neighbour is now attributable — and it was made
+knowingly.
+
 **📜 Минулі голосування** — the archive, in the bot for everyone and on `/admin/block-votes`
 in full. Both kinds in one list: they are the same act, and splitting them would hide how
 rarely either happens. Cancelled campaigns are left out — one an admin withdrew before the

@@ -28,6 +28,25 @@ class BlockVoteBallotRepository extends ServiceEntityRepository
      *
      * @return array{yes:int, no:int}
      */
+    /**
+     * Every ballot of a campaign, with the person and their flat, newest first.
+     *
+     * The account is what votes, but «хто саме» is the question the panel is asked
+     * afterwards and «кв. 85» does not answer it on a flat with three residents.
+     *
+     * @return BlockVoteBallot[]
+     */
+    public function forCampaign(BlockVoteCampaign $campaign): array
+    {
+        return $this->createQueryBuilder('b')
+            ->andWhere('b.campaign = :c')->setParameter('c', $campaign)
+            ->leftJoin('b.voterAccount', 'a')->addSelect('a')
+            ->leftJoin('b.voterUser', 'u')->addSelect('u')
+            ->orderBy('b.id', 'DESC')
+            ->getQuery()
+            ->getResult();
+    }
+
     public function tally(BlockVoteCampaign $campaign): array
     {
         // Count total and YES with explicit boolean predicates rather than grouping on the

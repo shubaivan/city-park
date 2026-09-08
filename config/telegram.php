@@ -106,7 +106,7 @@ $bot->onCallbackQueryData(\App\Telegram\Voting\Command\VotingMenuCommand::MENU_C
 $bot->onCallbackQueryData('^bvote:\d+:(yes|no)$', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\Voting\Command\VotingMenuCommand::PAST_CALLBACK, \App\Telegram\Voting\Command\VotingMenuCommand::class);
 // Anybody may ask the house something; only the broadcast waits for an admin.
-$bot->onCallbackQueryData('^vote:drop:\d+$', \App\Telegram\Voting\Command\VotingMenuCommand::class);
+$bot->onCallbackQueryData('^vote:(?:drop:\d+|noop)$', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\Voting\Command\VoteAsk::START_CALLBACK, \App\Telegram\Voting\Command\VoteAsk::class);
 $bot->onCommand('vote', \App\Telegram\Voting\Command\VotingMenuCommand::class);
 

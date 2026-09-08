@@ -171,6 +171,11 @@ class AdminController extends AbstractController
             $open[] = [
                 'id' => $campaign->getId(),
                 'kind' => $campaign->getKind(),
+                // Who voted how. The account is the unit that votes, but on a flat with
+                // three residents «кв. 85» does not say who pressed the button.
+                'ballots' => $ballotRepository->forCampaign($campaign),
+                'broadcast' => $campaign->isBroadcast(),
+                'author' => $campaign->getAuthor()?->getDisplayName(),
                 'label' => $voteService->subjectLabel($campaign),
                 'details' => $campaign->getDetails(),
                 'account_number' => $campaign->getCandidate()?->getAccountNumber(),
@@ -190,7 +195,10 @@ class AdminController extends AbstractController
                 continue;
             }
             $recent[] = [
+                'id' => $campaign->getId(),
                 'kind' => $campaign->getKind(),
+                'ballots' => $ballotRepository->forCampaign($campaign),
+                'author' => $campaign->getAuthor()?->getDisplayName(),
                 'label' => $voteService->subjectLabel($campaign),
                 'account_number' => $campaign->getCandidate()?->getAccountNumber(),
                 'blocks' => $campaign->getCandidate()?->getVoteBlockCount() ?? 0,
@@ -280,6 +288,40 @@ class AdminController extends AbstractController
         $this->addFlash('success', sprintf(
             'Питання поставлено. Голосування триває %d днів, право голосу мають %d мешканців.',
             BlockVoteService::VOTE_DAYS,
+            $campaign->getEligibleCount(),
+        ));
+
+        return $this->redirectToRoute('app_admin_block_votes');
+    }
+
+    /**
+     * Send a resident's question to everybody.
+     *
+     * Creating a vote and broadcasting it are separate acts: anybody may ask the house
+     * something and it is live at once, but a DM to every voter plus a post in the chat
+     * rings 171 phones and cannot be recalled, so it needs somebody accountable. Not a
+     * gate, though — a question that collects enough ballots on its own broadcasts itself,
+     * so an awkward one cannot be buried by nobody approving it.
+     */
+    #[Route('/admin/block-vote/broadcast', name: 'app_admin_block_vote_broadcast', methods: [Request::METHOD_POST])]
+    public function blockVoteBroadcast(
+        Request $request,
+        BlockVoteCampaignRepository $campaignRepository,
+        BlockVoteService $voteService,
+    ): Response {
+        $id = (int)$request->request->get('campaign_id');
+        $campaign = $id > 0 ? $campaignRepository->find($id) : null;
+
+        if ($campaign === null || !$campaign->isOpen() || $campaign->isBroadcast()) {
+            $this->addFlash('error', 'Це голосування вже розіслане або завершене.');
+
+            return $this->redirectToRoute('app_admin_block_votes');
+        }
+
+        $voteService->broadcast($campaign);
+
+        $this->addFlash('success', sprintf(
+            'Розіслано %d мешканцям і опубліковано в чаті.',
             $campaign->getEligibleCount(),
         ));
 
