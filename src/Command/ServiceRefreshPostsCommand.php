@@ -9,7 +9,7 @@ use App\Service\ResidentChatService;
 use App\Service\ServiceOfferService;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
-use SergiX44\Nutgram\Telegram\Types\Message\ParseMode;
+use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
