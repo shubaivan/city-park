@@ -64,6 +64,17 @@ class ServiceOffer
      */
     public const TITLE_MAX = 60;
 
+    /**
+     * How many live offers one person may have.
+     *
+     * A person really can be an electrician *and* fit kitchens, and «Електрик, ремонт під
+     * ключ» crammed into one 60-character button serves neither trade. Three is the point
+     * past which it stops being "I do a few things" and starts being one resident holding
+     * the first page — and this board is the only place in the bot where somebody
+     * broadcasts to the whole house.
+     */
+    public const MAX_PER_AUTHOR = 3;
+
     /** Max photos — enough to show finished work, few enough to keep the card fast. */
     public const PHOTOS_MAX = 3;
 

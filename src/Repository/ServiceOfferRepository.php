@@ -39,12 +39,16 @@ class ServiceOfferRepository extends ServiceEntityRepository
     }
 
     /**
-     * The person's own live offer, if any.
+     * Everything this person currently offers.
      *
-     * Keyed on the author and not the account: two people on one особовий рахунок may
-     * each offer something different — see the ServiceOffer class comment.
+     * Keyed on the author and not the account: two people on one особовий рахунок may each
+     * offer something different — see the ServiceOffer class comment. There is no cap; a
+     * person really can be an electrician *and* fit kitchens, and «Електрик, ремонт під
+     * ключ» crammed into one 60-character button serves neither.
+     *
+     * @return ServiceOffer[]
      */
-    public function findActiveForAuthor(TelegramUser $author, \DateTime $now): ?ServiceOffer
+    public function findActiveForAuthor(TelegramUser $author, \DateTime $now): array
     {
         return $this->createQueryBuilder('o')
             ->andWhere('o.author = :author')
@@ -54,9 +58,8 @@ class ServiceOfferRepository extends ServiceEntityRepository
             ->setParameter('active', ServiceOffer::STATUS_ACTIVE)
             ->setParameter('now', $now)
             ->orderBy('o.id', 'DESC')
-            ->setMaxResults(1)
             ->getQuery()
-            ->getOneOrNullResult();
+            ->getResult();
     }
 
     /**

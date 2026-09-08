@@ -258,12 +258,30 @@ opt-in phone, admin take-down. What differs from it differs on purpose:
   Labelled, the same line says who vouches for the card — which is the entire difference
   between this board and a number off a lamppost, and it is why the flat is on it at all.
   `ServiceOfferRulesTest` pins it for both the card and the chat post.
-- **One active offer per *person*, not per account.** A rental listing belongs to the flat
-  — the flat is what is on offer. A service belongs to whoever performs it: father is an
-  electrician and daughter does manicures on the same особовий рахунок, and one-per-account
-  would make them take turns. `ownsOffer()` is therefore the one ownership check in the bot
-  that is not "any member of the account", falling back to the account only when the
-  author's row is gone (`author_id` is SET NULL).
+- **Up to `ServiceOffer::MAX_PER_AUTHOR` (3) live offers per *person*, not per account.**
+  A person really can be an electrician *and* fit kitchens, and «Електрик, ремонт під ключ»
+  crammed into one 60-character button serves neither trade; three is where it stops being
+  «I do a few things» and starts being one resident holding the first page, and this board
+  is the only place in the bot where somebody broadcasts to the whole house. Per person
+  because father recommends his electrician and daughter posts her manicurist on the same
+  особовий рахунок. The cap is checked on the button *and* in `mayPublishMore()`, since a
+  resident can reach «➕ Пропоную послугу» from a keyboard drawn before they published their
+  third somewhere else; at the ceiling the button is replaced by a sentence saying why,
+  never silently removed.
+- **Publishing adds; editing is its own path.** While one offer per person was the rule,
+  «✏️ Змінити» restarted the publish flow and let it *replace* whatever was there, which is
+  a reasonable spelling of "edit" for exactly as long as there is only one. With three, that
+  edits the wrong advert — so the button carries the id (`svc:edit:<id>`) and
+  `ServiceOfferService::update()` changes the row in place. In place matters: the photos,
+  the chat post (edited where it stands), the expiry date and the clicks recorded against
+  that id all hang off the row, and a typo fix must not restart the 30-day clock or orphan
+  three pictures. `ServicePublish::targetOffer()` re-loads and re-checks ownership rather
+  than trusting the id it was started with — a conversation outlives the keyboard it began
+  on.
+- **«📌 Мої оголошення»** opens straight onto the card when there is one, and onto a
+  filtered list (`svc:my:<page>`) when there are several. Shown only to somebody who has
+  something in it: an empty filter is a dead end, the same call the complaints register
+  makes.
 - **Reading needs a confirmed account** — the opposite call to the rental board. An
   advertisement for a flat wants every reader it can get; this list names which flat each
   tradesperson lives in and an unverified stranger gains nothing the house wants them to

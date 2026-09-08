@@ -67,9 +67,22 @@ class ServiceOfferService
         return $account instanceof Account;
     }
 
-    public function activeForAuthor(?TelegramUser $author): ?ServiceOffer
+    /** @return ServiceOffer[] */
+    public function activeForAuthor(?TelegramUser $author): array
     {
-        return $author ? $this->offers->findActiveForAuthor($author, self::now()) : null;
+        return $author ? $this->offers->findActiveForAuthor($author, self::now()) : [];
+    }
+
+    /**
+     * Room for one more?
+     *
+     * Asked here rather than only in the conversation, because the conversation is one of
+     * two ways in — a resident can also arrive on «➕ Пропоную послугу» from a stale
+     * keyboard after publishing their third in another window.
+     */
+    public function mayPublishMore(?TelegramUser $author): bool
+    {
+        return count($this->activeForAuthor($author)) < ServiceOffer::MAX_PER_AUTHOR;
     }
 
     /** @return ServiceOffer[] */
@@ -84,11 +97,12 @@ class ServiceOfferService
     }
 
     /**
-     * Publish (or replace) this person's offer.
+     * Publish a new offer.
      *
-     * Replacing rather than rejecting is the edit path: somebody who wants to change their
-     * price publishes again instead of hunting for an edit button. Same shape as the
-     * rental board, where it has worked since August.
+     * It used to *replace* the author's previous one, because that was the edit path while
+     * a person could only have one. With no cap, republishing has to mean republishing —
+     * an электрик who also fits kitchens would otherwise lose the first advert by writing
+     * the second. Editing is now its own path: {@see update()}.
      */
     public function publish(
         Account $account,
@@ -98,40 +112,7 @@ class ServiceOfferService
     ): ServiceOffer {
         $now = self::now();
 
-        $existing = $this->activeForAuthor($author);
-
-        // Republishing IS the edit path — «✏️ Змінити» on the card restarts this
-        // conversation — so the photos have to come across. Purging them here (which is
-        // what the first version did, by symmetry with a withdrawal) meant that fixing a
-        // typo in «Електрик» silently deleted three pictures of the author's work, files
-        // and all. A withdrawal is the author saying they are done; a republish is them
-        // saying it differently.
-        $photos = [];
-        $chatMessageId = null;
-
-        if ($existing) {
-            $photos = $existing->getPhotos();
-
-            $existing->setStatus(ServiceOffer::STATUS_REMOVED);
-            $existing->setClosedAt($now);
-            // Detach without deleting: the files now belong to the new offer. The old row
-            // keeps no reference, so the withdrawal/expiry purges cannot reach them either.
-            $existing->setPhotos([]);
-            $existing->setPhotoToken(null);
-            $existing->setPhotoTokenExpiresAt(null);
-
-            // The post in the chat is carried over and edited in place, not deleted and
-            // re-posted. Telegram refuses to delete a message older than 48 hours, so the
-            // delete-then-post shape left the old advert standing and added a second one
-            // beside it — two posts for one service, which is exactly the classifieds rot
-            // this thread is deleted-on-close to avoid. Editing also keeps the post where
-            // it was, instead of bumping it to the bottom of the topic on every typo fix.
-            $chatMessageId = $existing->getChatMessageId();
-            $existing->setChatMessageId(null);
-        }
-
         $offer = (new ServiceOffer())
-            ->setChatMessageId($chatMessageId ?? null)
             ->setAccount($account)
             ->setAuthor($author)
             ->setTitle($title)
@@ -139,7 +120,6 @@ class ServiceOfferService
             // and «380…», and formatPhone() returns null for anything that is not a
             // plausible Ukrainian number — better no number than half of one.
             ->setContactPhone(RentalListingService::formatPhone($contactPhone))
-            ->setPhotos($photos)
             ->setExpiresAt((clone $now)->modify('+' . ServiceOffer::LIFETIME_DAYS . ' days'));
 
         $this->em->persist($offer);
@@ -150,9 +130,29 @@ class ServiceOfferService
         $this->logger->info('service offer published', [
             'offer_id' => $offer->getId(),
             'account_id' => $account->getId(),
-            'replaced' => $existing?->getId(),
-            'photos_carried' => count($photos),
         ]);
+
+        return $offer;
+    }
+
+    /**
+     * Change an existing offer in place.
+     *
+     * In place, and not "close the old one and open a new one", because everything hanging
+     * off the row should survive a typo fix: the photos, the chat post (edited where it
+     * stands, see announce()), the expiry date and the clicks recorded against its id. The
+     * previous shape lost all four — it was publish() doing double duty back when one
+     * offer per person made "replace" a reasonable spelling of "edit".
+     */
+    public function update(ServiceOffer $offer, string $title, ?string $contactPhone): ServiceOffer
+    {
+        $offer->setTitle($title);
+        $offer->setContactPhone(RentalListingService::formatPhone($contactPhone));
+        $this->em->flush();
+
+        $this->announce($offer);
+
+        $this->logger->info('service offer updated', ['offer_id' => $offer->getId()]);
 
         return $offer;
     }
