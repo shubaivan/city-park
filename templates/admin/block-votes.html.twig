@@ -1,5 +1,49 @@
 {% extends 'base.html.twig' %}
 
+{#
+    Who voted which way, in two columns rather than one mixed run.
+
+    The mixed list is unreadable at 40 ballots: the question an admin opens this with is
+    «хто проти», and answering it meant scanning green and grey badges one by one. Each
+    side is sorted by особовий рахунок so the same flat sits in the same place every time.
+#}
+{% macro ballots(list, withTime) %}
+    {% set yes = list|filter(b => b.value)|sort((a, b) => a.voterAccount.accountNumber <=> b.voterAccount.accountNumber) %}
+    {% set no  = list|filter(b => not b.value)|sort((a, b) => a.voterAccount.accountNumber <=> b.voterAccount.accountNumber) %}
+    <div class="row">
+        <div class="col-md-6 mb-2">
+            <small class="text-muted">👍 За — {{ yes|length }}:</small><br>
+            {% for b in yes %}
+                <span class="badge bg-success mr-1 mb-1">
+                    {{ b.voterAccount.unitLabel }}
+                    {%- if b.voterUser %} · {{ b.voterUser.displayName }}
+                        {%- if b.voterUser.username %} (@{{ b.voterUser.username }}){% endif %}
+                    {%- endif %}
+                    {%- if withTime and b.castAt %} · {{ b.castAt|date('d.m H:i') }}{% endif %}
+                </span>
+            {% else %}
+                <small class="text-muted">—</small>
+            {% endfor %}
+        </div>
+        <div class="col-md-6 mb-2">
+            <small class="text-muted">👎 Проти — {{ no|length }}:</small><br>
+            {% for b in no %}
+                <span class="badge bg-secondary mr-1 mb-1">
+                    {{ b.voterAccount.unitLabel }}
+                    {%- if b.voterUser %} · {{ b.voterUser.displayName }}
+                        {%- if b.voterUser.username %} (@{{ b.voterUser.username }}){% endif %}
+                    {%- endif %}
+                    {%- if withTime and b.castAt %} · {{ b.castAt|date('d.m H:i') }}{% endif %}
+                </span>
+            {% else %}
+                <small class="text-muted">—</small>
+            {% endfor %}
+        </div>
+    </div>
+{% endmacro %}
+
+{% import _self as ballotBox %}
+
 {% block title %}Голосування за блокування · ОСББ City Park{% endblock %}
 
 {% block body %}
@@ -147,17 +191,7 @@
                         {% if c.ballots|length %}
                             <tr>
                                 <td colspan="10" class="bg-light">
-                                    <small class="text-muted">Хто як проголосував:</small><br>
-                                    {% for b in c.ballots %}
-                                        <span class="badge {{ b.value ? 'bg-success' : 'bg-secondary' }} mr-1 mb-1">
-                                            {{ b.value ? '👍' : '👎' }}
-                                            {{ b.voterAccount.unitLabel }}
-                                            {%- if b.voterUser %} · {{ b.voterUser.displayName }}
-                                                {%- if b.voterUser.username %} (@{{ b.voterUser.username }}){% endif %}
-                                            {%- endif %}
-                                            {%- if b.castAt %} · {{ b.castAt|date('d.m H:i') }}{% endif %}
-                                        </span>
-                                    {% endfor %}
+                                    {{ ballotBox.ballots(c.ballots, true) }}
                                 </td>
                             </tr>
                         {% endif %}
@@ -236,16 +270,7 @@
                         {% if c.ballots|length %}
                             <tr>
                                 <td colspan="8" class="bg-light">
-                                    <small class="text-muted">Хто як проголосував:</small><br>
-                                    {% for b in c.ballots %}
-                                        <span class="badge {{ b.value ? 'bg-success' : 'bg-secondary' }} mr-1 mb-1">
-                                            {{ b.value ? '👍' : '👎' }}
-                                            {{ b.voterAccount.unitLabel }}
-                                            {%- if b.voterUser %} · {{ b.voterUser.displayName }}
-                                                {%- if b.voterUser.username %} (@{{ b.voterUser.username }}){% endif %}
-                                            {%- endif %}
-                                        </span>
-                                    {% endfor %}
+                                    {{ ballotBox.ballots(c.ballots, false) }}
                                 </td>
                             </tr>
                         {% endif %}
