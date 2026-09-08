@@ -29,11 +29,10 @@
 
             This page is worked from a phone as often as from a desk, and next to
             /admin/objects — a plain search box and a row of chips — it looked broken:
-            seven fixed-width labelled boxes taking the whole first screen, the six status
-            filters wrapped into a grid of square-cornered blocks (a .btn-group only looks
-            like a group while it fits on one line), and DataTables' own controls centred
-            with the length select on a line of its own. None of that is the table; it is
-            the chrome around it.
+            seven fixed-width labelled boxes taking the whole first screen and the filter
+            buttons wrapped into a grid of square-cornered blocks. The chips and the
+            DataTables chrome are fixed for both admin tables in base.html.twig; what is
+            left here is this page's own field panel.
         */
         .users-filter-grid {
             display: grid;
@@ -45,10 +44,6 @@
         .users-filter-grid input,
         .users-filter-grid select { width: 100%; }
 
-        /* The chips wrap as chips: each keeps its own corners and its own gap. */
-        .users-chip-row { display: flex; flex-wrap: wrap; gap: .35rem; }
-        .users-chip-row > .btn { margin: 0; }
-
         /* A <summary> styled as a button still shows the disclosure marker twice. */
         .users-field-details > summary { list-style: none; cursor: pointer; }
         .users-field-details > summary::-webkit-details-marker { display: none; }
@@ -58,51 +53,6 @@
             .users-field-details > summary { display: none; }
         }
 
-        @media (max-width: 767.98px) {
-            /*
-                DataTables centres every layout cell under 767px (its own stylesheet), so
-                «Пошук:», the length select and the filter chips all sat on the centre
-                line while the table under them starts at the left edge.
-            */
-            #telegramUserTable_wrapper .dt-layout-cell,
-            #telegramUserTable_wrapper .dt-layout-cell.dt-full,
-            #telegramUserTable_wrapper .dt-layout-cell.dt-start,
-            #telegramUserTable_wrapper .dt-layout-cell.dt-end { text-align: left; }
-
-            /*
-                The table scrolls inside its own box instead of widening the page.
-
-                Everything above it — the search input at `width: 100%`, the chips that
-                wrap against the container — is laid out against the wrapper, and the
-                wrapper is as wide as whatever the table needs. So one long cell made the
-                search box wider than the phone and wrapped the chips off the right edge:
-                the controls were being sized by data three screens further down. With the
-                table in an `overflow-x` box the page is never wider than the phone, and
-                the columns that do not fit are reached by scrolling the table itself.
-            */
-            #telegramUserTable_wrapper > .dt-layout-table > .dt-layout-cell {
-                overflow-x: auto;
-            }
-
-            /* DataTables centres these two again under 640px, by class this time. */
-            #telegramUserTable_wrapper .dt-length,
-            #telegramUserTable_wrapper .dt-search { float: none; text-align: left; }
-
-            #telegramUserTable_wrapper .dt-search label { display: block; }
-            #telegramUserTable_wrapper .dt-search input {
-                /* border-box, or DataTables' own 5px padding pushes it off the screen. */
-                display: block; box-sizing: border-box; width: 100%; margin: .25rem 0 0 0;
-            }
-            #telegramUserTable_wrapper .dt-length select { width: auto; display: inline-block; }
-
-            /* 10px of padding per cell is a third of the row on a 390px screen. */
-            table#telegramUserTable > thead > tr > th,
-            table#telegramUserTable > tbody > tr > td { padding: .45rem .4rem; }
-
-            /* «▶ 463» wrapped onto two lines and made every row twice as tall. */
-            table#telegramUserTable > tbody > tr > td:first-child,
-            table#telegramUserTable > thead > tr > th:first-child { white-space: nowrap; }
-        }
     </style>
 
     {{ parent() }}

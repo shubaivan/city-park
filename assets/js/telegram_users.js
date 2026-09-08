@@ -499,12 +499,9 @@ document.addEventListener("DOMContentLoaded", function () {
         'text': '💡 Натисніть на рядок, щоб відкрити картку мешканця. Стрілка ▶ ліворуч показує колонки, які не помістилися на екран.'
     }));
 
-    // A wrapping chip row, never a .btn-group: Bootstrap joins the buttons of a group
-    // by squaring their inner corners, which is right on one line and nonsense on four —
-    // on a phone the six filters wrapped into a grid of square blocks with borders in
-    // the wrong places. Separate chips wrap the way the objects register's do.
+    // A wrapping chip row, never a .btn-group — see .chip-row in base.html.twig.
     var $statusGroup = $('<div/>', {
-        'class': 'users-chip-row mb-2',
+        'class': 'chip-row mb-2',
         'role': 'group',
         'aria-label': 'Status filter'
     });
@@ -522,7 +519,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // One button per building, from the list the server rendered — never a hardcoded
     // 17/19/21/23/27, which silently drops a sixth building the day one appears.
-    var $houseGroup = $('<div/>', {'class': 'users-chip-row mb-2'});
+    var $houseGroup = $('<div/>', {'class': 'chip-row mb-2'});
 
     (window.adminHouses || []).forEach(function (item) {
         var $btn = $('<button/>', {

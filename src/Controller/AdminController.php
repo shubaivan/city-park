@@ -992,6 +992,9 @@ class AdminController extends AbstractController
     /** Objects shown per page. The register is read on a phone; 60 cards is about 150 KB. */
     private const OBJECTS_PER_PAGE = 60;
 
+    /** Rows the object picker returns for one search. */
+    private const OBJECTS_SEARCH_LIMIT = 30;
+
     #[Route('/admin/objects', name: 'app_admin_objects', methods: [Request::METHOD_GET])]
     public function objects(Request $request, PropertyRegistry $registry): Response
     {
@@ -1030,6 +1033,56 @@ class AdminController extends AbstractController
             'house' => $house,
             // The template names sibling objects, and the label rules live in one place.
             'registry' => $registry,
+        ]);
+    }
+
+    /**
+     * The object picker behind the linking forms on a resident's card.
+     *
+     * Those forms used to be a bare text box: the accountant had to know the особовий
+     * рахунок by heart or open the register in another tab, copy the number and come back
+     * — and a typo attaches a person to somebody else's flat silently, because a рахунок
+     * that exists is a рахунок that is accepted. Searching by «85», «комірчина» or
+     * «Козацька 19» and picking a line that spells out the address removes both the trip
+     * and the class of mistake.
+     *
+     * Deliberately the same rules as the register itself (`PropertyRegistry::narrow`), so
+     * a word that finds an object on /admin/objects finds it here — the accountant's file
+     * says «паркінг», the bot says «паркомісце», the ОСББ register says «Комора».
+     */
+    #[Route('/admin/objects/search', name: 'app_admin_objects_search', methods: [Request::METHOD_GET])]
+    public function objectsSearch(Request $request, PropertyRegistry $registry): JsonResponse
+    {
+        $query = trim((string)$request->query->get('q'));
+        $found = PropertyRegistry::narrow($registry->overview(), $query, '', '');
+
+        $results = [];
+
+        foreach (array_slice($found, 0, self::OBJECTS_SEARCH_LIMIT) as $row) {
+            /** @var Account $account */
+            $account = $row['account'];
+            $owners = count($row['owners'] ?? []);
+
+            $results[] = [
+                'id' => $account->getAccountNumber(),
+                // The number alone is what the old box asked for and what nobody can
+                // check; the address is how the accountant knows the object.
+                'text' => sprintf(
+                    '%s · %s · %s%s',
+                    $account->getAccountNumber(),
+                    $row['place'] ?? '',
+                    $row['type_label'] ?? '',
+                    $owners === 0 ? ' · ❓ без власника' : sprintf(' · 👤 %d', $owners),
+                ),
+            ];
+        }
+
+        return $this->json([
+            'results' => $results,
+            // Said out loud rather than silently truncated: a picker that shows the first
+            // thirty of six hundred and says nothing is how "я не знайшла" happens.
+            'total' => count($found),
+            'shown' => count($results),
         ]);
     }
 
