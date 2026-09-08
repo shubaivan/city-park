@@ -14,7 +14,7 @@
         <div class="col-md-6 mb-2">
             <small class="text-muted">👍 За — {{ yes|length }}:</small><br>
             {% for b in yes %}
-                <span class="badge bg-success mr-1 mb-1">
+                <span class="badge badge-success mr-1 mb-1">
                     {{ b.voterAccount.unitLabel }}
                     {%- if b.voterUser %} · {{ b.voterUser.displayName }}
                         {%- if b.voterUser.username %} (@{{ b.voterUser.username }}){% endif %}
@@ -28,7 +28,7 @@
         <div class="col-md-6 mb-2">
             <small class="text-muted">👎 Проти — {{ no|length }}:</small><br>
             {% for b in no %}
-                <span class="badge bg-secondary mr-1 mb-1">
+                <span class="badge badge-secondary mr-1 mb-1">
                     {{ b.voterAccount.unitLabel }}
                     {%- if b.voterUser %} · {{ b.voterUser.displayName }}
                         {%- if b.voterUser.username %} (@{{ b.voterUser.username }}){% endif %}
@@ -98,8 +98,8 @@
                                     {% endif %}
                                 </td></tr>
                                 <tr><th>Поточний статус</th><td>
-                                    {% if preview.is_active %}<span class="badge bg-success">Активний</span>
-                                    {% else %}<span class="badge bg-secondary">Заблокований</span>{% endif %}
+                                    {% if preview.is_active %}<span class="badge badge-success">Активний</span>
+                                    {% else %}<span class="badge badge-secondary">Заблокований</span>{% endif %}
                                 </td></tr>
                                 <tr><th>Блокувань голосуванням</th><td>
                                     {% if preview.vote_block_count > 0 %}<span class="badge bg-warning text-dark">{{ preview.vote_block_count }}×</span>{% else %}0{% endif %}
@@ -258,9 +258,9 @@
                             <td>
                                 {# A question is recorded, not judged — the result is the counts beside it. #}
                                 {% if c.status == 'closed' %}<span class="badge bg-info text-dark">Опитано</span>
-                                {% elseif c.status == 'passed' %}<span class="badge bg-danger">Заблоковано</span>
-                                {% elseif c.status == 'failed' %}<span class="badge bg-success">Не пройшло</span>
-                                {% else %}<span class="badge bg-secondary">Скасовано</span>{% endif %}
+                                {% elseif c.status == 'passed' %}<span class="badge badge-danger">Заблоковано</span>
+                                {% elseif c.status == 'failed' %}<span class="badge badge-success">Не пройшло</span>
+                                {% else %}<span class="badge badge-secondary">Скасовано</span>{% endif %}
                             </td>
                             <td>{{ c.yes ?? 0 }}</td>
                             <td>{{ c.no ?? 0 }}</td>
