@@ -273,12 +273,31 @@ class RentalMenuCommand
      * The owner's own card carries the management controls instead of a "write to me"
      * button — they cannot be interested in their own flat.
      */
-    private function renderCard(Nutgram $bot, int $listingId, int $index = 0): void
+    /**
+     * Somebody tapped «↗️ Відкрити в боті» under the listing in the residents' chat.
+     *
+     * No account check, unlike the services board: reading this list is open to anybody who
+     * opens the bot, linked to an особовий рахунок or not, because a listing is an
+     * advertisement and the newcomer is often exactly the person looking for a flat. The
+     * deep link inherits that, deliberately.
+     */
+    public function openFromDeepLink(Nutgram $bot, int $listingId): void
+    {
+        if (!$this->liveListing($listingId)) {
+            $this->renderMenu($bot, edit: false, notice: '⚠️ Це оголошення вже неактуальне.');
+
+            return;
+        }
+
+        $this->renderCard($bot, $listingId, edit: false);
+    }
+
+    private function renderCard(Nutgram $bot, int $listingId, int $index = 0, bool $edit = true): void
     {
         $listing = $this->liveListing($listingId);
 
         if (!$listing) {
-            $this->renderMenu($bot, edit: true, notice: '⚠️ Це оголошення вже неактуальне.');
+            $this->renderMenu($bot, edit: $edit, notice: '⚠️ Це оголошення вже неактуальне.');
             return;
         }
 
@@ -292,11 +311,11 @@ class RentalMenuCommand
 
         $text = implode("\n", $lines);
 
-        if ($listing->hasPhotos() && $this->sendPhotoCard($bot, $listing, $index, $text, $markup)) {
+        if ($listing->hasPhotos() && $this->sendPhotoCard($bot, $listing, $index, $text, $markup, $edit)) {
             return;
         }
 
-        $this->respond($bot, edit: true, text: $text, markup: $markup);
+        $this->respond($bot, edit: $edit, text: $text, markup: $markup);
     }
 
     /**
@@ -359,6 +378,7 @@ class RentalMenuCommand
         int $index,
         string $caption,
         InlineKeyboardMarkup $markup,
+        bool $replacing = true,
     ): bool {
         $abs = $this->photoPath($listing, $index);
 
@@ -391,10 +411,15 @@ class RentalMenuCommand
         }
 
         // Only now — if sending failed we still have the message the user was looking at.
-        try {
-            $bot->deleteMessage($bot->chatId(), $bot->messageId());
-        } catch (\Throwable) {
-            // A message older than 48h cannot be deleted; leaving it is harmless.
+        // Nothing to replace when the card is the first message of the conversation, which
+        // is what a deep link from the chat is: deleting there would take out whatever the
+        // person happened to be reading.
+        if ($replacing) {
+            try {
+                $bot->deleteMessage($bot->chatId(), $bot->messageId());
+            } catch (\Throwable) {
+                // A message older than 48h cannot be deleted; leaving it is harmless.
+            }
         }
 
         return true;

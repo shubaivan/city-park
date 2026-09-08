@@ -6,7 +6,6 @@ use App\Entity\Account;
 use App\Entity\ServiceOffer;
 use App\Entity\TelegramUser;
 use App\Repository\ServiceOfferRepository;
-use App\Telegram\Start\Command\StartPayloadCommand;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
@@ -41,6 +40,7 @@ class ServiceOfferService
         private LoggerInterface $logger,
         private ImageStore $images,
         private ResidentChatService $residentChat,
+        private DeepLink $links,
     ) {}
 
     public static function now(): \DateTime
@@ -640,7 +640,7 @@ class ServiceOfferService
                     chat_id: $chatId,
                     message_id: $existingMessage,
                     parse_mode: ParseMode::HTML,
-                    reply_markup: $this->chatPostMarkup($offer),
+                    reply_markup: $this->links->button(DeepLink::KIND_SERVICE, $offer->getId()),
                 );
 
                 return;
@@ -663,7 +663,7 @@ class ServiceOfferService
                 message_thread_id: $topic,
                 parse_mode: ParseMode::HTML,
                 disable_notification: true,
-                reply_markup: $this->chatPostMarkup($offer),
+                reply_markup: $this->links->button(DeepLink::KIND_SERVICE, $offer->getId()),
             );
 
             $offer->setChatMessageId($message?->message_id);
@@ -674,43 +674,6 @@ class ServiceOfferService
                 'error' => $e->getMessage(),
             ]);
         }
-    }
-
-    /**
-     * One button under the chat post: straight into this offer's card in the bot.
-     *
-     * A **url** button, which is the only kind that works in the group — the global
-     * middleware drops every update arriving from a group, so a callback button there
-     * spins forever, while a `t.me/…?start=…` link never sends an update at all.
-     *
-     * It matters more here than anywhere: the post deliberately carries no phone and no
-     * photos, so «деталі — у боті» was the whole payload, and it asked the reader to go
-     * find one row among a list. Now they tap and land on the card.
-     *
-     * Null when the bot's own username cannot be read — the post still goes out, minus the
-     * button, because a missing shortcut must not cost the house the advert.
-     */
-    private function chatPostMarkup(ServiceOffer $offer): ?InlineKeyboardMarkup
-    {
-        try {
-            $username = $this->bot->getMe()?->username;
-        } catch (\Throwable) {
-            $username = null;
-        }
-
-        if ($username === null || $username === '' || $offer->getId() === null) {
-            return null;
-        }
-
-        return InlineKeyboardMarkup::make()->addRow(InlineKeyboardButton::make(
-            '🛠 Відкрити в боті',
-            url: sprintf(
-                'https://t.me/%s?start=%s%d',
-                $username,
-                StartPayloadCommand::SERVICE_PREFIX,
-                $offer->getId(),
-            ),
-        ));
     }
 
     /** Take the post down with the offer — see ServiceOffer::$chat_message_id. */

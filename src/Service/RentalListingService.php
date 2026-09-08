@@ -28,6 +28,7 @@ class RentalListingService
         private LoggerInterface $logger,
         private RentalPhotoService $photoService,
         private ResidentChatService $residentChat,
+        private DeepLink $links,
     ) {}
 
     public static function now(): \DateTime
@@ -558,6 +559,10 @@ class RentalListingService
                 message_thread_id: $this->residentChat->topic(ResidentChatService::TOPIC_RENTALS),
                 parse_mode: ParseMode::HTML,
                 disable_notification: true,
+                // Straight into this listing's card. Without it the post asked the reader
+                // to leave, open the bot, find «🔑 Оренда» and then find the flat they had
+                // just been reading about.
+                reply_markup: $this->links->button(DeepLink::KIND_RENTAL, $listing->getId()),
             );
 
             $listing->setChatMessageId($message?->message_id);

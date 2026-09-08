@@ -269,12 +269,30 @@ class ComplaintMenuCommand
         return $this->service->statusIcon($complaint->getStatus());
     }
 
-    private function renderCard(Nutgram $bot, int $complaintId, int $index = 0): void
+    /**
+     * Somebody tapped «↗️ Відкрити в боті» under the complaint in the residents' chat.
+     *
+     * The account check cannot be skipped: the register is open to every confirmed
+     * resident and to nobody else, and a link is forwardable. renderMenu() enforces that
+     * for the list; a card reached directly would walk straight past it.
+     */
+    public function openFromDeepLink(Nutgram $bot, int $complaintId): void
+    {
+        if (!$this->currentAccount($bot) instanceof Account) {
+            $this->renderMenu($bot, edit: false);
+
+            return;
+        }
+
+        $this->renderCard($bot, $complaintId, edit: false);
+    }
+
+    private function renderCard(Nutgram $bot, int $complaintId, int $index = 0, bool $edit = true): void
     {
         $complaint = $this->complaints->find($complaintId);
 
         if (!$complaint instanceof Complaint) {
-            $this->renderMenu($bot, edit: true, notice: '⚠️ Таку заявку не знайдено.');
+            $this->renderMenu($bot, edit: $edit, notice: '⚠️ Таку заявку не знайдено.');
 
             return;
         }
@@ -287,7 +305,7 @@ class ComplaintMenuCommand
             $this->addPhotoNav($markup, $complaint, $index);
             $this->addCardControls($bot, $markup, $complaint);
 
-            if ($this->sendPhotoCard($bot, $complaint, $index, $caption, $markup)) {
+            if ($this->sendPhotoCard($bot, $complaint, $index, $caption, $markup, $edit)) {
                 return;
             }
 
@@ -297,7 +315,7 @@ class ComplaintMenuCommand
         }
 
         $this->addCardControls($bot, $markup, $complaint);
-        $this->respond($bot, edit: true, text: $caption, markup: $markup);
+        $this->respond($bot, edit: $edit, text: $caption, markup: $markup);
     }
 
     private function describe(Complaint $complaint): string
@@ -758,6 +776,7 @@ class ComplaintMenuCommand
         int $index,
         string $caption,
         InlineKeyboardMarkup $markup,
+        bool $replacing = true,
     ): bool {
         $abs = $this->photoPath($complaint, $index);
 
@@ -788,10 +807,15 @@ class ComplaintMenuCommand
             return false;
         }
 
-        try {
-            $bot->deleteMessage($bot->chatId(), $bot->messageId());
-        } catch (\Throwable) {
-            // Older than 48h, or already gone — harmless.
+        // Nothing to replace when the card is the first message of the conversation,
+        // which is what a deep link from the chat is: deleting there would take out
+        // whatever the person happened to be reading.
+        if ($replacing) {
+            try {
+                $bot->deleteMessage($bot->chatId(), $bot->messageId());
+            } catch (\Throwable) {
+                // Older than 48h, or already gone — harmless.
+            }
         }
 
         return true;

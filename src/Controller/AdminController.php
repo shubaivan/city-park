@@ -16,6 +16,7 @@ use App\Repository\AdminLoginRepository;
 use App\Repository\PavilionPhotoRepository;
 use App\Repository\PhotoUploadRequestRepository;
 use App\Repository\RentalListingRepository;
+use App\Repository\LinkClickRepository;
 use App\Repository\ServiceOfferRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Repository\TariffRepository;
@@ -33,6 +34,7 @@ use App\Service\PropertyRegistry;
 use App\Service\AccountAccessService;
 use App\Service\ComplaintService;
 use App\Service\DebtPolicy;
+use App\Service\DeepLink;
 use App\Service\PavilionPhotoService;
 use App\Service\RentalListingService;
 use App\Service\ServiceOfferService;
@@ -489,6 +491,55 @@ class AdminController extends AbstractController
         $this->addFlash('success', 'Оголошення знято зі списку.');
 
         return $this->redirectToRoute('app_admin_services');
+    }
+
+    /**
+     * Who followed a link out of the residents' chat, and into what.
+     *
+     * This page exists because Telegram answers nothing else: the read list of a message is
+     * shown only to whoever sent it, these posts are sent by the bot, and the Bot API has no
+     * read-receipt method. A click is the only available signal — and a better one, since
+     * «seen» means somebody scrolled past while a tap means they wanted the thing.
+     *
+     * Two numbers, deliberately, because they answer different questions: `clicks` is how
+     * much attention a post got, `people` is how many households it reached. A neighbour who
+     * opens the same electrician three times is interested, not three people.
+     *
+     * Read by both roles. Nothing here is anybody's to change, so GET only — same call as
+     * the sign-in log.
+     */
+    #[Route('/admin/links', name: 'app_admin_links', methods: [Request::METHOD_GET])]
+    public function links(
+        LinkClickRepository $clicks,
+        ServiceOfferRepository $offers,
+        RentalListingRepository $listings,
+        ComplaintRepository $complaints,
+    ): Response {
+        $summary = $clicks->summary();
+
+        // What each row is about, resolved in three queries rather than one per row.
+        $titles = [];
+
+        foreach ([
+            DeepLink::KIND_SERVICE => $offers,
+            DeepLink::KIND_RENTAL => $listings,
+            DeepLink::KIND_COMPLAINT => $complaints,
+        ] as $kind => $repository) {
+            $ids = array_values(array_map(
+                static fn (array $row): int => (int)$row['target_id'],
+                array_filter($summary, static fn (array $row): bool => $row['kind'] === $kind),
+            ));
+
+            foreach ($ids === [] ? [] : $repository->findBy(['id' => $ids]) as $entity) {
+                $titles[$kind][$entity->getId()] = $entity;
+            }
+        }
+
+        return $this->render('admin/links.html.twig', [
+            'summary' => $summary,
+            'titles' => $titles,
+            'recent' => $clicks->recent(),
+        ]);
     }
 
     #############

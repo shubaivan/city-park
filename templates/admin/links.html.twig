@@ -1,0 +1,117 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Переходи з чату · ОСББ City Park{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    <div class="container-fluid mt-3">
+        <h3>↗️ Переходи з чату мешканців</h3>
+        <p class="text-muted">
+            Хто натиснув «Відкрити в боті» під постом у чаті — і що саме відкрив.
+            Telegram не каже, хто <i>прочитав</i> повідомлення бота: список прочитань
+            показується лише тому, хто його надіслав, а надсилає їх бот. Тож натискання —
+            єдиний доступний сигнал, і чесніший: «прочитано» означає «прогорнув повз»,
+            а натискання — «зацікавився».
+        </p>
+        <p class="text-muted small">
+            Записуються <b>тільки переходи за посиланням із чату</b>. Звичайний перегляд
+            карток усередині бота не пишеться — питання тут «чи спрацював пост», а не
+            «що читає цей мешканець».
+        </p>
+
+        <h5 class="mt-4">За оголошеннями</h5>
+        {% if summary|length == 0 %}
+            <div class="alert alert-secondary">Переходів ще не було.</div>
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-striped table-sm align-middle">
+                    <thead>
+                    <tr>
+                        <th>Що</th>
+                        <th>Натискань</th>
+                        <th>Людей</th>
+                        <th>Востаннє</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in summary %}
+                        {% set target = titles[row.kind][row.target_id] ?? null %}
+                        <tr>
+                            <td>
+                                {% if row.kind == 'service' %}🛠{% elseif row.kind == 'rental' %}🔑{% else %}🔧{% endif %}
+                                {% if target %}
+                                    {% if row.kind == 'service' %}
+                                        <b>{{ target.title }}</b>
+                                    {% elseif row.kind == 'rental' %}
+                                        <b>{{ target.account.unitLabel }}</b>
+                                        <small class="text-muted">{{ target.priceLabel }}</small>
+                                    {% else %}
+                                        <b>№{{ target.id }}</b>
+                                        <small class="text-muted">{{ target.text|slice(0, 70) }}</small>
+                                    {% endif %}
+                                {% else %}
+                                    {# Deleted since — the click is still a fact about the post. #}
+                                    <span class="text-muted">#{{ row.target_id }} (видалено)</span>
+                                {% endif %}
+                            </td>
+                            <td><span class="badge bg-primary">{{ row.clicks }}</span></td>
+                            <td>{{ row.people }}</td>
+                            <td><small>{{ row.last_at|date('d.m.Y H:i') }}</small></td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+
+        <h5 class="mt-4">Останні переходи</h5>
+        {% if recent|length == 0 %}
+            <div class="alert alert-secondary">Порожньо.</div>
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-striped table-sm align-middle">
+                    <thead>
+                    <tr>
+                        <th>Коли</th>
+                        <th>Хто</th>
+                        <th>Квартира</th>
+                        <th>Що відкрив</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for click in recent %}
+                        <tr>
+                            <td><small>{{ click.createdAt|date('d.m.Y H:i') }}</small></td>
+                            <td>
+                                {% if click.user %}
+                                    {{ click.user.fullName ?? (click.user.firstName ~ ' ' ~ click.user.lastName)|trim }}
+                                    {% if click.user.username %}<br><small>@{{ click.user.username }}</small>{% endif %}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if click.user and click.user.account %}
+                                    <a href="{{ path('app_admin_resident', {id: click.user.id}) }}">
+                                        {{ click.user.account.placeLabel }}
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted">⏳ не прив'язаний</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if click.kind == 'service' %}🛠 послуга
+                                {% elseif click.kind == 'rental' %}🔑 оренда
+                                {% else %}🔧 заявка
+                                {% endif %}
+                                <small class="text-muted">#{{ click.targetId }}</small>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}
