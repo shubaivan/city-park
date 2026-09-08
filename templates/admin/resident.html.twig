@@ -490,6 +490,44 @@
                                    placeholder="новий особовий рахунок" required>
                             <button class="btn btn-sm btn-outline-danger mb-1">Перенести</button>
                         </form>
+
+                        {#
+                            Unlinking without moving. Until 08.09.2026 the only way to undo
+                            a link was to move the person onto a *different* existing
+                            рахунок — so somebody attached to the wrong flat, or one who
+                            has sold theirs, could not be detached at all.
+
+                            The consequences are spelled out rather than left to be
+                            discovered: this is the switch that decides whose booking works
+                            and who gets into the house chat.
+                        #}
+                        <hr class="my-3">
+
+                        <p class="small mb-2">
+                            <b>Якщо квартири в цієї людини більше немає</b> — продала, з'їхала,
+                            або прив'язали помилково. Її рахунок звільняється, сама вона лишається
+                            в списку як «⏳ Не прив'язаний»: заявки, бронювання й оголошення
+                            нікуди не діваються, бо вона їх справді робила.
+                        </p>
+                        <p class="small text-muted mb-2">
+                            Після цього вона не зможе бронювати альтанку, не побачить боргів,
+                            заявок і послуг, а на новий запит її не пустить у чат мешканців.
+                            <b>З самого чату, якщо вона там уже є, її треба прибрати окремо</b> —
+                            кнопкою «🚪 Видалити з чату» вище.
+                        </p>
+
+                        {% if upcomingBookings > 0 %}
+                            <div class="alert alert-warning py-2 px-3 small mb-2">
+                                ⚠️ У цієї людини ще {{ upcomingBookings }}{{ upcomingBookings == 1 ? ' заброньована година' : ' заброньованих годин' }} попереду.
+                                Після відв'язки охорона побачить у списку «❓ без особового рахунку»
+                                замість номера квартири. Спершу зніміть бронь, якщо вона вже не потрібна.
+                            </div>
+                        {% endif %}
+
+                        <form method="post" action="{{ path('app_admin_resident_unlink', {id: user.id}) }}"
+                              onsubmit="return confirm('Відв\'язати {{ user.firstName|e('js') }} від рахунку {{ account.accountNumber }}? Сам рахунок і решта мешканців лишаться як були.')">
+                            <button class="btn btn-sm btn-danger">Відв'язати від рахунку</button>
+                        </form>
                     </div>
                 </div>
                 {% endif %}

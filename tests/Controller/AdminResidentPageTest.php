@@ -38,6 +38,7 @@ class AdminResidentPageTest extends KernelTestCase
             'registry' => self::getContainer()->get(PropertyRegistry::class),
             'history' => [],
             'roommates' => [],
+            'upcomingBookings' => 0,
         ], $extra));
     }
 
@@ -126,6 +127,55 @@ class AdminResidentPageTest extends KernelTestCase
     }
 
     /**
+     * Detaching somebody from their flat without moving them onto another one.
+     *
+     * Until 08.09.2026 there was no such control anywhere: the only way to undo a link was
+     * to move the person to a *different* existing рахунок, and that form refuses an empty
+     * value. So a resident attached to the wrong flat, or one who had sold theirs, could
+     * not be detached at all — which is what Аліна ran into.
+     */
+    public function testItOffersToUnlinkSomebodyFromTheirFlat(): void
+    {
+        $account = $this->account();
+        $html = $this->render($this->user(1, account: $account), $account);
+
+        $this->assertStringContainsString('/admin/users/1/account/unlink', $html);
+
+        // The consequences are on the card, not left to be discovered: this is the switch
+        // that decides whose booking works and who gets into the house chat.
+        $this->assertStringContainsString('не зможе бронювати', $html);
+        $this->assertStringContainsString('прибрати окремо', $html);
+    }
+
+    /** Nothing to detach somebody from when they are on nothing. */
+    public function testSomebodyWithNoFlatIsNotOfferedTheUnlink(): void
+    {
+        $html = $this->render($this->user(7, 'Оля'), null);
+
+        $this->assertStringNotContainsString('/account/unlink', $html);
+    }
+
+    /**
+     * A booking outlives the link to the flat.
+     *
+     * ScheduledSet points at the TelegramUser, and the gate's board resolves the flat
+     * through that person's account — so unlinking somebody who still has an hour reserved
+     * leaves the guard reading «❓ без особового рахунку» for an hour that really is taken.
+     * Warned about rather than forbidden: sometimes that is exactly the intent.
+     */
+    public function testItWarnsWhenTheresStillABookingAhead(): void
+    {
+        $account = $this->account();
+
+        $quiet = $this->render($this->user(1, account: $account), $account);
+        $this->assertStringNotContainsString('без особового рахунку', $quiet);
+
+        $warned = $this->render($this->user(1, account: $account), $account, ['upcomingBookings' => 2]);
+        $this->assertStringContainsString('2 заброньованих годин', $warned);
+        $this->assertStringContainsString('без особового рахунку', $warned);
+    }
+
+    /**
      * The complaints role reads this card; it does not act on it.
      *
      * A form that renders and then answers 403 is worse than no form: the person presses
@@ -144,6 +194,7 @@ class AdminResidentPageTest extends KernelTestCase
             'app_admin_resident_phones', 'app_admin_resident_status', 'app_admin_resident_chat',
             'app_admin_resident_group_link', 'app_admin_resident_group_unlink',
             'app_admin_resident_account',
+            'app_admin_resident_unlink',
         ] as $route) {
             $this->assertStringNotContainsString(
                 $route,
