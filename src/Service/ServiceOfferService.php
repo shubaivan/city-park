@@ -748,6 +748,41 @@ class ServiceOfferService
     }
 
     /**
+     * A block of text to paste somewhere that is not Telegram.
+     *
+     * The inline button under the chat post is Telegram's alone: forward that message to
+     * Viber and the button simply is not there, leaving a summary that says «кнопка нижче»
+     * under nothing. The ЖК's Viber group is still where several hundred residents are —
+     * it is the group this bot was built to replace and has not replaced yet — so «I want
+     * to share this there» is the normal case, not an edge one.
+     *
+     * Plain text on purpose, with the url spelled out: no HTML, no code fence, nothing that
+     * survives a copy-paste as punctuation. Somebody is going to select this with their
+     * thumb and drop it into another app.
+     *
+     * Anyone may share, not only the author — a neighbour recommending the electrician they
+     * used is the point of the board.
+     */
+    public function shareText(ServiceOffer $offer): string
+    {
+        $lines = ['🛠 ' . $offer->getTitle()];
+
+        if ($phone = $offer->publicPhone()) {
+            $lines[] = '📞 ' . $phone;
+        }
+
+        $lines[] = '👤 ' . self::placePlain($offer->getAccount());
+
+        if ($url = $this->links->url(DeepLink::KIND_SERVICE, $offer->getId())) {
+            $lines[] = '';
+            $lines[] = 'Фото робіт і контакт — у боті ЖК «City Park»:';
+            $lines[] = $url;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
      * Chat ids to notify about an offer: its author, and every other member of the account
      * as a fallback so an offer published from a phone that has since been wiped still
      * reaches the household.

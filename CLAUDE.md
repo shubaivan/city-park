@@ -312,6 +312,16 @@ opt-in phone, admin take-down. What differs from it differs on purpose:
   it to the bottom of the topic on every typo fix. When a **close** cannot delete for the
   same reason, `unannounce()` strikes the post through («⛔ <s>…</s> Оголошення знято»)
   instead of leaving a live-looking advert.
+- **«🔗 Поділитися» hands over a block that survives leaving Telegram.** The inline button
+  under a chat post is Telegram's alone: forward that message into Viber and the button is
+  simply not there, leaving a summary that ends «кнопка нижче» under nothing. The ЖК's Viber
+  group still holds ~653 people — it is the group this bot exists to replace and has not
+  replaced yet — so pasting an advert there is the normal case, and it is where «хто дасть
+  номер майстра з дверей?» is still being asked. `shareText()` is plain text with the url
+  spelled out, no markup at all, because somebody selects it with a thumb and drops it in
+  another app. Offered to **everyone**, not only the author: a neighbour recommending the
+  electrician they used is the point of the board. A recipient who is not yet linked lands
+  on the `/phone` prompt, which is a funnel rather than a dead end.
 - **Adding photos changes nothing in the chat.** The post is text and never carried them;
   the author gets a DM with the updated card instead.
 - **The chat post carries the number** — the one place this board parts company with the

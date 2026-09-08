@@ -15,6 +15,7 @@ use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Input\InputMediaPhoto;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
+use SergiX44\Nutgram\Telegram\Types\Message\LinkPreviewOptions;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 use SergiX44\Nutgram\Telegram\Types\WebApp\WebAppInfo;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -78,6 +79,12 @@ class ServiceMenuCommand
         if (str_starts_with($data, 'svc:pic:')) {
             [$id, $index] = array_pad(explode(':', substr($data, strlen('svc:pic:'))), 2, '0');
             $this->showPhoto($bot, (int)$id, (int)$index);
+
+            return;
+        }
+
+        if (str_starts_with($data, 'svc:share:')) {
+            $this->share($bot, (int)substr($data, strlen('svc:share:')));
 
             return;
         }
@@ -384,9 +391,45 @@ class ServiceMenuCommand
             $markup->addRow($this->offerService->contactButton($offer));
         }
 
+        // Offered to everybody, not just the author: a neighbour recommending the
+        // electrician they used is what this board is for, and the Viber group is still
+        // where several hundred residents are.
+        $markup->addRow(InlineKeyboardButton::make(
+            '🔗 Поділитися (Viber тощо)',
+            callback_data: 'svc:share:' . $offer->getId(),
+        ));
+
         $markup->addRow(
             InlineKeyboardButton::make('⬅️ До списку', callback_data: self::MENU_CALLBACK),
             StartCommand::homeButton(),
+        );
+    }
+
+    /**
+     * Hand over a block that survives leaving Telegram.
+     *
+     * Sent as its own message, in plain text, so it can be selected and pasted whole. The
+     * card it came from stays where it is — the person is about to switch apps, and coming
+     * back to a screen that has changed under them is how a copy gets lost.
+     */
+    private function share(Nutgram $bot, int $offerId): void
+    {
+        $offer = $this->liveOffer($offerId);
+
+        if (!$offer) {
+            $bot->answerCallbackQuery(text: '⚠️ Це оголошення вже неактуальне.', show_alert: true);
+
+            return;
+        }
+
+        $bot->answerCallbackQuery();
+
+        $bot->sendMessage(
+            text: "🔗 Скопіюйте і надішліть у Viber, WhatsApp або будь-де:\n\n"
+                . $this->offerService->shareText($offer),
+            // No parse mode at all: every character here is meant to survive being copied
+            // into another app, and formatting marks would go with it.
+            link_preview_options: LinkPreviewOptions::make(is_disabled: true),
         );
     }
 
