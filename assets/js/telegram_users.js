@@ -373,24 +373,40 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Render the field-search panel as a dedicated row above the table so the
     // labelled inputs don't compete for space with the global DataTables search.
+    //
+    // Folded into a <details> on a phone: seven labelled boxes are the whole first
+    // screen there, and the question a phone is opened with is usually one of the
+    // chips below (боржники, буд. 19) or the global «Пошук:». On a desktop it opens
+    // by itself — there the row costs nothing and typing straight into «Прізвище» is
+    // the accountant's habit.
+    var $fieldDetails = $('<details/>', { 'class': 'users-field-details mb-2' });
+    $fieldDetails.append($('<summary/>', {
+        'class': 'btn btn-sm btn-outline-secondary mb-2',
+        'text': '🔎 Пошук за полями',
+    }));
+
+    if (window.innerWidth >= 768) {
+        $fieldDetails.attr('open', 'open');
+    }
+
     var $fieldPanel = $('<div/>', {
         'id': 'usersFieldFilters',
-        'class': 'd-flex flex-wrap align-items-end mb-3',
-        'style': 'gap:8px;',
+        'class': 'users-filter-grid mb-3',
     });
-    $('#telegramUserTable_wrapper').prepend($fieldPanel);
+    $fieldDetails.append($fieldPanel);
+    $('#telegramUserTable_wrapper').prepend($fieldDetails);
 
     var fieldDefs = [
-        { key: 'account_number', label: 'Особ. рахунок', placeholder: 'точний пошук',     width: '160px' },
-        { key: 'last_name',      label: 'Прізвище',       placeholder: 'Шуба',              width: '160px' },
-        { key: 'first_name',     label: "Ім'я",           placeholder: 'Іван',              width: '140px' },
-        { key: 'phone',          label: 'Телефон',        placeholder: '380...',            width: '160px' },
-        { key: 'username',       label: 'Telegram',       placeholder: '@mi_polina28',      width: '170px' },
+        { key: 'account_number', label: 'Особ. рахунок', placeholder: 'точний пошук' },
+        { key: 'last_name',      label: 'Прізвище',       placeholder: 'Шуба' },
+        { key: 'first_name',     label: "Ім'я",           placeholder: 'Іван' },
+        { key: 'phone',          label: 'Телефон',        placeholder: '380...' },
+        { key: 'username',       label: 'Telegram',       placeholder: '@mi_polina28' },
         // A select, and in this panel rather than the status button row: these fields are
         // AND'd on the server, so "орендарі з боргом" is askable. In the radio group the
         // role would have excluded «Боржники», which is not a question anyone has.
         {
-            key: 'role', label: 'Хто це', width: '150px', type: 'select',
+            key: 'role', label: 'Хто це', type: 'select',
             options: [
                 { value: '',        text: '— усі —' },
                 { value: 'owner',   text: 'Власник' },
@@ -399,7 +415,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 { value: 'none',    text: 'Не вказано' },
             ],
         },
-        { key: 'address',        label: 'Адреса',         placeholder: 'вулиця / буд / кв', width: '220px' },
+        { key: 'address',        label: 'Адреса',         placeholder: 'вулиця / буд / кв' },
     ];
 
     var debounceTimers = {};
@@ -416,7 +432,6 @@ document.addEventListener("DOMContentLoaded", function () {
             $input = $('<select/>', {
                 'data-field': def.key,
                 'class': 'form-control form-control-sm js-user-field-select',
-                'style': 'width:' + def.width,
             });
             def.options.forEach(function (o) {
                 $input.append($('<option/>', { 'value': o.value, 'text': o.text }));
@@ -427,7 +442,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 'data-field': def.key,
                 'placeholder': def.placeholder,
                 'class': 'form-control form-control-sm js-user-field-filter',
-                'style': 'width:' + def.width,
             });
         }
 
@@ -485,8 +499,12 @@ document.addEventListener("DOMContentLoaded", function () {
         'text': '💡 Натисніть на рядок, щоб відкрити картку мешканця. Стрілка ▶ ліворуч показує колонки, які не помістилися на екран.'
     }));
 
+    // A wrapping chip row, never a .btn-group: Bootstrap joins the buttons of a group
+    // by squaring their inner corners, which is right on one line and nonsense on four —
+    // on a phone the six filters wrapped into a grid of square blocks with borders in
+    // the wrong places. Separate chips wrap the way the objects register's do.
     var $statusGroup = $('<div/>', {
-        'class': 'btn-group ml-2 mb-2',
+        'class': 'users-chip-row mb-2',
         'role': 'group',
         'aria-label': 'Status filter'
     });
@@ -495,7 +513,7 @@ document.addEventListener("DOMContentLoaded", function () {
     statusButtons.forEach(function (def) {
         var $btn = $('<button/>', {
             'type': 'button',
-            'class': 'btn ' + def.idleClass,
+            'class': 'btn btn-sm ' + def.idleClass,
             'data-value': def.value,
             'text': def.label
         });
@@ -504,12 +522,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // One button per building, from the list the server rendered — never a hardcoded
     // 17/19/21/23/27, which silently drops a sixth building the day one appears.
-    var $houseGroup = $('<div/>', {'class': 'btn-group btn-group-sm mb-2 ml-2 flex-wrap'});
+    var $houseGroup = $('<div/>', {'class': 'users-chip-row mb-2'});
 
     (window.adminHouses || []).forEach(function (item) {
         var $btn = $('<button/>', {
             'type': 'button',
-            'class': 'btn btn-outline-dark',
+            'class': 'btn btn-sm btn-outline-dark',
             'data-house': item.house
         });
         $btn.append(document.createTextNode('буд. ' + item.house + ' '));
@@ -530,7 +548,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     var $resetBtn = $('<button/>', {
         'type': 'button',
-        'class': 'btn btn-link ml-1 mb-2',
+        'class': 'btn btn-sm btn-link ml-1 mb-2',
         'id': 'filterResetBtn',
         'text': '✖ Скинути'
     });
@@ -540,7 +558,21 @@ document.addEventListener("DOMContentLoaded", function () {
         return Object.values(fieldFilters).some(function (v) { return v !== ''; });
     }
 
+    // Only the boxes inside the folded panel — `house` is a chip in plain sight and must
+    // not make the closed panel claim it is holding something back.
+    function anyPanelFilterActive() {
+        return fieldDefs.some(function (def) { return fieldFilters[def.key] !== ''; });
+    }
+
     function renderFilterButtons() {
+        // The folded panel has to say that something in it is filtering the table, or a
+        // phone shows a short list with nothing on screen explaining why.
+        var $summary = $fieldDetails.children('summary');
+        var panelActive = anyPanelFilterActive();
+        $summary.text(panelActive ? '🔎 Пошук за полями · активний' : '🔎 Пошук за полями');
+        $summary.toggleClass('btn-secondary', panelActive)
+                .toggleClass('btn-outline-secondary', !panelActive);
+
         $houseGroup.find('button').each(function () {
             var mine = String($(this).data('house')) === fieldFilters.house;
             $(this).toggleClass('btn-dark', mine).toggleClass('btn-outline-dark', !mine);
