@@ -124,6 +124,51 @@ class AvatarRulesTest extends KernelTestCase
     }
 
     /**
+     * Tapping a face opens the full-size copy, and it must never open nothing.
+     *
+     * The big file only exists for people synced since it was added, so `/full` falls back
+     * to the small one rather than answering 404 — an enlarge that fails is worse than one
+     * that shows a 160px picture.
+     */
+    public function testTheEnlargeFallsBackToTheSmallCopy(): void
+    {
+        $service = $this->service();
+        $user = $this->user(['setPhotoPath' => 'nope.jpg']);
+
+        // Neither file is on disk here; what is being pinned is which column is read.
+        $source = (string)file_get_contents(__DIR__ . '/../../src/Service/AvatarService.php');
+
+        $this->assertStringContainsString(
+            '$user->getPhotoFullPath() ?? $user->getPhotoPath()',
+            $source,
+            'the full size must fall back to the small one',
+        );
+        $this->assertNull($service->fileFor($user, full: true));
+    }
+
+    /**
+     * The trigger is a real link, and that is load-bearing twice over.
+     *
+     * Without JS it still opens the picture; and in the users table the row's own handler
+     * opens the resident's card on a click anywhere except inside `a, button, input, …`,
+     * so an `<a>` is what stops one tap doing both things at once.
+     */
+    public function testTheEnlargeTriggerIsALink(): void
+    {
+        $js = (string)file_get_contents(__DIR__ . '/../../assets/js/telegram_users.js');
+        $card = (string)file_get_contents(__DIR__ . '/../../templates/admin/resident.html.twig');
+
+        $this->assertStringContainsString('<a href="\' + row.avatar + \'/full" data-avatar-full>', $js);
+        $this->assertStringContainsString('data-avatar-full', $card);
+
+        $this->assertStringContainsString(
+            "closest('a, button, input, select, label, .dtr-control, .dtr-details')",
+            $js,
+            'the row handler must keep ignoring clicks inside a link',
+        );
+    }
+
+    /**
      * The sync deletes what Telegram no longer shows.
      *
      * Somebody who closes their profile has taken the photo back; a copy that outlives the

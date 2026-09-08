@@ -66,7 +66,9 @@
                 same person is the same colour every time and the eye can use it.
             #}
             {% if user.photoPath %}
-                <img class="res-avatar" alt="" src="{{ path('app_admin_avatar', {id: user.id}) }}">
+                <a href="{{ path('app_admin_avatar', {id: user.id, size: 'full'}) }}" data-avatar-full>
+                    <img class="res-avatar" alt="" src="{{ path('app_admin_avatar', {id: user.id}) }}">
+                </a>
             {% else %}
                 <div class="res-avatar res-initials"
                      style="background: hsl({{ (user.id * 47) % 360 }}, 42%, 52%)">{{ user.initials }}</div>
