@@ -100,6 +100,30 @@ class AvatarRulesTest extends KernelTestCase
     }
 
     /**
+     * The list carries the avatar as a plain row key, never as two more columns.
+     *
+     * Every `columnDef` in `telegram_users.js` targets its column by **index**, so a column
+     * inserted anywhere but the end repaints the wrong cells — the debt renderer onto the
+     * area, the area onto the threshold. DataTables hands the whole JSON row to a renderer,
+     * so the picture needs no column at all; `block_reason_label` has travelled that way
+     * for the same reason.
+     */
+    public function testTheAvatarTravelsWithTheRowNotAsAColumn(): void
+    {
+        $controller = (string)file_get_contents(__DIR__ . '/../../src/Controller/AdminController.php');
+        $js = (string)file_get_contents(__DIR__ . '/../../assets/js/telegram_users.js');
+
+        $this->assertStringContainsString("\$row['avatar']", $controller);
+        $this->assertStringContainsString('row.avatar', $js, 'the name renderer draws it');
+
+        $this->assertStringNotContainsString(
+            "\$fieldNames[] = 'avatar'",
+            $controller,
+            'a new column would shift every indexed columnDef in telegram_users.js',
+        );
+    }
+
+    /**
      * The sync deletes what Telegram no longer shows.
      *
      * Somebody who closes their profile has taken the photo back; a copy that outlives the

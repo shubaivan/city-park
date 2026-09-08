@@ -1760,6 +1760,38 @@ class AdminController extends AbstractController
         }
         unset($row);
 
+        // The face, drawn inside the name cell.
+        //
+        // Carried as plain keys on the row rather than as two more columns: DataTables
+        // hands the whole JSON row to a renderer, so this needs no `<th>`, no hidden
+        // columnDef and — the part that matters here — no shifting of the indexes every
+        // other def in telegram_users.js is written against. `block_reason_label` travels
+        // the same way for the same reason.
+        //
+        // One query for the page, not one per row: 25 rows, ids we already have.
+        $ids = array_values(array_filter(array_map(
+            static fn (array $row): int => (int)($row['id'] ?? 0),
+            $dataTable,
+        )));
+
+        $people = [];
+
+        foreach ($ids === [] ? [] : $repository->findBy(['id' => $ids]) as $person) {
+            $people[$person->getId()] = $person;
+        }
+
+        foreach ($dataTable as &$row) {
+            $person = $people[(int)($row['id'] ?? 0)] ?? null;
+
+            $row['avatar'] = $person && $person->getPhotoPath()
+                ? $this->generateUrl('app_admin_avatar', ['id' => $person->getId()])
+                : null;
+            // Over half of them have no photo the bot may have, so the initials are not a
+            // rare fallback — they are what most rows render.
+            $row['initials'] = $person ? $person->getInitials() : '?';
+        }
+        unset($row);
+
         return $this->json(
             array_merge(
                 [
