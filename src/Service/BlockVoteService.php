@@ -434,6 +434,20 @@ class BlockVoteService
      * Never fatal, and silent when no topic is configured: an unreachable chat must not
      * stop a vote from opening.
      */
+    /**
+     * Redraw the chat post from the campaign as it stands now.
+     *
+     * Exists because a post can end up wrong without the campaign being wrong: on
+     * 08.09.2026 one went out with no question in it, because creating a campaign used to
+     * publish before the question was written. Editing in place beats deleting and
+     * re-posting — the same message, no second notification, and the discussion under it
+     * stays where it is.
+     */
+    public function repost(BlockVoteCampaign $campaign): void
+    {
+        $this->announce($campaign);
+    }
+
     private function announce(BlockVoteCampaign $campaign): void
     {
         $topic = $this->residentChat->topic(ResidentChatService::TOPIC_VOTES);
