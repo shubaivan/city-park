@@ -39,6 +39,13 @@
                     <div class="text-muted small">Панель адміністратора</div>
                 </div>
 
+                {% if expired %}
+                    <div class="alert alert-info py-2 px-2 small">
+                        Робочий день закінчився — о 00:00 панель виходить у всіх.
+                        Увійдіть ще раз.
+                    </div>
+                {% endif %}
+
                 {% if error %}
                     <div class="alert alert-danger py-2 px-2 small">
                         {{ error.messageKey|trans(error.messageData, 'security') }}

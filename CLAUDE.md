@@ -638,6 +638,23 @@ nothing on the page is anybody's to change.
 No retention job: four people signing in a few times a day is a few hundred rows a year,
 and the page draws the last `AdminController::LOGINS_SHOWN` (200), about a fortnight.
 
+**The panel signs everybody out at midnight Kyiv** (`DailySignOutSubscriber`, 08.09.2026),
+and that exists *for* this page. Nothing expired before it: PHP's session GC never runs
+against a custom `save_path` on this distribution, so a session file sat on disk
+indefinitely — somebody who signed in once in July was still signed in in September, and
+four colleagues produced a handful of rows a year. The page answers «хто заходив» and can
+only answer with sign-ins that happened. Иван's call: «не важно кто, в 24:00 всех
+разлогин».
+
+**A calendar day, not a rolling 24 hours.** A rolling window drifts — sign in at 10:32 and
+you are asked again at 10:32, then 11:05, then noon — and the log stops reading as a
+day-by-day list. The day is stamped into the session at login (`panel.signed_in_on`) and
+checked on every `/admin` request; `/login` is deliberately outside the check, or an
+expired session bounces between the two forever. A session carrying **no** stamp is given
+today's rather than thrown out, so shipping the rule does not sign everybody out
+mid-afternoon. The form says why it is asking again (`?expired=1`) — being asked for a
+password with no explanation reads as the panel having broken overnight.
+
 **`loginUser(new InMemoryUser(...))` does not sign anybody in here.** The session user
 would carry a null password, the in-memory provider refreshes it into the configured hash,
 Symfony reads the difference as "the user changed" and drops the token — every request
