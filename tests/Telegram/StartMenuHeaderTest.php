@@ -3,6 +3,7 @@
 namespace App\Tests\Telegram;
 
 use App\Entity\Account;
+use App\Entity\TelegramUser;
 use App\Telegram\Start\Command\StartCommand;
 use PHPUnit\Framework\TestCase;
 
@@ -151,6 +152,83 @@ class StartMenuHeaderTest extends TestCase
     }
 
     /** Nothing to name, nothing rendered — StartCommand concatenates this blindly. */
+    /**
+     * Who else is on this рахунок.
+     *
+     * The bot is the only place a resident can check that the accountant's linking actually
+     * happened. Vitalii asked on 08.09.2026 to have his wife added; she was, and nothing on
+     * his screen changed — so the next thing he does is ask again. It also lets somebody
+     * notice a name that should not be on their flat, which is otherwise visible only to an
+     * admin.
+     */
+    public function testItNamesTheRestOfTheHousehold(): void
+    {
+        $header = StartCommand::renderHeader(
+            [$this->account('320092', '92')],
+            false,
+            [$this->person('Конакбаєва Марина Василівна', TelegramUser::ROLE_FAMILY)],
+        );
+
+        $this->assertStringContainsString('Конакбаєва Марина Василівна', $header);
+        $this->assertStringContainsString('член сім', $header, 'the role is worth seeing and correcting');
+    }
+
+    /**
+     * The registry name beats the Telegram one: `full_name` is what the accountant typed
+     * off a квитанція, the other is whatever the person called themselves, and «Vitalii» is
+     * a worse answer to «хто ще на моєму рахунку».
+     */
+    public function testItPrefersTheRegistryNameAndFallsBackToTelegram(): void
+    {
+        $both = $this->person('Конакбаєв Віталій Петрович');
+        $both->setFirstName('Vitalii');
+
+        $this->assertStringContainsString(
+            'Конакбаєв Віталій Петрович',
+            StartCommand::renderHeader([$this->account('320092', '92')], false, [$both]),
+        );
+
+        $telegramOnly = new TelegramUser();
+        $telegramOnly->setFirstName('Vitalii');
+
+        $this->assertStringContainsString(
+            'Vitalii',
+            StartCommand::renderHeader([$this->account('320092', '92')], false, [$telegramOnly]),
+        );
+    }
+
+    /** Silent for a household of one — «на рахунку більше нікого» is noise. */
+    public function testItSaysNothingWhenNobodyElseIsOnTheAccount(): void
+    {
+        $header = StartCommand::renderHeader([$this->account('320092', '92')]);
+
+        $this->assertStringNotContainsString('На цьому рахунку', $header);
+    }
+
+    /** And on the multi-object header too, where the household line joins the list. */
+    public function testTheHouseholdShowsOnAMultiObjectHeaderAsWell(): void
+    {
+        $header = StartCommand::renderHeader(
+            [$this->account('230085', '85'), $this->account('235168', '168')],
+            false,
+            [$this->person('Конакбаєва Марина Василівна')],
+        );
+
+        $this->assertStringContainsString('Конакбаєва Марина Василівна', $header);
+    }
+
+    private function person(string $fullName, ?string $role = null): TelegramUser
+    {
+        $user = new TelegramUser();
+        $user->setFullName($fullName);
+
+        if ($role !== null) {
+            $user->setRole($role);
+        }
+
+        return $user;
+    }
+
     public function testNothingIsRenderedWhenThereIsNoAccountAtAll(): void
     {
         $this->assertSame('', StartCommand::renderHeader([]));
