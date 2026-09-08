@@ -609,6 +609,22 @@ number.
 survive the person being unlinked or removed. Read by both roles, GET only — same call as
 the sign-in log. No retention job; a few hundred rows a year.
 
+**A kind this page does not know must say so, never fall into the last branch.** Both
+tables were an if/else ending in a bare `else` that meant "complaint", and the controller
+resolved titles for three kinds out of five — so the Face ID vote, 56 clicks across two
+posts and the busiest thing in the house that week, rendered as «🔧 заявка #4 (видалено)»
+and every one of those links opened the **rental** register. Nothing failed and nothing was
+logged; the page simply said something untrue and stayed that way until somebody followed a
+link (08.09.2026). The icon, the word and the destination now come from three macros with
+an explicit branch per kind and a neutral «↗️ посилання» fallback, and
+`AdminLinksPageTest::testEveryRecordedKindIsNamedByThePage` walks `DeepLink::PREFIXES`.
+
+**The per-board totals print the zeroes.** «За розділами» lists every kind — послуги,
+оренда, заявки, голосування, борги — including the boards nobody has opened, because the
+per-post table below only holds posts that were clicked, and a board with no row reads as
+"no such thing" rather than as nought. Whether the chat post works *for that board* is the
+one number this page exists to produce.
+
 **`DeepLink` is the only place a link is built or read.** The prefix map lives next to both
 halves so a new board cannot add a button the router does not understand — the failure that
 would cause is a link opening the main menu, which reads as the bot forgetting what you
