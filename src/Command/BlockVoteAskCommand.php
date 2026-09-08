@@ -38,7 +38,7 @@ class BlockVoteAskCommand extends Command
             ->addOption('details', null, InputOption::VALUE_REQUIRED, 'Background: why, how much, what next')
             ->addOption('days', null, InputOption::VALUE_REQUIRED, 'How long it runs', (string)BlockVoteService::VOTE_DAYS)
             ->addOption('by', null, InputOption::VALUE_REQUIRED, 'Who is opening it', 'main_admin')
-            ->addOption('quiet', null, InputOption::VALUE_NONE, 'Do not broadcast — leave it in the list only')
+            ->addOption('no-broadcast', null, InputOption::VALUE_NONE, 'Leave it in the list only, ring nobody')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Show what would be sent and stop');
     }
 
@@ -49,7 +49,7 @@ class BlockVoteAskCommand extends Command
         $question = trim((string)$input->getArgument('question'));
         $details = trim((string)$input->getOption('details'));
         $days = (int)$input->getOption('days');
-        $broadcast = !$input->getOption('quiet');
+        $broadcast = !$input->getOption('no-broadcast');
 
         if (mb_strlen($question) < 10) {
             $io->error('Сформулюйте питання — принаймні 10 символів.');
