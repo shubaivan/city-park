@@ -183,6 +183,37 @@ class ServiceOfferRulesTest extends KernelTestCase
         $this->assertStringNotContainsString('📞', $this->service()->describe($offer));
     }
 
+    /**
+     * Three per person, and the cap is a constant so it can be moved without hunting.
+     *
+     * A person really can be an electrician *and* fit kitchens, and «Електрик, ремонт під
+     * ключ» crammed into one 60-character button serves neither. Three is where it stops
+     * being «I do a few things» and starts being one resident holding the first page —
+     * and this board is the only place in the bot where somebody broadcasts to the whole
+     * house, so the ceiling is not decoration.
+     */
+    public function testTheCapIsThreePerPerson(): void
+    {
+        $this->assertSame(3, ServiceOffer::MAX_PER_AUTHOR);
+    }
+
+    /**
+     * The cap counts the person, not the flat.
+     *
+     * Father recommends his electrician and daughter posts her manicurist on the same
+     * особовий рахунок; counting per account would make them share three between them.
+     */
+    public function testTheCapIsCheckedAgainstTheAuthorNotTheAccount(): void
+    {
+        $source = (string)file_get_contents(__DIR__ . '/../../src/Service/ServiceOfferService.php');
+
+        $this->assertMatchesRegularExpression(
+            '/mayPublishMore\(\?TelegramUser \$author\)/',
+            $source,
+            'the cap must be asked about a person',
+        );
+    }
+
     private function offer(Account $account, string $title): ServiceOffer
     {
         return (new ServiceOffer())

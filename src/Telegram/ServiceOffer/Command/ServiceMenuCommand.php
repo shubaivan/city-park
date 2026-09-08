@@ -88,6 +88,12 @@ class ServiceMenuCommand
             return;
         }
 
+        if (str_starts_with($data, 'svc:my:')) {
+            $this->renderMenu($bot, edit: true, page: (int)substr($data, strlen('svc:my:')), mineOnly: true);
+
+            return;
+        }
+
         if (str_starts_with($data, 'svc:page:')) {
             $this->renderMenu($bot, edit: true, page: (int)substr($data, strlen('svc:page:')));
 
@@ -157,8 +163,13 @@ class ServiceMenuCommand
         return $user ? $this->telegramUserService->resolveAccount($user) : null;
     }
 
-    private function renderMenu(Nutgram $bot, bool $edit, ?string $notice = null, int $page = 1): void
-    {
+    private function renderMenu(
+        Nutgram $bot,
+        bool $edit,
+        ?string $notice = null,
+        int $page = 1,
+        bool $mineOnly = false,
+    ): void {
         $account = $this->currentAccount($bot);
 
         // Not a silent hide: somebody who has opened the bot but has not been linked yet
@@ -180,8 +191,13 @@ class ServiceMenuCommand
         }
 
         $user = $this->telegramUserService->getCurrentUser();
-        $offers = $this->offerService->activeOffers();
         $mine = $this->offerService->activeForAuthor($user);
+        $mineIds = array_map(static fn (ServiceOffer $o): ?int => $o->getId(), $mine);
+
+        // «📌 Мої» is offered only to somebody who has something in it — an empty filter is
+        // a dead end, the same call the complaints register makes.
+        $mineOnly = $mineOnly && $mine !== [];
+        $offers = $mineOnly ? $mine : $this->offerService->activeOffers();
 
         $lines = [];
 
@@ -190,7 +206,7 @@ class ServiceMenuCommand
             $lines[] = '';
         }
 
-        $lines[] = '🛠 <b>Послуги</b>';
+        $lines[] = $mineOnly ? '📌 <b>Мої оголошення</b>' : '🛠 <b>Послуги</b>';
         $lines[] = '';
 
         $markup = InlineKeyboardMarkup::make();
@@ -211,19 +227,19 @@ class ServiceMenuCommand
             $anyPhotos = false;
 
             foreach ($shown as $offer) {
-                $own = $mine && $offer->getId() === $mine->getId();
+                $own = in_array($offer->getId(), $mineIds, true);
                 $anyPhotos = $anyPhotos || $offer->hasPhotos();
 
                 $markup->addRow(InlineKeyboardButton::make(
-                    $this->offerService->buttonLabel($offer, $own),
+                    $this->offerService->buttonLabel($offer, $own && !$mineOnly),
                     callback_data: 'svc:view:' . $offer->getId(),
                 ));
             }
 
             $legend = [];
 
-            if ($mine) {
-                $legend[] = '<i>Ваше оголошення позначене 📌 — відкрийте його, щоб змінити '
+            if ($mine !== [] && !$mineOnly) {
+                $legend[] = '<i>Ваші оголошення позначені 📌 — відкрийте, щоб змінити '
                     . 'текст, номер, фото або зняти з публікації.</i>';
             }
 
@@ -239,8 +255,10 @@ class ServiceMenuCommand
             if ($pages > 1) {
                 $nav = [];
 
+                $pageCallback = $mineOnly ? 'svc:my:' : 'svc:page:';
+
                 if ($page > 1) {
-                    $nav[] = InlineKeyboardButton::make('⬅️', callback_data: 'svc:page:' . ($page - 1));
+                    $nav[] = InlineKeyboardButton::make('⬅️', callback_data: $pageCallback . ($page - 1));
                 }
 
                 $nav[] = InlineKeyboardButton::make(
@@ -249,28 +267,43 @@ class ServiceMenuCommand
                 );
 
                 if ($page < $pages) {
-                    $nav[] = InlineKeyboardButton::make('➡️', callback_data: 'svc:page:' . ($page + 1));
+                    $nav[] = InlineKeyboardButton::make('➡️', callback_data: $pageCallback . ($page + 1));
                 }
 
                 $markup->addRow(...$nav);
             }
         }
 
-        if ($mine) {
-            // Your own advert is already in the list above, marked 📌 — but only somebody
-            // who has read the legend knows that tapping it is where «змінити» and
-            // «зняти» live. Spelling it out on its own row costs one line and removes the
-            // guess; on a second page it is also the only way to reach your own card
-            // without hunting for it.
+        // One advert opens straight onto its card; several open the filtered list. Either
+        // way the row exists, because otherwise the only route to «змінити» / «зняти» is
+        // knowing that your own row in the list, the one marked 📌, is where they hide.
+        if (count($mine) === 1 && !$mineOnly) {
             $markup->addRow(InlineKeyboardButton::make(
                 '📌 Моє оголошення (змінити / зняти)',
-                callback_data: 'svc:view:' . $mine->getId(),
+                callback_data: 'svc:view:' . $mine[0]->getId(),
             ));
-        } else {
+        } elseif (count($mine) > 1 && !$mineOnly) {
+            $markup->addRow(InlineKeyboardButton::make(
+                sprintf('📌 Мої оголошення (%d)', count($mine)),
+                callback_data: 'svc:my:1',
+            ));
+        } elseif ($mineOnly) {
+            $markup->addRow(InlineKeyboardButton::make('🛠 Усі послуги', callback_data: self::MENU_CALLBACK));
+        }
+
+        if (count($mine) < ServiceOffer::MAX_PER_AUTHOR) {
             $markup->addRow(InlineKeyboardButton::make(
                 '➕ Пропоную послугу',
                 callback_data: ServicePublish::START_CALLBACK,
             ));
+        } else {
+            // Marked and explained rather than silently missing: a button that vanishes is
+            // read as the bot breaking, not as a rule.
+            $lines[] = '';
+            $lines[] = sprintf(
+                '<i>У вас %d оголошення — це максимум. Щоб додати нове, зніміть одне зі старих.</i>',
+                ServiceOffer::MAX_PER_AUTHOR,
+            );
         }
 
         $markup->addRow(StartCommand::homeButton());
@@ -338,7 +371,13 @@ class ServiceMenuCommand
             ));
 
             $markup->addRow(
-                InlineKeyboardButton::make('✏️ Змінити', callback_data: ServicePublish::START_CALLBACK),
+                // Names the offer. While one advert per person was the rule, «змінити»
+                // could restart the publish flow and let it replace whatever was there;
+                // with three of them that would edit the wrong one.
+                InlineKeyboardButton::make(
+                    '✏️ Змінити',
+                    callback_data: ServicePublish::EDIT_PREFIX . $offer->getId(),
+                ),
                 InlineKeyboardButton::make('🚫 Зняти', callback_data: 'svc:remove:' . $offer->getId()),
             );
         } else {

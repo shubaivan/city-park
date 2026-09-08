@@ -58,10 +58,16 @@ class ServicePublish extends Conversation
 {
     public const START_CALLBACK = 'svc:new';
 
+    /** «✏️ Змінити» on a card — the id follows, because a person may have three. */
+    public const EDIT_PREFIX = 'svc:edit:';
+
     protected ?string $step = 'askTitle';
 
     public ?string $title = null;
     public ?string $phone = null;
+
+    /** The offer being changed, or null when this is a new one. */
+    public ?int $editing = null;
 
     public function __construct(
         private TelegramUserService $telegramUserService,
@@ -104,6 +110,12 @@ class ServicePublish extends Conversation
             return null;
         }
 
+        $data = $bot->isCallbackQuery() ? ($bot->callbackQuery()->data ?? '') : '';
+
+        if (str_starts_with($data, self::EDIT_PREFIX)) {
+            $this->editing = (int)substr($data, strlen(self::EDIT_PREFIX));
+        }
+
         return parent::__invoke($bot, ...$parameters);
     }
 
@@ -123,8 +135,40 @@ class ServicePublish extends Conversation
             return;
         }
 
+        $offer = $this->targetOffer();
+
+        if ($this->editing !== null && $offer === null) {
+            $bot->sendMessage(text: '⚠️ Це оголошення вже неактуальне.');
+            $this->end();
+
+            return;
+        }
+
+        // Checked here as well as on the button: a resident can arrive on «➕ Пропоную
+        // послугу» from a keyboard drawn before they published their third elsewhere.
+        if ($this->editing === null && !$this->offerService->mayPublishMore($user)) {
+            $bot->sendMessage(
+                text: sprintf(
+                    "🛠 У вас уже %d оголошення — це максимум.\n\n"
+                        . 'Щоб опублікувати нове, зніміть одне зі старих: «🛠 Послуги» → '
+                        . '«📌 Мої оголошення».',
+                    ServiceOffer::MAX_PER_AUTHOR,
+                ),
+                parse_mode: ParseMode::HTML,
+                reply_markup: InlineKeyboardMarkup::make()
+                    ->addRow(InlineKeyboardButton::make(
+                        '📌 Мої оголошення',
+                        callback_data: 'svc:my:1',
+                    ))
+                    ->addRow(StartCommand::homeButton()),
+            );
+            $this->end();
+
+            return;
+        }
+
         $bot->sendMessage(
-            text: "🛠 <b>Оголошення про послугу</b>\n\n"
+            text: ($offer !== null ? "✏️ <b>Змінюємо оголошення</b>\n<i>Зараз: " . self::esc($offer->getTitle()) . "</i>\n\n" : "🛠 <b>Оголошення про послугу</b>\n\n")
                 . "Напишіть одним рядком, що ви робите — так, як сказали б сусідові.\n\n"
                 . '<i>Наприклад: Плиточник · Електрик · Манікюр вдома · '
                 . "Репетитор з англійської · Вигул собак</i>\n\n"
@@ -317,10 +361,16 @@ class ServicePublish extends Conversation
             return;
         }
 
-        $offer = $this->offerService->publish($account, $user, $this->title, $this->phone);
+        $existing = $this->targetOffer();
+
+        // In place when editing: the photos, the chat post, the expiry date and the clicks
+        // recorded against this id all hang off the row and should survive a typo fix.
+        $offer = $existing !== null
+            ? $this->offerService->update($existing, $this->title, $this->phone)
+            : $this->offerService->publish($account, $user, $this->title, $this->phone);
 
         $bot->sendMessage(
-            text: "✅ <b>Оголошення опубліковано</b>\n\n"
+            text: ($existing !== null ? "✅ <b>Оголошення оновлено</b>\n\n" : "✅ <b>Оголошення опубліковано</b>\n\n")
                 . $this->offerService->describe($offer) . "\n\n"
                 . 'Його бачать усі підтверджені мешканці в розділі «🛠 Послуги». '
                 . 'За ' . ServiceOffer::RENEW_PROMPT_BEFORE_DAYS . ' дні до кінця строку '
@@ -350,6 +400,31 @@ class ServicePublish extends Conversation
         );
 
         $this->end();
+    }
+
+    /**
+     * The offer this run is changing, freshly loaded.
+     *
+     * Loaded rather than carried: a conversation can sit in the cache for a long time, and
+     * the advert may have been withdrawn or expired since «✏️ Змінити» was tapped.
+     * Ownership is re-checked here for the same reason — the callback that started this is
+     * gated too, but a conversation outlives the keyboard it began on.
+     */
+    private function targetOffer(): ?ServiceOffer
+    {
+        if ($this->editing === null) {
+            return null;
+        }
+
+        $user = $this->telegramUserService->getCurrentUser();
+
+        foreach ($this->offerService->activeForAuthor($user) as $offer) {
+            if ($offer->getId() === $this->editing) {
+                return $offer;
+            }
+        }
+
+        return null;
     }
 
     private function cancel(Nutgram $bot): void
