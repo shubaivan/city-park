@@ -100,7 +100,23 @@ Admins open a `BlockVoteCampaign` per candidate via `/admin/block-votes` (by о�
 `blocked_until` is a time-box layered on the shared `is_active` flag. Every unblock path (debt recompute/import/web-upload, photo auto-unblock, admin manual unblock) now honours `Account::isUnderVoteBlock()` so a debt payment or photo upload can't lift a still-active vote-block; `BlockVoteService::autoUnblockExpired()` clears the window on expiry but **re-checks debt + open photo block** before restoring access (and admin manual unblock clears the window outright). Audit sources: `community_vote`, `vote_auto_unblock`.
 
 **`TelegramUser.role`** (owner / family / tenant, NULL = не вказано) records what the person
-is *to the flat*. The bot cannot derive it — it holds no owner names, only a flat and a
+is *to the flat*.
+
+**`tenant` is the one role that decides anything** (since 08.09.2026, via
+`TelegramUser::owesForTheFlat()`): the bot no longer tells a tenant that the flat's arrears
+are theirs. Gone for them are the debt figures beside the особовий рахунок in the menu
+header, the «📌 (це ви)» marks on the podium and in the full list, the «📌 Ваша квартира у
+списку» line, the «📌 Моя квартира» jump button, and the monthly `DebtNotifyCommand`
+reminder. **The board itself is not hidden** — it names every flat in the house to every
+resident, so their neighbour reads the same line, and hiding it would leave a tenant less
+informed than anybody else while protecting nothing. What is switched off is the bot
+*claiming* the debt is theirs. NULL is not treated as tenant: most of прод is unlabelled and
+the accountant has not said those people rent, so treating them as tenants would quietly
+stop the debt reaching most of the house. Everything else the role touches is still
+descriptive — booking, the chat, заявки and послуги are unchanged, and the block stays on
+the account, so a tenant of a blocked flat still cannot book. `TenantIsNotTheDebtorTest`
+pins each gate, because this is exactly the kind of asymmetry somebody tidies away while
+making the roles consistent. The bot cannot derive it — it holds no owner names, only a flat and a
 phone — so the accountant sets it from what she is told («у мене орендатори», «я орендар»).
 Deliberately **not** seeded by the "only person on a flat must be the owner" heuristic: that
 is right most of the time and confidently wrong wherever a tenant registered first, and a

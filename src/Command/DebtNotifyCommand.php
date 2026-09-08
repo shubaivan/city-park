@@ -48,6 +48,13 @@ class DebtNotifyCommand extends Command
                         continue;
                     }
 
+                    // «Сума боргу» addressed to somebody who rents the flat is the ОСББ
+                    // billing the wrong person. They still cannot book — the block is on
+                    // the account — but that is a different message from this one.
+                    if (!$user->owesForTheFlat()) {
+                        continue;
+                    }
+
                     $this->bot->sendMessage(
                         text: sprintf(
                             "📢 <b>Повідомлення про заборгованість</b>\n\nОсобовий рахунок: <b>%s</b>\nСума боргу: <b>%s грн</b>\n\n⚠️ Наявність боргу блокує можливість бронювання альтанок.\nБудь ласка, сплатіть заборгованість.",

@@ -174,14 +174,17 @@ class ComplaintMenuCommand
         }
 
         $lines[] = $mineOnly ? '📌 <b>Мої заявки</b>' : '🔧 <b>Заявки та скарги</b>';
+        // «Мої» is filtered by the рахунок, not by the person, so on a flat with several
+        // residents it is the household's list — and «повідомили ви» was then untrue for
+        // everybody but whoever happened to file it.
         $lines[] = $mineOnly
-            ? '<i>Те, про що повідомили ви.</i>'
+            ? '<i>Те, про що повідомили з вашої квартири.</i>'
             : '<i>Що в будинку зламалось і що з цим робиться.</i>';
         $lines[] = '';
 
         if ($total === 0) {
             $lines[] = $mineOnly
-                ? 'Ви ще не подавали заявок.'
+                ? 'З вашої квартири заявок ще не було.'
                 : 'Поки що жодної заявки. Якщо щось не працює — напишіть, і це побачать усі мешканці та голова ОСББ.';
         } else {
             $lines[] = sprintf('Відкритих: <b>%d</b> · усього: %d', $open, $total);

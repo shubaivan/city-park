@@ -116,7 +116,15 @@ class DebtBoardService
      * The block that sits above the main menu. Empty string when it must not render —
      * StartCommand concatenates it blindly, so "nothing to say" has to be harmless.
      */
-    public function menuBlock(?Account $viewer): string
+    /**
+     * @param bool $ownsTheDebt whether this reader is somebody the arrears belong to.
+     *        False for a tenant: they are linked to the flat so the bot knows where they
+     *        live, not because the owner's debt is theirs. The board itself still renders
+     *        — it names every flat in the house to every resident, and hiding it would
+     *        leave a tenant less informed than their neighbour while protecting nothing —
+     *        but nothing in it says «це ви».
+     */
+    public function menuBlock(?Account $viewer, bool $ownsTheDebt = true): string
     {
         if (!$viewer instanceof Account || !$this->isAvailable()) {
             return '';
@@ -148,12 +156,15 @@ class DebtBoardService
                 $this->place($account),
                 $this->money((float)$account->getDebt()),
                 $i === 0 ? ' 👑' : '',
-                $this->isViewer($account, $viewer) ? ' 📌 <i>(це ви)</i>' : '',
+                $ownsTheDebt && $this->isViewer($account, $viewer) ? ' 📌 <i>(це ви)</i>' : '',
             );
         }
 
         $lines[] = '';
-        $lines[] = $this->viewerLine($viewer);
+
+        if ($ownsTheDebt) {
+            $lines[] = $this->viewerLine($viewer);
+        }
         $lines[] = sprintf('📅 <i>Дані станом на %s</i>', $this->asOfLabel());
         $lines[] = '';
 
@@ -169,7 +180,8 @@ class DebtBoardService
      * That is the wrong forty to publish — the extremes are already on the podium in the
      * menu, and a resident checking whether *their* neighbour pays could never get there.
      */
-    public function report(?Account $viewer, int $page = 1): string
+    /** @param bool $ownsTheDebt see menuBlock() — a tenant reads the list without being in it. */
+    public function report(?Account $viewer, int $page = 1, bool $ownsTheDebt = true): string
     {
         if (!$viewer instanceof Account) {
             return "💸 <b>Звіт боржників</b>\n\n"
@@ -207,7 +219,7 @@ class DebtBoardService
                 self::MEDALS[$i] ?? sprintf('<b>%d.</b>', $i + 1),
                 $this->place($account),
                 $this->money((float)$account->getDebt()),
-                $this->isViewer($account, $viewer) ? ' 📌 <i>(це ви)</i>' : '',
+                $ownsTheDebt && $this->isViewer($account, $viewer) ? ' 📌 <i>(це ви)</i>' : '',
             );
         }
 
@@ -229,8 +241,11 @@ class DebtBoardService
 
         // Their own line, on every page. Without it the viewer has to leaf through ten
         // pages to find out whether they are on the list at all — and "am I on it?" is the
-        // first question anyone opens this with.
-        $foot .= $this->viewerLine($viewer) . "\n";
+        // first question anyone opens this with. Not for a tenant: for them «ваша квартира
+        // у списку» would be the bot handing somebody else's arrears to the wrong person.
+        if ($ownsTheDebt) {
+            $foot .= $this->viewerLine($viewer) . "\n";
+        }
 
         $foot .= sprintf("📅 <i>Дані станом на %s. Суми округлені до гривні.</i>", $this->asOfLabel());
 
