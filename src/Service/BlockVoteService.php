@@ -50,6 +50,9 @@ class BlockVoteService
      */
     public const AUTO_BROADCAST_VOTES = 15;
 
+    /** Longest a vote may run. Past a month nobody remembers what they were asked. */
+    public const MAX_VOTE_DAYS = 30;
+
     /** How long before the deadline the one-shot last-day reminder fires (to non-voters). */
     public const FINAL_REMINDER_BEFORE_HOURS = 24;
 
@@ -157,8 +160,9 @@ class BlockVoteService
         ?string $createdBy,
         ?TelegramUser $author = null,
         bool $broadcast = true,
+        ?int $days = null,
     ): BlockVoteCampaign {
-        $campaign = $this->openCampaign(null, $createdBy, BlockVoteCampaign::KIND_QUESTION, $broadcast);
+        $campaign = $this->openCampaign(null, $createdBy, BlockVoteCampaign::KIND_QUESTION, $broadcast, $days);
         $campaign->setQuestion($question);
         $campaign->setDetails($details);
         $campaign->setAuthor($author);
@@ -221,6 +225,7 @@ class BlockVoteService
         ?string $createdBy,
         string $kind = BlockVoteCampaign::KIND_BLOCK,
         bool $broadcast = true,
+        ?int $days = null,
     ): BlockVoteCampaign
     {
         // Only a block campaign is one-per-candidate; two questions can sensibly run at
@@ -236,7 +241,13 @@ class BlockVoteService
             ->setCandidate($candidate)
             ->setStatus(BlockVoteCampaign::STATUS_OPEN)
             ->setEligibleCount(count($voters))
-            ->setDeadlineAt((clone $this->now())->modify('+' . self::VOTE_DAYS . ' days'))
+            // A block campaign is always VOTE_DAYS: it is an accusation, and leaving one
+            // hanging over a household longer than a week is a punishment of its own.
+            // A question may reasonably run longer — people are away, and «чи ставимо
+            // шлагбаум» is not urgent.
+            ->setDeadlineAt((clone $this->now())->modify(
+                '+' . max(1, min($days ?? self::VOTE_DAYS, self::MAX_VOTE_DAYS)) . ' days'
+            ))
             ->setCreatedBy($createdBy)
             // Stamped up front for an admin-opened campaign; a resident's question stays
             // quiet until somebody approves it or it earns the push itself.
