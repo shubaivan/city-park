@@ -25,6 +25,24 @@
         .res-danger { border-color: #f5c6cb }
         .res-danger .card-header { background: #f8d7da }
         .res-history li + li { border-top: 1px dashed #e9ecef }
+        /*
+            The face, or two letters.
+
+            Most residents have no photo the bot may have — «Фото профілю: Мої контакти»
+            hides it from a bot as firmly as from a stranger, and on prod that is over half
+            of them. So the circle with initials is not a fallback for a rare case, it is
+            the normal rendering, and it has to look deliberate rather than like an image
+            that failed to load.
+        */
+        .res-avatar {
+            width: 72px; height: 72px; border-radius: 50%;
+            object-fit: cover; background: #e9ecef; flex: 0 0 auto;
+        }
+        .res-initials {
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.6rem; font-weight: 600; color: #fff; letter-spacing: .02em;
+        }
+        .res-name-row { display: flex; align-items: center; gap: .9rem; }
     </style>
 
     <div class="container-fluid mt-3 px-2 px-sm-3 res-wrap">
@@ -40,12 +58,28 @@
             {% endif %}
         </div>
 
-        <h3 class="mb-1">{{ user.displayName }}</h3>
-        {% if user.fullName and (user.firstName or user.lastName) %}
-            {# Both names, when they differ: one matches a квитанція, the other matches a
-               message in the residents' chat. #}
-            <div class="text-muted mb-1">у Telegram: {{ user.firstName }} {{ user.lastName }}</div>
-        {% endif %}
+        <div class="res-name-row mb-1">
+            {#
+                A face is what turns «Ника, кв. 85» into somebody the accountant has met.
+                Cached weekly by `telegram:avatars:sync`; served from var/, behind this
+                login. The colour of the initials circle is derived from the id, so the
+                same person is the same colour every time and the eye can use it.
+            #}
+            {% if user.photoPath %}
+                <img class="res-avatar" alt="" src="{{ path('app_admin_avatar', {id: user.id}) }}">
+            {% else %}
+                <div class="res-avatar res-initials"
+                     style="background: hsl({{ (user.id * 47) % 360 }}, 42%, 52%)">{{ user.initials }}</div>
+            {% endif %}
+            <div>
+                <h3 class="mb-0">{{ user.displayName }}</h3>
+                {% if user.fullName and (user.firstName or user.lastName) %}
+                    {# Both names, when they differ: one matches a квитанція, the other matches
+                       a message in the residents' chat. #}
+                    <div class="text-muted">у Telegram: {{ user.firstName }} {{ user.lastName }}</div>
+                {% endif %}
+            </div>
+        </div>
 
         <div class="mb-3">
             <span class="badge badge-light">{{ user.roleLabel }}</span>

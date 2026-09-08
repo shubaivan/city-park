@@ -643,6 +643,42 @@ tapped. `StartPayloadRoutingTest` walks the map and fails on a kind the router n
 mentions. All three boards now carry the button; the guard's QR shares the router and
 nothing else.
 
+## Residents' faces in the panel
+
+`/admin/users` is a table of phone numbers and Telegram nicknames, and a face is the one
+thing that turns «Ника, кв. 85» into somebody the accountant has actually met. Иван asked
+for it on 08.09.2026; the resident card shows the photo, the list deliberately does not —
+see below.
+
+**Fewer than half of them have a photo we may have, and that is the ceiling.**
+`getUserProfilePhotos` returns nothing when the person's «Фото профілю» is «Мої контакти»:
+a bot is not a contact. Measured on prod before building it — **36 of 80** linked
+residents, and Иван's own account is in the other 55%, photo and all. No API gets past
+that, so do not go looking for one. It is why the initials circle is not a fallback for a
+rare case but the normal rendering: it is coloured from the id (the same person is the same
+colour every time) and it has to look deliberate rather than like an image that failed.
+
+- **The cache lives in `var/avatars/`, never under `public/`.** A face on a guessable URL is
+  published; served through `/admin/avatar/{id}` it sits behind the same login as the phone
+  number and the debt on the same card. Both roles may read it — Сергій already opens the
+  resident register — and the gate is in `access_control` with every other one.
+- **`photo_path` is a bare file name.** It is written only by the sync, but it is read to
+  build a filesystem path, and a column that has ever held «../» can serve any file on the
+  box. `AvatarService::fileFor()` refuses anything else; `AvatarRulesTest` pins it.
+- **A photo that disappears from Telegram is deleted here.** Somebody who closes their
+  profile has taken it back, and a copy that outlives the withdrawal is the panel keeping
+  something the person withdrew. `sync()` returns `removed` for exactly that case.
+- **Weekly, by cron, never on page render.** Three Telegram calls per person against 449 of
+  them is minutes; a table that renders in eight seconds because it is downloading pictures
+  is worse than one with none. `telegram:avatars:sync` skips anybody asked about inside
+  `AvatarService::STALE_AFTER_DAYS` (7); `--all` re-asks about everybody, `--dry-run` says
+  who would be asked.
+- **Not in the list of 449.** Иван's own call when it was scoped: on the card a face helps,
+  in a table where over half the rows would be initials it is noise. The service knows
+  nothing about where it is drawn, so adding it there later is a template change and a
+  renderer in `telegram_users.js` — which would mean `npx encore production` on the deploy,
+  and a new column must be appended **last** (`columnDefs` target by index).
+
 ## Who signed in to the panel
 
 `/admin/logins` — one row per sign-in attempt: the login as typed, when, the IP and a
@@ -1343,6 +1379,7 @@ or they silently exercise a bot with no middleware.
 0 4 * * * sudo -u www-data php …/city-park/bin/console rental:expire --env=prod
 15 4 * * * sudo -u www-data php …/city-park/bin/console complaint:cleanup --env=prod
 30 4 * * * sudo -u www-data php …/city-park/bin/console service:expire --env=prod
+0 5 * * 1 cd …/city-park && sudo -u www-data php bin/console telegram:avatars:sync --env=prod
 0 2 * * * cd …/city-park && sudo -u www-data php bin/console db:backup --env=prod >> var/log/backup.log 2>&1
 ```
 
