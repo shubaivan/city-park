@@ -163,7 +163,11 @@ class BlockVoteService
         bool $broadcast = true,
         ?int $days = null,
     ): BlockVoteCampaign {
-        $campaign = $this->openCampaign(null, $createdBy, BlockVoteCampaign::KIND_QUESTION, $broadcast, $days);
+        // Created quiet, filled in, and only then announced. openCampaign() used to
+        // publish the chat post itself, which put the post before setQuestion() — so the
+        // house got «🗳 Питання до мешканців» with a heading, a deadline and no question in
+        // between. Broadcasting is now a separate step by construction, not by discipline.
+        $campaign = $this->openCampaign(null, $createdBy, BlockVoteCampaign::KIND_QUESTION, $days);
         $campaign->setQuestion($question);
         $campaign->setDetails($details);
         $campaign->setAuthor($author);
@@ -225,7 +229,6 @@ class BlockVoteService
         ?Account $candidate,
         ?string $createdBy,
         string $kind = BlockVoteCampaign::KIND_BLOCK,
-        bool $broadcast = true,
         ?int $days = null,
     ): BlockVoteCampaign
     {
@@ -249,26 +252,11 @@ class BlockVoteService
             ->setDeadlineAt((clone $this->now())->modify(
                 '+' . max(1, min($days ?? self::VOTE_DAYS, self::MAX_VOTE_DAYS)) . ' days'
             ))
-            ->setCreatedBy($createdBy)
-            // Stamped up front for an admin-opened campaign; a resident's question stays
-            // quiet until somebody approves it or it earns the push itself.
-            ->setBroadcastAt($broadcast ? $this->now() : null);
+            ->setCreatedBy($createdBy);
 
         $this->em->persist($campaign);
         $this->em->flush();
 
-        if ($broadcast) {
-            // Hand the broadcast off to the async (Doctrine) transport — one message per
-            // voter, each independently retryable — so the request returns instantly
-            // instead of blocking on hundreds of sequential Telegram sends. The
-            // city-park-messenger systemd worker delivers them.
-            foreach ($voters as $voter) {
-                /** @var Account $voter */
-                $this->bus->dispatch(new VoteBroadcastMessage($campaign->getId(), (int)$voter->getId()));
-            }
-
-            $this->announce($campaign);
-        }
 
         $this->logger->info('block-vote: campaign opened', [
             'campaign_id' => $campaign->getId(),

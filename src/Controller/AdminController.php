@@ -241,6 +241,9 @@ class AdminController extends AbstractController
         try {
             $actor = $this->getUser()?->getUserIdentifier();
             $campaign = $voteService->openCampaign($account, $actor);
+            // Announced only once the row is complete — see openQuestion() for the post
+            // that went out with no question in it.
+            $voteService->broadcast($campaign);
         } catch (\RuntimeException $e) {
             $this->addFlash('error', $e->getMessage());
             return $this->redirectToRoute('app_admin_block_votes');
