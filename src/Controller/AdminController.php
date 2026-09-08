@@ -10,6 +10,8 @@ use App\Entity\ServiceOffer;
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
+use App\Service\AvatarService;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use App\Repository\ComplaintRepository;
 use App\Repository\DebtSnapshotRepository;
 use App\Repository\AccountStatusLogRepository;
@@ -636,6 +638,37 @@ class AdminController extends AbstractController
         }
 
         return $out;
+    }
+
+    /**
+     * A resident's cached Telegram photo, or 404.
+     *
+     * Served from `var/avatars/` rather than published under `public/`: it is a person's
+     * face and it belongs behind the same login as their phone number. Both roles may see
+     * it — Сергій already reads the resident register, and a face is the least of what is
+     * on that page.
+     *
+     * `private` caching, briefly: the picture changes when the sync notices Telegram's did,
+     * and a shared cache must not hold a resident's face for the next reader.
+     *
+     * The role split is in `access_control` with every other one, not in an attribute here
+     * — one place to read the whole boundary.
+     */
+    #[Route('/admin/avatar/{id}', name: 'app_admin_avatar', requirements: ['id' => '\d+'], methods: [Request::METHOD_GET])]
+    public function avatar(TelegramUser $user, AvatarService $avatars): Response
+    {
+        $file = $avatars->fileFor($user);
+
+        if ($file === null) {
+            throw $this->createNotFoundException();
+        }
+
+        $response = new BinaryFileResponse($file);
+        $response->setPrivate();
+        $response->setMaxAge(3600);
+        $response->headers->set('Content-Type', 'image/jpeg');
+
+        return $response;
     }
 
     #[Route('/admin/links', name: 'app_admin_links', methods: [Request::METHOD_GET])]

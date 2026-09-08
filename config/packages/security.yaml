@@ -41,6 +41,10 @@ security:
         # Same call: it says whether the chat posts are working, which is as useful to
         # the person answering the complaints as to the accountant. Nothing to change.
         - { path: ^/admin/links$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        # A resident's cached Telegram photo. Both roles already read the resident register,
+        # and a face is the least of what is on that page — but it is still served from
+        # var/, behind this login, rather than published under public/.
+        - { path: ^/admin/avatar/\d+$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
         # Looking is allowed, acting is not: he answers for repairs and needs to know which
         # flat reported what, but linking a resident, moving them or editing an object is
         # the accountant's work. GET only — plus the table's own POST, or the list he opens

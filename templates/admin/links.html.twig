@@ -184,7 +184,22 @@
                             <td>
                                 {% if click.user %}
                                     {{ click.user.fullName ?? (click.user.firstName ~ ' ' ~ click.user.lastName)|trim }}
-                                    {% if click.user.username %}<br><small>@{{ click.user.username }}</small>{% endif %}
+                                    {#
+                                        The @username opens the chat with that person.
+
+                                        Reading this page ends in «треба щось у них спитати»
+                                        often enough that copying a nickname by hand and
+                                        pasting it into Telegram search was the actual next
+                                        step. `t.me/<username>` does it in a tap, on the
+                                        phone this is read on as much as on a desktop.
+                                    #}
+                                    {% if click.user.username %}
+                                        <br>
+                                        <small>
+                                            <a href="https://t.me/{{ click.user.username }}"
+                                               target="_blank" rel="noopener">@{{ click.user.username }}</a>
+                                        </small>
+                                    {% endif %}
                                 {% else %}
                                     <span class="text-muted">—</span>
                                 {% endif %}

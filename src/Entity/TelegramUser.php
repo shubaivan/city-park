@@ -91,6 +91,81 @@ class TelegramUser
     #[ORM\Column(length: 180, nullable: true)]
     private ?string $full_name = null;
 
+    /**
+     * The Telegram profile photo, cached under `var/avatars/` — never under `public/`.
+     *
+     * It is a resident's face; it is served through `/admin/avatar/{id}` behind the panel's
+     * own login, not by a URL anybody who guesses it can open.
+     *
+     * Null means «no photo we may have», and that covers two different things on purpose:
+     * the person has none, or their «Фото профілю» is set to «Мої контакти», which hides it
+     * from the bot as firmly as from a stranger. Measured on prod 08.09.2026: of 80 linked
+     * residents the bot could see **36**. There is nothing to fix there — do not go looking
+     * for an API that gets past it.
+     */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $photo_path = null;
+
+    /** When we last asked Telegram — so the sync can skip what it looked at this week. */
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $photo_checked_at = null;
+
+    public function getPhotoPath(): ?string
+    {
+        return $this->photo_path;
+    }
+
+    public function setPhotoPath(?string $photo_path): self
+    {
+        $this->photo_path = $photo_path;
+
+        return $this;
+    }
+
+    public function getPhotoCheckedAt(): ?\DateTimeInterface
+    {
+        return $this->photo_checked_at;
+    }
+
+    public function setPhotoCheckedAt(?\DateTimeInterface $at): self
+    {
+        $this->photo_checked_at = $at;
+
+        return $this;
+    }
+
+    /**
+     * Two letters for the circle drawn when there is no photo — which is most people.
+     *
+     * The registry name first: «Конакбаєва Марина» is who the accountant is looking for,
+     * and a Telegram nickname («Ника», «bog bog») is not. Falls back to the Telegram name,
+     * then to «?» — never to an empty circle, which reads as a broken image.
+     */
+    public function getInitials(): string
+    {
+        // `isset()` rather than the getters: these are typed properties with no default,
+        // so on an entity that was built rather than hydrated — a test, a fresh /start
+        // before the first flush — reading one throws instead of returning null. The
+        // codebase has been bitten by that before.
+        $first = isset($this->first_name) ? (string)$this->first_name : '';
+        $last = isset($this->last_name) ? (string)$this->last_name : '';
+
+        $source = trim((string)($this->full_name ?: trim($first . ' ' . $last)));
+
+        if ($source === '' && isset($this->username)) {
+            $source = (string)$this->username;
+        }
+
+        $words = preg_split('/\s+/u', $source, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $letters = '';
+
+        foreach (array_slice($words, 0, 2) as $word) {
+            $letters .= mb_strtoupper(mb_substr($word, 0, 1, 'UTF-8'), 'UTF-8');
+        }
+
+        return $letters !== '' ? $letters : '?';
+    }
+
     #[NotBlank]
     #[ORM\ManyToOne(targetEntity: Account::class, inversedBy: 'users')]
     #[ORM\JoinColumn(name: 'account_id', referencedColumnName: 'id')]
