@@ -2,6 +2,12 @@
 
 {% block title %}{{ user.firstName }} {{ user.lastName }} · Мешканець · ОСББ City Park{% endblock %}
 
+{% block stylesheets %}
+    {{ parent() }}
+    {# select2's own stylesheet, split out of the entry below. #}
+    {{ encore_entry_link_tags('index/js/resident.min') }}
+{% endblock %}
+
 {% block body %}
     {{ parent() }}
 
@@ -34,6 +40,15 @@
             the normal rendering, and it has to look deliberate rather than like an image
             that failed to load.
         */
+        /*
+            select2 draws its own box, sized for a full-height Bootstrap input; every form
+            on this card is `form-control-sm`, so without this the picker stands a few
+            pixels taller than the button beside it.
+        */
+        .select2-container--default .select2-selection--single { height: calc(1.5em + .5rem + 2px); border-color: #ced4da; }
+        .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: calc(1.5em + .5rem); font-size: .875rem; }
+        .select2-container--default .select2-selection--single .select2-selection__arrow { height: calc(1.5em + .5rem); }
+
         .res-avatar {
             width: 72px; height: 72px; border-radius: 50%;
             object-fit: cover; background: #e9ecef; flex: 0 0 auto;
@@ -191,11 +206,17 @@
                                first words are «якщо людина переїхала», which is not what somebody
                                attaching a brand-new resident is looking for (Аліна, 07.09.2026). #}
 {% if is_granted('ROLE_ADMIN') %}
-                            <form method="post" action="{{ path('app_admin_resident_move', {id: user.id}) }}"
-                                  class="form-inline">
-                                <input type="text" name="account_number" class="form-control form-control-sm mr-2 mb-1"
-                                       placeholder="особовий рахунок із квитанції" required>
-                                <button class="btn btn-sm btn-primary mb-1">🔗 Прив'язати</button>
+                            {# Search, not a number typed from memory — see assets/js/resident.js. #}
+                            <form method="post" action="{{ path('app_admin_resident_move', {id: user.id}) }}">
+                                <div class="form-row align-items-center">
+                                    <div class="col-12 col-sm-8 mb-1">
+                                        <select name="account_number" class="form-control form-control-sm js-object-search"
+                                                data-placeholder="рахунок, квартира або адреса" required></select>
+                                    </div>
+                                    <div class="col-12 col-sm-4 mb-1">
+                                        <button class="btn btn-sm btn-primary btn-block">🔗 Прив'язати</button>
+                                    </div>
+                                </div>
                             </form>
                             <div class="small text-muted mt-2">
                                 Рахунок має вже існувати. Якщо його ще немає — створіть об'єкт у розділі
@@ -494,10 +515,16 @@
                                 {% endfor %}
                             </ul>
 
-                            {% if is_granted('ROLE_ADMIN') %}<form method="post" action="{{ path('app_admin_resident_group_link', {id: user.id}) }}" class="form-inline">
-                                <input type="text" name="partner_account_number" class="form-control form-control-sm mr-2 mb-1"
-                                       placeholder="особовий рахунок іншого об'єкта" required>
-                                <button class="btn btn-sm btn-success mb-1">Прив'язати</button>
+                            {% if is_granted('ROLE_ADMIN') %}<form method="post" action="{{ path('app_admin_resident_group_link', {id: user.id}) }}">
+                                <div class="form-row align-items-center">
+                                    <div class="col-12 col-sm-8 mb-1">
+                                        <select name="partner_account_number" class="form-control form-control-sm js-object-search"
+                                                data-placeholder="інший об'єкт цього власника" required></select>
+                                    </div>
+                                    <div class="col-12 col-sm-4 mb-1">
+                                        <button class="btn btn-sm btn-success btn-block">Прив'язати</button>
+                                    </div>
+                                </div>
                             </form>{% endif %}
                         {% else %}
                             <p class="text-muted mb-0 small">Спершу прив'яжіть мешканця до рахунку.</p>
@@ -520,11 +547,17 @@
                             Рахунок має вже існувати: створити його можна в розділі
                             <a href="{{ path('app_admin_objects') }}">«Об'єкти нерухомості»</a>.
                         </p>
-                        <form method="post" action="{{ path('app_admin_resident_move', {id: user.id}) }}" class="form-inline"
+                        <form method="post" action="{{ path('app_admin_resident_move', {id: user.id}) }}"
                               onsubmit="return confirm('Перенести цього мешканця на інший особовий рахунок?')">
-                            <input type="text" name="account_number" class="form-control form-control-sm mr-2 mb-1"
-                                   placeholder="новий особовий рахунок" required>
-                            <button class="btn btn-sm btn-outline-danger mb-1">Перенести</button>
+                            <div class="form-row align-items-center">
+                                <div class="col-12 col-sm-8 mb-1">
+                                    <select name="account_number" class="form-control form-control-sm js-object-search"
+                                            data-placeholder="новий рахунок: квартира або адреса" required></select>
+                                </div>
+                                <div class="col-12 col-sm-4 mb-1">
+                                    <button class="btn btn-sm btn-outline-danger btn-block">Перенести</button>
+                                </div>
+                            </div>
                         </form>
 
                         {#
@@ -572,6 +605,8 @@
             </div>
         </div>
     </div>
+
+    {{ encore_entry_script_tags('index/js/resident.min') }}
 
     <script>
         (function () {

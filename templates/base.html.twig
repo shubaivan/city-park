@@ -60,6 +60,65 @@
                 100% { background-color: #fff3cd; }
             }
 
+            /*
+                A row of filter chips.
+
+                Never a `.btn-group` for this: Bootstrap squares a group's inner corners,
+                which is right while the group fits on one line and nonsense once it wraps
+                — on a phone /admin/users and /admin/schedule both broke into a grid of
+                square blocks with borders in the wrong places. Separate chips with a gap
+                wrap the way the objects register's do. Shared, because both admin tables
+                filter this way.
+            */
+            .chip-row { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+            .chip-row > .btn { margin: 0; }
+
+            /*
+                The DataTables chrome on a phone. Both admin tables render as
+                #telegramUserTable, so this is written once.
+            */
+            @media (max-width: 767.98px) {
+                /*
+                    DataTables centres every layout cell under 767px, and .dt-length /
+                    .dt-search again under 640px — so «Пошук:» and the length select sat
+                    on the centre line while the table under them starts at the left edge.
+                */
+                #telegramUserTable_wrapper .dt-layout-cell,
+                #telegramUserTable_wrapper .dt-layout-cell.dt-full,
+                #telegramUserTable_wrapper .dt-layout-cell.dt-start,
+                #telegramUserTable_wrapper .dt-layout-cell.dt-end,
+                #telegramUserTable_wrapper .dt-length,
+                #telegramUserTable_wrapper .dt-search { float: none; text-align: left; }
+
+                #telegramUserTable_wrapper .dt-search label { display: block; }
+                #telegramUserTable_wrapper .dt-search input {
+                    /* border-box, or DataTables' own 5px padding pushes it off the screen. */
+                    display: block; box-sizing: border-box; width: 100%; margin: .25rem 0 0 0;
+                }
+                #telegramUserTable_wrapper .dt-length select { width: auto; display: inline-block; }
+
+                /*
+                    The table scrolls inside its own box instead of widening the page.
+
+                    Everything above it — the search input at `width: 100%`, the chips that
+                    wrap against the container — is laid out against the wrapper, and the
+                    wrapper is as wide as whatever the table needs. So one long cell made
+                    the search box wider than the phone and wrapped the chips off the right
+                    edge: the controls were being sized by data three screens further down.
+                */
+                #telegramUserTable_wrapper > .dt-layout-table > .dt-layout-cell {
+                    overflow-x: auto;
+                }
+
+                /* 10px of padding per cell is a third of the row on a 390px screen. */
+                table#telegramUserTable > thead > tr > th,
+                table#telegramUserTable > tbody > tr > td { padding: .45rem .4rem; }
+
+                /* «▶ 463» wrapped onto two lines and made every row twice as tall. */
+                table#telegramUserTable > tbody > tr > td:first-child,
+                table#telegramUserTable > thead > tr > th:first-child { white-space: nowrap; }
+            }
+
             #avatar-lightbox {
                 position: fixed; inset: 0; z-index: 2000;
                 display: flex; align-items: center; justify-content: center;

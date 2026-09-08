@@ -23,6 +23,36 @@
             display: inline-flex; align-items: center; justify-content: center;
             font-size: .72rem; font-weight: 600; color: #fff;
         }
+
+        /*
+            The filter area, on a phone.
+
+            This page is worked from a phone as often as from a desk, and next to
+            /admin/objects — a plain search box and a row of chips — it looked broken:
+            seven fixed-width labelled boxes taking the whole first screen and the filter
+            buttons wrapped into a grid of square-cornered blocks. The chips and the
+            DataTables chrome are fixed for both admin tables in base.html.twig; what is
+            left here is this page's own field panel.
+        */
+        .users-filter-grid {
+            display: grid;
+            /* auto-fit: two boxes on a phone, all seven on a desktop, no breakpoints. */
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: .5rem;
+            align-items: end;
+        }
+        .users-filter-grid input,
+        .users-filter-grid select { width: 100%; }
+
+        /* A <summary> styled as a button still shows the disclosure marker twice. */
+        .users-field-details > summary { list-style: none; cursor: pointer; }
+        .users-field-details > summary::-webkit-details-marker { display: none; }
+
+        @media (min-width: 768px) {
+            /* On a desktop the panel is simply always there — no button, no folding. */
+            .users-field-details > summary { display: none; }
+        }
+
     </style>
 
     {{ parent() }}
@@ -59,8 +89,15 @@
         'full_name': 'ПІБ за реєстром'
     } %}
 
+    {#
+        The page had no container at all: the table, the filters and the nav all started
+        hard against the left edge of the screen. The objects register — the page this one
+        is read next to — is a `container-fluid px-2 px-sm-3`, so it gets the same.
+    #}
     {% if th_keys|length %}
         <!-- Table -->
+
+        <div class="container-fluid mt-2 px-2 px-sm-3">
 
         <div class="mb-2">
             <a href="{{ path('app_admin_objects') }}" class="btn btn-sm btn-outline-secondary">🏢 Об'єкти нерухомості →</a>
@@ -82,6 +119,8 @@
             </tfoot>
 
         </table>
+
+        </div>
     {% endif %}
 
 

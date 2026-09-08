@@ -176,6 +176,42 @@ class AdminResidentPageTest extends KernelTestCase
     }
 
     /**
+     * The особовий рахунок is picked from a search, never typed from memory.
+     *
+     * All three forms that attach a person to an object — «Прив'язати», «Перенести» and
+     * the owner group — used to be a bare text box. There are 966 objects; the accountant
+     * opened the register in another tab, copied a number and came back, and a mistyped
+     * number that happens to exist is accepted in silence, attaching somebody to another
+     * household's flat. Nothing downstream can catch that, which is why the picker is
+     * pinned here: reverting it to an `<input>` is a one-word change.
+     */
+    public function testEveryAccountFieldIsAPickerAndNotABareBox(): void
+    {
+        $account = $this->account();
+
+        foreach ([
+            $this->render($this->user(1, account: $account), $account),
+            // Somebody with no flat sees only the «Прив'язати» form — the one an admin
+            // reaches for most often, and the one that used to have no search at all.
+            $this->render($this->user(7, 'Оля'), null),
+        ] as $html) {
+            preg_match_all(
+                '/<(input|select)\b[^>]*name="(?:account_number|partner_account_number)"[^>]*>/i',
+                $html,
+                $matches,
+                PREG_SET_ORDER,
+            );
+
+            $this->assertNotEmpty($matches, 'the card must still offer a way to link an object');
+
+            foreach ($matches as [$tag, $element]) {
+                $this->assertSame('select', strtolower($element), 'a bare text box is back: ' . $tag);
+                $this->assertStringContainsString('js-object-search', $tag);
+            }
+        }
+    }
+
+    /**
      * The complaints role reads this card; it does not act on it.
      *
      * A form that renders and then answers 403 is worse than no form: the person presses
