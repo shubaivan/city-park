@@ -457,11 +457,7 @@ class BlockVoteService
         }
 
         $text = $this->chatPost($campaign);
-        $markup = $this->links->button(
-            DeepLink::KIND_VOTE,
-            $campaign->getId(),
-            '↗️ Проголосувати в боті',
-        );
+        $markup = $this->links->button(DeepLink::KIND_VOTE, $campaign->getId());
         $chatId = (int)$this->residentChat->chatId();
 
         if ($campaign->getChatMessageId() !== null) {
