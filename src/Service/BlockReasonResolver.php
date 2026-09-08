@@ -6,6 +6,8 @@ use App\Service\SchedulePavilionService;
 use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Repository\PhotoUploadRequestRepository;
+use App\Repository\TariffRepository;
+use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Answers "why is this Account currently is_active=false?" by inspecting the same
@@ -18,10 +20,37 @@ final class BlockReasonResolver
         private DebtPolicy $debtPolicy,
         private PhotoUploadRequestRepository $photoRequestRepository,
         private PavilionPhotoService $photoService,
+        private TariffRepository $tariffRepository,
+        private EntityManagerInterface $em,
     ) {
     }
 
     /** Rendered from OsbbContacts so a changed number changes everywhere at once. */
+    /**
+     * «(площа 50.6 м² × 13.50 грн/м² × 1.5 — півтори місячні нарахування)».
+     *
+     * Empty when the threshold did not come from that formula: `getThresholdFor()` falls
+     * back to the flat DEBT_BLOCK_THRESHOLD when the area or the tariff is missing, and
+     * explaining a sum with numbers that were not used in it is worse than not explaining
+     * it at all.
+     */
+    private function thresholdExplained(Account $account): string
+    {
+        $area = (float)($account->getArea() ?? 0);
+        $price = (float)$this->tariffRepository->getOrCreate($this->em)->getPricePerMeter();
+
+        if ($area <= 0 || $price <= 0) {
+            return '';
+        }
+
+        return sprintf(
+            "<i>Це %s м² × %s грн/м² × %s — півтори місячні нарахування ОСББ.</i>\n",
+            rtrim(rtrim(number_format($area, 2, '.', ' '), '0'), '.'),
+            number_format($price, 2, '.', ' '),
+            DebtPolicy::OVER_FACTOR,
+        );
+    }
+
     private static function accountantContact(): string
     {
         return OsbbContacts::askThem("Зв'яжіться з ОСББ:");
@@ -103,8 +132,14 @@ final class BlockReasonResolver
             return $header
                 . "💰 <b>Причина:</b> заборгованість понад допустимий поріг.\n"
                 . sprintf("• Поточний борг: <b>%s грн</b>\n", number_format($debt, 2, '.', ' '))
-                . sprintf("• Поріг блокування: <b>%s грн</b>\n\n", number_format($threshold, 2, '.', ' '))
-                . "Будь ласка, сплатіть заборгованість, щоб відновити можливість бронювання.\n\n"
+                . sprintf("• Поріг блокування: <b>%s грн</b>\n", number_format($threshold, 2, '.', ' '))
+                // Where that number comes from. Without it «1 024.65» reads as a figure
+                // somebody chose for this flat, and the first thing a person does with a
+                // number they cannot check is ring the accountant to dispute it. It is
+                // arithmetic on two things they already know — their own area and the
+                // tariff — so showing the sum turns an accusation into a receipt.
+                . $this->thresholdExplained($account)
+                . "\nБудь ласка, сплатіть заборгованість, щоб відновити можливість бронювання.\n\n"
                 . self::accountantContact();
         }
 

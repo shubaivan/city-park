@@ -95,7 +95,11 @@ One-off bulk unblock: `bin/console pavilion:photo:bulk-unblock [--dry-run]` reso
 
 ## Community vote-to-block lifecycle
 
-Admins open a `BlockVoteCampaign` per candidate via `/admin/block-votes` (by особовий рахунок). Eligible voters = **everyone who may book the pavilion** (`canBookPavilion()` — apartments + parking, кладові excluded), **regardless of `is_active`** (debt/photo-blocked residents still vote), candidate excluded; the count is **snapshotted at open** as the threshold denominator so a vote can't become un-winnable mid-run. Each account casts one `BlockVoteBallot` (unique `(campaign, voter_account)` — any family member owns it, changeable until the deadline) from the bot's 🗳️ menu. When YES crosses **strict majority** (`yesNeeded = ⌊eligible/2⌋+1`) — either instantly on a vote or at the **7-day deadline** (`block-vote:tally`) — the candidate is blocked for **30 days** via `Account.blocked_until` and `is_active=false`.
+Admins open a `BlockVoteCampaign` per candidate via `/admin/block-votes` (by особовий рахунок). Eligible voters = everyone who may book the pavilion (`canBookPavilion()` — apartments +
+parking, кладові excluded) **and has a resident linked in the bot**, **regardless of
+`is_active`** (debt/photo-blocked residents still vote), candidate excluded — see the
+threshold section for why the second half is load-bearing; the count is **snapshotted at open** as the threshold denominator so a vote can't become un-winnable mid-run. Each account casts one `BlockVoteBallot` (unique `(campaign, voter_account)` — any family member owns it, changeable until the deadline) from the bot's 🗳️ menu. When YES crosses the threshold (`yesNeeded = ⌊eligible × PASS_FRACTION⌋+1`, PASS_FRACTION
+**0.30**) — either instantly on a vote or at the **7-day deadline** (`block-vote:tally`) — the candidate is blocked for **30 days** via `Account.blocked_until` and `is_active=false`.
 
 `blocked_until` is a time-box layered on the shared `is_active` flag. Every unblock path (debt recompute/import/web-upload, photo auto-unblock, admin manual unblock) now honours `Account::isUnderVoteBlock()` so a debt payment or photo upload can't lift a still-active vote-block; `BlockVoteService::autoUnblockExpired()` clears the window on expiry but **re-checks debt + open photo block** before restoring access (and admin manual unblock clears the window outright). Audit sources: `community_vote`, `vote_auto_unblock`.
 
@@ -400,6 +404,36 @@ broken rather than restricted) and in the templates, which hide every control he
 submit — a form that renders and then 403s is reported as «панель не працює».
 `ComplaintsRoleTest` pins the routes; `AdminResidentPageTest` pins that the card renders
 without a single one of its forms.
+
+## A number the bot uses against somebody shows where it came from
+
+**Rule.** «Поріг блокування: 1 024.65 грн» is unarguable and unverifiable at the same time:
+it reads as a figure chosen for this flat, and the first thing a person does with a number
+they cannot check is ring the accountant to dispute it — so the message meant to end a
+conversation starts one. The sum is arithmetic on two things the resident already knows,
+their own area and the published tariff, and printing it turns an accusation into a receipt:
+«Це 50.6 м² × 13.50 грн/м² × 1.5 — півтори місячні нарахування ОСББ.»
+
+It stays **silent** when the formula is not what produced the number —
+`DebtPolicy::getThresholdFor()` falls back to the flat `DEBT_BLOCK_THRESHOLD` when the area
+or the tariff is missing, and explaining a sum with numbers that did not make it is worse
+than not explaining it. The factor is read from `DebtPolicy::OVER_FACTOR`, never retyped
+into the copy.
+
+`NumbersExplainThemselvesTest` pins this, and it is not decoration: both numbers it covers
+decide whether somebody may use the альтанка.
+
+**The vote threshold is the same rule, and it hid a dead feature.** `PASS_FRACTION` is
+**0.30** — `yesNeeded() = ⌊eligible × 0.30⌋ + 1`, strictly more than 30%, **not** the strict
+majority this file claimed until 08.09.2026 (it was changed on 01.07.2026 and the docs were
+not). Voters were every object that may book the pavilion, counted straight off
+`findAll()` — which was fine at 175 objects and became nonsense when
+`objects:import-registry` brought in the whole register: 774 eligible against roughly 180
+with a linked resident, so a campaign needed 233 votes out of ~180 possible and could not
+pass, ever. Nothing said so, because the button still worked. `BlockVoteService::mayVote()`
+now also requires somebody in the bot behind the object, and it is the one definition used
+by both the roll call and the ballot check — a voter counted but refused, or refused but
+counted, is a campaign that adds up wrong.
 
 ## Every published thing shows when it was published
 

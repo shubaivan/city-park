@@ -36,6 +36,8 @@ class BlockMessageTest extends TestCase
             new DebtPolicy(1300, $accounts, $tariff, $this->createMock(EntityManagerInterface::class)),
             $requests,
             $this->createMock(PavilionPhotoService::class),
+            $tariff,
+            $this->createMock(EntityManagerInterface::class),
         );
     }
 
