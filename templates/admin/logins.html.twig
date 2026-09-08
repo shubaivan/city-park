@@ -88,6 +88,12 @@
             <p class="small text-muted mt-2 mb-0">
                 Показано останні {{ entries|length }} записів{% if entries|length == shown %} (більше не вміщається на сторінку){% endif %}.
                 Час київський.
+                {#
+                    Says why the list has a row per person per day: the session ends with
+                    the day, so «заходила вчора і сьогодні» is two rows rather than one
+                    sign-in back in July.
+                #}
+                Панель виходить у всіх о 00:00 — тому кожен робочий день видно окремо.
             </p>
         {% endif %}
     </div>
