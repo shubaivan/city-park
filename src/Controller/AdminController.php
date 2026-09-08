@@ -1092,6 +1092,7 @@ class AdminController extends AbstractController
         OwnerGroupService $ownerGroups,
         TariffRepository $tariffRepository,
         EntityManagerInterface $em,
+        ScheduledSetRepository $scheduledSetRepository,
     ): Response {
         $user = $repository->find($id);
 
@@ -1116,6 +1117,10 @@ class AdminController extends AbstractController
                     static fn (TelegramUser $u): bool => $u->getId() !== $user->getId(),
                 ))
                 : [],
+            // Only for the unlink warning: a booking outlives the link to the flat, and
+            // the gate's board would then read «❓ без особового рахунку» for an hour
+            // somebody has actually reserved.
+            'upcomingBookings' => $account ? count($scheduledSetRepository->getOwn($user)) : 0,
         ]);
     }
 
@@ -1412,6 +1417,64 @@ class AdminController extends AbstractController
         $error === null
             ? $this->addFlash('notice', sprintf('%s відв’язано.', $account->getAccountNumber()))
             : $this->addFlash('error', $error);
+
+        return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+    }
+
+    /**
+     * Take a person off their особовий рахунок without putting them on another one.
+     *
+     * The only way to undo a link used to be to move the person to a *different* existing
+     * account, and the move form refuses an empty value — so a resident attached to the
+     * wrong flat, or one who has sold theirs, could not be detached at all. Аліна hit this
+     * on 08.09.2026 asking «як відв'язати людину від об'єкта»; the answer was that you
+     * cannot.
+     *
+     * Deliberately NOT a delete. The `TelegramUser` row stays, and so do their bookings,
+     * complaints and listings: the person really did press /start and really did report
+     * that lift, and `/admin/users` must keep showing them — as «⏳ Не прив'язаний», which
+     * is what they now are. Deleting rows to express "this link was wrong" would lose the
+     * history that explains why it was made.
+     *
+     * ROLE_ADMIN only, like every other write on this card: this decides whose booking is
+     * blocked and who gets into the house chat, which is the accountant's work, not the
+     * complaints role's.
+     */
+    #[Route('/admin/users/{id}/account/unlink', name: 'app_admin_resident_unlink', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    public function residentUnlink(
+        int $id,
+        TelegramUserRepository $repository,
+        EntityManagerInterface $em,
+        LoggerInterface $logger,
+    ): Response {
+        $user = $this->residentOr404($id, $repository);
+        $from = $user->getAccount();
+
+        if (!$from instanceof Account) {
+            $this->addFlash('error', 'Цей мешканець і так ні до чого не прив’язаний.');
+
+            return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
+        }
+
+        $user->setAccount(null);
+        $em->flush();
+
+        $logger->info('Admin account unlink', [
+            'user_id' => $user->getId(),
+            'from_account_number' => $from->getAccountNumber(),
+            'by' => $this->getUser()?->getUserIdentifier(),
+        ]);
+
+        // Says what changed *for the person*, not what changed in the database. The flat
+        // itself is untouched and that is the first thing anybody wonders about.
+        $this->addFlash('notice', sprintf(
+            'Відв’язано від рахунку %s (%s). Рахунок, його борг і решта мешканців не змінились. '
+                . 'Ця людина більше не може бронювати альтанку, не бачить боргів і заявок, '
+                . 'і при новому запиті її не пустить у чат мешканців — але з чату, якщо вона '
+                . 'там уже є, її треба прибрати окремо.',
+            $from->getAccountNumber(),
+            $from->getPlaceLabel(),
+        ));
 
         return $this->redirectToRoute('app_admin_resident', ['id' => $id]);
     }

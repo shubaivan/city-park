@@ -378,6 +378,24 @@ definition of «кв. 85» / «комірчина 168» / «паркомісце
 `кв. %s` until 04.09.2026 and so called a комірчина a flat — the same mistake
 `DebtBoardService::place()` was corrected for a day earlier.
 
+**A person can be taken off an object without being put on another one.**
+`/admin/users/{id}/account/unlink` (ROLE_ADMIN, a button on the resident's card) clears
+`TelegramUser.account_id`. Until 08.09.2026 there was no such control: the only way to undo
+a link was the move form, which refuses an empty особовий рахунок — so somebody attached to
+the wrong flat, or one who had sold theirs, could not be detached at all. It is **not** a
+delete: the row stays, and so do their bookings, complaints and listings, because the person
+really did press /start and really did report that lift; they simply become
+«⏳ Не прив'язаний», which is what they now are. The card spells out the consequences rather
+than leaving them to be discovered — no booking, no debts, no заявки, no послуги, and the
+chat gate refuses a *new* request — and it says plainly that **removing them from the chat
+they are already in is a separate button**, since the gate closes the entrance, not the exit.
+It warns when the person still has hours booked ahead: `ScheduledSet` points at the
+`TelegramUser` and the guard's board resolves the flat through their account, so unlinking
+leaves «❓ без особового рахунку» against an hour that really is taken. Warned about, not
+forbidden — sometimes that is the intent. `AdminResidentPageTest` pins the button, the
+warning and its absence for somebody with no flat; `ComplaintsRoleTest` pins that Сергій
+gets 403.
+
 **Objects are created on `/admin/objects`, not by moving a person.** Typing an unknown
 особовий рахунок into a resident's card creates the row *and drags that resident onto it* —
 right for "цей мешканець насправді у кв. 86", wrong for anything else: a кладова entered

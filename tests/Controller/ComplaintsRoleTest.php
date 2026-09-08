@@ -80,6 +80,7 @@ class ComplaintsRoleTest extends WebTestCase
             'the tariff' => ['GET', '/admin/tariff'],
             'community blocking votes' => ['GET', '/admin/block-votes'],
             'linking a resident to a flat' => ['POST', '/admin/users/1/move'],
+            'unlinking a resident from their flat' => ['POST', '/admin/users/1/account/unlink'],
             'changing somebody\'s role' => ['POST', '/admin/users/1/role'],
             'blocking a resident' => ['POST', '/admin/users/1/status'],
             'creating an object' => ['POST', '/admin/objects/create'],
