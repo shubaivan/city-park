@@ -95,7 +95,7 @@ $bot->onCommand('rent', \App\Telegram\Rental\Command\RentalMenuCommand::class);
 // resident's side is indistinguishable from the bot being down. ServiceCallbackWiringTest
 // walks the literals in the sources against the regex below.
 $bot->onCallbackQueryData(\App\Telegram\ServiceOffer\Command\ServiceMenuCommand::MENU_CALLBACK, \App\Telegram\ServiceOffer\Command\ServiceMenuCommand::class);
-$bot->onCallbackQueryData('^svc:(?:(?:view|page|my|photos|contact|phone|extend|remove):\d+|pic:\d+:\d+|noop)$', \App\Telegram\ServiceOffer\Command\ServiceMenuCommand::class);
+$bot->onCallbackQueryData('^svc:(?:(?:view|page|my|photos|contact|phone|extend|remove|share):\d+|pic:\d+:\d+|noop)$', \App\Telegram\ServiceOffer\Command\ServiceMenuCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\ServiceOffer\Command\ServicePublish::START_CALLBACK, \App\Telegram\ServiceOffer\Command\ServicePublish::class);
 // «✏️ Змінити» names its offer: a person may have three, and restarting the publish
 // flow blind would edit whichever one happened to be theirs first.

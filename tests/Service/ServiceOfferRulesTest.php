@@ -214,6 +214,38 @@ class ServiceOfferRulesTest extends KernelTestCase
         );
     }
 
+    /**
+     * The share block has to survive leaving Telegram.
+     *
+     * The inline button under the chat post is Telegram's alone: forward that message into
+     * Viber and the button is simply not there, leaving a summary that says «кнопка нижче»
+     * under nothing. The ЖК's Viber group still holds several hundred residents — it is the
+     * group this bot exists to replace and has not replaced yet — so pasting an advert
+     * there is the normal case.
+     *
+     * Plain text, url spelled out, no markup: somebody selects this with a thumb and drops
+     * it into another app, and formatting marks would go with it.
+     */
+    public function testTheShareBlockIsPlainTextWithTheNumber(): void
+    {
+        $offer = $this->offer($this->account('2-1-0-085', '85'), 'Двері, монтаж')
+            ->setContactPhone('+380 68 903 55 91');
+
+        $text = $this->service()->shareText($offer);
+
+        $this->assertStringContainsString('Двері, монтаж', $text);
+        $this->assertStringContainsString('+380 68 903 55 91', $text);
+        $this->assertStringContainsString('буд. 19', $text, 'a stranger must be able to place the person');
+
+        foreach (['<b>', '</b>', '<i>', '```', '**'] as $markup) {
+            $this->assertStringNotContainsString(
+                $markup,
+                $text,
+                'formatting travels with a copy-paste and lands as punctuation',
+            );
+        }
+    }
+
     private function offer(Account $account, string $title): ServiceOffer
     {
         return (new ServiceOffer())
