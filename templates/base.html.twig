@@ -25,6 +25,40 @@
             @media (max-width: 576px) {
                 input, select, textarea { font-size: 16px !important; max-width: 100%; }
             }
+
+            /*
+                The row somebody arrived at, marked.
+
+                /admin/links sends the reader to #offer-4, #listing-9, #complaint-11 — the
+                browser scrolls there and then says nothing about which of the rows on the
+                screen was meant. On a table of near-identical lines that is a scroll
+                position, not an answer, and the whole point of linking straight to the row
+                was that the answer should be one click away.
+
+                Defined once here rather than in each of the three templates: they are a
+                table, a table and a stack of cards, and the next page to receive an anchor
+                gets it for free. The flash fades, the mark stays — scrolling away and back
+                must not lose it.
+            */
+            /*
+                No `!important` on the background: an important declaration beats an
+                animation in the cascade, so the flash would never play. It is not needed
+                either — the stripe rule paints the `tr` and this paints the `td`, and the
+                cell wins by being the inner element rather than by specificity.
+            */
+            :target { scroll-margin-top: 4rem; }
+            tr:target > td,
+            .card:target {
+                background-color: #fff3cd;
+                animation: anchor-flash 1.6s ease-out 1;
+            }
+            /* The bar marks the row once, not once per cell. */
+            tr:target > td:first-child,
+            .card:target { box-shadow: inset 4px 0 0 #f0ad4e; }
+            @keyframes anchor-flash {
+                0%, 30% { background-color: #ffe08a; }
+                100% { background-color: #fff3cd; }
+            }
         </style>
         <link rel="shortcut icon" type="image/x-icon" href="{{ asset('admin.jpg') }}">
     {% endblock %}
