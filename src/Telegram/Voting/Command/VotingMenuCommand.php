@@ -144,11 +144,15 @@ class VotingMenuCommand
                 $details = $campaign->getDetails();
 
                 $lines[] = sprintf(
-                    "❓ <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b>\nДо: <b>%s</b>%s",
+                    "❓ <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b>\n🗓 %s — <b>%s</b>%s",
                     self::esc((string)$campaign->getQuestion()),
                     $details !== null ? "\n<i>" . self::esc($details) . '</i>' : '',
                     $tally['yes'],
                     $tally['no'],
+                    // Started and ends: «до 15.09» alone leaves a reader unable to tell a
+                    // vote opened this morning from one that has been sitting a week with
+                    // three ballots on it, and those call for different urgency.
+                    $campaign->getCreatedAt()?->format('d.m') ?? '—',
                     $campaign->getDeadlineAt()->format('d.m.Y'),
                     $voted,
                 );
@@ -172,13 +176,14 @@ class VotingMenuCommand
 
             $priorBlocks = $campaign->getCandidate()?->getVoteBlockCount() ?? 0;
             $lines[] = sprintf(
-                "👤 <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b> · Треба «За»: <b>%d</b> з %d\nДо: <b>%s</b>%s",
+                "👤 <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b> · Треба «За»: <b>%d</b> з %d\n🗓 %s — <b>%s</b>%s",
                 $this->voteService->candidateLabel($campaign->getCandidate()),
                 $priorBlocks > 0 ? sprintf("\n<i>раніше блокувався за рішенням спільноти: %d раз(и)</i>", $priorBlocks) : '',
                 $tally['yes'],
                 $tally['no'],
                 $campaign->yesNeeded(),
                 $campaign->getEligibleCount(),
+                $campaign->getCreatedAt()?->format('d.m') ?? '—',
                 $campaign->getDeadlineAt()->format('d.m.Y'),
                 $voted,
             );
