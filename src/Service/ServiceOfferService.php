@@ -93,9 +93,7 @@ class ServiceOfferService
         Account $account,
         ?TelegramUser $author,
         string $title,
-        ?string $priceNote,
-        ?string $description,
-        bool $showPhone = false,
+        ?string $contactPhone = null,
     ): ServiceOffer {
         $now = self::now();
 
@@ -106,16 +104,14 @@ class ServiceOfferService
             $this->purgePhotos($existing);
         }
 
-        $phone = $showPhone ? RentalListingService::formatPhone($author?->getPhoneNumber()) : null;
-
         $offer = (new ServiceOffer())
             ->setAccount($account)
             ->setAuthor($author)
             ->setTitle($title)
-            ->setPriceNote($priceNote)
-            ->setDescription($description)
-            ->setShowPhone($phone !== null)
-            ->setContactPhone($phone)
+            // Normalised here rather than at the call site: numbers reach us as «+380…»
+            // and «380…», and formatPhone() returns null for anything that is not a
+            // plausible Ukrainian number — better no number than half of one.
+            ->setContactPhone(RentalListingService::formatPhone($contactPhone))
             ->setExpiresAt((clone $now)->modify('+' . ServiceOffer::LIFETIME_DAYS . ' days'));
 
         $this->em->persist($offer);
@@ -175,26 +171,23 @@ class ServiceOfferService
     /**
      * The card, HTML parse mode.
      *
-     * The trade first and in bold: it is what the reader came for. The flat is under it,
-     * not as an address to visit but as the reason to trust the advert at all — this is a
-     * neighbour, not a card wedged into the lift door.
+     * The trade first and in bold: it is what the reader came for, then the number to ring.
+     *
+     * The flat is **labelled «Розмістив»**, never left bare under the trade. A bare
+     * «буд. 19, кв. 85» reads as "the electrician lives there", which is false the moment
+     * somebody posts their friend's number — and posting a friend's number is explicitly
+     * what this board is for. Labelled, the same line says who vouches for the card, which
+     * is the entire difference between this and a number off a lamppost.
      */
     public function describe(ServiceOffer $offer): string
     {
-        $lines = [
-            '🛠 <b>' . self::esc($offer->getTitle()) . '</b>',
-            '🏠 <i>' . self::place($offer->getAccount()) . '</i>',
-            '💰 ' . self::esc($offer->priceLabel()),
-        ];
-
-        if ($offer->getDescription()) {
-            $lines[] = '';
-            $lines[] = self::esc($offer->getDescription());
-        }
+        $lines = ['🛠 <b>' . self::esc($offer->getTitle()) . '</b>'];
 
         if ($phone = $offer->publicPhone()) {
             $lines[] = '📞 ' . self::esc($phone);
         }
+
+        $lines[] = '👤 <i>Розмістив: ' . self::place($offer->getAccount()) . '</i>';
 
         // getCreatedAt() is null until the row is flushed — see the trait, which returns
         // null there on purpose so that rendering an unsaved entity is an empty cell and
@@ -211,21 +204,15 @@ class ServiceOfferService
     /**
      * One-line label for the index.
      *
-     * The trade leads, because that is the whole question the reader is scanning for —
-     * the price and the flat only matter once they have found a плиточник at all.
-     * Telegram truncates long button captions, which is also why ServiceOffer::TITLE_MAX
-     * is short.
+     * The trade and nothing else: that is the whole question the reader is scanning for,
+     * and it is the only thing that tells one row from another. Telegram truncates long
+     * button captions, which is also why ServiceOffer::TITLE_MAX is short.
      */
     public function buttonLabel(ServiceOffer $offer, bool $own = false): string
     {
-        $parts = array_filter([
-            $offer->getTitle(),
-            $offer->priceLabel(),
-        ]);
-
         return ($own ? '📌 ' : '')
             . ($offer->hasPhotos() ? '📷 ' : '')
-            . implode(' · ', $parts);
+            . $offer->getTitle();
     }
 
     /**
@@ -659,20 +646,19 @@ class ServiceOfferService
     }
 
     /**
-     * The chat post. Short on purpose, and **never a phone number**: consent was given for
-     * the card in the bot, which linked residents open, not for a message the whole house
-     * reads and can forward anywhere. Same call as the rental board.
+     * The chat post. Short on purpose, and **never a phone number**.
+     *
+     * The number was given for the card in the bot, which only confirmed residents open —
+     * not for a message the whole house reads and can forward anywhere, and least of all
+     * when it is somebody's electrician who never agreed to either. Same call as the
+     * rental board, and a sharper one here. The reader is sent to the bot for the contact.
      */
     public function chatPost(ServiceOffer $offer): string
     {
         $lines = [
-            '🛠 <b>' . self::esc($offer->getTitle()) . '</b> · ' . self::place($offer->getAccount()),
-            '💰 ' . self::esc($offer->priceLabel()),
+            '🛠 <b>' . self::esc($offer->getTitle()) . '</b>',
+            '👤 <i>Розмістив: ' . self::place($offer->getAccount()) . '</i>',
         ];
-
-        if ($description = $offer->getDescription()) {
-            $lines[] = self::esc(mb_strimwidth($description, 0, 220, '…'));
-        }
 
         $lines[] = '';
         $lines[] = '<i>Деталі, фото і контакт — у боті, кнопка «🛠 Послуги».</i>';

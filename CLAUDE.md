@@ -217,6 +217,16 @@ shape is the rental noticeboard's — one button per offer, a one-message card w
 carousel, three photos uploaded from a tokenised web page, 30 days with a renewal prompt,
 opt-in phone, admin take-down. What differs from it differs on purpose:
 
+- **A card is two facts: the trade and a number.** Nothing else — no price, no description.
+  Both were asked for on the day the board shipped and came back out the same day
+  (08.09.2026). A price written a month earlier into a classified is a guess or a promise
+  nobody meant to make; what a job costs is settled between the two people once one of them
+  has said what needs doing, and «від 500 грн» on a card does not save that conversation, it
+  only gives the reader a figure to be disappointed by. The free-text «розкажіть про себе»
+  went for the plainer reason: the board is an index of who does what, not a CV, and every
+  extra step is a reason to close the bot and write in the chat instead. Photos say more
+  about a плиточник than the paragraph did, and they are added *after* publishing, so
+  giving up at that point still leaves the trade on the board.
 - **There are no categories, and the first field is free text.** «Сантехніка / Електрика /
   Ремонт» was the obvious first shape and it breaks on the first плиточник: he is neither,
   so the list either grows a pigeonhole per trade until nobody reads it or he picks the
@@ -225,10 +235,23 @@ opt-in phone, admin take-down. What differs from it differs on purpose:
   produce enough offers for a filter to earn its place; when they do, what to divide them
   by will be visible in the data — the same rule by which the «Продаж» tab appeared on the
   rental board only after flats were actually being sold. Do not "tidy this up" into an
-  enum.
-- **The price is free text too** (`price_note`, 48 chars, NULL renders «ціна договірна»).
-  A flat has one rent; a trade has «від 500 грн», «300 грн/год», «250 грн/м²». An integer
-  column would make every honest answer a lie.
+  enum. The section name is «🛠 Послуги» for the same reason «Будівельні послуги» was
+  rejected: that word is a category smuggled into the heading, and it tells the манікюрниця
+  and the репетитор they are in the wrong place.
+- **The number need not be the poster's own.** «Я хочу розмістити телефон свого друга
+  електрика» — so `contact_phone` is a plain typed field, normalised through
+  `RentalListingService::formatPhone()`, and the resident's own number is offered as a
+  one-tap button rather than filled in for them (it is in the database because they gave it
+  to the ОСББ for нарахування). The prompt says out loud that somebody else's number goes
+  on a board the house reads, so ask them first — the responsibility sits with the person
+  publishing, which is the only place it can honestly sit. There is no `show_phone` flag any
+  more: a number, or none.
+- **The flat on the card is labelled «👤 Розмістив», never left bare.** This follows
+  directly from the rule above: a bare «буд. 19, кв. 85» under «Електрик» says the
+  electrician lives there, which is false the moment somebody posts a friend's number.
+  Labelled, the same line says who vouches for the card — which is the entire difference
+  between this board and a number off a lamppost, and it is why the flat is on it at all.
+  `ServiceOfferRulesTest` pins it for both the card and the chat post.
 - **One active offer per *person*, not per account.** A rental listing belongs to the flat
   — the flat is what is on offer. A service belongs to whoever performs it: father is an
   electrician and daughter does manicures on the same особовий рахунок, and one-per-account
@@ -249,7 +272,9 @@ opt-in phone, admin take-down. What differs from it differs on purpose:
   bot merely took that over; this board exists to *reduce* «хто робив вам ремонт?» traffic,
   so posting every advert into General unasked would add exactly the noise it removes.
   Create the topic with `resident-chat:topics`.
-- Photos go through the web (`/service/photo/{token}`), never the bot — same invariant as
+- Photos matter more here than on any other board, because they are the only thing on a
+  card besides the trade and the number. Offered right after publishing, while the author is
+  still holding the phone. They go through the web (`/service/photo/{token}`), never the bot — same invariant as
   the rental and complaint boards, and for the same reason: a picture sent to the bot is
   always pavilion evidence. `ServicePublish` carries the mandatory
   `interceptConversationPhoto()` guard and has no photo step; it is in the shared provider

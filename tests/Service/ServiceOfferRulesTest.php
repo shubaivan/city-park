@@ -72,20 +72,15 @@ class ServiceOfferRulesTest extends KernelTestCase
 
     /**
      * The ЖК is five buildings on one street with repeating apartment numbers, so «кв. 76»
-     * names two households: a reader cannot tell whose neighbour this is, and an author
-     * receiving «Цікавляться (кв. 45)» cannot tell who wrote. The rental board learned
-     * this on 03.09.2026; this one must not have to learn it again.
+     * names two households: a reader cannot tell whose neighbour vouched for this, and a
+     * poster receiving «Цікавляться (кв. 45)» cannot tell who wrote. The rental board
+     * learned this on 03.09.2026; this one must not have to learn it again.
      */
     public function testEveryLabelNamesTheBuilding(): void
     {
         $service = $this->service();
         $account = $this->account('2-1-0-076', '76');
-
-        $offer = (new ServiceOffer())
-            ->setAccount($account)
-            ->setTitle('Плиточник')
-            ->setPriceNote('від 500 грн')
-            ->setExpiresAt(new \DateTime('+30 days'));
+        $offer = $this->offer($account, 'Плиточник');
 
         foreach (['card' => $service->describe($offer), 'chat post' => $service->chatPost($offer)] as $what => $text) {
             $this->assertStringContainsString('буд. 19', $text, $what . ' must name the building');
@@ -95,17 +90,32 @@ class ServiceOfferRulesTest extends KernelTestCase
     }
 
     /**
-     * Consent was given for the card in the bot, which only confirmed residents open —
-     * not for a message the whole house reads and can forward anywhere.
+     * The flat is labelled «Розмістив», never left bare under the trade.
+     *
+     * The board takes anybody's number — «я хочу розмістити телефон свого друга електрика»
+     * — so a bare «буд. 19, кв. 85» under «Електрик» says the electrician lives there,
+     * which is then false. Labelled, the same line says who vouches for the card, which is
+     * the whole difference between this and a number off a lamppost.
+     */
+    public function testTheFlatSaysWhoPostedItNotWhoDoesTheWork(): void
+    {
+        $service = $this->service();
+        $offer = $this->offer($this->account('2-1-0-076', '76'), 'Електрик');
+
+        foreach (['card' => $service->describe($offer), 'chat post' => $service->chatPost($offer)] as $what => $text) {
+            $this->assertStringContainsString('Розмістив', $text, $what . ' must say whose flat that is');
+        }
+    }
+
+    /**
+     * The number was given for the card in the bot, which only confirmed residents open —
+     * not for a message the whole house reads and can forward anywhere, and least of all
+     * when it is somebody's electrician who never agreed to either.
      */
     public function testTheChatPostNeverCarriesAPhone(): void
     {
-        $offer = (new ServiceOffer())
-            ->setAccount($this->account('2-1-0-076', '76'))
-            ->setTitle('Електрик')
-            ->setShowPhone(true)
-            ->setContactPhone('+380 50 313 37 05')
-            ->setExpiresAt(new \DateTime('+30 days'));
+        $offer = $this->offer($this->account('2-1-0-076', '76'), 'Електрик')
+            ->setContactPhone('+380 50 313 37 05');
 
         $post = $this->service()->chatPost($offer);
 
@@ -114,29 +124,33 @@ class ServiceOfferRulesTest extends KernelTestCase
     }
 
     /**
-     * The trade leads the button, because that is the whole question a reader is scanning
-     * for — the price only matters once they have found a плиточник at all.
+     * The button is the trade and nothing else: it is the whole question a reader is
+     * scanning for, and the only thing that tells one row from another.
      */
-    public function testTheButtonLeadsWithTheTrade(): void
+    public function testTheButtonIsTheTrade(): void
     {
-        $offer = (new ServiceOffer())
-            ->setAccount($this->account('2-1-0-076', '76'))
-            ->setTitle('Плиточник')
-            ->setPriceNote('від 500 грн')
-            ->setExpiresAt(new \DateTime('+30 days'));
+        $offer = $this->offer($this->account('2-1-0-076', '76'), 'Плиточник');
 
-        $label = $this->service()->buttonLabel($offer);
-
-        $this->assertStringStartsWith('Плиточник', $label);
-        $this->assertStringContainsString('від 500 грн', $label);
+        $this->assertSame('Плиточник', $this->service()->buttonLabel($offer));
+        $this->assertStringStartsWith('📌 ', $this->service()->buttonLabel($offer, own: true));
     }
 
-    /** «ціна договірна» is spelled out — a blank reads as missing data, not as "ask me". */
-    public function testAMissingPriceIsSpelledOut(): void
+    /**
+     * No price anywhere. It was asked for on the day the board shipped and came back out
+     * the same day: a figure written a month earlier into a classified is a guess or a
+     * promise nobody meant to make, and it is settled between the two people once one of
+     * them has said what needs doing.
+     */
+    public function testNothingOnTheCardTalksAboutMoney(): void
     {
-        $offer = (new ServiceOffer())->setTitle('Манікюр вдома');
+        $service = $this->service();
+        $offer = $this->offer($this->account('2-1-0-076', '76'), 'Плиточник');
 
-        $this->assertSame('ціна договірна', $offer->priceLabel());
+        foreach ([$service->describe($offer), $service->chatPost($offer), $service->buttonLabel($offer)] as $text) {
+            $this->assertStringNotContainsString('грн', $text);
+            $this->assertStringNotContainsString('💰', $text);
+            $this->assertStringNotContainsString('договірна', $text);
+        }
     }
 
     /** The title is a button caption; Telegram truncates, so the entity caps it itself. */
@@ -148,12 +162,22 @@ class ServiceOfferRulesTest extends KernelTestCase
     }
 
     /**
-     * Free text, not a number: a trade has «від 500 грн», «300 грн/год», «за
-     * домовленістю». Forcing that into an integer would make every honest answer a lie.
+     * A card with no number still works: roughly half of residents have no @username
+     * either, and for them the bot relays the enquiry to whoever posted it.
      */
-    public function testThePriceIsFreeTextAndBlankMeansNegotiable(): void
+    public function testAnOfferWithNoNumberIsValid(): void
     {
-        $this->assertNull((new ServiceOffer())->setPriceNote('   ')->getPriceNote());
-        $this->assertSame('300 грн/год', (new ServiceOffer())->setPriceNote(' 300 грн/год ')->getPriceNote());
+        $offer = $this->offer($this->account('2-1-0-076', '76'), 'Репетитор з англійської');
+
+        $this->assertNull($offer->publicPhone());
+        $this->assertStringNotContainsString('📞', $this->service()->describe($offer));
+    }
+
+    private function offer(Account $account, string $title): ServiceOffer
+    {
+        return (new ServiceOffer())
+            ->setAccount($account)
+            ->setTitle($title)
+            ->setExpiresAt(new \DateTime('+30 days'));
     }
 }
