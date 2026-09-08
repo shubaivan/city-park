@@ -7,6 +7,7 @@ use App\Entity\Account;
 use App\Entity\AccountStatusLog;
 use App\Entity\BlockVoteBallot;
 use App\Entity\BlockVoteCampaign;
+use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
 use App\Repository\BlockVoteBallotRepository;
 use App\Message\VoteBroadcastMessage;
