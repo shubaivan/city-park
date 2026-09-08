@@ -34,7 +34,7 @@
                     </thead>
                     <tbody>
                     {% for offer in offers %}
-                        <tr>
+                        <tr id="offer-{{ offer.id }}">
                             <td>{{ offer.id }}</td>
                             <td>
                                 <b>{{ offer.title }}</b><br>

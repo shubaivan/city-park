@@ -37,10 +37,29 @@
                     <tbody>
                     {% for row in summary %}
                         {% set target = titles[row.kind][row.target_id] ?? null %}
+                        {#
+                            Straight to the row, not to the top of a page somebody then has
+                            to scan: this table is read to answer «а що це було», and the
+                            answer is one click away or it is not an answer.
+                        #}
+                        {#
+                            The complaints register is open to both roles; the other two
+                            pages are the accountant's alone. A link that renders and then
+                            answers 403 is reported as «панель не працює», so the complaints
+                            role simply gets plain text there.
+                        #}
+                        {% set href = row.kind == 'complaint'
+                            ? path('app_admin_complaints') ~ '#complaint-' ~ row.target_id
+                            : (is_granted('ROLE_ADMIN')
+                                ? (row.kind == 'service'
+                                    ? path('app_admin_services') ~ '#offer-' ~ row.target_id
+                                    : path('app_admin_rentals') ~ '#listing-' ~ row.target_id)
+                                : null) %}
                         <tr>
                             <td>
                                 {% if row.kind == 'service' %}🛠{% elseif row.kind == 'rental' %}🔑{% else %}🔧{% endif %}
                                 {% if target %}
+                                    {% if href %}<a href="{{ href }}">{% endif %}
                                     {% if row.kind == 'service' %}
                                         <b>{{ target.title }}</b>
                                     {% elseif row.kind == 'rental' %}
@@ -50,6 +69,7 @@
                                         <b>№{{ target.id }}</b>
                                         <small class="text-muted">{{ target.text|slice(0, 70) }}</small>
                                     {% endif %}
+                                    {% if href %}</a>{% endif %}
                                 {% else %}
                                     {# Deleted since — the click is still a fact about the post. #}
                                     <span class="text-muted">#{{ row.target_id }} (видалено)</span>
@@ -101,11 +121,19 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if click.kind == 'service' %}🛠 послуга
-                                {% elseif click.kind == 'rental' %}🔑 оренда
-                                {% else %}🔧 заявка
-                                {% endif %}
-                                <small class="text-muted">#{{ click.targetId }}</small>
+                                {% set clickHref = click.kind == 'complaint'
+                                    ? path('app_admin_complaints') ~ '#complaint-' ~ click.targetId
+                                    : (is_granted('ROLE_ADMIN')
+                                        ? (click.kind == 'service'
+                                            ? path('app_admin_services') ~ '#offer-' ~ click.targetId
+                                            : path('app_admin_rentals') ~ '#listing-' ~ click.targetId)
+                                        : null) %}
+                                {% if clickHref %}<a href="{{ clickHref }}">{% endif %}
+                                    {% if click.kind == 'service' %}🛠 послуга
+                                    {% elseif click.kind == 'rental' %}🔑 оренда
+                                    {% else %}🔧 заявка
+                                    {% endif %}#{{ click.targetId }}
+                                {% if clickHref %}</a>{% endif %}
                             </td>
                         </tr>
                     {% endfor %}
