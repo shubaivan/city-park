@@ -35,6 +35,26 @@ class DebtBoardCommand
         private DebtBoardService $board,
     ) {}
 
+    /**
+     * Somebody tapped «↗️ Відкрити в боті» under the monthly announcement in the chat.
+     *
+     * No account check of its own: `report(null)` already explains itself to somebody the
+     * bot cannot place, which is the same thing the menu button does. The board is
+     * verified-residents-only in the sense that it names nobody to a stranger — not in the
+     * sense of refusing to open.
+     */
+    public function openFromDeepLink(Nutgram $bot, int $snapshotId): void
+    {
+        $user = $this->telegramUserService->getCurrentUser();
+        $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
+
+        $bot->sendMessage(
+            text: $this->board->report($account, 1),
+            parse_mode: ParseMode::HTML,
+            reply_markup: $this->markup($account, 1),
+        );
+    }
+
     public function __invoke(Nutgram $bot): void
     {
         $data = $bot->isCallbackQuery() ? (string)($bot->callbackQuery()->data ?? '') : '';

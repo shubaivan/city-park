@@ -375,6 +375,32 @@ submit — a form that renders and then 403s is reported as «панель не 
 `ComplaintsRoleTest` pins the routes; `AdminResidentPageTest` pins that the card renders
 without a single one of its forms.
 
+## Every post in the residents' chat links back into the bot
+
+**Rule, not a preference: a post the bot puts in the group must carry «↗️ Відкрити в боті»,
+pointing at the thing the post is about.** The post is always a summary — short on purpose,
+never the photos, on most boards never a phone — and everything it leaves out lives on a
+card the reader then has to hunt for: leave the chat, open the bot, find the section, find
+the one row among a list. Every board shipped that dead end and every board had it removed
+afterwards; writing the rule down is cheaper than removing it a fifth time.
+
+`ResidentChatPostsLinkBackTest` enforces it at the source: any `sendMessage()` carrying a
+`message_thread_id` (which in this codebase only a group post does) must also pass
+`$this->links->button(...)`. A post that genuinely has nowhere to point goes in that test's
+`NO_TARGET` with its reason.
+
+`DeepLink` is the one place a link is built *or* read — prefix map, button, and the click
+record together, so a new board cannot add a button the router does not understand. A **url**
+button is the only kind that works in a group: the global middleware drops every update
+arriving from one, so a callback button there spins forever, while a `t.me/…?start=…` link
+sends no update at all. Kinds today: `s-` service, `r-` rental, `c-` complaint, `d-` the
+debtors' board, `g-` the guard's QR (which shares the router and nothing else — it is signed,
+carries no id, and is deliberately not recorded as a click).
+
+The debt link's id is the `DebtSnapshot`, not the destination: the board it opens is always
+the current one, and carrying the snapshot means the click log answers «which month's post
+did people actually open», which is the only interesting question about a post that repeats.
+
 ## Who followed a link out of the chat
 
 `/admin/links` — every tap on «↗️ Відкрити в боті» under a post in the residents' chat:

@@ -5,6 +5,7 @@ namespace App\Telegram\Start\Command;
 use App\Service\DeepLink;
 use App\Service\TelegramUserService;
 use App\Telegram\Complaint\Command\ComplaintMenuCommand;
+use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\Guard\Command\GuardScanCommand;
 use App\Telegram\Rental\Command\RentalMenuCommand;
 use App\Telegram\ServiceOffer\Command\ServiceMenuCommand;
@@ -24,6 +25,7 @@ use SergiX44\Nutgram\Nutgram;
  *   s-<id>                    a service advert       → ServiceMenuCommand
  *   r-<id>                    a rental listing       → RentalMenuCommand
  *   c-<id>                    a complaint            → ComplaintMenuCommand
+ *   d-<snapshot>              the debtors' board     → DebtBoardCommand
  *
  * **An unknown payload opens the main menu**, rather than erroring or refusing. A link may
  * be forwarded months later, from a post that has since been deleted, or simply mistyped;
@@ -39,6 +41,7 @@ class StartPayloadCommand
         private ServiceMenuCommand $services,
         private RentalMenuCommand $rentals,
         private ComplaintMenuCommand $complaints,
+        private DebtBoardCommand $debts,
         private DeepLink $links,
         private TelegramUserService $telegramUserService,
     ) {}
@@ -72,6 +75,7 @@ class StartPayloadCommand
             DeepLink::KIND_SERVICE => $this->services->openFromDeepLink($bot, $id),
             DeepLink::KIND_RENTAL => $this->rentals->openFromDeepLink($bot, $id),
             DeepLink::KIND_COMPLAINT => $this->complaints->openFromDeepLink($bot, $id),
+            DeepLink::KIND_DEBT => $this->debts->openFromDeepLink($bot, $id),
             default => StartCommand::send($bot),
         };
     }
