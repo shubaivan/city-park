@@ -75,6 +75,8 @@ class PropertyRegistryTest extends TestCase
             $debtPolicy,
             $this->createMock(PhotoUploadRequestRepository::class),
             $this->createMock(PavilionPhotoService::class),
+            $this->createMock(TariffRepository::class),
+            $this->createMock(EntityManagerInterface::class),
         );
 
         return new PropertyRegistry(

@@ -60,6 +60,18 @@ class BlockVoteService
      * regardless of is_active (debt/photo-blocked residents still get a voice). Only кладові
      * (storage) are excluded. The candidate is excluded. One account = one vote (DB constraint).
      *
+     * **And only objects with somebody in the bot behind them.** This is the denominator of
+     * the pass threshold, so every object counted here is a vote the campaign needs and can
+     * never receive: nobody is on the other end to be notified, open the bot or press
+     * anything. It did not matter while the bot held 175 objects that mostly had residents;
+     * `objects:import-registry` then brought in the ЖК's whole register and the electorate
+     * went from 112 to 774, of which roughly 180 have a linked resident. At 30% that is 233
+     * votes needed out of ~180 possible — the mechanism could not pass, ever, and it took a
+     * campaign nobody could win to notice, because the button still worked.
+     *
+     * A flat whose owner joins the bot tomorrow becomes a voter tomorrow; a campaign already
+     * open keeps the count it was opened with, which is what `eligible_count` is for.
+     *
      * @return Account[]
      */
     public function eligibleVoters(?Account $exclude = null): array
@@ -67,7 +79,7 @@ class BlockVoteService
         $out = [];
         foreach ($this->accountRepository->findAll() as $account) {
             /** @var Account $account */
-            if (!$account->canBookPavilion()) {
+            if (!self::mayVote($account)) {
                 continue;
             }
             if ($exclude !== null && $account->getId() === $exclude->getId()) {
@@ -78,9 +90,19 @@ class BlockVoteService
         return $out;
     }
 
+    /**
+     * One definition, used for the roll call and for the ballot check, so the denominator
+     * and the door cannot disagree — a voter who is counted but refused, or refused but
+     * counted, is a campaign that adds up wrong.
+     */
+    public static function mayVote(Account $account): bool
+    {
+        return $account->canBookPavilion() && !$account->getUsers()->isEmpty();
+    }
+
     public function isEligibleVoter(Account $voter, BlockVoteCampaign $campaign): bool
     {
-        if (!$voter->canBookPavilion()) {
+        if (!self::mayVote($voter)) {
             return false;
         }
         return $voter->getId() !== $campaign->getCandidate()->getId();
