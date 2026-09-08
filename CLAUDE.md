@@ -242,7 +242,13 @@ opt-in phone, admin take-down. What differs from it differs on purpose:
   електрика» — so `contact_phone` is a plain typed field, normalised through
   `RentalListingService::formatPhone()`, and the resident's own number is offered as a
   one-tap button rather than filled in for them (it is in the database because they gave it
-  to the ОСББ for нарахування). The prompt says out loud that somebody else's number goes
+  to the ОСББ for нарахування). Somebody else's is typed, or attached from the phone book
+  with 📎 → «Контакт», which is where it actually lives and the one path that cannot mistype
+  a digit — the step reads `$bot->message()?->contact` as well as the text.
+  **Telegram cannot be asked to open that picker from a button**: `request_contact` returns
+  the user's own number and nothing else, which is what «Мій номер» already is, and
+  `request_users` returns Telegram ids, not phone numbers. So there is no button to add here
+  — don't go looking for one. The prompt says out loud that somebody else's number goes
   on a board the house reads, so ask them first — the responsibility sits with the person
   publishing, which is the only place it can honestly sit. There is no `show_phone` flag any
   more: a number, or none.

@@ -24,7 +24,10 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
  * друга електрика» — so the number is a plain field. Their own is offered as a one-tap
  * button because it is the common case and it is already in our database, but it is a tap
  * and not a default: that number is there because they gave it to the ОСББ for
- * нарахування. Any other number is typed in, and the prompt says out loud that somebody
+ * нарахування. Somebody else's is typed in, or — far more likely, since that is where it
+ * actually lives — attached from the phone book with 📎 → «Контакт». Telegram offers no
+ * way to *open* that picker from a button: `request_contact` returns the user's own number
+ * and nothing else, which is what «Мій номер» already is. Any other number is typed in, and the prompt says out loud that somebody
  * else's number goes on a board the house reads, so ask them first — the responsibility
  * sits with the person publishing it, which is the only place it can honestly sit.
  *
@@ -199,7 +202,8 @@ class ServicePublish extends Conversation
 
         $bot->sendMessage(
             text: "📞 <b>Який номер показувати?</b>\n\n"
-                . "Надішліть номер повідомленням — свій або майстра, якого ви радите.\n\n"
+                . "Надішліть номер повідомленням — свій або майстра, якого ви радите.\n"
+                . "Можна не набирати вручну: 📎 → «Контакт» і оберіть його з телефонної книги.\n\n"
                 . '<i>Оголошення бачать усі підтверджені мешканці будинку. Якщо номер не ваш — '
                 . "спитайте спершу в його власника.</i>",
             parse_mode: ParseMode::HTML,
@@ -243,19 +247,39 @@ class ServicePublish extends Conversation
             return;
         }
 
-        // A typed number. Only reachable before the preview — afterwards the step accepts
-        // callbacks only, so a stray message cannot drop a half-built offer.
+        // A typed number, or a contact card. Only reachable before the preview —
+        // afterwards the step accepts callbacks only, so a stray message cannot drop a
+        // half-built offer.
         if ($this->phone !== null) {
             return;
         }
 
-        $typed = RentalListingService::formatPhone((string)$bot->message()?->text);
+        // 📎 → «Контакт» is how somebody actually has their electrician's number: saved
+        // in the phone book, not memorised. Telegram cannot be asked to *open* that
+        // picker — `request_contact` returns the user's own number and nothing else, which
+        // is already the «Мій номер» button — but it does deliver whatever contact the
+        // person attaches, and accepting it removes the one step where a digit gets
+        // mistyped. Before this, attaching one answered «не схоже на номер», because the
+        // message carries a contact and no text.
+        //
+        // Reachable here only because a live conversation swallows every update from this
+        // user: the global onContact handler (phone confirmation) never sees it.
+        $contact = $bot->message()?->contact;
+
+        $typed = $contact !== null
+            ? RentalListingService::formatPhone($contact->phone_number)
+            : RentalListingService::formatPhone((string)$bot->message()?->text);
 
         if ($typed === null) {
             $bot->sendMessage(
-                text: '⚠️ Не схоже на український номер. Надішліть у вигляді '
-                    . '<b>0501234567</b> або <b>+380501234567</b>, '
-                    . 'або оберіть кнопку нижче.',
+                text: $contact !== null
+                    // Says which half went wrong. A contact card that we refuse looks like
+                    // the bot ignoring the attachment unless the reason is named.
+                    ? '⚠️ У цьому контакті не український номер — надішліть його вручну, '
+                        . 'у вигляді <b>0501234567</b> або <b>+380501234567</b>.'
+                    : '⚠️ Не схоже на український номер. Надішліть у вигляді '
+                        . '<b>0501234567</b> або <b>+380501234567</b>, '
+                        . 'прикріпіть контакт (📎 → «Контакт») або оберіть кнопку нижче.',
                 parse_mode: ParseMode::HTML,
             );
 
