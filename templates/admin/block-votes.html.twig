@@ -6,7 +6,7 @@
     {{ parent() }}
 
     <div class="container">
-        <h3 class="mt-3">🗳️ Голосування спільноти за блокування</h3>
+        <h3 class="mt-3">🗳️ Голосування спільноти</h3>
         <p class="text-muted">
             Адмін відкриває голосування для кандидата (за особовим рахунком). Голосують власники
             квартир та паркомісць (зокрема із боргом чи блоком), крім самого кандидата. Якщо «За»
@@ -106,12 +106,17 @@
                     <tbody>
                     {% for c in open %}
                         <tr>
-                            <td>{{ c.label }}</td>
-                            <td>{{ c.account_number }}</td>
+                            <td>
+                                {% if c.kind == 'question' %}❓{% else %}🚫{% endif %}
+                                {{ c.label }}
+                                {% if c.details %}<br><small class="text-muted">{{ c.details }}</small>{% endif %}
+                            </td>
+                            <td>{{ c.account_number ?? '—' }}</td>
                             <td>{% if c.blocks > 0 %}<span class="badge bg-warning text-dark">{{ c.blocks }}×</span>{% else %}—{% endif %}</td>
                             <td><b>{{ c.yes }}</b></td>
                             <td>{{ c.no }}</td>
-                            <td>{{ c.needed }}</td>
+                            {# A question crosses no line, so «треба N» would be a number that decides nothing. #}
+                            <td>{{ c.kind == 'question' ? '—' : c.needed }}</td>
                             <td>{{ c.eligible }}</td>
                             <td>{{ c.deadline|date('d.m.Y') }}</td>
                             <td>{{ c.created_by ?? '—' }}</td>
@@ -134,6 +139,35 @@
             </div>
         {% endif %}
 
+        {#
+            A question put to the house. Deliberately advisory: nothing is enacted when it
+            closes, the counts go in the archive and the ОСББ decides. A bot that could
+            enact a house decision off a yes/no with no quorum would be worse than no bot.
+        #}
+        <div class="card mt-4 mb-3">
+            <div class="card-header">❓ Поставити питання мешканцям</div>
+            <div class="card-body">
+                <p class="small text-muted">
+                    Так / Ні, {{ vote_days }} днів, один голос від рахунку. Нічого не блокує і
+                    нічого не вмикає автоматично — це опитування, рішення ухвалює ОСББ, а
+                    результат лишається в архіві голосувань, який бачать усі мешканці.
+                    Питання на три варіанти — це питання на збори, а не сюди.
+                </p>
+                <form method="post" action="{{ path('app_admin_block_vote_question') }}"
+                      onsubmit="return confirm('Розіслати це питання всім мешканцям з правом голосу?');">
+                    <div class="form-group mb-2">
+                        <input type="text" name="question" class="form-control" required minlength="10"
+                               placeholder="Наприклад: Чи встановлюємо шлагбаум на в'їзді?">
+                    </div>
+                    <div class="form-group mb-2">
+                        <textarea name="details" class="form-control" rows="2"
+                                  placeholder="Необов'язково: чому питаємо, скільки коштує, що буде далі"></textarea>
+                    </div>
+                    <button class="btn btn-primary">Поставити питання</button>
+                </form>
+            </div>
+        </div>
+
         <h5 class="mt-4">Завершені голосування</h5>
         {% if recent is empty %}
             <p class="text-muted">Поки що немає.</p>
@@ -155,17 +189,19 @@
                     <tbody>
                     {% for c in recent %}
                         <tr>
-                            <td>{{ c.label }}</td>
-                            <td>{{ c.account_number }}</td>
+                            <td>{% if c.kind == 'question' %}❓{% else %}🚫{% endif %} {{ c.label }}</td>
+                            <td>{{ c.account_number ?? '—' }}</td>
                             <td>{% if c.blocks > 0 %}<span class="badge bg-warning text-dark">{{ c.blocks }}×</span>{% else %}—{% endif %}</td>
                             <td>
-                                {% if c.status == 'passed' %}<span class="badge bg-danger">Заблоковано</span>
+                                {# A question is recorded, not judged — the result is the counts beside it. #}
+                                {% if c.status == 'closed' %}<span class="badge bg-info text-dark">Опитано</span>
+                                {% elseif c.status == 'passed' %}<span class="badge bg-danger">Заблоковано</span>
                                 {% elseif c.status == 'failed' %}<span class="badge bg-success">Не пройшло</span>
                                 {% else %}<span class="badge bg-secondary">Скасовано</span>{% endif %}
                             </td>
                             <td>{{ c.yes ?? 0 }}</td>
                             <td>{{ c.no ?? 0 }}</td>
-                            <td>{{ c.needed }}</td>
+                            <td>{{ c.kind == 'question' ? '—' : c.needed }}</td>
                             <td>{{ c.closed_at ? c.closed_at|date('d.m.Y H:i') : '—' }}</td>
                         </tr>
                     {% endfor %}
