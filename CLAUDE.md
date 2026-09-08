@@ -139,6 +139,27 @@ a button, because a live button under a final vote invites a tap that can only b
 for a block campaign — voting to block a neighbour is now attributable — and it was made
 knowingly.
 
+**The main menu carries the count, and the vote carries a 🔄.** «🗳️ Голосування (1)» is the
+only thing on the main screen that says the house is deciding something — before it, an open
+vote reached the people who opened the section or read the chat post, and a vote ends on a
+count, so the residents it missed were the ballots it needed. `StartCommand::votingLabel()`
+asks `BlockVoteService::openVoteCount()` at render time (which is why that service is
+`public: true`, same trap as the guard buttons), and it counts what is **open to this
+reader**, not what they still owe: a ballot here is final, so a to-do badge would vanish the
+moment they voted and take the notice with it — and half its value is telling somebody who
+*has* voted that the vote is still running, so they mention it to a neighbour. Same reading
+as «🔧 Заявки (5)» and «🛠 Послуги (3)».
+
+The tally inside the message is a snapshot from when it was drawn, and a vote runs a week,
+so «🔄 Оновити» re-renders it in place. **A refresh that changes nothing must not send a
+second menu**: Telegram refuses an identical edit, `respond()` falls through to
+`sendMessage()` on any edit failure — right everywhere else — and on this button the
+unchanged case is the *common* one, so it would post one more copy of the whole menu per
+tap. The unchanged branch answers with a toast and returns; any other failure still falls
+through. `VotingMenuTest` pins both, and pins that every public callback constant on the
+menu is actually wired in `config/telegram.php` — an unrouted button spins, which reads as
+the bot being down.
+
 **📜 Минулі голосування** — the archive, in the bot for everyone and on `/admin/block-votes`
 in full. Both kinds in one list: they are the same act, and splitting them would hide how
 rarely either happens. Cancelled campaigns are left out — one an admin withdrew before the
