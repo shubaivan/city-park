@@ -40,7 +40,8 @@
 
         {% for complaint in complaints %}
             {% set thread = threads[complaint.id]|default([]) %}
-            <div class="card mb-3 cmp-card">
+            {# Anchored so /admin/links can point straight at the row somebody clicked. #}
+            <div class="card mb-3 cmp-card" id="complaint-{{ complaint.id }}">
                 <div class="card-body p-2 p-sm-3">
 
                     <div class="d-flex justify-content-between align-items-start">

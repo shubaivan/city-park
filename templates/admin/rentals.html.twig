@@ -33,7 +33,7 @@
                     <tbody>
                     {% for listing in listings %}
                         {% set money = debtByListing[listing.id] ?? null %}
-                        <tr>
+                        <tr id="listing-{{ listing.id }}">
                             <td>{{ listing.id }}</td>
                             <td>
                                 {{ listing.dealIcon }} {{ listing.account.unitLabel }}<br>
