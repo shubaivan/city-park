@@ -255,6 +255,27 @@ class TelegramUser
         return $name !== '' ? $name : 'без імені';
     }
 
+    /**
+     * Whether the ОСББ's arrears on this flat are this person's business.
+     *
+     * A tenant is linked to the account so the bot knows which flat they live in — that is
+     * what gets them into the house chat, lets them book the альтанка and lets them report
+     * a broken lift. It does not make the owner's debt theirs, and until 08.09.2026 the bot
+     * told them it did: the figure sat beside their особовий рахунок on every /start, the
+     * board marked it «📌 Ваша квартира», and the monthly reminder addressed them by it.
+     *
+     * The public debtors' board is **not** hidden from them, deliberately: it names every
+     * flat in the house to every resident, so their neighbour on the fifth floor reads the
+     * same line. Hiding it would leave a tenant less informed than anybody else while
+     * protecting nothing. What is switched off is the bot asserting that the debt is *his*.
+     *
+     * `role` is descriptive everywhere else in this bot — this is the one thing it decides.
+     */
+    public function owesForTheFlat(): bool
+    {
+        return ($this->role ?? null) !== self::ROLE_TENANT;
+    }
+
     public function getRole(): ?string
     {
         return $this->role;

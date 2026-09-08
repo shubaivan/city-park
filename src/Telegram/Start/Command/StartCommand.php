@@ -80,7 +80,7 @@ class StartCommand extends Command
     {
         return self::renderHeader(
             self::objects($bot, $account),
-            self::debtFiguresArePublishable($bot),
+            self::debtFiguresArePublishable($bot) && self::owesForTheFlat($bot),
             self::household($bot, $account),
         );
     }
@@ -273,6 +273,32 @@ class StartCommand extends Command
      * Whether the debt figures are fresh enough to print. Same answer the debtors' board
      * gives itself, so the header cannot show a sum on a day the board has gone quiet.
      */
+    /**
+     * Whether the arrears on this flat are this reader's business.
+     *
+     * False for a tenant. They are linked to the account so the bot knows where they live —
+     * that is what admits them to the house chat, lets them book the альтанка and lets them
+     * report a broken lift — and none of it makes the owner's debt theirs. Until 08.09.2026
+     * the bot said otherwise on every /start: the figure sat beside their особовий рахунок
+     * and the board marked it «📌 Ваша квартира».
+     *
+     * The board itself still renders for them: it names every flat in the house to every
+     * resident, so their neighbour reads the same line, and hiding it would leave a tenant
+     * less informed than anybody else while protecting nothing.
+     */
+    public static function owesForTheFlat(Nutgram $bot): bool
+    {
+        try {
+            $users = $bot->getContainer()->get(TelegramUserService::class);
+            $user = $users instanceof TelegramUserService ? $users->getCurrentUser() : null;
+
+            // Unknown reader: say nothing about anybody's debt rather than guess.
+            return $user?->owesForTheFlat() ?? false;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     private static function debtFiguresArePublishable(Nutgram $bot): bool
     {
         try {
@@ -368,7 +394,7 @@ class StartCommand extends Command
                 return '';
             }
 
-            return $board->menuBlock($account);
+            return $board->menuBlock($account, self::owesForTheFlat($bot));
         } catch (\Throwable) {
             return '';
         }

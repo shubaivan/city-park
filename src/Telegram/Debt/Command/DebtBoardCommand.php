@@ -48,10 +48,12 @@ class DebtBoardCommand
         $user = $this->telegramUserService->getCurrentUser();
         $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
 
+        $owns = StartCommand::owesForTheFlat($bot);
+
         $bot->sendMessage(
-            text: $this->board->report($account, 1),
+            text: $this->board->report($account, 1, $owns),
             parse_mode: ParseMode::HTML,
-            reply_markup: $this->markup($account, 1),
+            reply_markup: $this->markup($account, 1, $owns),
         );
     }
 
@@ -72,8 +74,10 @@ class DebtBoardCommand
         $user = $this->telegramUserService->getCurrentUser();
         $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
 
-        $text = $this->board->report($account, $page);
-        $markup = $this->markup($account, $page);
+        $owns = StartCommand::owesForTheFlat($bot);
+
+        $text = $this->board->report($account, $page, $owns);
+        $markup = $this->markup($account, $page, $owns);
 
         if ($bot->isCallbackQuery()) {
             $bot->answerCallbackQuery();
@@ -90,7 +94,8 @@ class DebtBoardCommand
         $bot->sendMessage(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
     }
 
-    private function markup(?Account $account, int $page): InlineKeyboardMarkup
+    /** @param bool $ownsTheDebt false for a tenant — «📌 Моя квартира» would be a lie. */
+    private function markup(?Account $account, int $page, bool $ownsTheDebt = true): InlineKeyboardMarkup
     {
         $markup = InlineKeyboardMarkup::make();
 
@@ -122,8 +127,10 @@ class DebtBoardCommand
             $markup->addRow(...$row);
         }
 
-        // "Ви 63-й" is useless if reaching that line means tapping ➡️ four times.
-        $mine = $this->board->pageOfViewer($account);
+        // "Ви 63-й" is useless if reaching that line means tapping ➡️ four times. Not
+        // offered to a tenant: «Моя квартира» over somebody else's arrears is the same
+        // claim the viewer line makes, in one fewer word.
+        $mine = $ownsTheDebt ? $this->board->pageOfViewer($account) : null;
 
         if ($mine !== null && $mine !== $page) {
             $markup->addRow(InlineKeyboardButton::make(
