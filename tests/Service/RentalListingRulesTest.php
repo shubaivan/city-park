@@ -265,18 +265,38 @@ class RentalListingRulesTest extends KernelTestCase
         $this->assertStringNotContainsString('грн/міс', $service->chatPost($sale));
     }
 
-    /** A phone is opt-in on the card and must not leak into a post the whole house reads. */
-    public function testTheChatPostNeverPrintsAPhone(): void
+    /**
+     * The post carries the number the owner opted into — and only that one.
+     *
+     * It used to carry none, on the reasoning that a message the whole house reads is a
+     * wider audience than a card in the bot. For this board that is backwards: the rental
+     * list is open to anybody who opens the bot, linked or not, while the residents' chat
+     * is gated by that very list. A number already on the card has therefore been shown to
+     * a *larger* audience than this post reaches.
+     *
+     * The consent gate itself does not move: an owner who kept their number private keeps
+     * it private everywhere, which is the half that must never be "tidied" for symmetry.
+     */
+    public function testTheChatPostPrintsOnlyAnOptedInPhone(): void
     {
         self::bootKernel();
         $service = self::getContainer()->get(RentalListingService::class);
 
-        $listing = (new RentalListing())
+        $shared = (new RentalListing())
             ->setAccount($this->account('1-1-0-085', '85'))
             ->setPrice(20000)
             ->setShowPhone(true)
             ->setContactPhone('+380 50 111 22 33');
 
-        $this->assertStringNotContainsString('380', $service->chatPost($listing));
+        $this->assertStringContainsString('+380 50 111 22 33', $service->chatPost($shared));
+
+        $private = (new RentalListing())
+            ->setAccount($this->account('1-1-0-085', '85'))
+            ->setPrice(20000)
+            ->setShowPhone(false)
+            ->setContactPhone('+380 50 111 22 33');
+
+        $this->assertStringNotContainsString('380', $service->chatPost($private));
+        $this->assertStringNotContainsString('📞', $service->chatPost($private));
     }
 }

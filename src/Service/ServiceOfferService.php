@@ -754,22 +754,32 @@ class ServiceOfferService
     }
 
     /**
-     * The chat post. Short on purpose, and **never a phone number**.
+     * The chat post. Short, and it **does** carry the number.
      *
-     * The number was given for the card in the bot, which only confirmed residents open —
-     * not for a message the whole house reads and can forward anywhere, and least of all
-     * when it is somebody's electrician who never agreed to either. Same call as the
-     * rental board, and a sharper one here. The reader is sent to the bot for the contact.
+     * This is the one place the services board parts company with the rental one, which
+     * never prints a phone. That rule is right there and was copied here by reflex: a
+     * rental listing is readable by anybody who opens the bot, linked to an особовий
+     * рахунок or not, so its post can reach a stranger. The residents' chat is gated by the
+     * same list as this board — `mayJoin()` admits linked residents and nobody else — so
+     * the post and the card in the bot are read by exactly the same people. An extra tap
+     * between a neighbour and an electrician's number protects nobody and costs the call.
+     *
+     * What the post still leaves out is the photos, which is what the button is for.
      */
     public function chatPost(ServiceOffer $offer): string
     {
-        $lines = [
-            '🛠 <b>' . self::esc($offer->getTitle()) . '</b>',
-            '👤 <i>Розмістив: ' . self::place($offer->getAccount()) . '</i>',
-        ];
+        $lines = ['🛠 <b>' . self::esc($offer->getTitle()) . '</b>'];
+
+        if ($phone = $offer->publicPhone()) {
+            $lines[] = '📞 ' . self::esc($phone);
+        }
+
+        $lines[] = '👤 <i>Розмістив: ' . self::place($offer->getAccount()) . '</i>';
 
         $lines[] = '';
-        $lines[] = '<i>Телефон і фото робіт — у боті, кнопка нижче.</i>';
+        $lines[] = $offer->hasPhotos()
+            ? '<i>Фото робіт — у боті, кнопка нижче.</i>'
+            : '<i>Відкрити в боті — кнопка нижче.</i>';
 
         return implode("\n", $lines);
     }

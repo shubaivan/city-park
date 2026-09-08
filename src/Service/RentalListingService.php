@@ -617,6 +617,21 @@ class RentalListingService
             $lines[] = self::esc(mb_strimwidth($description, 0, 220, '…'));
         }
 
+        // The number, but only the one the owner opted into publishing.
+        //
+        // This post used to carry none, on the reasoning that a message the whole house
+        // reads is a wider audience than a card in the bot. For this board that is
+        // backwards: the rental list is open to **anybody** who opens the bot, linked to an
+        // особовий рахунок or not, while the residents' chat is gated by that very list. So
+        // a number already on the card has been shown to a *larger* audience than this post
+        // reaches, and withholding it here only costs the owner the call.
+        //
+        // publicPhone() is still the gate: consent was given for that number, on the card,
+        // and an owner who kept it private keeps it private everywhere.
+        if ($phone = $listing->publicPhone()) {
+            $lines[] = '📞 ' . self::esc($phone);
+        }
+
         $lines[] = '';
         $lines[] = '<i>Деталі, фото і контакт власника — у боті, кнопка «🔑 Оренда».</i>';
 
