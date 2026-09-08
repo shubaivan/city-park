@@ -235,6 +235,47 @@ class ServiceOfferRulesTest extends KernelTestCase
      * Plain text, url spelled out, no markup: somebody selects this with a thumb and drops
      * it into another app, and formatting marks would go with it.
      */
+    /**
+     * An unchanged post is not a reason to post again.
+     *
+     * `announce()` edits the standing post rather than deleting and re-posting, because
+     * Telegram refuses to delete a message older than 48 hours and an offer lives 30 days.
+     * Telegram answers an edit that changes nothing with «message is not modified» — and
+     * the first version of that catch treated it like a deleted post: it cleared
+     * `chat_message_id` and published a *second* advert. A republish that changes only the
+     * photos, and every run of `service:refresh-posts` over posts that are already right,
+     * would have duplicated them — exactly the classifieds rot the edit-in-place rule
+     * exists to prevent. Same trap the voting menu's 🔄 was written around.
+     */
+    public function testAnUnmodifiedChatPostIsNotPublishedTwice(): void
+    {
+        $source = file_get_contents(__DIR__ . '/../../src/Service/ServiceOfferService.php');
+
+        $this->assertMatchesRegularExpression(
+            "/not modified.*?\\)\\) \\{\\s*return;/s",
+            $source,
+            'announce() must return on «message is not modified», never fall through to sendMessage()',
+        );
+    }
+
+    /**
+     * The repair tool may edit, and may not publish.
+     *
+     * `service:refresh-posts` exists because a post only catches up with a change in the
+     * wording if its offer happens to be republished afterwards — «Електрик» stood without
+     * a phone for that reason. A repair tool that can also put a *new* advert in front of
+     * 457 people is one nobody can safely run late at night, which is exactly when the
+     * need for it turns up, so an offer with no post is skipped and reported.
+     */
+    public function testTheRefreshCommandNeverPublishesAnything(): void
+    {
+        $source = file_get_contents(__DIR__ . '/../../src/Command/ServiceRefreshPostsCommand.php');
+
+        $this->assertStringContainsString('editMessageText', $source);
+        $this->assertStringNotContainsString('sendMessage', $source);
+        $this->assertStringNotContainsString('->announce(', $source);
+    }
+
     public function testTheShareBlockIsPlainTextWithTheNumber(): void
     {
         $offer = $this->offer($this->account('2-1-0-085', '85'), 'Двері, монтаж')
