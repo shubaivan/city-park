@@ -60,6 +60,12 @@ class ChatBackfillLinksCommand extends Command
         parent::__construct();
     }
 
+    /** Between edits. Telegram tolerates roughly this rate on one chat. */
+    private const PAUSE_MS = 400;
+
+    /** How long to wait when Telegram asks, before giving up on a message. */
+    private const MAX_BACKOFF_SECONDS = 60;
+
     protected function configure(): void
     {
         $this->addOption('dry-run', null, InputOption::VALUE_NONE, 'List what would be edited and stop');
@@ -96,33 +102,19 @@ class ChatBackfillLinksCommand extends Command
                 continue;
             }
 
-            try {
-                $this->bot->editMessageReplyMarkup(
-                    chat_id: $chatId,
-                    message_id: $messageId,
-                    reply_markup: $markup,
-                );
-                $io->writeln(sprintf('  ✅ %s', $label));
-                $done++;
-            } catch (\Throwable $e) {
-                // «message is not modified» means the button is already there — that is a
-                // success on a re-run, not a failure worth reporting as one.
-                if (str_contains($e->getMessage(), 'not modified')) {
-                    $io->writeln(sprintf('  · %s — кнопка вже є', $label));
-                    $already++;
+            $outcome = $this->attach($io, $chatId, $messageId, $markup, $label, $kind, $id);
 
-                    continue;
-                }
+            match ($outcome) {
+                'done' => $done++,
+                'already' => $already++,
+                default => $failed++,
+            };
 
-                $io->writeln(sprintf('  <error>✗ %s — %s</error>', $label, $e->getMessage()));
-                $this->logger->warning('backfill: could not attach the link', [
-                    'kind' => $kind,
-                    'id' => $id,
-                    'message_id' => $messageId,
-                    'error' => $e->getMessage(),
-                ]);
-                $failed++;
-            }
+            // Telegram rate-limits edits to one chat, and a backfill is by definition a
+            // burst of them: the first real run tripped «Too Many Requests: retry after 30»
+            // after eight. A pause between messages is cheaper than the retry it avoids,
+            // and this command is never in a hurry.
+            usleep(self::PAUSE_MS * 1000);
         }
 
         if ($dry) {
@@ -134,6 +126,80 @@ class ChatBackfillLinksCommand extends Command
         $io->success(sprintf('Готово. Додано: %d, вже було: %d, не вдалося: %d', $done, $already, $failed));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * One edit, with the one retry Telegram actually asks for.
+     *
+     * A 429 carries «retry after N», and honouring it is the difference between a backfill
+     * that finishes and one that has to be re-run until it happens to fit. Anything else —
+     * a timeout, a deleted message — is left to the operator: the command is idempotent, so
+     * running it again is the cheapest possible recovery.
+     *
+     * @return 'done'|'already'|'failed'
+     */
+    private function attach(
+        SymfonyStyle $io,
+        int $chatId,
+        int $messageId,
+        \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup $markup,
+        string $label,
+        string $kind,
+        int $id,
+    ): string {
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            try {
+                $this->bot->editMessageReplyMarkup(
+                    chat_id: $chatId,
+                    message_id: $messageId,
+                    reply_markup: $markup,
+                );
+                $io->writeln(sprintf('  ✅ %s', $label));
+
+                return 'done';
+            } catch (\Throwable $e) {
+                $message = $e->getMessage();
+
+                // «message is not modified» means the button is already there — a success
+                // on a re-run, not a failure worth reporting as one.
+                if (str_contains($message, 'not modified')) {
+                    $io->writeln(sprintf('  · %s — кнопка вже є', $label));
+
+                    return 'already';
+                }
+
+                $wait = $this->retryAfter($message);
+
+                if ($wait !== null && $attempt === 0) {
+                    $io->writeln(sprintf('  ⏳ %s — Telegram просить зачекати %dс', $label, $wait));
+                    sleep($wait);
+
+                    continue;
+                }
+
+                $io->writeln(sprintf('  <error>✗ %s — %s</error>', $label, $message));
+                $this->logger->warning('backfill: could not attach the link', [
+                    'kind' => $kind,
+                    'id' => $id,
+                    'message_id' => $messageId,
+                    'error' => $message,
+                ]);
+
+                return 'failed';
+            }
+        }
+
+        return 'failed';
+    }
+
+    /** Seconds out of «Too Many Requests: retry after 30», clamped so a bad number cannot hang the run. */
+    private function retryAfter(string $message): ?int
+    {
+        if (preg_match('/retry after (\d+)/i', $message, $m) !== 1) {
+            return null;
+        }
+
+        return min((int)$m[1] + 1, self::MAX_BACKOFF_SECONDS);
     }
 
     /**
