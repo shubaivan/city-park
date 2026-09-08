@@ -12,7 +12,9 @@ use App\Service\SchedulePavilionService;
 use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
 use App\Repository\ComplaintRepository;
+use App\Repository\ServiceOfferRepository;
 use App\Telegram\Complaint\Command\ComplaintMenuCommand;
+use App\Telegram\ServiceOffer\Command\ServiceMenuCommand;
 use App\Telegram\Guard\Command\GuardCommand;
 use App\Telegram\Guard\Command\GuardQrCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
@@ -337,6 +339,19 @@ class StartCommand extends Command
                 InlineKeyboardButton::make('🔑 Оренда та продаж', callback_data: 'rental-menu'),
             );
 
+        // Directly under Оренда, and only for a confirmed resident: every offer names the
+        // flat its author lives in, which is most of why a neighbour trusts it and exactly
+        // why an unlinked visitor is not shown the list. The count rides on the label for
+        // the same reason it does on «Заявки» — an empty board and a board with eleven
+        // tradespeople on it are different invitations, and the button is the only place
+        // that difference can be read before tapping.
+        if ($account instanceof Account) {
+            $markup->addRow(InlineKeyboardButton::make(
+                self::servicesLabel($bot),
+                callback_data: ServiceMenuCommand::MENU_CALLBACK,
+            ));
+        }
+
         // Second, above the everyday buttons, and only once the chat exists: a button
         // leading nowhere is worse than no button, and the group is made by hand in
         // Telegram, not by a migration. The position matches the slash menu, because the
@@ -404,6 +419,32 @@ class StartCommand extends Command
         }
 
         return $markup;
+    }
+
+    /**
+     * «🛠 Послуги (7)» — how many neighbours currently offer something.
+     *
+     * Resolved through the container at render time like the other menu counts, which is
+     * why ServiceOfferRepository must stay `public: true` in services.yaml: a private
+     * service is inlined at compile time and the lookup throws straight into the catch
+     * below. Right for a decoration, and exactly why it fails silently — both guard
+     * buttons shipped that way on 07.09.2026 and simply did not appear.
+     */
+    private static function servicesLabel(Nutgram $bot): string
+    {
+        try {
+            $repo = $bot->getContainer()->get(ServiceOfferRepository::class);
+
+            if ($repo instanceof ServiceOfferRepository) {
+                $open = $repo->countActive(new \DateTime());
+
+                return $open > 0 ? sprintf('🛠 Послуги (%d)', $open) : '🛠 Послуги мешканців';
+            }
+        } catch (\Throwable) {
+            // A count is decoration; the button must appear either way.
+        }
+
+        return '🛠 Послуги мешканців';
     }
 
     private static function complaintsLabel(Nutgram $bot): string

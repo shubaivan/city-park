@@ -1,0 +1,102 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Послуги мешканців · ОСББ City Park{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    <div class="container-fluid mt-3">
+        <h3>🛠 Послуги мешканців</h3>
+        <p class="text-muted">
+            Мешканці публікують їх самі через бот («🛠 Послуги»). Оголошення живе {{ lifetimeDays }} днів,
+            потім бот питає автора, чи ще актуально. ОСББ нікого тут не рекомендує і ні за що не
+            відповідає — це дошка оголошень сусідів, а не список підрядників. Єдина дія тут — зняти
+            оголошення, якщо воно не про послугу.
+        </p>
+
+        {% if offers|length == 0 %}
+            <div class="alert alert-secondary">Оголошень ще не було.</div>
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-striped table-sm align-middle">
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Послуга</th>
+                        <th>Ціна</th>
+                        <th>Опис</th>
+                        <th>Автор</th>
+                        <th>Статус</th>
+                        <th>Дія</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for offer in offers %}
+                        <tr>
+                            <td>{{ offer.id }}</td>
+                            <td>
+                                <b>{{ offer.title }}</b><br>
+                                <small class="text-muted">
+                                    {{ offer.account.street }} {{ offer.account.houseNumber }},
+                                    {{ offer.account.unitLabel }} · р/н {{ offer.account.accountNumber }}
+                                </small>
+                            </td>
+                            <td><small>{{ offer.priceLabel }}</small></td>
+                            <td style="max-width:320px;">
+                                <small>{{ offer.description ?? '—' }}</small>
+                                {# Resident-supplied and visible to the whole house — this is where a complaint gets checked. #}
+                                {% if offer.photos %}
+                                    <div class="d-flex gap-1 mt-2 flex-wrap">
+                                        {% for path in offer.photos %}
+                                            <a href="{{ path }}" target="_blank" rel="noopener">
+                                                <img src="{{ path }}" alt="" style="height:56px;width:auto;border-radius:4px;">
+                                            </a>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if offer.author %}
+                                    {{ offer.author.firstName }} {{ offer.author.lastName }}
+                                    {% if offer.author.username %}<br><small>@{{ offer.author.username }}</small>{% endif %}
+                                    {% if offer.author.phoneNumber %}<br><small>{{ offer.author.phoneNumber }}</small>{% endif %}
+                                    {# Whether the number is in the public advert or admin-only — the first question on any "чому мій номер видно?" complaint. #}
+                                    <br><small class="badge {{ offer.showPhone ? 'bg-info text-dark' : 'bg-secondary' }}">
+                                        {{ offer.showPhone ? '📞 номер в оголошенні' : '✈️ тільки Telegram' }}
+                                    </small>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if offer.status == 'active' %}
+                                    <span class="badge bg-success">Активне</span><br>
+                                    <small>до {{ offer.expiresAt|date('d.m.Y') }}</small>
+                                {% elseif offer.status == 'removed' %}
+                                    <span class="badge bg-secondary">Знято автором</span>
+                                {% elseif offer.status == 'expired' %}
+                                    <span class="badge bg-secondary">Строк вийшов</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Знято адміном</span>
+                                    {% if offer.closedBy %}<br><small>{{ offer.closedBy }}</small>{% endif %}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if offer.status == 'active' %}
+                                    <form method="post" action="{{ path('app_admin_service_block') }}"
+                                          onsubmit="return confirm('Зняти оголошення «{{ offer.title|e('js') }}» зі списку?');">
+                                        <input type="hidden" name="offer_id" value="{{ offer.id }}">
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">Зняти</button>
+                                    </form>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

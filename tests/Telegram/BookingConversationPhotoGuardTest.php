@@ -8,6 +8,7 @@ use App\Telegram\Complaint\Command\ComplaintEdit;
 use App\Telegram\Complaint\Command\ComplaintHold;
 use App\Telegram\Complaint\Command\ComplaintReply;
 use App\Telegram\Rental\Command\RentalPublish;
+use App\Telegram\ServiceOffer\Command\ServicePublish;
 use App\Telegram\SchedulePavilion\Command\OwnSchedule;
 use App\Telegram\SchedulePavilion\Command\SchedulePavilion;
 use SergiX44\Nutgram\Cache\ConversationCache;
@@ -42,6 +43,7 @@ class BookingConversationPhotoGuardTest extends KernelTestCase
         yield 'complaint edit' => [ComplaintEdit::class, 'save'];
         yield 'complaint discussion' => [ComplaintReply::class, 'save'];
         yield 'complaint hold' => [ComplaintHold::class, 'save'];
+        yield 'service offer' => [ServicePublish::class, 'askDescription'];
     }
 
     /**

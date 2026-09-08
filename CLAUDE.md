@@ -209,6 +209,65 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
 
 Admin: `/admin/rentals` lists everything with a take-down button (status `blocked`, stamped with the admin login). Debt is shown for context only.
 
+## Послуги мешканців («🛠 Послуги»)
+
+The house's own list of who does what: плиточник, електрик, манікюр вдома, репетитор.
+`ServiceOffer` is the entity, `ServiceOfferService` the whole of the judgement, and the
+shape is the rental noticeboard's — one button per offer, a one-message card with a photo
+carousel, three photos uploaded from a tokenised web page, 30 days with a renewal prompt,
+opt-in phone, admin take-down. What differs from it differs on purpose:
+
+- **There are no categories, and the first field is free text.** «Сантехніка / Електрика /
+  Ремонт» was the obvious first shape and it breaks on the first плиточник: he is neither,
+  so the list either grows a pigeonhole per trade until nobody reads it or he picks the
+  closest wrong one and becomes invisible to whoever searched for tiling. `title` (60
+  chars) is what the person writes and what the index button shows. 141 flats will not
+  produce enough offers for a filter to earn its place; when they do, what to divide them
+  by will be visible in the data — the same rule by which the «Продаж» tab appeared on the
+  rental board only after flats were actually being sold. Do not "tidy this up" into an
+  enum.
+- **The price is free text too** (`price_note`, 48 chars, NULL renders «ціна договірна»).
+  A flat has one rent; a trade has «від 500 грн», «300 грн/год», «250 грн/м²». An integer
+  column would make every honest answer a lie.
+- **One active offer per *person*, not per account.** A rental listing belongs to the flat
+  — the flat is what is on offer. A service belongs to whoever performs it: father is an
+  electrician and daughter does manicures on the same особовий рахунок, and one-per-account
+  would make them take turns. `ownsOffer()` is therefore the one ownership check in the bot
+  that is not "any member of the account", falling back to the account only when the
+  author's row is gone (`author_id` is SET NULL).
+- **Reading needs a confirmed account** — the opposite call to the rental board. An
+  advertisement for a flat wants every reader it can get; this list names which flat each
+  tradesperson lives in and an unverified stranger gains nothing the house wants them to
+  have. Same call as the debtors' board and the complaints register. Unlinked visitors are
+  told what the section is and pointed at `/phone`, not silently shown an empty screen.
+- **`is_active` is not checked and neither is the unit type.** A debt blocks *booking*;
+  blocking a debtor from advertising their labour takes away the thing that lets them pay.
+  And unlike a rental listing — whose card is written about a flat — somebody whose only
+  object is a паркомісце can still lay tiles. `ServiceOfferRulesTest` pins both.
+- **The chat post is skipped entirely when `RESIDENT_CHAT_TOPIC_SERVICES` is unset**, where
+  a rental listing falls back to General. Rentals were always written in the chat and the
+  bot merely took that over; this board exists to *reduce* «хто робив вам ремонт?» traffic,
+  so posting every advert into General unasked would add exactly the noise it removes.
+  Create the topic with `resident-chat:topics`.
+- Photos go through the web (`/service/photo/{token}`), never the bot — same invariant as
+  the rental and complaint boards, and for the same reason: a picture sent to the bot is
+  always pavilion evidence. `ServicePublish` carries the mandatory
+  `interceptConversationPhoto()` guard and has no photo step; it is in the shared provider
+  in `BookingConversationPhotoGuardTest`. Files live under
+  `public/uploads/service-photos/YYYY/MM/`, through `ImageStore` (the GD re-encode is what
+  strips EXIF/GPS).
+- `service:expire` (daily) sends the renewal prompt and closes the rest — **a new cron
+  line, install it on deploy.** Without it a trade board rots into the pinboard by the lift.
+- `ServiceCallbackWiringTest` checks every `svc:` literal against the regex in
+  `config/telegram.php`; `ServiceMenuButtonTest` pins that the menu button is actually
+  drawn, under 🔑 Оренда and only for a linked resident — the guard buttons shipped invisible
+  on 07.09.2026 and nothing anywhere said so.
+
+Admin: `/admin/services`, take-down only. Deliberately **no debt column**, unlike
+`/admin/rentals`: a debt is context for a flat being rented out because the ОСББ takes calls
+about it, but what a resident charges for laying tiles is between them and their neighbour,
+and putting their arrears on the same screen invites a decision nobody asked the panel to make.
+
 **The panel has two roles, not one.** `ROLE_ADMIN` (main_admin, alina, luda_boss) is
 everything. `ROLE_COMPLAINTS` (serhii, added 07.09.2026 — he answers for repairs) gets the
 complaints register in full, plus **read-only** people and objects: he needs to see which
@@ -850,6 +909,7 @@ or they silently exercise a bot with no middleware.
 0 * * * * sudo -u www-data php …/city-park/bin/console block-vote:tally --env=prod
 0 4 * * * sudo -u www-data php …/city-park/bin/console rental:expire --env=prod
 15 4 * * * sudo -u www-data php …/city-park/bin/console complaint:cleanup --env=prod
+30 4 * * * sudo -u www-data php …/city-park/bin/console service:expire --env=prod
 0 2 * * * cd …/city-park && sudo -u www-data php bin/console db:backup --env=prod >> var/log/backup.log 2>&1
 ```
 
