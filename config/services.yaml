@@ -105,6 +105,13 @@ services:
     App\Service\PropertyRegistry:
         public: true
 
+    # And for «🗳️ Голосування (1)»: the menu asks it, at render time, how many votes are
+    # open to this reader. Private, the lookup would throw into the catch and the button
+    # would quietly lose its count — which is the whole feature, since nothing else on the
+    # main menu says the house is deciding something.
+    App\Service\BlockVoteService:
+        public: true
+
     # Nutgram handlers
     App\Telegram\:
         public: true

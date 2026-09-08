@@ -5,6 +5,7 @@ namespace App\Telegram\Start\Command;
 use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Entity\TelegramUser;
+use App\Service\BlockVoteService;
 use App\Service\ComplaintService;
 use App\Service\PropertyRegistry;
 use App\Service\DebtBoardService;
@@ -525,7 +526,7 @@ class StartCommand extends Command
             )
             ->addRow(
                 InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'),
-                InlineKeyboardButton::make('🗳️ Голосування', callback_data: 'voting-menu'),
+                InlineKeyboardButton::make(self::votingLabel($bot, $account), callback_data: 'voting-menu'),
             );
 
         // The QR for the gate, and only while a booking is actually running: it is on the
@@ -580,6 +581,32 @@ class StartCommand extends Command
         }
 
         return '🛠 Послуги';
+    }
+
+    /**
+     * «🗳️ Голосування (1)» — the house is deciding something right now.
+     *
+     * Without it the main menu says nothing about an open vote, so the only people who
+     * find one are those who happen to open the section or who read the chat post. A vote
+     * runs a week and ends on a count: the residents it misses are exactly the ones whose
+     * ballots it needed. Same shape as «🔧 Заявки (5)» and «🛠 Послуги (3)» — count first,
+     * label unchanged when there is nothing to say.
+     */
+    private static function votingLabel(Nutgram $bot, ?Account $account): string
+    {
+        try {
+            $service = $bot->getContainer()->get(BlockVoteService::class);
+
+            if ($service instanceof BlockVoteService) {
+                $open = $service->openVoteCount($account);
+
+                return $open > 0 ? sprintf('🗳️ Голосування (%d)', $open) : '🗳️ Голосування';
+            }
+        } catch (\Throwable) {
+            // A count is decoration; the button must appear either way.
+        }
+
+        return '🗳️ Голосування';
     }
 
     private static function complaintsLabel(Nutgram $bot): string

@@ -28,6 +28,17 @@ class VotingMenuCommand
     /** Finished votes: what the house decided, and how it split. */
     public const PAST_CALLBACK = 'voting-past';
 
+    /**
+     * Re-read the tally without leaving the message.
+     *
+     * The count in this message is a snapshot taken when it was drawn, and a vote runs for
+     * a week — so the numbers a resident is looking at are as old as the last thing they
+     * tapped. The only way to refresh them was «На головну» and back in, which redraws the
+     * whole menu somewhere further down the chat. Same button, and the same reason, as the
+     * guard's board.
+     */
+    public const REFRESH_CALLBACK = 'voting-refresh';
+
     /** The «you voted» pill is a label, not a button — it answers with nothing. */
     private const NOOP_CALLBACK = 'vote:noop';
 
@@ -49,6 +60,11 @@ class VotingMenuCommand
 
         if ($data === self::PAST_CALLBACK) {
             $this->renderArchive($bot);
+            return;
+        }
+
+        if ($data === self::REFRESH_CALLBACK) {
+            $this->renderMenu($bot, edit: true, refreshing: true);
             return;
         }
 
@@ -88,7 +104,7 @@ class VotingMenuCommand
         $this->renderMenu($bot, edit: false);
     }
 
-    private function renderMenu(Nutgram $bot, bool $edit, ?string $notice = null): void
+    private function renderMenu(Nutgram $bot, bool $edit, ?string $notice = null, bool $refreshing = false): void
     {
         $account = $this->currentAccount($bot);
 
@@ -126,8 +142,9 @@ class VotingMenuCommand
                 $edit,
                 ($notice ? $notice . "\n\n" : '')
                 . "🗳️ <b>Голосування</b>\n\nНаразі немає відкритих голосувань.",
-                $this->withArchive($this->withAsk(InlineKeyboardMarkup::make(), $account))
-                    ->addRow(StartCommand::homeButton())
+                $this->withArchive($this->withAsk($this->withRefresh(InlineKeyboardMarkup::make()), $account))
+                    ->addRow(StartCommand::homeButton()),
+                $refreshing,
             );
             return;
         }
@@ -218,10 +235,12 @@ class VotingMenuCommand
             );
         }
 
+        // Directly under the tallies it re-reads, above the rows that navigate away.
+        $this->withRefresh($markup);
         $this->withAsk($markup, $account);
         $this->withArchive($markup)->addRow(StartCommand::homeButton());
 
-        $this->respond($bot, $edit, implode("\n", $lines), $markup);
+        $this->respond($bot, $edit, implode("\n", $lines), $markup, $refreshing);
     }
 
     /**
@@ -269,6 +288,15 @@ class VotingMenuCommand
         $this->voteService->cancelCampaign($mine);
 
         $this->renderMenu($bot, edit: true, notice: '🗑 Ваше питання знято.');
+    }
+
+    /** «🔄 Оновити» — re-render this same message with the counts as they are now. */
+    private function withRefresh(InlineKeyboardMarkup $markup): InlineKeyboardMarkup
+    {
+        return $markup->addRow(InlineKeyboardButton::make(
+            '🔄 Оновити',
+            callback_data: self::REFRESH_CALLBACK,
+        ));
     }
 
     /**
@@ -398,16 +426,45 @@ class VotingMenuCommand
         $this->renderMenu($bot, edit: true, notice: $notice);
     }
 
-    private function respond(Nutgram $bot, bool $edit, string $text, InlineKeyboardMarkup $markup): void
-    {
+    private function respond(
+        Nutgram $bot,
+        bool $edit,
+        string $text,
+        InlineKeyboardMarkup $markup,
+        bool $refreshing = false,
+    ): void {
         if ($edit) {
             try {
                 $bot->editMessageText(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
+
+                if ($refreshing) {
+                    $this->toast($bot, '🔄 Оновлено');
+                }
+
                 return;
-            } catch (\Throwable) {
-                // fall through to a fresh message
+            } catch (\Throwable $e) {
+                // Telegram refuses an edit that would change nothing, and on a refresh
+                // button that is the *common* case — nobody has voted since the last look.
+                // Falling through to sendMessage() there would post a second copy of the
+                // menu on every tap, so the tap answers with a toast instead. Any other
+                // failure still falls through: the resident asked to see the menu.
+                if ($refreshing && str_contains($e->getMessage(), 'not modified')) {
+                    $this->toast($bot, 'Без змін — нових голосів немає');
+
+                    return;
+                }
             }
         }
         $bot->sendMessage(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
+    }
+
+    /** Never fatal: a button that redrew the message correctly has done its job. */
+    private function toast(Nutgram $bot, string $text): void
+    {
+        try {
+            $bot->answerCallbackQuery(text: $text);
+        } catch (\Throwable) {
+            // ignored
+        }
     }
 }

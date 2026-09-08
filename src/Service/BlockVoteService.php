@@ -142,6 +142,37 @@ class BlockVoteService
     }
 
     /**
+     * How many votes are open to this account right now — the count on the menu button.
+     *
+     * It counts every open vote they may cast, not only the ones they have yet to answer.
+     * A vote here is final, so a "todo" badge would vanish the moment somebody voted and
+     * take with it the only thing on the main menu saying the house is deciding something
+     * — and half the value of the badge is telling a resident who has already voted that
+     * the vote is still running, so they can send a neighbour to it. Same reading as
+     * «🔧 Заявки (5)» and «🛠 Послуги (3)», which also count what exists rather than what
+     * is owed by the reader.
+     *
+     * Eligibility is asked the same way the menu itself asks it, so the number cannot
+     * promise a vote the list then refuses to show.
+     */
+    public function openVoteCount(?Account $account): int
+    {
+        if (!$account instanceof Account) {
+            return 0;
+        }
+
+        $open = 0;
+
+        foreach ($this->campaignRepository->findOpen() as $campaign) {
+            if ($this->isVotable($campaign) && $this->isEligibleVoter($account, $campaign)) {
+                $open++;
+            }
+        }
+
+        return $open;
+    }
+
+    /**
      * Open a campaign for a candidate and notify every eligible voter.
      *
      * @throws \RuntimeException when the candidate already has an open campaign.
