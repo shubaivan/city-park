@@ -62,6 +62,12 @@ class ResidentChatTopicsCommand extends Command
     protected function configure(): void
     {
         $this->addOption('dry-run', null, InputOption::VALUE_NONE, 'Show what would be created and stop');
+        $this->addOption(
+            'only',
+            null,
+            InputOption::VALUE_REQUIRED,
+            'Create just this branch (' . implode(', ', array_keys(self::TOPICS)) . ')',
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -75,13 +81,47 @@ class ResidentChatTopicsCommand extends Command
             return Command::FAILURE;
         }
 
+        $only = $input->getOption('only');
+
+        if ($only !== null && !isset(self::TOPICS[$only])) {
+            $io->error(sprintf(
+                'Немає такої гілки: %s. Доступні: %s',
+                $only,
+                implode(', ', array_keys(self::TOPICS)),
+            ));
+
+            return Command::FAILURE;
+        }
+
         $lines = [];
 
         foreach (self::TOPICS as $kind => [$name, $color]) {
+            if ($only !== null && $kind !== $only) {
+                continue;
+            }
+
             $already = isset(self::ENV_KEYS[$kind]) ? $this->residentChat->topic($kind) : null;
 
             if ($already !== null) {
                 $io->writeln(sprintf('  %s — вже налаштовано (%d), пропускаю', $name, $already));
+                continue;
+            }
+
+            // A branch with no env key has nothing that remembers it, so a second run
+            // cannot tell that it already exists — and would put another one in a group
+            // 457 people read. Telegram offers no way to list topics, so the command
+            // cannot look either. Creating one is therefore something you ask for by name
+            // once, not something a re-run does for you.
+            //
+            // Found 08.09.2026: adding the services branch meant re-running this, and the
+            // dry run showed it about to create a second «💬 Спілкування».
+            if (!isset(self::ENV_KEYS[$kind]) && $only === null) {
+                $io->writeln(sprintf(
+                    '  %s — пропускаю: цю гілку бот не запам\'ятовує, тож повторний запуск '
+                        . 'створив би дубль. Якщо її ще немає — `--only=%s`.',
+                    $name,
+                    $kind,
+                ));
                 continue;
             }
 
