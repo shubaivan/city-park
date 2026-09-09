@@ -614,6 +614,15 @@ class StartCommand extends Command
         return '🗳️ Голосування';
     }
 
+    /**
+     * «🔧 Заявки та скарги (5)».
+     *
+     * The word «скарги» is not decoration: «заявка» reads as paperwork somebody files at a
+     * desk, and half of what this register is for is a complaint — the lift, the noise, the
+     * gate that will not open. The slash menu has said «Заявки та скарги» since it was
+     * pushed; the button on the main screen said only «Заявки», and the button is what
+     * people actually look at.
+     */
     private static function complaintsLabel(Nutgram $bot): string
     {
         try {
@@ -622,13 +631,13 @@ class StartCommand extends Command
             if ($repo instanceof ComplaintRepository) {
                 $open = $repo->countOpen();
 
-                return $open > 0 ? sprintf('🔧 Заявки (%d)', $open) : '🔧 Заявки';
+                return $open > 0 ? sprintf('🔧 Заявки та скарги (%d)', $open) : '🔧 Заявки та скарги';
             }
         } catch (\Throwable) {
             // A count is decoration; the button must appear either way.
         }
 
-        return '🔧 Заявки';
+        return '🔧 Заявки та скарги';
     }
 
     /**
