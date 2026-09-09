@@ -99,45 +99,66 @@ class VotingMenuTest extends TestCase
      * other half (the service has to be public or the count silently disappears).
      */
     /**
-     * With two votes open, every block and every button says which one it is.
+     * The section is an index of buttons, and every one of them reaches a handler.
      *
-     * The keyboard hangs at the bottom of a single message, screens away from the question
-     * it belongs to. On 09.09.2026 the menu held two questions and the reader saw «👍 За /
-     * 👎 Проти» once and «✅ Ви проголосували: За» once, with nothing to say which row
-     * answered which — «непонятно где какое». Numbering the block and its buttons with the
-     * same glyph is what ties them together, so a button that loses the mark is the bug
-     * coming back.
+     * Both halves earned this. The menu used to render every open vote in full into one
+     * message with all their buttons stacked at the bottom: with two questions open
+     * (09.09.2026) nobody could tell which row answered which, and at forty it is a message
+     * no phone can read. And an unrouted callback errors nowhere — the button spins and
+     * gives up, which from the resident's side is the bot being down.
      */
-    public function testEveryVoteButtonCarriesTheNumberOfItsQuestion(): void
+    public function testTheIndexIsButtonsAndEveryOneOfThemIsRouted(): void
+    {
+        $source = $this->source('src/Telegram/Voting/Command/VotingMenuCommand.php');
+        $config = $this->config();
+
+        foreach (['CARD_PREFIX', 'REFRESH_PREFIX', 'PAGE_PREFIX'] as $name) {
+            $this->assertMatchesRegularExpression(
+                '/public const ' . $name . " = 'vote:[a-z]+:';/",
+                $source,
+                $name . ' is how the index reaches one vote — it cannot be dropped',
+            );
+        }
+
+        // The literals the buttons actually carry, as Telegram will send them back.
+        preg_match_all("/public const (?:CARD|REFRESH|PAGE)_PREFIX = '([^']+)';/", $source, $prefixes);
+        preg_match_all(
+            "/onCallbackQueryData\(\s*'(\^vote:[^']+)'\s*,\s*\\\\App\\\\Telegram\\\\Voting/",
+            $config,
+            $patterns,
+        );
+
+        $this->assertNotEmpty($patterns[1], 'nothing in the config routes a vote: callback');
+
+        foreach ($prefixes[1] as $prefix) {
+            $sample = $prefix . '7';
+            $routed = false;
+
+            foreach ($patterns[1] as $pattern) {
+                if (preg_match('/' . str_replace('/', '\\/', $pattern) . '/', $sample) === 1) {
+                    $routed = true;
+                    break;
+                }
+            }
+
+            $this->assertTrue($routed, $sample . ' is a button nothing routes — it will just spin');
+        }
+    }
+
+    /**
+     * The index pages instead of growing, and the page number is clamped.
+     *
+     * «А якщо їх буде сорок» — one message cannot hold forty votes and their buttons, and a
+     * callback from an older, longer list must not answer with an empty page. Same rule as
+     * the debtors' board, which is written around exactly that.
+     */
+    public function testTheIndexPagesAndClampsThePageNumber(): void
     {
         $source = $this->source('src/Telegram/Voting/Command/VotingMenuCommand.php');
 
-        $this->assertStringContainsString(
-            'private static function numberBadge(',
-            $source,
-            'nothing numbers the votes any more',
-        );
-
-        // Each button the menu draws per campaign: the two ballots and the cast pill.
-        preg_match_all(
-            '/InlineKeyboardButton::make\((.{0,180}?)callback_data: (?:\x27bvote:\x27|self::NOOP_CALLBACK)/s',
-            $source,
-            $matches,
-        );
-
-        $this->assertGreaterThanOrEqual(
-            6,
-            count($matches[1]),
-            'expected both kinds of campaign to draw yes / no / cast buttons',
-        );
-
-        foreach ($matches[1] as $label) {
-            $this->assertStringContainsString(
-                '$mark',
-                $label,
-                'a vote button without its number: with two votes open nobody can tell which question it answers — ' . trim($label),
-            );
-        }
+        $this->assertStringContainsString('private const PAGE_SIZE', $source);
+        $this->assertStringContainsString('array_slice($campaigns, $offset, self::PAGE_SIZE)', $source);
+        $this->assertStringContainsString('$page = max(1, min($page, $pages));', $source, 'the page number must be clamped, not trusted');
     }
 
     public function testTheMenuButtonCarriesTheNumberOfOpenVotes(): void
