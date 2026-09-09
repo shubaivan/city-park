@@ -10,9 +10,17 @@ use App\Repository\AccountRepository;
  * The debtors' board — «дошка пошани» — and the full debtors' report.
  *
  * A deliberate piece of social pressure, asked for by the head of the ОСББ: the three
- * largest debts and the house's total are shown to every verified resident on the main
- * menu, and a button opens the complete list. Apartment numbers only: no names, no
- * phone numbers, nothing that is not already written on a door in the під'їзд.
+ * largest debts are shown to every verified resident on the main menu, and a button opens
+ * the complete list. Apartment numbers only: no names, no phone numbers, nothing that is
+ * not already written on a door in the під'їзд.
+ *
+ * **The house's total is not among them.** It was the headline of every render until
+ * 09.09.2026, when the head of the ОСББ asked for it out: a flat's own arrears are that
+ * household's business and its neighbours' pressure, while the sum of all of them is the
+ * ОСББ's financial position, and management reads that as theirs to publish or not. What
+ * each flat owes stays, the count of flats stays, and so does the month-on-month movement
+ * — a delta is not the figure that was withdrawn, and it is the one line that tells the
+ * house whether anything is happening at all.
  *
  * Three rules make it defensible, and each of them is load-bearing:
  *
@@ -134,10 +142,12 @@ class DebtBoardService
         $top = $this->accountRepository->findDebtors(self::TOP_SIZE);
 
         $lines = [
-            sprintf(
-                '💸 <b>Борг мешканців перед ОСББ: %s грн</b>',
-                $this->money($totals['total']),
-            ),
+            // **The house's total is not published.** Every flat's own arrears are, and
+            // that was the point of the board; the sum of them is what the ОСББ reads as
+            // its own financial position, and the head of the ОСББ asked for it out of the
+            // resident-facing copy on 09.09.2026. The count stays — «борг 149 квартир» is
+            // what makes the list mean something — and so does every line below it.
+            '💸 <b>Борг мешканців перед ОСББ</b>',
             sprintf('<i>Це борг %d квартир — гроші, яких немає на ремонт і благоустрій.</i>', $totals['debtors']),
             '',
             '🏆 <b>ДОШКА «ПОШАНИ»</b> 🏆',
@@ -223,9 +233,10 @@ class DebtBoardService
             );
         }
 
+        // The count, never the sum — see menuBlock(). Every page still carries it, so a
+        // forwarded page says how much of the house it is talking about.
         $foot = "\n" . sprintf(
-            "💰 <b>Разом: %s грн</b> · %d квартир\n",
-            $this->money($totals['total']),
+            "💰 <b>Квартир з боргом: %d</b>\n",
             $totals['debtors'],
         );
 
@@ -287,9 +298,9 @@ class DebtBoardService
      * The post for the residents' chat, published after each debt import.
      *
      * Unlike the menu board this is *push*: it lands in every member's notifications and
-     * is forwardable in one tap, so it leads with the figures the whole house needs — the
-     * total, the number of flats, and whether that moved since last month — and only then
-     * names the ten largest. The date is in the header for the same reason it is on the
+     * is forwardable in one tap, so it leads with the figures the whole house needs — how
+     * many flats owe and whether that moved since last month — and only then names the
+     * largest. The house's total is deliberately absent; see the class docblock. The date is in the header for the same reason it is on the
      * board: a list of debtors without one is an accusation nobody can check.
      *
      * $previous is the snapshot before this import, or null on the very first one.
@@ -300,7 +311,6 @@ class DebtBoardService
             '📊 <b>Стан розрахунків з ОСББ</b>',
             sprintf('<i>станом на %s</i>', $this->asOfLabel()),
             '',
-            sprintf('💸 Борг мешканців: <b>%s грн</b>', $this->money($current->getTotal())),
             sprintf('🏠 Квартир з боргом: <b>%d</b>', $current->getDebtors()),
         ];
 
@@ -376,6 +386,10 @@ class DebtBoardService
 
     private function trendLine(DebtSnapshot $current, DebtSnapshot $previous): string
     {
+        // The movement stays in money: what was taken out is the house's total itself,
+        // not every figure derived from it, and «борг зменшився на 45 000 грн» is the one
+        // line that tells the house whether anything is happening. Иван's call, twice —
+        // «просто сам тотал», «все остальное остается в силе».
         $delta = $current->getTotal() - $previous->getTotal();
         $since = $previous->getTakenAt()->setTimezone(new \DateTimeZone('Europe/Kyiv'))->format('d.m.Y');
 

@@ -1167,7 +1167,7 @@ registry field is empty) and one shape that works for both beats a link that wor
 
 ## Debtors' board («дошка пошани»)
 
-The house's total debt plus the three largest debtors, rendered above the main menu on
+The three largest debtors and how many flats owe, rendered above the main menu on
 every `/start` / «🏠 На головну», with `💸 Звіт боржників` opening the full list — **paged**,
 `DebtBoardService::PAGE_SIZE` (15) per page with ⬅️/➡️ and a «📌 Моя квартира» jump
 (`debt-board:page:<n>`). It used to fill one message up to a character budget and stop with
@@ -1178,6 +1178,18 @@ older, longer list must not answer with an empty page — and the viewer's own l
 every page, because "am I on this list?" is the first question anyone opens it with. Asked
 for by the head of the ОСББ as social pressure towards paying, in the joke register of a
 podium (🥇🥈🥉4️⃣5️⃣👑, `TOP_SIZE` = 5) — that framing is deliberate, not decoration to be tidied away.
+
+**The house's total is not published — anywhere a resident reads.** It was the headline
+of the menu block, the report's footer and the chat post until 09.09.2026, when the head of
+the ОСББ asked for it out through the accountant: what one flat owes is that household's
+business and its neighbours' pressure, while the sum of all of them is the ОСББ's own
+financial position, and management reads that as theirs to publish or not. **Everything
+else stands** — each flat's figure, the podium, the full paged list, the viewer's own line,
+the count of flats, and the month-on-month movement in грн (a delta is not the figure that
+was withdrawn, and it is the one line saying whether anything is happening). `/admin/debt`
+keeps the total: that is the accountant's own screen, where the import is checked.
+`DebtBoardRulesTest::testTheHouseTotalIsNeverPublished` pins it across all three renders,
+because a total at the top of a board is the most natural thing anybody could add back.
 
 All the judgement is in `DebtBoardService`; `StartCommand::debtBlock()` and
 `DebtBoardCommand` are only the Telegram halves. Three rules keep it defensible:
@@ -1241,8 +1253,8 @@ behind it, so the gap is visible on the same screen instead of being inferred la
 
 **The announcement in the residents' chat** rides on the import, not on a cron: `DebtAnnouncer::afterImport()`
 is the tail of both import paths (`debt:import-file` and `/admin/debt/upload`), so the figures
-are fresh by construction and the post shows movement month to month. It leads with the total,
-the flat count and the trend, then names the top **twenty** (`ANNOUNCE_SIZE`, widened from ten
+are fresh by construction and the post shows movement month to month. It leads with the flat
+count and the trend, then names the top **twenty** (`ANNOUNCE_SIZE`, widened from ten
 on 04.09.2026 — the chat post is the only *push* half of this feature and against 149 flats
 owing money a top ten is a list of the extremes, not a picture of the house; the heading
 counts what it actually prints, so a short list never claims to be twenty). Guards: once per calendar
