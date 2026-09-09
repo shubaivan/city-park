@@ -529,13 +529,15 @@ class StartCommand extends Command
                 InlineKeyboardButton::make(self::votingLabel($bot, $account), callback_data: 'voting-menu'),
             );
 
-        // The QR for the gate, and only while a booking is actually running: it is on the
-        // menu exactly when you are sitting in the альтанка and gone the rest of the
-        // month, which is also why it needs no explaining. One indexed query per render.
-        if ($account instanceof Account && self::hasRunningBooking($bot, $account)) {
+        // The resident's pass. It used to appear only while a booking was running — right
+        // for a booking ticket, and the reason almost nobody knew it existed. Since
+        // 09.09.2026 it is a pass any confirmed, unblocked resident carries, and any
+        // confirmed resident can read: no query per render any more, just the flag that
+        // already decides everything else about this account.
+        if (self::mayHoldQr($bot, $account)) {
             $markup->addRow(
                 InlineKeyboardButton::make(
-                    '🔒 QR для охорони',
+                    '🪪 Мій QR-код',
                     callback_data: GuardQrCommand::MENU_CALLBACK,
                 ),
             );
@@ -647,16 +649,18 @@ class StartCommand extends Command
     }
 
     /**
-     * Is this household in the альтанка right now? Decides whether «🔒 QR для охорони» is
-     * on the menu. Fails closed, like every other container lookup here.
+     * May this resident carry a QR pass? Decides whether «🪪 Мій QR-код» is on the menu.
+     *
+     * The rule itself lives in `GuardService::mayHoldQr()` — the same one the handler
+     * checks, so a button that is drawn cannot lead to a refusal. Fails closed, like every
+     * other container lookup here.
      */
-    private static function hasRunningBooking(Nutgram $bot, Account $account): bool
+    private static function mayHoldQr(Nutgram $bot, ?Account $account): bool
     {
         try {
             $guard = $bot->getContainer()->get(GuardService::class);
 
-            return $guard instanceof GuardService
-                && $guard->runningSessionFor($account, SchedulePavilionService::createNewDate()) !== null;
+            return $guard instanceof GuardService && $guard->mayHoldQr($account);
         } catch (\Throwable) {
             return false;
         }
