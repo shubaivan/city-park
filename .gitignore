@@ -35,3 +35,10 @@ var/pools/
 
 # DM drafts — written for one message, never part of the app
 *-dm-*.txt
+
+###> local working notes ###
+# Answers drafted for the ОСББ, phone numbers, flat-by-flat checks — written to be read in
+# the editor (var/ is excluded from PhpStorm's index, so a note there is unfindable), and
+# never committed: this repository is public.
+/notes/
+###< local working notes ###
