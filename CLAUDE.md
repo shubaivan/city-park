@@ -1086,6 +1086,14 @@ thing in this system that can answer the question asked after anything happens i
 - Neither QR kind is a `LinkClick`: `DeepLink::record()` refuses `g-` and `p-` outright.
   `/admin/links` answers «did the chat post work», and a pass is nobody's post.
 
+**A chat post can link into one topic of the instructions** — `i-<id>`, resolved through
+`InfoCommand::LINKABLE`. «Читайте в боті» under an announcement is the same dead end
+«↗️ Відкрити в боті» was introduced to remove: fifteen topics and the reader must find the
+one the post was about. The ids are **explicit and permanent**, never positions in the
+`TOPICS` array — a click recorded last month has to mean the same topic after somebody adds
+a sixteenth. These *are* recorded as clicks, unlike the QR kinds: «did anybody actually read
+it» is the only interesting question about an announcement.
+
 ## Backups
 
 `db:backup` dumps the database and **delivers it off the server** — a copy that lives on the

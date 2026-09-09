@@ -16,6 +16,22 @@ class InfoCommand
     /**
      * @var array<string, array{title:string, body:string}>
      */
+    /**
+     * Topics a chat post can link straight into: `t.me/<bot>?start=i-<id>`.
+     *
+     * A post that ends «читайте в боті» sends the reader to a menu of fifteen topics and
+     * asks them to find the one it was about — the same dead end every board had before
+     * «↗️ Відкрити в боті», and the reason that rule exists at all.
+     *
+     * The ids are **explicit and permanent**, not positions in the array below: a click
+     * recorded last month must still mean the same topic after somebody adds a sixteenth,
+     * and `LinkClick.target_id` is an integer. Only topics we actually link to need one.
+     */
+    public const LINKABLE = [
+        'qr' => 1,
+        'passes' => 2,
+    ];
+
     private const TOPICS = [
         'complaints' => [
             'title' => '🔧 Заявки та скарги',
@@ -245,6 +261,22 @@ class InfoCommand
         $this->renderMenu($bot, $data === self::MENU_CALLBACK);
     }
 
+    /**
+     * Somebody followed a link from the residents' chat straight to one topic.
+     *
+     * A forwarded link may arrive months later, from a post about a topic that has since
+     * been renamed away — an unknown id opens the list rather than erroring, the same call
+     * `StartPayloadCommand` makes for an unknown payload.
+     */
+    public function openFromDeepLink(Nutgram $bot, int $id): void
+    {
+        $key = array_search($id, self::LINKABLE, true);
+
+        $key === false
+            ? $this->renderMenu($bot, false)
+            : $this->renderTopic($bot, (string)$key);
+    }
+
     private function renderMenu(Nutgram $bot, bool $edit): void
     {
         $text = "ℹ️ <b>Інструкція та FAQ</b>\n\nОберіть тему, щоб дізнатися більше:";
@@ -283,8 +315,12 @@ class InfoCommand
             )
             ->addRow(StartCommand::homeButton());
 
+        // Edited in place when the reader is walking the menu; sent fresh when they
+        // arrived from a link, where there is no message of ours to edit.
         try {
-            $bot->editMessageText(text: $topic['body'], parse_mode: ParseMode::HTML, reply_markup: $markup);
+            $bot->isCallbackQuery()
+                ? $bot->editMessageText(text: $topic['body'], parse_mode: ParseMode::HTML, reply_markup: $markup)
+                : $bot->sendMessage(text: $topic['body'], parse_mode: ParseMode::HTML, reply_markup: $markup);
         } catch (\Throwable) {
             $bot->sendMessage(text: $topic['body'], parse_mode: ParseMode::HTML, reply_markup: $markup);
         }

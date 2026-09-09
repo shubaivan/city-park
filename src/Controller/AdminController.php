@@ -654,6 +654,7 @@ class AdminController extends AbstractController
             DeepLink::KIND_COMPLAINT => 'заявки',
             DeepLink::KIND_VOTE => 'голосування',
             DeepLink::KIND_DEBT => 'борги',
+            DeepLink::KIND_INFO => 'інструкція',
         ];
 
         $out = [];

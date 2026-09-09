@@ -6,6 +6,7 @@ use App\Service\DeepLink;
 use App\Service\TelegramUserService;
 use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
+use App\Telegram\Info\Command\InfoCommand;
 use App\Telegram\Voting\Command\VotingMenuCommand;
 use App\Telegram\Guard\Command\GuardScanCommand;
 use App\Telegram\GuestPass\Command\GuestPassScanCommand;
@@ -39,6 +40,7 @@ class StartPayloadRoutingTest extends KernelTestCase
         ?ComplaintMenuCommand $complaints = null,
         ?DebtBoardCommand $debts = null,
         ?VotingMenuCommand $votes = null,
+        ?InfoCommand $info = null,
     ): StartPayloadCommand {
         return new StartPayloadCommand(
             $guard ?? $this->createMock(GuardScanCommand::class),
@@ -48,6 +50,7 @@ class StartPayloadRoutingTest extends KernelTestCase
             $complaints ?? $this->createMock(ComplaintMenuCommand::class),
             $debts ?? $this->createMock(DebtBoardCommand::class),
             $votes ?? $this->createMock(VotingMenuCommand::class),
+            $info ?? $this->createMock(InfoCommand::class),
             $this->createMock(DeepLink::class),
             $this->createMock(TelegramUserService::class),
         );
@@ -65,6 +68,21 @@ class StartPayloadRoutingTest extends KernelTestCase
             ->with($this->anything(), 'p-12-abcdef012345');
 
         $this->command(passes: $passes)($this->bot(), 'p-12-abcdef012345');
+    }
+
+    /**
+     * A chat post can point at one topic of the instructions, not at the menu of fifteen.
+     *
+     * «Читайте в боті» under an announcement is the dead end «↗️ Відкрити в боті» was
+     * introduced to remove everywhere else.
+     */
+    public function testAnInfoLinkOpensThatTopic(): void
+    {
+        $info = $this->createMock(InfoCommand::class);
+        $info->expects($this->once())->method('openFromDeepLink')
+            ->with($this->anything(), InfoCommand::LINKABLE['qr']);
+
+        $this->command(info: $info)($this->bot(), 'i-' . InfoCommand::LINKABLE['qr']);
     }
 
     public function testTheGuardsQrStillReachesTheScanner(): void
@@ -150,6 +168,7 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(ComplaintMenuCommand::class),
             $this->createMock(DebtBoardCommand::class),
             $this->createMock(VotingMenuCommand::class),
+            $this->createMock(InfoCommand::class),
             $links,
             $this->createMock(TelegramUserService::class),
         ))($this->bot(), 'r-7');
@@ -175,6 +194,7 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(ComplaintMenuCommand::class),
             $this->createMock(DebtBoardCommand::class),
             $this->createMock(VotingMenuCommand::class),
+            $this->createMock(InfoCommand::class),
             $links,
             $this->createMock(TelegramUserService::class),
         ))($this->bot(), 'p-12-abcdef012345');
@@ -193,6 +213,7 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(ComplaintMenuCommand::class),
             $this->createMock(DebtBoardCommand::class),
             $this->createMock(VotingMenuCommand::class),
+            $this->createMock(InfoCommand::class),
             $links,
             $this->createMock(TelegramUserService::class),
         ))($this->bot(), 'g-7-abcdef012345');

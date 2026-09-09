@@ -38,6 +38,7 @@ class DeepLink
         self::KIND_VOTE => 'v-',
         self::KIND_GUARD => 'g-',
         self::KIND_PASS => 'p-',
+        self::KIND_INFO => 'i-',
     ];
 
     public const KIND_SERVICE = 'service';
@@ -69,6 +70,15 @@ class DeepLink
      * post. Its own scans are logged where they belong, in `QrScan`.
      */
     public const KIND_PASS = 'pass';
+
+    /**
+     * One topic of the bot's own instructions — `InfoCommand::LINKABLE` holds the ids.
+     *
+     * A post that ends «читайте в боті» hands the reader a menu of fifteen topics and asks
+     * them to find the one it was about. Recorded like any other link: «did anybody
+     * actually read it» is the only interesting question about an announcement.
+     */
+    public const KIND_INFO = 'info';
 
     public function __construct(
         private Nutgram $bot,
