@@ -213,32 +213,31 @@ class GuardService
     }
 
     /**
-     * Who may hold a QR code: a confirmed resident whose access is not blocked.
+     * Who may hold a QR code, and who may read one: **any confirmed resident**.
      *
-     * The code is a resident's pass now, not a booking ticket — Иван's call, 09.09.2026 —
-     * so it is on the menu the whole month rather than for the three hours of a booking.
-     * A blocked account does not get one: that is the whole meaning of «не заблокований»
-     * on a pass, and it is the one thing the code can honestly say about its holder
-     * without publishing why.
+     * Both sides started narrower and both were opened by Иван on 09.09.2026 — the code
+     * was a booking ticket only its holder's guard could read, and it is now the house's
+     * own way of answering «а ти хто?». Two guards cannot perform that check for 457
+     * people, and a pass that exists for three hours a month is a pass nobody remembers.
+     *
+     * **A block is deliberately irrelevant on both sides** — debt, a missed pavilion
+     * photo, an admin's hand or a vote of the house. Every one of them decides whether
+     * somebody may *book the альтанка*; none of them decides whether they live here, and
+     * this code says nothing else. Withholding it would turn the pass into a public
+     * statement that its holder owes money, made to whichever neighbour scanned them.
+     * `GuardBoardRulesTest` pins it, because «зробити консистентно з бронюванням» is a
+     * tempting and wrong tidy-up.
+     *
+     * An unlinked visitor is out of both: the bot has no flat for them, so there is
+     * nothing to mint and nothing to be told. Same line the debtors' board and the
+     * complaints register draw.
      */
     public function mayHoldQr(?Account $account): bool
     {
-        return $account instanceof Account && $account->isActive();
+        return $account instanceof Account;
     }
 
-    /**
-     * Who may read a scanned code: **any confirmed resident**, and the guard.
-     *
-     * It began as the guard's tool and everybody else was told «цей код зчитує охорона».
-     * Иван opened it to the house on 09.09.2026: «я хотел бы чтоб кто угодно из ЖК мог
-     * проверить кого угодно, а не только охрана». There are two guards and 457 residents,
-     * and the question «ці люди тут по броні?» is asked by whoever is standing in the yard
-     * at that moment — usually not staff.
-     *
-     * A block is not checked here. It decides whether somebody may *book*, and refusing a
-     * debtor the right to read a neighbour's code protects nothing and tells them nothing
-     * they could not see by walking past.
-     */
+    /** @see mayHoldQr() — one rule, both ends of the same code. */
     public function mayScan(?TelegramUser $user, ?Account $viewerAccount): bool
     {
         return $this->isGuard($user) || $viewerAccount instanceof Account;

@@ -27,19 +27,19 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
  * standing in the yard. An unlinked visitor still gets nothing — the same line the debtors'
  * board and the complaints register draw.
  *
- * **The flat is in the guard's answer and in nobody else's.** His check *is* «яка
- * квартира»; a neighbour's is «чи це справді мешканець і чи є в них зараз бронь», and the
- * flat adds nothing to it. The difference is not squeamishness: the picture is forwardable
- * — one screenshot in the house chat would otherwise name a flat to 457 people, which is
- * exactly what `GuardService::board()`'s `namesFlats` switch exists to prevent.
+ * **One answer, the same for everybody who may read it.** The guard's version and the
+ * neighbour's were briefly different — the flat only for him — and that was one rule too
+ * many: the code is shown deliberately, by the person it belongs to, to somebody they are
+ * standing in front of, and «це мешканець» without saying *which* flat answers nothing a
+ * neighbour could not already see. Иван's call, the same evening. So there is one text,
+ * and no branch that could ever leak the wrong half to the wrong reader.
  *
  * Answers:
  *
- * - **unlinked** → «код читають підтверджені мешканці», and nothing else;
- * - **guard** → ✅ the flat, the pavilion and the hours, or ❌ «броні на зараз немає»;
- * - **resident** → ✅ «код дійсний, це мешканець ЖК», plus the booking without the flat,
- *   or «броні на зараз немає» — the answer that matters either way, because a screenshot
- *   from last Saturday must read as plainly wrong rather than as a bot error.
+ * - **unlinked** → «код читають підтверджені мешканці», and nothing about the holder;
+ * - **anybody else** → ✅ the flat, plus the booking if one is running, or a plain «броні
+ *   на зараз немає» — the answer that matters either way, because a screenshot from last
+ *   Saturday must read as wrong rather than as a bot error.
  *
  * A bad signature is treated as a stranger, not as an error: `readToken()` returns null and
  * the payload never reaches the database.
@@ -57,7 +57,6 @@ class GuardScanCommand
     {
         $user = $this->telegramUserService->getCurrentUser();
         $viewerAccount = $user ? $this->telegramUserService->resolveAccount($user) : null;
-        $isGuard = $this->guard->isGuard($user);
 
         if (!$this->guard->mayScan($user, $viewerAccount)) {
             // An unlinked visitor, or a forwarded screenshot opened by somebody outside the
@@ -85,7 +84,7 @@ class GuardScanCommand
         ]);
 
         if (!$account instanceof Account) {
-            $this->answer($bot, "⚠️ <b>Код не розпізнано</b>\n\nПопросіть відкрити його в боті ще раз.", $isGuard);
+            $this->answer($bot, "⚠️ <b>Код не розпізнано</b>\n\nПопросіть відкрити його в боті ще раз.");
 
             return;
         }
@@ -94,46 +93,38 @@ class GuardScanCommand
         $session = $this->guard->runningSessionFor($account, $now);
 
         if ($session === null) {
-            $this->answer($bot, $isGuard ? sprintf(
-                "❌ <b>Броні на зараз немає</b>\n\n%s\n\n"
-                    . '<i>Код справжній, але на цю годину альтанка за цією квартирою не заброньована.</i>',
+            $this->answer($bot, sprintf(
+                "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n\n"
+                    . '<i>Але броні на альтанку на зараз у них немає.</i>',
                 htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
-            ) : "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК.\n\n"
-                . '<i>Але броні на альтанку на зараз у них немає.</i>', $isGuard);
+            ));
 
             return;
         }
 
-        $this->answer($bot, $isGuard ? sprintf(
-            "✅ <b>Все вірно</b>\n\n<b>%s</b>\n%s альтанка · <b>%s–%s</b>\n\n<i>Перевірено о %s.</i>",
+        $this->answer($bot, sprintf(
+            "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n"
+                . "🏛 Зараз бронь: %s альтанка · <b>%s–%s</b>\n\n<i>Перевірено о %s.</i>",
             htmlspecialchars(GuardService::place($session), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
             SchedulePavilionService::pavilionName($session['pavilion']),
             $session['start']->format('H:i'),
             $session['end']->format('H:i'),
             $now->format('H:i'),
-        ) : sprintf(
-            // No flat: see the note at the top. The hours are the whole answer to «вони
-            // тут по броні?», and they are true of a household, not of a person.
-            "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК.\n"
-                . "🏛 Зараз бронь: %s альтанка · <b>%s–%s</b>\n\n<i>Перевірено о %s.</i>",
-            SchedulePavilionService::pavilionName($session['pavilion']),
-            $session['start']->format('H:i'),
-            $session['end']->format('H:i'),
-            $now->format('H:i'),
-        ), $isGuard);
+        ));
     }
 
     /**
-     * The button under the answer follows the reader, not the code: the guard's board names
-     * flats and is his alone, so a resident is sent to their own version of it instead.
+     * The button under the answer goes to the board, which renders itself per reader — the
+     * guard's names flats, everybody else's says «зайнято». One label, because at this
+     * point the bot has already answered and the two boards are the same section.
      */
-    private function answer(Nutgram $bot, string $text, bool $isGuard): void
+    private function answer(Nutgram $bot, string $text): void
     {
         $bot->sendMessage(
             text: $text,
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()->addRow(InlineKeyboardButton::make(
-                $isGuard ? '🛡 Хто зараз в альтанці' : '🏛 Альтанки зараз',
+                '🏛 Альтанки зараз',
                 callback_data: GuardCommand::MENU_CALLBACK,
             )),
         );

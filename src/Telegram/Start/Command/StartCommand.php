@@ -531,9 +531,9 @@ class StartCommand extends Command
 
         // The resident's pass. It used to appear only while a booking was running — right
         // for a booking ticket, and the reason almost nobody knew it existed. Since
-        // 09.09.2026 it is a pass any confirmed, unblocked resident carries, and any
-        // confirmed resident can read: no query per render any more, just the flag that
-        // already decides everything else about this account.
+        // 09.09.2026 every confirmed resident carries one and every confirmed resident can
+        // read one, blocked or not: a block decides whether somebody may book, never
+        // whether they live here. No query per render any more either.
         if (self::mayHoldQr($bot, $account)) {
             $markup->addRow(
                 InlineKeyboardButton::make(

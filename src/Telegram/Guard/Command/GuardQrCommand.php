@@ -35,8 +35,11 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
  * says two things — that the holder is one of us, and whether the альтанка is theirs right
  * now. `GuardService::mayHoldQr()` is the one definition of who gets one.
  *
- * **A blocked account gets no code**, and that is the whole meaning of a pass: it is the
- * one thing this picture can honestly say about its holder without publishing why.
+ * **A block does not take it away** — not a debt, not a missed pavilion photo, not an
+ * admin's hand, not a vote of the house. Every one of those decides whether somebody may
+ * *book the альтанка*; none of them decides whether they live here, and that is all this
+ * code says. Withholding it would turn the pass into a public statement that its holder
+ * owes money, made to whichever neighbour scanned them.
  */
 class GuardQrCommand
 {
@@ -58,9 +61,7 @@ class GuardQrCommand
             // for somebody who may have a code, so anyone who reaches this has arrived from
             // an older keyboard, and «нічого не сталося» is the worst possible answer.
             $bot->answerCallbackQuery(
-                text: $account instanceof Account
-                    ? 'Доступ до вашого рахунку обмежено — код зараз не видається.'
-                    : 'Спершу підтвердіть номер телефону: /phone',
+                text: 'Спершу підтвердіть номер телефону: /phone',
                 show_alert: true,
             );
 
@@ -107,8 +108,8 @@ class GuardQrCommand
             caption: sprintf(
                 "🪪 <b>QR-код мешканця</b>\n\n%s\n%s\n"
                     . "Покажіть цей екран охоронцю або сусідові — камера відкриє бота, "
-                    . "і він підтвердить, що ви мешканець ЖК та чи є у вас зараз бронь "
-                    . "на альтанку.\n\n"
+                    . "і він підтвердить, що ви мешканець ЖК, назве вашу квартиру та "
+                    . "покаже, чи є у вас зараз бронь на альтанку.\n\n"
                     . "<i>Код ваш постійний. Показувати його стороннім не варто.</i>",
                 htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 $booking,

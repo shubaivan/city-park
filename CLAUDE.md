@@ -996,32 +996,27 @@ last Saturday has to read as plainly wrong rather than as a bot error.
 «я хотел бы чтоб кто угодно из ЖК мог проверить кого угодно, а не только охрана», «считать
 код и получить информацию может любой подтвержденный житель ЖК».
 
-- **Who holds one** — any confirmed resident whose access is not blocked
-  (`GuardService::mayHoldQr()`), all month. The button used to appear only while a booking
-  was running, which needed no explaining and also meant almost nobody knew it existed. A
-  blocked account gets none: that is the whole meaning of «не заблокований» on a pass, and
-  the one thing the picture can honestly say about its holder without publishing why.
-- **Who reads one** — any confirmed resident, and the guard (`GuardService::mayScan()`).
-  Two guards cannot perform a check for 457 people; the person standing in the yard asking
-  «ці люди тут по броні?» is almost never staff. A block is deliberately **not** checked
-  here: it decides whether somebody may *book*, and refusing a debtor the right to read a
-  neighbour's code protects nothing. An unlinked visitor still gets nothing — the same line
-  the debtors' board and the complaints register draw.
-- **The flat goes only to the guard.** His check *is* «яка квартира»; a neighbour's is «чи
-  це мешканець і чи є в них зараз бронь», and the flat adds nothing to it — while the
-  picture is forwardable, so one screenshot in the house chat would name a flat to
-  everyone. Same call as `board()`'s `namesFlats`. `GuardScanAudienceTest` drives the
-  handler through FakeNutgram and asserts on what was actually sent: the first version of
-  that test matched the source with a regex, and a deliberately leaking version passed it.
-  Prove such a test fails before believing it.
-
-- **Signed, and stored nowhere.** `hash_hmac` over the account id with `APP_SECRET`, 12
-  hex characters. The flats and особові рахунки of the largest debtors are published to
-  the whole house every month, so a code that merely *named* a flat could be drawn by
-  anyone who read that board — and the guard would confirm it, because that flat really
-  does have a booking. The signature is what makes the bot the only thing that can mint
-  one. Nothing is written: the question is «is this household in the альтанка now», and
-  the bookings table already answers it, so the code needs no expiry either.
+- **One rule for both ends: a confirmed resident.** `GuardService::mayHoldQr()` /
+  `mayScan()`. The button used to appear only while a booking was running — right for a
+  booking ticket, and the reason almost nobody knew it existed.
+- **A block is irrelevant to both** — debt, a missed pavilion photo, an admin's hand, a
+  vote of the house. Every one of them decides whether somebody may *book the альтанка*;
+  none of them decides whether they live here, and that is all the code says. Withholding
+  it would turn the pass into a public statement that its holder owes money, made to
+  whichever neighbour scanned them. `GuardBoardRulesTest` pins it, because «зробити
+  консистентно з бронюванням» is a tempting and wrong tidy-up.
+- **One answer, the same for everybody, the flat included**: «✅ Код дійсний · це мешканець
+  нашого ЖК · буд. 19, кв. 85» plus «🏛 Зараз бронь: Друга альтанка 18:00–21:00», or a
+  plain «броні на зараз немає». A guard-only version that hid the flat from neighbours was
+  tried for an evening and dropped as one rule too many: the code is shown deliberately, by
+  its owner, to somebody standing in front of them, and «це мешканець» without saying which
+  flat answers nothing they could not already see. The board is the opposite case and
+  stays that way — it lists every flat's hours to a reader nobody chose.
+- An **unlinked** visitor is out of both halves: the bot has no flat for them, so there is
+  nothing to mint and nothing to be told. `GuardScanAudienceTest` drives the handler
+  through FakeNutgram and asserts on what was actually sent — its first version matched
+  the source with a regex, and a deliberately broken version passed it. Prove such a test
+  fails before believing it.
 - **`start {payload}` cannot swallow a plain `/start`.** Nutgram anchors command patterns,
   so the deep-link handler needs the space and a payload while `/start` alone still reaches
   `StartCommand`. `GuardWiringTest` pins it: getting that wrong takes the main menu away

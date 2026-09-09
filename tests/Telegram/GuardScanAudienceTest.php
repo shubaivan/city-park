@@ -16,17 +16,16 @@ use SergiX44\Nutgram\Testing\FakeNutgram;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
- * What each reader is told when they scan somebody's QR.
+ * What a scan answers, and to whom.
  *
  * The scan used to answer the guard and nobody else. Иван opened it to the house on
- * 09.09.2026 — «я хотел бы чтоб кто угодно из ЖК мог проверить кого угодно, а не только
- * охрана» — which is the right call for a check that two people cannot possibly perform for
- * 457, and it changes what the answer may contain.
+ * 09.09.2026 — «считать код и получить информацию может любой подтвержденный житель ЖК» —
+ * which is the right call for a check two people cannot perform for 457.
  *
- * **The flat goes only to the guard.** His check *is* «яка квартира»; a neighbour's is «чи
- * це мешканець і чи є в них бронь», and the flat adds nothing to that while the picture is
- * forwardable — one screenshot in the house chat would otherwise name a flat to everyone.
- * Same call, and the same trap, as `board()`'s `namesFlats`.
+ * **One answer, the same for everybody who may read it**, the flat included. A guard-only
+ * version was tried for an evening and was one rule too many: the code is shown
+ * deliberately, by its owner, to somebody standing in front of them, and «це мешканець»
+ * without saying which flat answers nothing they could not already see.
  *
  * Driven through FakeNutgram rather than read out of the source: an earlier version of this
  * test matched the code with a regex, and a deliberately leaking version passed it.
@@ -39,35 +38,52 @@ class GuardScanAudienceTest extends KernelTestCase
     /** «буд. 19, кв. 85» — the string that must never reach a neighbour. */
     private const FLAT = 'кв. 85';
 
-    public function testTheGuardIsToldTheFlat(): void
+    /** The guard's answer and a neighbour's are the same string. */
+    public function testEveryReaderGetsTheSameAnswer(): void
     {
-        $text = $this->scan(self::GUARD_TELEGRAM_ID, booked: true);
+        $guard = $this->scan(self::GUARD_TELEGRAM_ID, booked: true);
+        $resident = $this->scan('888111', booked: true);
 
-        $this->assertStringContainsString('Все вірно', $text);
-        $this->assertStringContainsString(self::FLAT, $text, 'the flat is the guard’s whole check');
+        $this->assertStringContainsString('Код дійсний', $guard);
+        $this->assertStringContainsString(self::FLAT, $guard);
+        $this->assertSame($guard, $resident, 'one answer: a second version is a rule that can leak');
     }
 
-    public function testAResidentIsToldValidityAndTheHoursButNeverTheFlat(): void
+    /** The flat and the hours: «хто це» and «чи вони тут по броні» in one line each. */
+    public function testTheAnswerNamesTheFlatAndTheBooking(): void
     {
         $text = $this->scan('888111', booked: true);
 
-        $this->assertStringContainsString('Код дійсний', $text);
-        $this->assertStringContainsString('18:00', $text, 'the hours are the answer to «вони тут по броні?»');
-        $this->assertStringNotContainsString(
-            self::FLAT,
-            $text,
-            'a forwarded screenshot must not name somebody’s flat to the whole house',
-        );
+        $this->assertStringContainsString('мешканець нашого ЖК', $text);
+        $this->assertStringContainsString(self::FLAT, $text);
+        $this->assertStringContainsString('буд. 19', $text, 'five buildings repeat their flat numbers');
+        $this->assertStringContainsString('18:00', $text);
     }
 
     /** Валідний код без броні: an expired screenshot has to read as plainly wrong. */
-    public function testAResidentIsToldWhenThereIsNoBooking(): void
+    public function testAValidCodeWithNoBookingSaysSo(): void
     {
         $text = $this->scan('888111', booked: false);
 
         $this->assertStringContainsString('Код дійсний', $text);
+        $this->assertStringContainsString(self::FLAT, $text);
         $this->assertStringContainsString('немає', $text);
-        $this->assertStringNotContainsString(self::FLAT, $text);
+        $this->assertStringNotContainsString('18:00', $text);
+    }
+
+    /**
+     * A blocked reader is still a resident.
+     *
+     * A debt or a missed photo stops somebody booking; refusing them the right to check a
+     * neighbour's code protects nothing and tells them nothing they could not see by
+     * walking past.
+     */
+    public function testABlockedResidentStillGetsTheAnswer(): void
+    {
+        $text = $this->scan('888111', booked: true, blockedReader: true);
+
+        $this->assertStringContainsString('Код дійсний', $text);
+        $this->assertStringContainsString(self::FLAT, $text);
     }
 
     /** An unlinked visitor learns what the code is and nothing about its holder. */
@@ -81,7 +97,12 @@ class GuardScanAudienceTest extends KernelTestCase
     }
 
     /** Renders one scan and returns the text the bot sent back. */
-    private function scan(string $scannerTelegramId, bool $booked, bool $linked = true): string
+    private function scan(
+        string $scannerTelegramId,
+        bool $booked,
+        bool $linked = true,
+        bool $blockedReader = false,
+    ): string
     {
         self::bootKernel();
 
@@ -112,7 +133,9 @@ class GuardScanAudienceTest extends KernelTestCase
 
         $users = $this->createMock(TelegramUserService::class);
         $users->method('getCurrentUser')->willReturn($scanner);
-        $users->method('resolveAccount')->willReturn($linked ? $this->account(9, '12') : null);
+        $reader = $linked ? $this->account(9, '12') : null;
+        $reader?->setIsActive(!$blockedReader);
+        $users->method('resolveAccount')->willReturn($reader);
 
         $accounts = $this->createMock(AccountRepository::class);
         $accounts->method('find')->willReturn($holder);

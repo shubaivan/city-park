@@ -94,26 +94,27 @@ class GuardBoardRulesTest extends TestCase
     }
 
     /**
-     * Who may hold one: a confirmed resident whose access is not blocked.
+     * A block takes away booking, never the pass.
      *
-     * The code used to be a booking ticket and appeared for the three hours of a booking;
-     * since 09.09.2026 it is a pass and sits on the menu all month. A blocked account gets
-     * none — that is the whole meaning of «не заблокований» on a pass, and the one thing
-     * the picture can honestly say about its holder without publishing why.
+     * Debt, a missed pavilion photo, an admin's hand, a vote of the house — every one of
+     * them decides whether somebody may book the альтанка, and none of them decides whether
+     * they live here, which is all the code says. Withholding it would turn the pass into a
+     * public statement that its holder owes money, made to whichever neighbour scanned
+     * them. Pinned because «зробити консистентно з бронюванням» is a tempting and wrong
+     * tidy-up (Иван, 09.09.2026: «не зависимо от того есть ли блокировка по долгу или по
+     * фото или по админу какая-то»).
      */
-    public function testOnlyAnUnblockedResidentHoldsAQr(): void
+    public function testABlockedResidentStillCarriesAndReadsAQr(): void
     {
         $service = $this->service('777');
 
-        $active = $this->user(4, '444')->getAccount();
-        $active->setIsActive(true);
+        $blocked = $this->user(5, '555');
+        $blocked->getAccount()->setIsActive(false);
 
-        $blocked = $this->user(5, '555')->getAccount();
-        $blocked->setIsActive(false);
+        $this->assertTrue($service->mayHoldQr($blocked->getAccount()), 'a block is about booking, not residency');
+        $this->assertTrue($service->mayScan($blocked, $blocked->getAccount()));
 
-        $this->assertTrue($service->mayHoldQr($active));
-        $this->assertFalse($service->mayHoldQr($blocked), 'a blocked account carries no pass');
-        $this->assertFalse($service->mayHoldQr(null), 'and neither does somebody with no flat');
+        $this->assertFalse($service->mayHoldQr(null), 'somebody with no flat has nothing to mint');
     }
 
     public function testAnEmptyGuardListMeansNobody(): void
