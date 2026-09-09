@@ -19,7 +19,9 @@ use App\Repository\AdminLoginRepository;
 use App\Repository\PavilionPhotoRepository;
 use App\Repository\PhotoUploadRequestRepository;
 use App\Repository\RentalListingRepository;
+use App\Repository\GuestPassRepository;
 use App\Repository\LinkClickRepository;
+use App\Repository\QrScanRepository;
 use App\Repository\ServiceOfferRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Repository\TariffRepository;
@@ -97,6 +99,41 @@ class AdminController extends AbstractController
             'last_seen' => $logins->lastSeenByLogin(),
             'failed_week' => $logins->countFailedSince(new \DateTimeImmutable('-7 days')),
             'shown' => self::LOGINS_SHOWN,
+        ]);
+    }
+
+    /** Scans drawn on /admin/scans. A few a day at most; a fortnight fits easily. */
+    private const SCANS_SHOWN = 300;
+
+    /**
+     * Who scanned whose code, and when.
+     *
+     * Asked for by Иван in the same breath as opening the scan to the whole house
+     * (09.09.2026), and it is what makes that defensible: the moment 457 people can check
+     * each other, «хто когось перевіряв» stops being hypothetical. It is also the only
+     * place in this system that can answer the question asked after something happens in
+     * the yard — «хто їх пустив і коли вони заходили» — because a guest pass is scanned at
+     * the gate and nowhere else.
+     *
+     * Read by everyone who can sign in, GET only, like the sign-in log: nothing here is
+     * anybody's to change, and a security log that can be edited is not a log.
+     */
+    #[Route('/admin/scans', name: 'app_admin_scans', methods: [Request::METHOD_GET])]
+    public function scans(QrScanRepository $scans, GuestPassRepository $passes): Response
+    {
+        return $this->render('admin/scans.html.twig', [
+            'entries' => $scans->latest(self::SCANS_SHOWN),
+            'total' => $scans->total(),
+            'shown' => self::SCANS_SHOWN,
+            // The live passes, so the page answers «які пропуски зараз ходять по ЖК» as
+            // well as «хто ними скористався».
+            'passes' => $passes->createQueryBuilder('p')
+                ->andWhere('p.revoked_at IS NULL')
+                ->orderBy('p.id', 'DESC')
+                ->setMaxResults(60)
+                ->getQuery()
+                ->getResult(),
+            'today' => (new \DateTime('now', new \DateTimeZone('Europe/Kyiv')))->format('Y-m-d'),
         ]);
     }
 

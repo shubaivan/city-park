@@ -136,6 +136,14 @@ $bot->onCommand('guard', \App\Telegram\Guard\Command\GuardCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\Guard\Command\GuardQrCommand::MENU_CALLBACK, \App\Telegram\Guard\Command\GuardQrCommand::class);
 $bot->onCommand('start {payload}', \App\Telegram\Start\Command\StartPayloadCommand::class);
 
+// Passes for the people a flat lets in — the crew, the delivery, the fitter. Same shape as
+// every other board: an unrouted button does not error, it just spins, which reads as the
+// bot being down. GuestPassWiringTest walks the `pass:` literals against this regex.
+$bot->onCallbackQueryData(\App\Telegram\GuestPass\Command\GuestPassCommand::MENU_CALLBACK, \App\Telegram\GuestPass\Command\GuestPassCommand::class);
+$bot->onCallbackQueryData('^pass:(?:view|on|del|delok|share):\d+$', \App\Telegram\GuestPass\Command\GuestPassCommand::class);
+$bot->onCallbackQueryData(\App\Telegram\GuestPass\Command\GuestPassCreate::START_CALLBACK, \App\Telegram\GuestPass\Command\GuestPassCreate::class);
+$bot->onCommand('pass', \App\Telegram\GuestPass\Command\GuestPassCommand::class);
+
 // The debtors' board: the menu block is rendered by StartCommand, this is the full list.
 $bot->onCallbackQueryData(\App\Telegram\Debt\Command\DebtBoardCommand::MENU_CALLBACK, \App\Telegram\Debt\Command\DebtBoardCommand::class);
 // The report is 149 flats long and paged; the dead counter button answers with nothing.

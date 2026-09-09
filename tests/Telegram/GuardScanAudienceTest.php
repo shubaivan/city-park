@@ -8,6 +8,7 @@ use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Service\GuardService;
+use App\Service\GuestPassService;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use App\Telegram\Guard\Command\GuardScanCommand;
@@ -143,7 +144,12 @@ class GuardScanAudienceTest extends KernelTestCase
         $bot = FakeNutgram::instance();
         $bot->getContainer()->delegate(self::getContainer());
 
-        (new GuardScanCommand($guard, $users, $accounts))($bot, $guard->mintToken($holder));
+        // The scan log is written through GuestPassService; mocked, because this test is
+        // about what the reader is told, and a database would make it the only one here
+        // that needs one.
+        $passes = $this->createMock(GuestPassService::class);
+
+        (new GuardScanCommand($guard, $users, $accounts, $passes))($bot, $guard->mintToken($holder));
 
         return $this->lastText($bot);
     }

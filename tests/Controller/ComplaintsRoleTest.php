@@ -50,6 +50,9 @@ class ComplaintsRoleTest extends WebTestCase
             # Whether the chat posts are working is as useful to the person answering
             # the complaints as to the accountant, and nothing on it is anybody's to change.
             'the link-click log' => ['/admin/links'],
+            # «Хто їх пустив і коли вони заходили» is asked by whoever is dealing with what
+            # happened, which is as often the repairs side as the accountant. GET only.
+            'the QR scan log' => ['/admin/scans'],
         ];
     }
 

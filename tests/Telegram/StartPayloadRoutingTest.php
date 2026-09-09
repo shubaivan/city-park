@@ -8,6 +8,7 @@ use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\Voting\Command\VotingMenuCommand;
 use App\Telegram\Guard\Command\GuardScanCommand;
+use App\Telegram\GuestPass\Command\GuestPassScanCommand;
 use App\Telegram\Rental\Command\RentalMenuCommand;
 use App\Telegram\ServiceOffer\Command\ServiceMenuCommand;
 use App\Telegram\Start\Command\StartPayloadCommand;
@@ -32,6 +33,7 @@ class StartPayloadRoutingTest extends KernelTestCase
 {
     private function command(
         ?GuardScanCommand $guard = null,
+        ?GuestPassScanCommand $passes = null,
         ?ServiceMenuCommand $services = null,
         ?RentalMenuCommand $rentals = null,
         ?ComplaintMenuCommand $complaints = null,
@@ -40,6 +42,7 @@ class StartPayloadRoutingTest extends KernelTestCase
     ): StartPayloadCommand {
         return new StartPayloadCommand(
             $guard ?? $this->createMock(GuardScanCommand::class),
+            $passes ?? $this->createMock(GuestPassScanCommand::class),
             $services ?? $this->createMock(ServiceMenuCommand::class),
             $rentals ?? $this->createMock(RentalMenuCommand::class),
             $complaints ?? $this->createMock(ComplaintMenuCommand::class),
@@ -48,6 +51,20 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(DeepLink::class),
             $this->createMock(TelegramUserService::class),
         );
+    }
+
+    /**
+     * A builder's pass is the second signed payload, and it must not fall into the guard's
+     * branch — «цей QR-код зчитує охорона» to a бригадир at the gate is the failure this
+     * router exists to prevent.
+     */
+    public function testAGuestPassReachesItsOwnScanner(): void
+    {
+        $passes = $this->createMock(GuestPassScanCommand::class);
+        $passes->expects($this->once())->method('__invoke')
+            ->with($this->anything(), 'p-12-abcdef012345');
+
+        $this->command(passes: $passes)($this->bot(), 'p-12-abcdef012345');
     }
 
     public function testTheGuardsQrStillReachesTheScanner(): void
@@ -127,6 +144,7 @@ class StartPayloadRoutingTest extends KernelTestCase
 
         (new StartPayloadCommand(
             $this->createMock(GuardScanCommand::class),
+            $this->createMock(GuestPassScanCommand::class),
             $this->createMock(ServiceMenuCommand::class),
             $this->createMock(RentalMenuCommand::class),
             $this->createMock(ComplaintMenuCommand::class),
@@ -143,6 +161,25 @@ class StartPayloadRoutingTest extends KernelTestCase
      * It is a staff action on somebody else's booking, not a resident following an advert,
      * and this table is defensible precisely because of what it does not hold.
      */
+    /** Neither is a builder's pass: both QR kinds are logged in QrScan, never here. */
+    public function testAGuestPassScanIsNotRecordedAsAClick(): void
+    {
+        $links = $this->createMock(DeepLink::class);
+        $links->expects($this->never())->method('record');
+
+        (new StartPayloadCommand(
+            $this->createMock(GuardScanCommand::class),
+            $this->createMock(GuestPassScanCommand::class),
+            $this->createMock(ServiceMenuCommand::class),
+            $this->createMock(RentalMenuCommand::class),
+            $this->createMock(ComplaintMenuCommand::class),
+            $this->createMock(DebtBoardCommand::class),
+            $this->createMock(VotingMenuCommand::class),
+            $links,
+            $this->createMock(TelegramUserService::class),
+        ))($this->bot(), 'p-12-abcdef012345');
+    }
+
     public function testTheGuardsScanIsNotRecordedAsAClick(): void
     {
         $links = $this->createMock(DeepLink::class);
@@ -150,6 +187,7 @@ class StartPayloadRoutingTest extends KernelTestCase
 
         (new StartPayloadCommand(
             $this->createMock(GuardScanCommand::class),
+            $this->createMock(GuestPassScanCommand::class),
             $this->createMock(ServiceMenuCommand::class),
             $this->createMock(RentalMenuCommand::class),
             $this->createMock(ComplaintMenuCommand::class),

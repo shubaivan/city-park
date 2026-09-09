@@ -4,7 +4,9 @@ namespace App\Telegram\Guard\Command;
 
 use App\Entity\Account;
 use App\Repository\AccountRepository;
+use App\Entity\QrScan;
 use App\Service\GuardService;
+use App\Service\GuestPassService;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use App\Telegram\Start\Command\StartCommand;
@@ -50,6 +52,7 @@ class GuardScanCommand
         private GuardService $guard,
         private TelegramUserService $telegramUserService,
         private AccountRepository $accounts,
+        private GuestPassService $passes,
         private ?LoggerInterface $chatLogger = null,
     ) {}
 
@@ -83,7 +86,10 @@ class GuardScanCommand
             'account_id' => $accountId,
         ]);
 
+        $isGuard = $this->guard->isGuard($user);
+
         if (!$account instanceof Account) {
+            $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_UNKNOWN, $user, null, null, $isGuard);
             $this->answer($bot, "⚠️ <b>Код не розпізнано</b>\n\nПопросіть відкрити його в боті ще раз.");
 
             return;
@@ -93,6 +99,7 @@ class GuardScanCommand
         $session = $this->guard->runningSessionFor($account, $now);
 
         if ($session === null) {
+            $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING, $user, $account, null, $isGuard);
             $this->answer($bot, sprintf(
                 "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n\n"
                     . '<i>Але броні на альтанку на зараз у них немає.</i>',
@@ -101,6 +108,8 @@ class GuardScanCommand
 
             return;
         }
+
+        $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK, $user, $account, null, $isGuard);
 
         $this->answer($bot, sprintf(
             "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n"
