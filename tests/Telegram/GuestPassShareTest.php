@@ -13,7 +13,7 @@ use SergiX44\Nutgram\Nutgram;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
- * «📤 Переслати у Viber / SMS» hands over the QR itself, not a link to it.
+ * «📤 Переслати робітникам» hands over the QR itself, and nothing but it.
  *
  * What the бригадир does with this message is stand at the gate and hold up his phone —
  * a guard cannot scan a url. The button shipped as text and a link on 09.09.2026 and had
@@ -30,7 +30,10 @@ class GuestPassShareTest extends KernelTestCase
         $this->assertStringContainsString('sendPhoto', $method, 'a link cannot be scanned at the gate');
         $this->assertStringContainsString('Бригада, ремонт', $body);
         $this->assertStringContainsString('кв. 85', $body, 'the crew has to be able to say where they are expected');
-        $this->assertStringContainsString('t.me/che_city_park_bot?start=p-3-abc', $body, 'the link rides along for a guard who is in Telegram');
+        // The url was in the caption for one version. Nobody in this exchange would use
+        // it — the бригадир will not forward a link and the guard will not type one — and
+        // printed under a code it invites sending the link instead of the code.
+        $this->assertStringNotContainsString('t.me/', $body, 'a link under the code is a link somebody will send instead of it');
     }
 
     /** @return array{string, string} the last method called and its raw body */
