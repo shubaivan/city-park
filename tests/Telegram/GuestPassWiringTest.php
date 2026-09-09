@@ -51,8 +51,15 @@ class GuestPassWiringTest extends TestCase
             foreach ($matches as $match) {
                 $literal = $match[1];
 
-                // A literal ending in ':' is a prefix completed with an id at runtime.
-                $found[str_ends_with($literal, ':') ? $literal . '1' : $literal] = true;
+                // A literal ending in ':' is a prefix completed at runtime — with an id,
+                // and for the hour windows with the length after it.
+                $sample = match (true) {
+                    str_starts_with($literal, 'pass:hrs:') => 'pass:hrs:1:2',
+                    str_ends_with($literal, ':') => $literal . '1',
+                    default => $literal,
+                };
+
+                $found[$sample] = true;
             }
         }
 

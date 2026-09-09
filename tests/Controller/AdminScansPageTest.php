@@ -33,7 +33,7 @@ class AdminScansPageTest extends KernelTestCase
             'passes' => $passes,
             'total' => count($entries),
             'shown' => 300,
-            'today' => (new \DateTime('now', new \DateTimeZone('Europe/Kyiv')))->format('Y-m-d'),
+            'now' => new \DateTime('now', new \DateTimeZone('Europe/Kyiv')),
         ]);
     }
 
@@ -93,13 +93,13 @@ class AdminScansPageTest extends KernelTestCase
             ->setStreet('Козацька');
 
         $pass = (new GuestPass())->setAccount($account)->setLabel('Бригада, ремонт');
-        $pass->setActiveOn(new \DateTime('now', new \DateTimeZone('Europe/Kyiv')));
+        $pass->setActiveUntil(new \DateTime('+2 hours', new \DateTimeZone('Europe/Kyiv')));
 
         $html = $this->render([], [$pass]);
 
         $this->assertStringContainsString('Бригада, ремонт', $html);
         $this->assertStringContainsString('кв. 85', $html);
-        $this->assertStringContainsString('активний', $html);
+        $this->assertStringContainsString('активний до', $html);
     }
 
     public function testAnEmptyLogStillRenders(): void

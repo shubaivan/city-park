@@ -140,7 +140,9 @@ $bot->onCommand('start {payload}', \App\Telegram\Start\Command\StartPayloadComma
 // every other board: an unrouted button does not error, it just spins, which reads as the
 // bot being down. GuestPassWiringTest walks the `pass:` literals against this regex.
 $bot->onCallbackQueryData(\App\Telegram\GuestPass\Command\GuestPassCommand::MENU_CALLBACK, \App\Telegram\GuestPass\Command\GuestPassCommand::class);
-$bot->onCallbackQueryData('^pass:(?:view|on|del|delok|share):\d+$', \App\Telegram\GuestPass\Command\GuestPassCommand::class);
+$bot->onCallbackQueryData('^pass:(?:view|on|off|del|delok|share):\d+$', \App\Telegram\GuestPass\Command\GuestPassCommand::class);
+// «⏱ 2 години» carries its length: pass:hrs:<id>:<hours>.
+$bot->onCallbackQueryData('^pass:hrs:\d+:\d+$', \App\Telegram\GuestPass\Command\GuestPassCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\GuestPass\Command\GuestPassCreate::START_CALLBACK, \App\Telegram\GuestPass\Command\GuestPassCreate::class);
 $bot->onCommand('pass', \App\Telegram\GuestPass\Command\GuestPassCommand::class);
 

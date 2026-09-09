@@ -28,7 +28,10 @@ class GuestPassCommand
 {
     public const MENU_CALLBACK = 'pass:list';
     public const CARD_PREFIX = 'pass:view:';
+    /** «🔁 До кінця дня». The hour windows carry their length: pass:hrs:<id>:<hours>. */
     public const ACTIVATE_PREFIX = 'pass:on:';
+    public const HOURS_PREFIX = 'pass:hrs:';
+    public const OFF_PREFIX = 'pass:off:';
     public const REVOKE_PREFIX = 'pass:del:';
     public const REVOKE_OK_PREFIX = 'pass:delok:';
     public const SHARE_PREFIX = 'pass:share:';
@@ -64,6 +67,19 @@ class GuestPassCommand
 
         if (str_starts_with($data, self::ACTIVATE_PREFIX)) {
             $this->activate($bot, $account, (int)substr($data, strlen(self::ACTIVATE_PREFIX)));
+
+            return;
+        }
+
+        if (str_starts_with($data, self::HOURS_PREFIX)) {
+            [$id, $hours] = array_pad(explode(':', substr($data, strlen(self::HOURS_PREFIX))), 2, '0');
+            $this->activate($bot, $account, (int)$id, (int)$hours);
+
+            return;
+        }
+
+        if (str_starts_with($data, self::OFF_PREFIX)) {
+            $this->deactivate($bot, $account, (int)substr($data, strlen(self::OFF_PREFIX)));
 
             return;
         }
@@ -123,12 +139,14 @@ class GuestPassCommand
         );
     }
 
-    /** «🟢 Бригада, ремонт» while it is on for today, «⚪️» the rest of the time. */
+    /** «🟢 Бригада, ремонт · до 14:20» while the window is open, «⚪️» the rest of the time. */
     private static function buttonLabel(GuestPass $pass): string
     {
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
 
-        return ($pass->isActiveOn($now) ? '🟢 ' : '⚪️ ') . $pass->getLabel();
+        return $pass->isActiveAt($now)
+            ? sprintf('🟢 %s · до %s', $pass->getLabel(), $pass->getActiveUntil()?->format('H:i'))
+            : '⚪️ ' . $pass->getLabel();
     }
 
     private function openCard(Nutgram $bot, Account $account, int $id): void
@@ -167,14 +185,28 @@ class GuestPassCommand
         }
 
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
-        $active = $pass->isActiveOn($now);
+        $active = $pass->isActiveAt($now);
 
         $markup = InlineKeyboardMarkup::make();
 
-        if (!$active) {
+        // The two shapes a visit actually takes: «приїхали на пару годин» and «працюють
+        // весь день». Both windows are offered whether or not one is already running — a
+        // delivery that was let in for the day is exactly the case for shortening it.
+        $markup->addRow(
+            InlineKeyboardButton::make('⏱ 2 години', callback_data: self::HOURS_PREFIX . $pass->getId() . ':2'),
+            InlineKeyboardButton::make('⏱ 4 години', callback_data: self::HOURS_PREFIX . $pass->getId() . ':4'),
+        );
+        $markup->addRow(InlineKeyboardButton::make(
+            $active ? '🔁 Продовжити до кінця дня' : '🔁 Активувати до кінця дня',
+            callback_data: self::ACTIVATE_PREFIX . $pass->getId(),
+        ));
+
+        if ($active) {
+            // The delivery came and went at 11:20; leaving the window open until midnight
+            // is the thing this feature exists to avoid.
             $markup->addRow(InlineKeyboardButton::make(
-                '🔁 Активувати на сьогодні',
-                callback_data: self::ACTIVATE_PREFIX . $pass->getId(),
+                '⏹ Вимкнути зараз',
+                callback_data: self::OFF_PREFIX . $pass->getId(),
             ));
         }
 
@@ -192,13 +224,14 @@ class GuestPassCommand
                 "👷 <b>%s</b>\n%s\n\n%s\n%s\n"
                     . "Перешліть цю картинку тим, кого чекаєте. Охоронець або мешканець "
                     . "наведе камеру — і побачить, що їх чекають у вашій квартирі.\n\n"
-                    . '<i>Пропуск діє один день. Завтра вранці натисніть «🔁 Активувати на '
-                    . 'сьогодні» — та сама картинка знову працює.</i>',
+                    . '<i>Пропуск працює лише у вікні, яке ви увімкнули, і ніколи довше '
+                    . 'ніж до кінця дня. Наступного разу просто увімкніть його знову — та '
+                    . 'сама картинка, пересилати заново не треба.</i>',
                 self::esc($pass->getLabel()),
                 self::esc($pass->getAccount()?->getPlaceLabel() ?? ''),
                 $active
-                    ? '✅ <b>Діє сьогодні</b> — до 24:00'
-                    : '⚪️ <b>На сьогодні не активовано</b> — охорона не пропустить',
+                    ? sprintf('✅ <b>Діє до %s</b>', $pass->getActiveUntil()?->format('H:i'))
+                    : '⚪️ <b>Зараз не активний</b> — охорона не пропустить',
                 $this->history($pass),
             ),
             parse_mode: ParseMode::HTML,
@@ -246,7 +279,7 @@ class GuestPassCommand
         );
     }
 
-    private function activate(Nutgram $bot, Account $account, int $id): void
+    private function activate(Nutgram $bot, Account $account, int $id, ?int $hours = null): void
     {
         $pass = $this->own($account, $id);
 
@@ -256,8 +289,27 @@ class GuestPassCommand
             return;
         }
 
-        $this->passes->activate($pass);
-        $bot->answerCallbackQuery(text: 'Пропуск діє сьогодні до 24:00.');
+        $this->passes->activate($pass, $hours);
+        $bot->answerCallbackQuery(text: sprintf(
+            'Пропуск діє до %s.',
+            $pass->getActiveUntil()?->format('H:i') ?? '24:00',
+        ));
+
+        $this->sendCard($bot, $pass);
+    }
+
+    private function deactivate(Nutgram $bot, Account $account, int $id): void
+    {
+        $pass = $this->own($account, $id);
+
+        if ($pass === null) {
+            $bot->answerCallbackQuery(text: 'Цей пропуск уже скасовано.', show_alert: true);
+
+            return;
+        }
+
+        $this->passes->deactivate($pass);
+        $bot->answerCallbackQuery(text: 'Пропуск вимкнено.');
 
         $this->sendCard($bot, $pass);
     }

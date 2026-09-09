@@ -59,37 +59,84 @@ class GuestPassRulesTest extends TestCase
         return $pass;
     }
 
-    /** A pass is on for the day it was switched on, and off every other day. */
-    public function testAPassIsValidOnlyOnTheDayItWasActivated(): void
+    /**
+     * A pass is on inside the window its host switched on, and off outside it.
+     *
+     * The window is a moment rather than a day because a delivery is two hours and a
+     * renovation is all day — «до кінця дня» handed to a courier is a key they keep until
+     * midnight (Иван, 09.09.2026: «предусмотреть выдачу на пару часов»).
+     */
+    public function testAPassIsValidOnlyInsideItsWindow(): void
     {
         $pass = $this->pass();
-        $today = new \DateTime('2026-09-09 08:12', new \DateTimeZone('Europe/Kyiv'));
-        $tomorrow = new \DateTime('2026-09-10 08:12', new \DateTimeZone('Europe/Kyiv'));
+        $now = new \DateTime('2026-09-09 08:12', new \DateTimeZone('Europe/Kyiv'));
 
-        $this->assertFalse($pass->isActiveOn($today), 'a fresh pass is off until somebody switches it on');
+        $this->assertFalse($pass->isActiveAt($now), 'a fresh pass is off until somebody switches it on');
 
-        $pass->setActiveOn(new \DateTime('2026-09-09', new \DateTimeZone('Europe/Kyiv')));
+        $pass->setActiveUntil(new \DateTime('2026-09-09 10:12', new \DateTimeZone('Europe/Kyiv')));
 
-        $this->assertTrue($pass->isActiveOn($today));
+        $this->assertTrue($pass->isActiveAt($now));
         $this->assertFalse(
-            $pass->isActiveOn($tomorrow),
+            $pass->isActiveAt(new \DateTime('2026-09-09 10:13', new \DateTimeZone('Europe/Kyiv'))),
+            'a two-hour pass stops in two hours',
+        );
+        $this->assertFalse(
+            $pass->isActiveAt(new \DateTime('2026-09-10 08:12', new \DateTimeZone('Europe/Kyiv'))),
             'yesterday’s screenshot must read as wrong at the gate — that is the whole security model',
         );
     }
 
-    /** Revoked is dead, activated or not: the picture in somebody's phone stops working. */
-    public function testARevokedPassIsDeadEvenOnItsOwnDay(): void
+    /**
+     * A window never crosses midnight, however many hours are asked for.
+     *
+     * Four hours at 22:00 would otherwise run to 02:00, which is a second day nobody chose
+     * — and «один день» is the outer limit the whole feature was asked for with.
+     */
+    public function testAWindowIsClampedToTheEndOfTheDay(): void
+    {
+        $pass = $this->pass();
+        $service = $this->service();
+
+        $service->activate($pass, 24);
+
+        $until = $pass->getActiveUntil();
+        $this->assertNotNull($until);
+        $this->assertSame(
+            (new \DateTime('today', new \DateTimeZone('Europe/Kyiv')))->format('Y-m-d'),
+            $until->format('Y-m-d'),
+            'a window may not run into tomorrow',
+        );
+        $this->assertSame('23:59', $until->format('H:i'));
+    }
+
+    /** Switched off now, not revoked: tomorrow the same picture works again. */
+    public function testItCanBeSwitchedOffWithoutBeingRevoked(): void
+    {
+        $pass = $this->pass();
+        $service = $this->service();
+
+        $service->activate($pass);
+        $this->assertTrue($pass->isActiveAt(new \DateTime('now', new \DateTimeZone('Europe/Kyiv'))));
+
+        $service->deactivate($pass);
+
+        $this->assertFalse($pass->isActiveAt(new \DateTime('now', new \DateTimeZone('Europe/Kyiv'))));
+        $this->assertFalse($pass->isRevoked(), 'switching off is not withdrawing');
+    }
+
+    /** Revoked is dead, window or not: the picture in somebody's phone stops working. */
+    public function testARevokedPassIsDeadEvenInsideItsWindow(): void
     {
         $pass = $this->pass();
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
-        $pass->setActiveOn(new \DateTime('now', new \DateTimeZone('Europe/Kyiv')));
+        $pass->setActiveUntil(new \DateTime('+1 hour', new \DateTimeZone('Europe/Kyiv')));
 
-        $this->assertTrue($pass->isActiveOn($now));
+        $this->assertTrue($pass->isActiveAt($now));
 
         $pass->revoke();
 
         $this->assertTrue($pass->isRevoked());
-        $this->assertFalse($pass->isActiveOn($now));
+        $this->assertFalse($pass->isActiveAt($now));
     }
 
     /** Three live passes per flat: a crew, a delivery and a fitter, not a street. */

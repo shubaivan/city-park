@@ -1030,14 +1030,22 @@ anybody else with a toolbox — the only check available was «нам сказа
 85-й». Иван asked for this on 09.09.2026: a flat mints a pass, forwards it to the бригадир,
 and the guard's camera answers.
 
-**One code per crew, switched on for a day at a time.** The obvious shape — a fresh pass
+**One code per crew, switched on for a window at a time.** The obvious shape — a fresh pass
 every morning — puts the work in the wrong place. The resident's taps are cheap; *re-sending
 a new picture to the бригадир every morning* is not, and on the third day they stop looking
 at it and ask the guard to take their word again. So the picture is minted once and
-forwarded once, `GuestPass.active_on` is the day somebody switched it on, and a scan on any
-other day answers «на сьогодні пропуск не активовано». The one-day lifetime Иван asked for
-is enforced by the **answer**, not by the code's existence: a screenshot from yesterday has
-to read as *wrong*, never as a bot error the guard resolves by letting them in.
+forwarded once, `GuestPass.active_until` is the moment it was switched on until, and a scan
+outside that window answers «пропуск зараз не активний». The lifetime is enforced by the
+**answer**, not by the code's existence: a screenshot from yesterday has to read as *wrong*,
+never as a bot error the guard resolves by letting them in.
+
+**The window is a moment, not a day** (asked for the same night): a delivery is two hours
+and a renovation is all day, and «до кінця дня» handed to a courier is a key they keep until
+midnight. The card offers ⏱ 2 години / ⏱ 4 години / до кінця дня, and «⏹ Вимкнути зараз»
+for the van that came and went at 11:20. `activate()` **clamps to 23:59 whatever is asked**
+— four hours at 22:00 would otherwise run into tomorrow, which is a second day nobody chose,
+and one day is the outer limit the feature was asked for with. Switching off is not
+revoking: tomorrow the same picture works again.
 
 - **Stored, unlike the resident's own QR**, which is a bare HMAC over an account id and
   needs no row. This one carries a day, a name, a revocation and a scan history — every one

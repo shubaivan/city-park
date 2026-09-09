@@ -38,7 +38,7 @@
                             <tr>
                                 <th>Кого чекають</th>
                                 <th>Квартира</th>
-                                <th>Сьогодні</th>
+                                <th>Діє до</th>
                                 <th>Сканів</th>
                                 <th>Востаннє</th>
                                 <th>Видав</th>
@@ -50,8 +50,8 @@
                                     <td>{{ pass.label }}</td>
                                     <td>{{ pass.account ? pass.account.placeLabel : '—' }}</td>
                                     <td>
-                                        {% if pass.activeOn and pass.activeOn|date('Y-m-d') == today %}
-                                            <span class="text-success">✅ активний</span>
+                                        {% if pass.activeUntil and pass.activeUntil > now %}
+                                            <span class="text-success">✅ активний до {{ pass.activeUntil|date('H:i') }}</span>
                                         {% else %}
                                             <span class="text-muted">⚪️ ні</span>
                                         {% endif %}

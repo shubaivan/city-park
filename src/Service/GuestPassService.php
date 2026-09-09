@@ -80,9 +80,10 @@ class GuestPassService
             ->setIssuedBy($issuedBy)
             ->setLabel($label);
 
-        // Switched on the moment it is made: somebody creating a pass is standing next to
-        // the crew, not planning for Thursday.
-        $pass->setActiveOn(new \DateTime('now', new \DateTimeZone('Europe/Kyiv')));
+        // Switched on the moment it is made, until the end of the day: somebody creating a
+        // pass is standing next to the crew, not planning for Thursday. A shorter window is
+        // one tap away on the card.
+        $pass->setActiveUntil(self::endOfDay());
 
         $this->em->persist($pass);
         $this->em->flush();
@@ -90,15 +91,54 @@ class GuestPassService
         return $pass;
     }
 
-    /** Turn it on for today. Idempotent: pressing it twice is what people do. */
-    public function activate(GuestPass $pass): void
+    /**
+     * Turn it on — for a few hours, or until the end of the day.
+     *
+     * A delivery is two hours and a renovation is all day, and «до кінця дня» handed to a
+     * courier is a key they keep until midnight. `$hours` null means the rest of today.
+     *
+     * **Never past midnight**, whatever is asked: four hours at 22:00 clamps to 23:59. The
+     * pass Иван asked for is a one-day pass, and a window that quietly runs into tomorrow
+     * would be a second lifetime nobody chose. Idempotent — pressing a button twice is
+     * what people do, and the second press simply moves the deadline.
+     */
+    public function activate(GuestPass $pass, ?int $hours = null): void
     {
         if ($pass->isRevoked()) {
             return;
         }
 
-        $pass->setActiveOn(new \DateTime('now', new \DateTimeZone('Europe/Kyiv')));
+        $endOfDay = self::endOfDay();
+
+        if ($hours === null) {
+            $pass->setActiveUntil($endOfDay);
+        } else {
+            $until = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+            $until->modify(sprintf('+%d hours', max(1, $hours)));
+
+            $pass->setActiveUntil($until > $endOfDay ? $endOfDay : $until);
+        }
+
         $this->em->flush();
+    }
+
+    /**
+     * Switch it off now.
+     *
+     * The delivery came and went at 11:20; leaving the window open until midnight is the
+     * thing this feature exists to avoid. Not a revocation — tomorrow the same picture
+     * works again.
+     */
+    public function deactivate(GuestPass $pass): void
+    {
+        $pass->setActiveUntil(null);
+        $this->em->flush();
+    }
+
+    /** 23:59 today, Kyiv — the outer limit of every window. */
+    private static function endOfDay(): \DateTime
+    {
+        return new \DateTime('today 23:59:59', new \DateTimeZone('Europe/Kyiv'));
     }
 
     /** Dead for good — the picture in somebody's phone stops working. */

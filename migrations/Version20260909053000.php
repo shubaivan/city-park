@@ -30,7 +30,7 @@ final class Version20260909053000 extends AbstractMigration
             account_id INT NOT NULL,
             issued_by_id INT DEFAULT NULL,
             label VARCHAR(80) NOT NULL,
-            active_on DATE DEFAULT NULL,
+            active_until TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL,
             revoked_at TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL,
             created_at TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL,
             last_scanned_at TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL,

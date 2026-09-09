@@ -61,11 +61,11 @@ class GuestPass
     private string $label = '';
 
     /**
-     * The day it is switched on for, in Kyiv. Null means «not activated», which is what a
+     * The moment it stops working, in Kyiv. Null means «not activated», which is what a
      * pass is on every day its host did not press the button.
      */
-    #[ORM\Column(type: Types::DATE_MUTABLE, nullable: true)]
-    private ?\DateTime $active_on = null;
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTime $active_until = null;
 
     /** Set once and never unset: a revoked pass is dead even if the picture still exists. */
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
@@ -126,14 +126,14 @@ class GuestPass
         return $this;
     }
 
-    public function getActiveOn(): ?\DateTime
+    public function getActiveUntil(): ?\DateTime
     {
-        return $this->active_on;
+        return $this->active_until;
     }
 
-    public function setActiveOn(?\DateTime $day): static
+    public function setActiveUntil(?\DateTime $until): static
     {
-        $this->active_on = $day;
+        $this->active_until = $until;
 
         return $this;
     }
@@ -178,11 +178,11 @@ class GuestPass
         return $this;
     }
 
-    /** Switched on for the day this instant falls in. */
-    public function isActiveOn(\DateTimeInterface $now): bool
+    /** Still inside the window its host switched on. */
+    public function isActiveAt(\DateTimeInterface $now): bool
     {
         return !$this->isRevoked()
-            && $this->active_on !== null
-            && $this->active_on->format('Y-m-d') === $now->format('Y-m-d');
+            && $this->active_until !== null
+            && $this->active_until >= $now;
     }
 }

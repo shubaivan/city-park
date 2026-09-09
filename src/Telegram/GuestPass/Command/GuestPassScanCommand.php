@@ -23,11 +23,10 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
  *
  * Three answers, and the middle one is the point:
  *
- * - **activated today** → ✅ who they are, which flat is expecting them, valid until
- *   midnight;
- * - **not activated today** → ❌ said plainly. This is the whole security model: the pass
- *   is one day long, so yesterday's screenshot has to read as *wrong*, not as an error the
- *   guard might blame on the bot;
+ * - **inside its window** → ✅ who they are, which flat is expecting them, and until when;
+ * - **outside it** → ❌ said plainly. This is the whole security model: a pass is on for the
+ *   couple of hours or the day its host switched on and never past midnight, so yesterday's
+ *   screenshot has to read as *wrong*, not as an error the guard might blame on the bot;
  * - **revoked or unknown** → ❌ the same way, without saying whose it was.
  *
  * Every scan is written to the log — see `QrScan`. It was asked for in the same breath as
@@ -83,7 +82,7 @@ class GuestPassScanCommand
 
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
 
-        if (!$pass->isActiveOn($now)) {
+        if (!$pass->isActiveAt($now)) {
             $this->passes->recordScan(
                 QrScan::KIND_GUEST,
                 QrScan::RESULT_NOT_ACTIVE,
@@ -94,9 +93,9 @@ class GuestPassScanCommand
             );
 
             $this->answer($bot, sprintf(
-                "❌ <b>На сьогодні пропуск не активовано</b>\n\n%s\n%s\n\n"
-                    . '<i>Пропуск діє один день. Попросіть мешканця увімкнути його в боті '
-                    . 'на сьогодні.</i>',
+                "❌ <b>Пропуск зараз не активний</b>\n\n%s\n%s\n\n"
+                    . '<i>Пропуск працює лише у вікні, яке вмикає мешканець. Попросіть '
+                    . 'увімкнути його в боті.</i>',
                 self::esc($pass->getLabel()),
                 self::esc($pass->getAccount()?->getPlaceLabel() ?? ''),
             ));
@@ -115,9 +114,10 @@ class GuestPassScanCommand
 
         $this->answer($bot, sprintf(
             "✅ <b>Пропуск дійсний</b>\n\n👷 %s\nЧекають у: <b>%s</b>\n\n"
-                . "<i>Діє сьогодні до 24:00. Перевірено о %s.</i>",
+                . "<i>Діє до %s. Перевірено о %s.</i>",
             self::esc($pass->getLabel()),
             self::esc($pass->getAccount()?->getPlaceLabel() ?? ''),
+            $pass->getActiveUntil()?->format('H:i') ?? '24:00',
             $now->format('H:i'),
         ));
     }

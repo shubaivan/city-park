@@ -32,11 +32,11 @@ class GuestPassScanTest extends KernelTestCase
         $this->assertStringContainsString('буд. 19', $text);
     }
 
-    public function testAPassNobodyActivatedTodayIsRefused(): void
+    public function testAPassOutsideItsWindowIsRefused(): void
     {
         $text = $this->scan($this->pass(activeToday: false));
 
-        $this->assertStringContainsString('не активовано', $text);
+        $this->assertStringContainsString('не активний', $text);
         $this->assertStringNotContainsString('Пропуск дійсний', $text);
     }
 
@@ -99,7 +99,7 @@ class GuestPassScanTest extends KernelTestCase
             ->setLabel('Бригада, ремонт');
 
         if ($activeToday) {
-            $pass->setActiveOn(new \DateTime('now', new \DateTimeZone('Europe/Kyiv')));
+            $pass->setActiveUntil(new \DateTime('+2 hours', new \DateTimeZone('Europe/Kyiv')));
         }
 
         (new \ReflectionProperty(GuestPass::class, 'id'))->setValue($pass, 3);

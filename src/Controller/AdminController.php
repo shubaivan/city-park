@@ -133,7 +133,7 @@ class AdminController extends AbstractController
                 ->setMaxResults(60)
                 ->getQuery()
                 ->getResult(),
-            'today' => (new \DateTime('now', new \DateTimeZone('Europe/Kyiv')))->format('Y-m-d'),
+            'now' => new \DateTime('now', new \DateTimeZone('Europe/Kyiv')),
         ]);
     }
 
