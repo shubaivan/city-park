@@ -113,12 +113,12 @@ class GuardScanCommand
 
         $this->answer($bot, sprintf(
             "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n"
-                . "🏛 Зараз бронь: %s альтанка · <b>%s–%s</b>\n\n<i>Перевірено о %s.</i>",
+                . "🏛 Зараз бронь: %s альтанка · <b>%s–%s</b>\n\n<i>Перевірено %s.</i>",
             htmlspecialchars(GuardService::place($session), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
             SchedulePavilionService::pavilionName($session['pavilion']),
             $session['start']->format('H:i'),
             $session['end']->format('H:i'),
-            $now->format('H:i'),
+            $now->format('d.m о H:i'),
         ));
     }
 

@@ -113,11 +113,14 @@ class GuestPassScanCommand
 
         $this->answer($bot, sprintf(
             "✅ <b>Пропуск дійсний</b>\n\n👷 %s\nЧекають у: <b>%s</b>\n\n"
-                . "<i>Діє до %s. Перевірено о %s.</i>",
+                . "<i>Діє до %s. Перевірено %s.</i>",
             self::esc($pass->getLabel()),
             self::esc($pass->getAccount()?->getPlaceLabel() ?? ''),
-            $pass->getActiveUntil()?->format('H:i') ?? '24:00',
-            $now->format('H:i'),
+            // The date, not only the hour: this answer is looked at as a record — on a
+            // screenshot, or a minute after the guard scrolled past another one — and
+            // «до 23:59» on its own does not say which day the bot was talking about.
+            $pass->getActiveUntil()?->format('d.m о H:i') ?? 'кінця дня',
+            $now->format('d.m о H:i'),
         ));
     }
 

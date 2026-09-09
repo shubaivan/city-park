@@ -27,6 +27,15 @@ class GuestPassScanTest extends KernelTestCase
         $text = $this->scan($this->pass(activeToday: true));
 
         $this->assertStringContainsString('Пропуск дійсний', $text);
+        // With the date, not only the hour: the answer is read as a record — on a
+        // screenshot, or a minute after the guard scrolled past another one — and «до
+        // 23:59» alone does not say which day the bot was talking about.
+        $this->assertMatchesRegularExpression(
+            '/Діє до \d{2}\.\d{2} о \d{2}:\d{2}/u',
+            $text,
+            'the window must carry its date',
+        );
+        $this->assertMatchesRegularExpression('/Перевірено \d{2}\.\d{2} о \d{2}:\d{2}/u', $text);
         $this->assertStringContainsString('Бригада, ремонт', $text);
         $this->assertStringContainsString('кв. 85', $text, 'the guard must see which flat is expecting them');
         $this->assertStringContainsString('буд. 19', $text);

@@ -230,7 +230,7 @@ class GuestPassCommand
                 self::esc($pass->getLabel()),
                 self::esc($pass->getAccount()?->getPlaceLabel() ?? ''),
                 $active
-                    ? sprintf('✅ <b>Діє до %s</b>', $pass->getActiveUntil()?->format('H:i'))
+                    ? sprintf('✅ <b>Діє до %s</b>', $pass->getActiveUntil()?->format('d.m о H:i'))
                     : '⚪️ <b>Зараз не активний</b> — охорона не пропустить',
                 $this->history($pass),
             ),
@@ -292,7 +292,7 @@ class GuestPassCommand
         $this->passes->activate($pass, $hours);
         $bot->answerCallbackQuery(text: sprintf(
             'Пропуск діє до %s.',
-            $pass->getActiveUntil()?->format('H:i') ?? '24:00',
+            $pass->getActiveUntil()?->format('d.m о H:i') ?? 'кінця дня',
         ));
 
         $this->sendCard($bot, $pass);
