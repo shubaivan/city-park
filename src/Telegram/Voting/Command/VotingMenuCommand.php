@@ -161,7 +161,17 @@ class VotingMenuCommand
 
         $markup = InlineKeyboardMarkup::make();
 
+        // **With more than one vote open, every block and every button carries its number.**
+        // The keyboard hangs at the bottom of one message, far from the question it belongs
+        // to, so «👍 За» under two questions is a button nobody can aim: on 09.09.2026 the
+        // menu held a Face ID poll and a mobile-signal one, and the row that had already
+        // been used («✅ Ви проголосували: За») sat under the question that had not. One
+        // vote needs no number and does not get one.
+        $numbered = count($campaigns) > 1;
+        $index = 0;
+
         foreach ($campaigns as $campaign) {
+            $mark = $numbered ? self::numberBadge(++$index) . ' ' : '';
             $tally = $this->ballotRepository->tally($campaign);
             $ballot = $this->ballotRepository->findOneByCampaignAndVoter($campaign, $account);
             $mine = $ballot === null ? null : $ballot->getValue();
@@ -174,8 +184,14 @@ class VotingMenuCommand
                 // who decides — otherwise a resident reasonably reads a vote as binding.
                 $details = $campaign->getDetails();
 
+                if ($mark !== '' && $index > 1) {
+                    $lines[] = '———';
+                    $lines[] = '';
+                }
+
                 $lines[] = sprintf(
-                    "❓ <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b>\n🗓 %s — <b>%s</b>%s",
+                    "%s❓ <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b>\n🗓 %s — <b>%s</b>%s",
+                    $mark,
                     self::esc((string)$campaign->getQuestion()),
                     $details !== null ? "\n<i>" . self::esc($details) . '</i>' : '',
                     $tally['yes'],
@@ -194,13 +210,13 @@ class VotingMenuCommand
                 // Once cast, the row becomes a statement rather than a choice: a live
                 // button under a final vote invites a tap that can only be refused.
                 $markup->addRow($mine === null
-                    ? InlineKeyboardButton::make('👍 За', callback_data: 'bvote:' . $id . ':yes')
+                    ? InlineKeyboardButton::make($mark . '👍 За', callback_data: 'bvote:' . $id . ':yes')
                     : InlineKeyboardButton::make(
-                        $mine ? '✅ Ви проголосували: За' : '✅ Ви проголосували: Проти',
+                        $mark . ($mine ? '✅ Ви проголосували: За' : '✅ Ви проголосували: Проти'),
                         callback_data: self::NOOP_CALLBACK,
                     ),
                     ...($mine === null
-                        ? [InlineKeyboardButton::make('👎 Проти', callback_data: 'bvote:' . $id . ':no')]
+                        ? [InlineKeyboardButton::make($mark . '👎 Проти', callback_data: 'bvote:' . $id . ':no')]
                         : []),
                 );
 
@@ -208,8 +224,15 @@ class VotingMenuCommand
             }
 
             $priorBlocks = $campaign->getCandidate()?->getVoteBlockCount() ?? 0;
+
+            if ($mark !== '' && $index > 1) {
+                $lines[] = '———';
+                $lines[] = '';
+            }
+
             $lines[] = sprintf(
-                "👤 <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b> · Треба «За»: <b>%d</b> з %d\n🗓 %s — <b>%s</b>%s",
+                "%s👤 <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b> · Треба «За»: <b>%d</b> з %d\n🗓 %s — <b>%s</b>%s",
+                $mark,
                 $this->voteService->candidateLabel($campaign->getCandidate()),
                 $priorBlocks > 0 ? sprintf("\n<i>раніше блокувався за рішенням спільноти: %d раз(и)</i>", $priorBlocks) : '',
                 $tally['yes'],
@@ -224,13 +247,13 @@ class VotingMenuCommand
 
             $id = $campaign->getId();
             $markup->addRow($mine === null
-                ? InlineKeyboardButton::make('За блокування', callback_data: 'bvote:' . $id . ':yes')
+                ? InlineKeyboardButton::make($mark . 'За блокування', callback_data: 'bvote:' . $id . ':yes')
                 : InlineKeyboardButton::make(
-                    $mine ? '✅ Ви проголосували: За' : '✅ Ви проголосували: Проти',
+                    $mark . ($mine ? '✅ Ви проголосували: За' : '✅ Ви проголосували: Проти'),
                     callback_data: self::NOOP_CALLBACK,
                 ),
                 ...($mine === null
-                    ? [InlineKeyboardButton::make('Проти', callback_data: 'bvote:' . $id . ':no')]
+                    ? [InlineKeyboardButton::make($mark . 'Проти', callback_data: 'bvote:' . $id . ':no')]
                     : []),
             );
         }
@@ -241,6 +264,21 @@ class VotingMenuCommand
         $this->withArchive($markup)->addRow(StartCommand::homeButton());
 
         $this->respond($bot, $edit, implode("\n", $lines), $markup, $refreshing);
+    }
+
+    /**
+     * 1️⃣, 2️⃣ … — the same glyph on the block of text and on its buttons.
+     *
+     * Past ten it falls back to «11.», which is ugly and will never be reached: eleven open
+     * votes at once is a different problem than a label.
+     */
+    private static function numberBadge(int $n): string
+    {
+        return match (true) {
+            $n >= 1 && $n <= 9 => [1 => '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'][$n],
+            $n === 10 => '🔟',
+            default => $n . '.',
+        };
     }
 
     /**
