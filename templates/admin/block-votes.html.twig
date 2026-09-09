@@ -7,20 +7,44 @@
     «хто проти», and answering it meant scanning green and grey badges one by one. Each
     side is sorted by особовий рахунок so the same flat sits in the same place every time.
 #}
+{#
+    One ballot: the flat, who cast it, when — and a way through to that person.
+
+    The pill named a resident and went nowhere, so «хто така Юлія з 47-ї» meant opening
+    /admin/users in another tab and searching for her. Every other name in this panel is a
+    link to the card that answers it, and this is the one screen where somebody is read as
+    a name rather than as a row.
+
+    The person, when the bot still has them; the object otherwise — `voter_user` is SET
+    NULL, so an old ballot can outlive the resident and must still say which flat cast it.
+#}
+{% macro pill(b, cls, withTime) %}
+    {% set label %}
+        {{- b.voterAccount.unitLabel -}}
+        {%- if b.voterUser %} · {{ b.voterUser.displayName }}
+            {%- if b.voterUser.username %} (@{{ b.voterUser.username }}){% endif %}
+        {%- endif %}
+        {%- if withTime and b.castAt %} · {{ b.castAt|date('d.m H:i') }}{% endif %}
+    {% endset %}
+
+    {% if b.voterUser %}
+        <a href="{{ path('app_admin_resident', {id: b.voterUser.id}) }}" class="badge {{ cls }} mr-1 mb-1">{{ label }}</a>
+    {% elseif b.voterAccount %}
+        <a href="{{ path('app_admin_object', {id: b.voterAccount.id}) }}" class="badge {{ cls }} mr-1 mb-1">{{ label }}</a>
+    {% else %}
+        <span class="badge {{ cls }} mr-1 mb-1">{{ label }}</span>
+    {% endif %}
+{% endmacro %}
+
 {% macro ballots(list, withTime) %}
+    {% import _self as pills %}
     {% set yes = list|filter(b => b.value)|sort((a, b) => a.voterAccount.accountNumber <=> b.voterAccount.accountNumber) %}
     {% set no  = list|filter(b => not b.value)|sort((a, b) => a.voterAccount.accountNumber <=> b.voterAccount.accountNumber) %}
     <div class="row">
         <div class="col-md-6 mb-2">
             <small class="text-muted">👍 За — {{ yes|length }}:</small><br>
             {% for b in yes %}
-                <span class="badge badge-success mr-1 mb-1">
-                    {{ b.voterAccount.unitLabel }}
-                    {%- if b.voterUser %} · {{ b.voterUser.displayName }}
-                        {%- if b.voterUser.username %} (@{{ b.voterUser.username }}){% endif %}
-                    {%- endif %}
-                    {%- if withTime and b.castAt %} · {{ b.castAt|date('d.m H:i') }}{% endif %}
-                </span>
+                {{ pills.pill(b, 'badge-success', withTime) }}
             {% else %}
                 <small class="text-muted">—</small>
             {% endfor %}
@@ -28,13 +52,7 @@
         <div class="col-md-6 mb-2">
             <small class="text-muted">👎 Проти — {{ no|length }}:</small><br>
             {% for b in no %}
-                <span class="badge badge-secondary mr-1 mb-1">
-                    {{ b.voterAccount.unitLabel }}
-                    {%- if b.voterUser %} · {{ b.voterUser.displayName }}
-                        {%- if b.voterUser.username %} (@{{ b.voterUser.username }}){% endif %}
-                    {%- endif %}
-                    {%- if withTime and b.castAt %} · {{ b.castAt|date('d.m H:i') }}{% endif %}
-                </span>
+                {{ pills.pill(b, 'badge-secondary', withTime) }}
             {% else %}
                 <small class="text-muted">—</small>
             {% endfor %}
