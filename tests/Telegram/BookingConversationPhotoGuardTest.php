@@ -8,6 +8,7 @@ use App\Telegram\Complaint\Command\ComplaintEdit;
 use App\Telegram\Complaint\Command\ComplaintHold;
 use App\Telegram\Complaint\Command\ComplaintReply;
 use App\Telegram\Rental\Command\RentalPublish;
+use App\Telegram\GuestPass\Command\GuestPassCreate;
 use App\Telegram\ServiceOffer\Command\ServicePublish;
 use App\Telegram\SchedulePavilion\Command\OwnSchedule;
 use App\Telegram\SchedulePavilion\Command\SchedulePavilion;
@@ -44,6 +45,7 @@ class BookingConversationPhotoGuardTest extends KernelTestCase
         yield 'complaint discussion' => [ComplaintReply::class, 'save'];
         yield 'complaint hold' => [ComplaintHold::class, 'save'];
         yield 'service offer' => [ServicePublish::class, 'askDescription'];
+        yield 'guest pass' => [GuestPassCreate::class, 'save'];
     }
 
     /**

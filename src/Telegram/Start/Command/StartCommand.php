@@ -19,6 +19,7 @@ use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\ServiceOffer\Command\ServiceMenuCommand;
 use App\Telegram\Guard\Command\GuardCommand;
 use App\Telegram\Guard\Command\GuardQrCommand;
+use App\Telegram\GuestPass\Command\GuestPassCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\ResidentChat\Command\ResidentChatCommand;
 use SergiX44\Nutgram\Handlers\Type\Command;
@@ -539,6 +540,12 @@ class StartCommand extends Command
                 InlineKeyboardButton::make(
                     '🪪 Мій QR-код',
                     callback_data: GuardQrCommand::MENU_CALLBACK,
+                ),
+                // Next to it rather than in a section of its own: they are the same idea —
+                // a code the guard reads — and one is the other for somebody you let in.
+                InlineKeyboardButton::make(
+                    '👷 Пропуски',
+                    callback_data: GuestPassCommand::MENU_CALLBACK,
                 ),
             );
         }

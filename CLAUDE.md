@@ -1023,6 +1023,77 @@ last Saturday has to read as plainly wrong rather than as a bot error.
   from 457 people and shows up as «бот не відповідає», not as an error anywhere.
 - Needs `endroid/qr-code`, so a deploy that brings this in must run `composer install`.
 
+## Passes for the people a flat lets in («👷 Пропуски»)
+
+The crew arrives at eight and the guard has no way to tell an expected builder from
+anybody else with a toolbox — the only check available was «нам сказали, що нас чекають у
+85-й». Иван asked for this on 09.09.2026: a flat mints a pass, forwards it to the бригадир,
+and the guard's camera answers.
+
+**One code per crew, switched on for a window at a time.** The obvious shape — a fresh pass
+every morning — puts the work in the wrong place. The resident's taps are cheap; *re-sending
+a new picture to the бригадир every morning* is not, and on the third day they stop looking
+at it and ask the guard to take their word again. So the picture is minted once and
+forwarded once, `GuestPass.active_until` is the moment it was switched on until, and a scan
+outside that window answers «пропуск зараз не активний». The lifetime is enforced by the
+**answer**, not by the code's existence: a screenshot from yesterday has to read as *wrong*,
+never as a bot error the guard resolves by letting them in.
+
+**The window is a moment, not a day** (asked for the same night): a delivery is two hours
+and a renovation is all day, and «до кінця дня» handed to a courier is a key they keep until
+midnight. The card offers ⏱ 2 години / ⏱ 4 години / до кінця дня, and «⏹ Вимкнути зараз»
+for the van that came and went at 11:20. `activate()` **clamps to 23:59 whatever is asked**
+— four hours at 22:00 would otherwise run into tomorrow, which is a second day nobody chose,
+and one day is the outer limit the feature was asked for with. Switching off is not
+revoking: tomorrow the same picture works again.
+
+- **Stored, unlike the resident's own QR**, which is a bare HMAC over an account id and
+  needs no row. This one carries a day, a name, a revocation and a scan history — every one
+  of them a fact somebody needs after the event. The token is signed all the same
+  (`p-<id>-<sig>`): a bare id could be guessed, and the guard would then confirm somebody
+  nobody invited.
+- **Three live passes per flat** (`GuestPass::MAX_PER_ACCOUNT`), checked on the button *and*
+  in `mayCreate()` — a keyboard drawn before the third one was made is still tappable.
+- **Revoking is forever**: the picture in somebody's phone stops working. That is the answer
+  to «бригада змінилась», and it is why the pass is a row rather than a signature.
+- **The flat sees when its crew arrived.** The card lists the last checks («🕘 Перевіряли»),
+  and the *first* valid scan of a day DMs the issuer — «тем самым будет знать когда пришли
+  строители». Once a day: a guard who checks the same people twice at the door has not made
+  them arrive twice, and a second message teaches the resident to mute the first. Who
+  scanned is given as «охорона» or «мешканець» and never by name — naming the neighbour who
+  checked turns a security tool into something people avoid using.
+- **Anybody linked to the рахунок may issue one**, and the flat on the card is who vouches.
+  Same reading as the services board's «👤 Розмістив».
+
+## Who scanned whose code (`/admin/scans`)
+
+Every scan of either QR kind is a `QrScan` row: who pointed the camera, whose code it was,
+what the bot answered, and whether it was the guard. Asked for in the same breath as opening
+the scan to the house, and it is what makes that defensible — the moment 457 people can
+check each other, «хто когось перевіряв» stops being hypothetical. It is also the only
+thing in this system that can answer the question asked after anything happens in the yard:
+«хто їх пустив і коли вони заходили».
+
+- Both sides are nullable and SET NULL, with the flat and the person kept as **labels** so
+  a row still reads like a person after the FK is gone — the `ComplaintComment.author_label`
+  rule.
+- Read by everyone who can sign in, **GET only**. A security log that can be edited is not
+  a log.
+- The page lists the live passes first: «які пропуски зараз ходять по ЖК» is what it is
+  opened with more often than the log itself.
+- **Every result is named explicitly** with a neutral fallback, because `/admin/links`
+  spent a week drawing votes as complaints from an unguarded `else`.
+- Neither QR kind is a `LinkClick`: `DeepLink::record()` refuses `g-` and `p-` outright.
+  `/admin/links` answers «did the chat post work», and a pass is nobody's post.
+
+**A chat post can link into one topic of the instructions** — `i-<id>`, resolved through
+`InfoCommand::LINKABLE`. «Читайте в боті» under an announcement is the same dead end
+«↗️ Відкрити в боті» was introduced to remove: fifteen topics and the reader must find the
+one the post was about. The ids are **explicit and permanent**, never positions in the
+`TOPICS` array — a click recorded last month has to mean the same topic after somebody adds
+a sixteenth. These *are* recorded as clicks, unlike the QR kinds: «did anybody actually read
+it» is the only interesting question about an announcement.
+
 ## Backups
 
 `db:backup` dumps the database and **delivers it off the server** — a copy that lives on the

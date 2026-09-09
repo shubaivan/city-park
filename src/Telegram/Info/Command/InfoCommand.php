@@ -16,6 +16,22 @@ class InfoCommand
     /**
      * @var array<string, array{title:string, body:string}>
      */
+    /**
+     * Topics a chat post can link straight into: `t.me/<bot>?start=i-<id>`.
+     *
+     * A post that ends «читайте в боті» sends the reader to a menu of fifteen topics and
+     * asks them to find the one it was about — the same dead end every board had before
+     * «↗️ Відкрити в боті», and the reason that rule exists at all.
+     *
+     * The ids are **explicit and permanent**, not positions in the array below: a click
+     * recorded last month must still mean the same topic after somebody adds a sixteenth,
+     * and `LinkClick.target_id` is an integer. Only topics we actually link to need one.
+     */
+    public const LINKABLE = [
+        'qr' => 1,
+        'passes' => 2,
+    ];
+
     private const TOPICS = [
         'complaints' => [
             'title' => '🔧 Заявки та скарги',
@@ -165,6 +181,59 @@ class InfoCommand
                 . "• Якщо у вас не налаштований @username і номер ви не показали, бот перешле вам контакт того, хто зацікавився, — але швидше буде дозволити номер.\n\n"
                 . "<i>Оголошення — це лише інформація для сусідів. Воно не дає орендарю права бронювати альтанку чи голосувати: бронювання, голос і відповідальність за фото залишаються за власником рахунку.</i>",
         ],
+        'qr' => [
+            'title' => '🪪 QR-код мешканця',
+            'body' => "<b>🪪 QR-код мешканця</b>\n\n"
+                . "У меню бота є кнопка <b>«🪪 Мій QR-код»</b>. Це ваш постійний код: "
+                . "показуєте його сусідові чи охоронцю — і бот підтверджує, що ви справді "
+                . "мешканець нашого ЖК.\n\n"
+                . "<b>Що бачить той, хто сканує:</b>\n"
+                . "✅ Код дійсний\n"
+                . "Це мешканець нашого ЖК\n"
+                . "буд. 19, кв. 85\n"
+                . "🏛 Зараз бронь: Друга альтанка · 18:00–21:00\n\n"
+                . "Якщо броні на цю годину немає — бот так і напише.\n\n"
+                . "<b>Правила:</b>\n"
+                . "• Сканувати може <b>будь-який підтверджений мешканець</b>, не лише охорона: "
+                . "охоронців двоє, а мешканців — сотні, і незнайому людину в під'їзді бачить сусід.\n"
+                . "• Камера телефону відкриває бота сама — окремий застосунок не потрібен.\n"
+                . "• Код є в усіх мешканців. Борг чи блок за фото <b>не заважають</b>: вони "
+                . "обмежують бронювання альтанки, а не право тут жити.\n"
+                . "• Код постійний і не «згорає». У відповіді видно вашу квартиру, тому не "
+                . "публікуйте його у відкритих чатах.\n\n"
+                . "<i>Кожне сканування записується: видно, хто сканував, чий це був код і коли. "
+                . "Журнал бачить лише ОСББ.</i>",
+        ],
+        'passes' => [
+            'title' => '👷 Пропуски для робітників',
+            'body' => "<b>👷 Пропуск для бригади, майстра чи доставки</b>\n\n"
+                . "Робите ремонт? Замість «нас чекають у 85-й» дайте своїм робітникам "
+                . "пропуск: охорона наведе камеру й побачить, що цих людей справді чекають "
+                . "саме у вашій квартирі.\n\n"
+                . "<b>Як це працює:</b>\n"
+                . "1️⃣ Меню <b>«👷 Пропуски»</b> → <b>«➕ Новий пропуск»</b>.\n"
+                . "2️⃣ Напишіть одним рядком, хто це: «Бригада, ремонт», «Доставка меблів».\n"
+                . "3️⃣ Бот видасть картинку з кодом — перешліть її бригадиру.\n"
+                . "4️⃣ Коли вони приїжджають — увімкніть пропуск: <b>2 години</b>, "
+                . "<b>4 години</b> або <b>до кінця дня</b>. Картинку пересилати заново "
+                . "не треба, вона та сама.\n\n"
+                . "<b>Правила:</b>\n"
+                . "• Пропуск працює <b>лише у вікні, яке ви увімкнули</b>, і ніколи довше "
+                . "ніж до кінця дня. Доставка на дві години — вмикайте на дві: поза вікном "
+                . "охорона побачить «не активний» і не пропустить, тож загублений скріншот "
+                . "нічого не відчиняє.\n"
+                . "• Приїхали й поїхали раніше — <b>«⏹ Вимкнути зараз»</b>.\n"
+                . "• До <b>3 діючих пропусків</b> на квартиру.\n"
+                . "• Пропуск можна <b>скасувати назавжди</b> — код перестане працювати, "
+                . "навіть якщо картинка залишилась у когось у телефоні.\n"
+                . "• Видати може будь-хто з прив'язаних до рахунку; відповідає за цих людей "
+                . "квартира, яку видно у відповіді.\n"
+                . "• <b>Ви бачите, коли ваш пропуск перевірили.</b> На картці пропуску "
+                . "написано час останніх перевірок, а першого разу за день бот напише вам "
+                . "сам — так ви знаєте, що бригада вже на місці.\n\n"
+                . "<i>Кожне сканування пропуску записується — ОСББ бачить, кого і коли "
+                . "перевіряли.</i>",
+        ],
         'contacts' => [
             'title' => '📞 Контакти',
             'body' => "<b>📞 Контакти</b>\n\n"
@@ -190,6 +259,22 @@ class InfoCommand
         }
 
         $this->renderMenu($bot, $data === self::MENU_CALLBACK);
+    }
+
+    /**
+     * Somebody followed a link from the residents' chat straight to one topic.
+     *
+     * A forwarded link may arrive months later, from a post about a topic that has since
+     * been renamed away — an unknown id opens the list rather than erroring, the same call
+     * `StartPayloadCommand` makes for an unknown payload.
+     */
+    public function openFromDeepLink(Nutgram $bot, int $id): void
+    {
+        $key = array_search($id, self::LINKABLE, true);
+
+        $key === false
+            ? $this->renderMenu($bot, false)
+            : $this->renderTopic($bot, (string)$key);
     }
 
     private function renderMenu(Nutgram $bot, bool $edit): void
@@ -230,8 +315,12 @@ class InfoCommand
             )
             ->addRow(StartCommand::homeButton());
 
+        // Edited in place when the reader is walking the menu; sent fresh when they
+        // arrived from a link, where there is no message of ours to edit.
         try {
-            $bot->editMessageText(text: $topic['body'], parse_mode: ParseMode::HTML, reply_markup: $markup);
+            $bot->isCallbackQuery()
+                ? $bot->editMessageText(text: $topic['body'], parse_mode: ParseMode::HTML, reply_markup: $markup)
+                : $bot->sendMessage(text: $topic['body'], parse_mode: ParseMode::HTML, reply_markup: $markup);
         } catch (\Throwable) {
             $bot->sendMessage(text: $topic['body'], parse_mode: ParseMode::HTML, reply_markup: $markup);
         }

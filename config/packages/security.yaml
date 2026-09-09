@@ -41,6 +41,11 @@ security:
         # Same call: it says whether the chat posts are working, which is as useful to
         # the person answering the complaints as to the accountant. Nothing to change.
         - { path: ^/admin/links$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        # Who scanned whose QR code. Read by everyone who can sign in — the question it
+        # answers («хто їх пустив і коли вони заходили») is asked by whoever is dealing
+        # with what happened, and that is as often the repairs side as the accountant.
+        # GET only: a security log that can be edited is not a log.
+        - { path: ^/admin/scans$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
         # A resident's cached Telegram photo. Both roles already read the resident register,
         # and a face is the least of what is on that page — but it is still served from
         # var/, behind this login, rather than published under public/.

@@ -37,6 +37,8 @@ class DeepLink
         self::KIND_DEBT => 'd-',
         self::KIND_VOTE => 'v-',
         self::KIND_GUARD => 'g-',
+        self::KIND_PASS => 'p-',
+        self::KIND_INFO => 'i-',
     ];
 
     public const KIND_SERVICE = 'service';
@@ -61,6 +63,22 @@ class DeepLink
 
     /** The guard's QR. Signed, not an id — it is here so the router has one list. */
     public const KIND_GUARD = 'guard';
+
+    /**
+     * A flat's pass for its builders. Signed like the guard's, and like it, **not** counted
+     * as a click: `/admin/links` answers «did the chat post work», and a pass is nobody's
+     * post. Its own scans are logged where they belong, in `QrScan`.
+     */
+    public const KIND_PASS = 'pass';
+
+    /**
+     * One topic of the bot's own instructions — `InfoCommand::LINKABLE` holds the ids.
+     *
+     * A post that ends «читайте в боті» hands the reader a menu of fifteen topics and asks
+     * them to find the one it was about. Recorded like any other link: «did anybody
+     * actually read it» is the only interesting question about an announcement.
+     */
+    public const KIND_INFO = 'info';
 
     public function __construct(
         private Nutgram $bot,
@@ -132,7 +150,11 @@ class DeepLink
      */
     public function record(string $kind, int $id, ?TelegramUser $user): void
     {
-        if ($id <= 0 || !isset(self::PREFIXES[$kind]) || $kind === self::KIND_GUARD) {
+        if ($id <= 0
+            || !isset(self::PREFIXES[$kind])
+            || $kind === self::KIND_GUARD
+            || $kind === self::KIND_PASS
+        ) {
             return;
         }
 

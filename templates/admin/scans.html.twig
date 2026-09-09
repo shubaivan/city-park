@@ -1,0 +1,145 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Сканування QR · ОСББ City Park{% endblock %}
+
+{#
+    Who scanned whose code, and when.
+
+    Read on a phone as often as on a desktop — this is the page somebody opens *after*
+    something happened in the yard, and that happens away from a desk. Same shape as the
+    sign-in log: a table that scrolls inside its own box, nothing to click, nothing to
+    change.
+#}
+{% block body %}
+    {{ parent() }}
+
+    <div class="container-fluid py-3 px-2 px-sm-3" style="max-width: 1000px;">
+        <p class="mb-2"><a href="{{ path('app_admin') }}">← На головну адмінки</a></p>
+
+        <h4 class="mb-1">🪪 Сканування QR-кодів</h4>
+        <p class="text-muted small mb-3">
+            Хто наводив камеру, чий це був код і що відповів бот. Сканувати може будь-який
+            підтверджений мешканець та охорона — тому цей журнал і ведеться.
+        </p>
+
+        {#
+            The live passes first: «які пропуски зараз ходять по ЖК» is the question this
+            page is opened with more often than «хто сканував».
+        #}
+        <div class="card mb-3">
+            <div class="card-header py-2 px-3"><b>👷 Діючі пропуски</b> <span class="text-muted small">— видані квартирами для бригад, доставок, майстрів</span></div>
+            <div class="card-body p-0">
+                {% if passes is empty %}
+                    <div class="p-3 small text-muted mb-0">Жодна квартира ще не видавала пропусків.</div>
+                {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 small">
+                            <thead>
+                            <tr>
+                                <th>Кого чекають</th>
+                                <th>Квартира</th>
+                                <th>Діє до</th>
+                                <th>Сканів</th>
+                                <th>Востаннє</th>
+                                <th>Видав</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for pass in passes %}
+                                <tr>
+                                    <td>{{ pass.label }}</td>
+                                    <td>{{ pass.account ? pass.account.placeLabel : '—' }}</td>
+                                    <td>
+                                        {% if pass.activeUntil and pass.activeUntil > now %}
+                                            <span class="text-success">✅ активний до {{ pass.activeUntil|date('H:i') }}</span>
+                                        {% else %}
+                                            <span class="text-muted">⚪️ ні</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ pass.scans }}</td>
+                                    <td class="text-muted">{{ pass.lastScannedAt ? pass.lastScannedAt|date('d.m H:i') : '—' }}</td>
+                                    <td class="text-muted">
+                                        {% if pass.issuedBy %}{{ pass.issuedBy.firstName }} {{ pass.issuedBy.lastName }}{% else %}—{% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if entries is empty %}
+            <div class="alert alert-light py-2 px-3 small mb-0">
+                Поки що жодного сканування.
+            </div>
+        {% else %}
+            <div class="card">
+                <div class="card-header py-2 px-3">
+                    <b>Журнал сканувань</b>
+                    <span class="text-muted small">
+                        — показано {{ entries|length }} з {{ total }}
+                    </span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 small">
+                        <thead>
+                        <tr>
+                            <th>Коли</th>
+                            <th>Хто сканував</th>
+                            <th>Чий код</th>
+                            <th>Що це було</th>
+                            <th>Відповідь</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for scan in entries %}
+                            <tr>
+                                <td class="text-nowrap">{{ scan.createdAt|date('d.m H:i') }}</td>
+                                <td>
+                                    {{ scan.scannedByLabel }}
+                                    {% if scan.byGuard %}<span class="badge badge-dark">охорона</span>{% endif %}
+                                </td>
+                                <td>{{ scan.subjectLabel }}</td>
+                                <td>
+                                    {% if scan.kind == 'guest' %}
+                                        👷 пропуск{% if scan.guestPassId %} <span class="text-muted">#{{ scan.guestPassId }}</span>{% endif %}
+                                    {% else %}
+                                        🪪 мешканець
+                                    {% endif %}
+                                </td>
+                                {#
+                                    Every result is named explicitly, with a neutral
+                                    fallback — the links page shipped with an unguarded
+                                    `else` that drew one kind as another and said something
+                                    untrue for a week.
+                                #}
+                                <td>
+                                    {% if scan.result == 'ok' %}
+                                        <span class="text-success">✅ дійсний</span>
+                                    {% elseif scan.result == 'no_booking' %}
+                                        <span class="text-muted">без броні</span>
+                                    {% elseif scan.result == 'not_active' %}
+                                        <span class="text-warning">⚪️ не активований</span>
+                                    {% elseif scan.result == 'revoked' %}
+                                        <span class="text-danger">🗑 скасований</span>
+                                    {% elseif scan.result == 'unknown' %}
+                                        <span class="text-danger">⚠️ не розпізнано</span>
+                                    {% else %}
+                                        <span class="text-muted">{{ scan.result }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <p class="text-muted small mt-2 mb-0">
+                Показано останні {{ shown }} записів. Журнал не редагується — це навмисно.
+            </p>
+        {% endif %}
+    </div>
+{% endblock %}
