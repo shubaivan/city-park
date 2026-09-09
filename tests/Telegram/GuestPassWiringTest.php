@@ -66,6 +66,31 @@ class GuestPassWiringTest extends TestCase
         return array_keys($found);
     }
 
+    /**
+     * The list button leads with the day the pass was issued.
+     *
+     * The rule every list of published things in this bot follows — «08.09 · Двері,
+     * монтаж», «🆕 08.09 · Ліфт не працює» — and it earns its place here for the same
+     * reason: a flat with three passes reads them as «this one is today, that one is from
+     * the ремонт in June». Dates at a fixed width line up down the column; a trailing one
+     * cannot, because the titles are ragged.
+     */
+    public function testTheListButtonLeadsWithTheIssueDate(): void
+    {
+        $source = (string)file_get_contents(
+            __DIR__ . '/../../src/Telegram/GuestPass/Command/GuestPassCommand.php'
+        );
+
+        preg_match('/private static function buttonLabel.*?\n    \}/s', $source, $m);
+        $this->assertNotEmpty($m, 'buttonLabel() is what draws the list');
+        $this->assertStringContainsString("getCreatedAt()->format('d.m')", $m[0]);
+        $this->assertMatchesRegularExpression(
+            "/sprintf\('🟢 %s · %s/u",
+            $m[0],
+            'the date leads the label, before the trade',
+        );
+    }
+
     public function testEveryGuestPassCallbackIsRouted(): void
     {
         $patterns = $this->patterns();

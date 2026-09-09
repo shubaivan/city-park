@@ -132,21 +132,33 @@ class GuestPassCommand
                 . "чекають саме у вашій квартирі.\n\n"
                 . ($passes === []
                     ? '<i>Поки що жодного пропуску.</i>'
-                    : '<i>Пропуск діє один день. Уранці натисніть «🔁 Активувати на сьогодні» — '
-                        . 'картинку пересилати заново не треба.</i>'),
+                    : '<i>Пропуск вмикається на 2 чи 4 години або до кінця дня — і ніколи '
+                        . 'довше. Картинку пересилати заново не треба: вмикайте той самий '
+                        . 'пропуск щоразу, коли ці люди приходять.</i>'),
             parse_mode: ParseMode::HTML,
             reply_markup: $markup,
         );
     }
 
-    /** «🟢 Бригада, ремонт · до 14:20» while the window is open, «⚪️» the rest of the time. */
+    /**
+     * «🟢 09.09 · Бригада, ремонт · до 14:20», or «⚪️ 09.09 · Бригада, ремонт» when the
+     * window is shut.
+     *
+     * The date is the day the pass was **issued**, and it leads the label the way every
+     * other list of published things in this bot does: a flat with three passes reads them
+     * as «that one is from today, that one is from the ремонт in June», and dates at a
+     * fixed width line up down the column where a trailing one cannot. The hour at the end
+     * is the live half — Telegram truncates from the right, and a pass that is off has no
+     * hour to lose.
+     */
     private static function buttonLabel(GuestPass $pass): string
     {
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+        $issued = $pass->getCreatedAt()->format('d.m');
 
         return $pass->isActiveAt($now)
-            ? sprintf('🟢 %s · до %s', $pass->getLabel(), $pass->getActiveUntil()?->format('H:i'))
-            : '⚪️ ' . $pass->getLabel();
+            ? sprintf('🟢 %s · %s · до %s', $issued, $pass->getLabel(), $pass->getActiveUntil()?->format('H:i'))
+            : sprintf('⚪️ %s · %s', $issued, $pass->getLabel());
     }
 
     private function openCard(Nutgram $bot, Account $account, int $id): void
@@ -228,7 +240,8 @@ class GuestPassCommand
                     . 'ніж до кінця дня. Наступного разу просто увімкніть його знову — та '
                     . 'сама картинка, пересилати заново не треба.</i>',
                 self::esc($pass->getLabel()),
-                self::esc($pass->getAccount()?->getPlaceLabel() ?? ''),
+                self::esc($pass->getAccount()?->getPlaceLabel() ?? '')
+                    . ' · виданий ' . $pass->getCreatedAt()->format('d.m.Y'),
                 $active
                     ? sprintf('✅ <b>Діє до %s</b>', $pass->getActiveUntil()?->format('d.m о H:i'))
                     : '⚪️ <b>Зараз не активний</b> — охорона не пропустить',
