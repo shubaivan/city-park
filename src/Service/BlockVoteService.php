@@ -12,11 +12,14 @@ use App\Repository\AccountRepository;
 use App\Repository\BlockVoteBallotRepository;
 use App\Message\VoteBroadcastMessage;
 use App\Repository\BlockVoteCampaignRepository;
+use App\Telegram\Voting\Command\VotingMenuCommand;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
@@ -767,7 +770,18 @@ class BlockVoteService
         if ($account === null) {
             return;
         }
-        $this->broadcastToAccount($account, $reminder ? $this->reminderText($campaign) : $this->openedText($campaign));
+        // Straight to this vote, not to the section. The notice names one question and
+        // ended «меню «🗳️ Голосування» або команда /vote» — which on a week when two are
+        // open asks the reader to find the one they were just told about, and every board
+        // here has had that same dead end removed once already.
+        $this->broadcastToAccount(
+            $account,
+            $reminder ? $this->reminderText($campaign) : $this->openedText($campaign),
+            InlineKeyboardMarkup::make()->addRow(InlineKeyboardButton::make(
+                '🗳️ Проголосувати',
+                callback_data: VotingMenuCommand::CARD_PREFIX . $campaign->getId(),
+            )),
+        );
     }
 
     /**
@@ -856,7 +870,7 @@ class BlockVoteService
             return sprintf(
                 "<b>%s</b>\n%s\n📊 Зараз: «За» <b>%d</b> · «Проти» <b>%d</b> (мешканців з правом голосу: %d)\n"
                 . "🗓 До: <b>%s</b>\n\n"
-                . "Один акаунт — один голос; свій вибір можна змінити до завершення.\n"
+                . "Один акаунт — один голос. <b>Голос остаточний</b>: змінити його не можна.\n"
                 . "<i>Це опитування: рішення ухвалює ОСББ, а результат голосування — те, на що воно спиратиметься.</i>\n"
                 . "👉 Проголосувати: меню «🗳️ Голосування» або команда /vote.",
                 htmlspecialchars((string)$campaign->getQuestion(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
@@ -876,7 +890,7 @@ class BlockVoteService
             . "Треба «За»: <b>%d</b> з %d\n"
             . "🗓 До: <b>%s</b>\n\n"
             . "Якщо «За» набере понад 30%%, акаунт буде <b>заблоковано на %d днів</b> — бронювання альтанок стане недоступним. Після цього строку доступ відновиться <b>автоматично</b>.\n\n"
-            . "Один акаунт — один голос; свій вибір можна змінити до завершення.\n"
+            . "Один акаунт — один голос. <b>Голос остаточний</b>: змінити його не можна.\n"
             . "👉 Проголосувати: меню «🗳️ Голосування» або команда /vote.",
             $this->candidateLabel($campaign->getCandidate()),
             $tally['yes'],
@@ -892,7 +906,7 @@ class BlockVoteService
      * Send a message to every TelegramUser of an account, skipping those without a chat_id
      * and swallowing per-user send errors so one offline member can't fail the batch.
      */
-    private function broadcastToAccount(Account $account, string $text): void
+    private function broadcastToAccount(Account $account, string $text, ?InlineKeyboardMarkup $markup = null): void
     {
         foreach ($account->getUsers() as $user) {
             if (!$user->getChatId()) {
@@ -903,6 +917,7 @@ class BlockVoteService
                     text: $text,
                     chat_id: $user->getChatId(),
                     parse_mode: ParseMode::HTML,
+                    reply_markup: $markup,
                 );
             } catch (\Throwable $t) {
                 $this->logger->warning('block-vote: notify failed', [
