@@ -266,7 +266,7 @@ class BlockVoteService
         // Only a block campaign is one-per-candidate; two questions can sensibly run at
         // once, and there is no candidate to collide on anyway.
         if ($candidate !== null && $this->campaignRepository->findOpenForCandidate($candidate) !== null) {
-            throw new \RuntimeException('Для цього аккаунта вже відкрите голосування.');
+            throw new \RuntimeException('Для цього акаунта вже відкрите голосування.');
         }
 
         $voters = $this->eligibleVoters($candidate);
@@ -641,9 +641,9 @@ class BlockVoteService
     private function blockText(\DateTime $until, int $count): string
     {
         return sprintf(
-            "⛔ <b>Ваш аккаунт заблоковано рішенням спільноти</b>\n\n"
+            "⛔ <b>Ваш акаунт заблоковано рішенням спільноти</b>\n\n"
             . "Сусіди проголосували за тимчасове блокування. Доступ до бронювання припинено до <b>%s</b> (30 днів).\n\n"
-            . "Це вже <b>%d-е</b> блокування вашого аккаунта за рішенням спільноти.\n\n"
+            . "Це вже <b>%d-е</b> блокування вашого акаунта за рішенням спільноти.\n\n"
             . "Після цієї дати доступ відновиться автоматично.\n\n"
             . OsbbContacts::askThem('Питання:'),
             $until->format('d.m.Y'),
@@ -745,7 +745,7 @@ class BlockVoteService
         $num = trim((string)$account->getApartmentNumber());
         $unit = $account->isParking()
             ? ($num !== '' ? 'паркомісце ' . $num : 'паркомісце')
-            : ($num !== '' ? 'кв. ' . $num : ('аккаунт ' . $account->getAccountNumber()));
+            : ($num !== '' ? 'кв. ' . $num : ('акаунт ' . $account->getAccountNumber()));
 
         $addr = trim(trim((string)$account->getStreet()) . ' ' . trim((string)$account->getHouseNumber()));
 
@@ -856,7 +856,7 @@ class BlockVoteService
             return sprintf(
                 "<b>%s</b>\n%s\n📊 Зараз: «За» <b>%d</b> · «Проти» <b>%d</b> (мешканців з правом голосу: %d)\n"
                 . "🗓 До: <b>%s</b>\n\n"
-                . "Один аккаунт — один голос; свій вибір можна змінити до завершення.\n"
+                . "Один акаунт — один голос; свій вибір можна змінити до завершення.\n"
                 . "<i>Це опитування: рішення ухвалює ОСББ, а результат голосування — те, на що воно спиратиметься.</i>\n"
                 . "👉 Проголосувати: меню «🗳️ Голосування» або команда /vote.",
                 htmlspecialchars((string)$campaign->getQuestion(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
@@ -875,8 +875,8 @@ class BlockVoteService
             . "📊 Зараз: «За» <b>%d</b> · «Проти» <b>%d</b>\n"
             . "Треба «За»: <b>%d</b> з %d\n"
             . "🗓 До: <b>%s</b>\n\n"
-            . "Якщо «За» набере понад 30%%, аккаунт буде <b>заблоковано на %d днів</b> — бронювання альтанок стане недоступним. Після цього строку доступ відновиться <b>автоматично</b>.\n\n"
-            . "Один аккаунт — один голос; свій вибір можна змінити до завершення.\n"
+            . "Якщо «За» набере понад 30%%, акаунт буде <b>заблоковано на %d днів</b> — бронювання альтанок стане недоступним. Після цього строку доступ відновиться <b>автоматично</b>.\n\n"
+            . "Один акаунт — один голос; свій вибір можна змінити до завершення.\n"
             . "👉 Проголосувати: меню «🗳️ Голосування» або команда /vote.",
             $this->candidateLabel($campaign->getCandidate()),
             $tally['yes'],

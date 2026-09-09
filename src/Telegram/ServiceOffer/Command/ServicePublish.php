@@ -126,7 +126,7 @@ class ServicePublish extends Conversation
 
         if (!$this->offerService->canPublish($account)) {
             $bot->sendMessage(
-                text: "Ваш аккаунт не підтверджений ОСББ — опублікувати оголошення не вийде.\n"
+                text: "Ваш акаунт не підтверджений ОСББ — опублікувати оголошення не вийде.\n"
                     . "Зв'яжіться з бухгалтером ОСББ:\n" . OsbbContacts::ACCOUNTANT_LINE,
                 parse_mode: ParseMode::HTML,
             );

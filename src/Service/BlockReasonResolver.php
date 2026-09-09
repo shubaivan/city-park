@@ -147,7 +147,7 @@ final class BlockReasonResolver
         // debt on another object of the same owner) names the object it is talking about.
         // Two messages about the same subject, one of which says «поточний борг 3 415.50»
         // and leaves the reader to guess which door it belongs to.
-        $header = "🚫 <b>Бронювання недоступне — ваш аккаунт призупинено.</b>\n"
+        $header = "🚫 <b>Бронювання недоступне — ваш акаунт призупинено.</b>\n"
             . sprintf(
                 "<i>%s · рахунок %s</i>\n\n",
                 htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
@@ -198,7 +198,7 @@ final class BlockReasonResolver
 
             if ($this->photoService->isUploadStillAllowed($blockedReq, $now)) {
                 $msg .= "Натисніть «📸 Завантажити фото» та надішліть фото — "
-                    . "аккаунт розблокується автоматично.\n\n"
+                    . "акаунт розблокується автоматично.\n\n"
                     . "Якщо виникли труднощі — " . self::accountantContact();
             } else {
                 $msg .= "Час для самостійного завантаження фото вже минув.\n\n"

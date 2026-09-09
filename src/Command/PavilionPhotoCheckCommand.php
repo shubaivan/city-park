@@ -398,7 +398,7 @@ class PavilionPhotoCheckCommand extends Command
         $start = $req->getSessionStartAt();
         $cutoff = $this->photoService->uploadCutoffAt($req);
         $text = sprintf(
-            "⛔ <b>Ваш аккаунт заблоковано</b>\n\nПричина: не завантажено фото альтанки після бронювання:\n📅 <b>%s</b>\n⏰ <b>%s</b>\n🏠 Альт. <b>%d</b>\n\n"
+            "⛔ <b>Ваш акаунт заблоковано</b>\n\nПричина: не завантажено фото альтанки після бронювання:\n📅 <b>%s</b>\n⏰ <b>%s</b>\n🏠 Альт. <b>%d</b>\n\n"
             . "📸 <i>У вас ще є <b>%s</b> — до <b>%s</b> — щоб надіслати фото в цей чат, і блокування зніметься автоматично.</i>\n\n"
             . "Після цього — лише через ОСББ:\n" . OsbbContacts::ALL_LINES,
             UkDateFormatter::dayDate($start),

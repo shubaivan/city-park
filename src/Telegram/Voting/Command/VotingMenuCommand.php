@@ -112,7 +112,7 @@ class VotingMenuCommand
             $this->respond(
                 $bot,
                 $edit,
-                "🗳️ <b>Голосування</b>\n\nВаш аккаунт не підтверджений ОСББ — голосування недоступне.\n"
+                "🗳️ <b>Голосування</b>\n\nВаш акаунт не підтверджений ОСББ — голосування недоступне.\n"
                 . "Зв'яжіться з бухгалтером ОСББ:\n" . OsbbContacts::ACCOUNTANT_LINE,
                 InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton())
             );
@@ -156,7 +156,7 @@ class VotingMenuCommand
         }
         $lines[] = '🗳️ <b>Голосування</b>';
         $lines[] = '';
-        $lines[] = 'Один аккаунт — один голос. Голос остаточний: змінити його не можна.';
+        $lines[] = 'Один акаунт — один голос. Голос остаточний: змінити його не можна.';
         $lines[] = '';
 
         $markup = InlineKeyboardMarkup::make();

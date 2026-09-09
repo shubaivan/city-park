@@ -172,7 +172,7 @@ class ResidentChatBanCommand extends Command
             (int)$user->getId(),
             (string)$user->getFirstName(),
             (string)$user->getLastName(),
-            $user->getPhoneNumber() ?: 'без телефона',
+            $user->getPhoneNumber() ?: 'без телефону',
             $account ? $account->getPlaceLabel() . ' (о/р ' . $account->getAccountNumber() . ')' : 'без квартири',
         ));
     }

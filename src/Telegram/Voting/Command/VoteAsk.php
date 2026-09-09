@@ -85,7 +85,7 @@ class VoteAsk extends Conversation
 
         if (!$account instanceof Account) {
             $bot->sendMessage(
-                text: "Ваш аккаунт не підтверджений ОСББ — запропонувати питання не вийде.\n"
+                text: "Ваш акаунт не підтверджений ОСББ — запропонувати питання не вийде.\n"
                     . "Зв'яжіться з бухгалтером ОСББ:\n" . OsbbContacts::ACCOUNTANT_LINE,
                 parse_mode: ParseMode::HTML,
             );

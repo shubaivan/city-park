@@ -29,7 +29,7 @@ class PhotoUploadInfo
 
         if (!$account) {
             $bot->sendMessage(
-                text: '📷 У вас немає прив\'язаного аккаунту, тож завантаження не потрібне.',
+                text: '📷 У вас немає прив\'язаного акаунту, тож завантаження не потрібне.',
                 reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
             );
             return;
