@@ -98,6 +98,48 @@ class VotingMenuTest extends TestCase
      * residents it misses are the ballots it needed. `MenuContainerLookupsTest` covers the
      * other half (the service has to be public or the count silently disappears).
      */
+    /**
+     * With two votes open, every block and every button says which one it is.
+     *
+     * The keyboard hangs at the bottom of a single message, screens away from the question
+     * it belongs to. On 09.09.2026 the menu held two questions and the reader saw «👍 За /
+     * 👎 Проти» once and «✅ Ви проголосували: За» once, with nothing to say which row
+     * answered which — «непонятно где какое». Numbering the block and its buttons with the
+     * same glyph is what ties them together, so a button that loses the mark is the bug
+     * coming back.
+     */
+    public function testEveryVoteButtonCarriesTheNumberOfItsQuestion(): void
+    {
+        $source = $this->source('src/Telegram/Voting/Command/VotingMenuCommand.php');
+
+        $this->assertStringContainsString(
+            'private static function numberBadge(',
+            $source,
+            'nothing numbers the votes any more',
+        );
+
+        // Each button the menu draws per campaign: the two ballots and the cast pill.
+        preg_match_all(
+            '/InlineKeyboardButton::make\((.{0,180}?)callback_data: (?:\x27bvote:\x27|self::NOOP_CALLBACK)/s',
+            $source,
+            $matches,
+        );
+
+        $this->assertGreaterThanOrEqual(
+            6,
+            count($matches[1]),
+            'expected both kinds of campaign to draw yes / no / cast buttons',
+        );
+
+        foreach ($matches[1] as $label) {
+            $this->assertStringContainsString(
+                '$mark',
+                $label,
+                'a vote button without its number: with two votes open nobody can tell which question it answers — ' . trim($label),
+            );
+        }
+    }
+
     public function testTheMenuButtonCarriesTheNumberOfOpenVotes(): void
     {
         $start = $this->source('src/Telegram/Start/Command/StartCommand.php');
