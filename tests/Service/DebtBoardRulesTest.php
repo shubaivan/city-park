@@ -136,12 +136,13 @@ class DebtBoardRulesTest extends TestCase
         $this->assertStringNotContainsString('кв. 134', $never->report($this->account(9, '5', '0')));
     }
 
-    public function testMenuBlockLeadsWithTheHouseTotalAndTheTopThree(): void
+    public function testMenuBlockLeadsWithTheTopThreeAndNeverTheHouseTotal(): void
     {
         $block = $this->freshBoard()->menuBlock($this->account(9, '5', '0'));
 
-        // 12269 + 6268 + 5402 + 2732 + 2500 + 2168
-        $this->assertStringContainsString('31 339 грн', $block);
+        // 12269 + 6268 + 5402 + 2732 + 2500 + 2168 = 31 339, and it is nowhere on screen.
+        $this->assertStringNotContainsString('31 339', $block);
+        $this->assertStringContainsString('Це борг 6 квартир', $block);
         $this->assertStringContainsString('🥇 буд. 23, кв. 134', $block);
         $this->assertStringContainsString('🥈 буд. 23, кв. 89', $block);
         $this->assertStringContainsString('🥉 буд. 23, кв. 76', $block);
@@ -149,6 +150,31 @@ class DebtBoardRulesTest extends TestCase
         $this->assertStringContainsString('5️⃣ буд. 23, кв. 59', $block);
         // Sixth place is in the total and the full report, but not on the podium.
         $this->assertStringNotContainsString('кв. 39', $block);
+    }
+
+    /**
+     * The house's total is published nowhere a resident can read.
+     *
+     * It led every render until 09.09.2026, when the head of the ОСББ asked for it out:
+     * what one flat owes is that household's business and its neighbours' pressure, while
+     * the sum of all of them is the ОСББ's own financial position. Each flat's figure, the
+     * count of flats and the month-on-month movement all stay — this pins only the number
+     * that was withdrawn, because putting a total back at the top of a board is the most
+     * natural "improvement" anybody could make to it.
+     */
+    public function testTheHouseTotalIsNeverPublished(): void
+    {
+        $viewer = $this->account(9, '5', '0');
+        $board = $this->freshBoard();
+
+        // 12269 + 6268 + 5402 + 2732 + 2500 + 2168
+        foreach ([
+            'menu' => $board->menuBlock($viewer),
+            'report' => $board->report($viewer),
+            'chat' => $board->chatAnnouncement($this->snapshot(31_339, 6, '-1 day'), null),
+        ] as $where => $text) {
+            $this->assertStringNotContainsString('31 339', $text, $where . ': the house total is not ours to publish');
+        }
     }
 
     public function testBoardIsAlwaysDated(): void
@@ -288,7 +314,8 @@ class DebtBoardRulesTest extends TestCase
             ['134', '89', '76', '85', '59', '39'],
             $this->orderOf($report, ['134', '89', '76', '85', '59', '39']),
         );
-        $this->assertStringContainsString('6 квартир', $report);
+        $this->assertStringContainsString('Квартир з боргом: 6', $report);
+        $this->assertStringNotContainsString('31 339', $report);
     }
 
     private function snapshot(float $total, int $debtors, string $takenAt): DebtSnapshot
@@ -321,7 +348,10 @@ class DebtBoardRulesTest extends TestCase
             $this->snapshot(15_540, 28, '-31 days'),
         );
 
-        $this->assertStringContainsString('Борг мешканців: <b>11 340 грн</b>', $post);
+        // The house's total is not in the post — withdrawn 09.09.2026 at the head of the
+        // ОСББ's request. The movement between two of them still is: a delta is not the
+        // figure that was taken out, and it is the only line saying whether anything moved.
+        $this->assertStringNotContainsString('11 340', $post);
         $this->assertStringContainsString('Квартир з боргом: <b>25</b>', $post);
         $this->assertStringContainsString('зменшився на 4 200 грн', $post);
 
@@ -458,9 +488,10 @@ class DebtBoardRulesTest extends TestCase
         $this->assertStringContainsString('кв. 140', $last);
         $this->assertStringNotContainsString('кв. 130 —', $last);
 
-        // Every page carries the totals, so no page can be forwarded as "the debt".
+        // Every page says how many flats it is talking about, so no page can be forwarded
+        // as "the debtors" — but never the house's total, which is not published at all.
         foreach ([1, 2, 3] as $page) {
-            $this->assertStringContainsString('Разом:', $board->report($viewer, $page));
+            $this->assertStringContainsString('Квартир з боргом:', $board->report($viewer, $page));
         }
     }
 
