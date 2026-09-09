@@ -26,6 +26,10 @@
             The live passes first: «які пропуски зараз ходять по ЖК» is the question this
             page is opened with more often than «хто сканував».
         #}
+        {# What the log may link to: a revoked pass is not drawn here, and an anchor to a
+           row that is not on the page is a click that does nothing. #}
+        {% set live_pass_ids = [] %}
+        {% for pass in passes %}{% set live_pass_ids = live_pass_ids|merge([pass.id]) %}{% endfor %}
         <div class="card mb-3">
             <div class="card-header py-2 px-3"><b>👷 Діючі пропуски</b> <span class="text-muted small">— видані квартирами для бригад, доставок, майстрів</span></div>
             <div class="card-body p-0">
@@ -46,7 +50,12 @@
                             </thead>
                             <tbody>
                             {% for pass in passes %}
-                                <tr>
+                                {#
+                                    The row the log links to. `:target` in base.html.twig
+                                    flashes it — a scroll position on its own says nothing
+                                    about which of a dozen near-identical lines was meant.
+                                #}
+                                <tr id="pass-{{ pass.id }}">
                                     <td>{{ pass.label }}</td>
                                     <td>{{ pass.account ? pass.account.placeLabel : '—' }}</td>
                                     <td>
@@ -102,11 +111,32 @@
                                     {% if scan.byGuard %}<span class="badge badge-dark">охорона</span>{% endif %}
                                 </td>
                                 <td>{{ scan.subjectLabel }}</td>
+                                {#
+                                    Both kinds lead somewhere, because «що це було» is read
+                                    as a question about a particular pass or a particular
+                                    flat, and the answer to both is already on a page: the
+                                    pass is the row above (highlighted on arrival), the
+                                    resident is their object's card.
+
+                                    Neither link is drawn blind — a revoked pass has no row
+                                    up there and a scan whose account was since deleted has
+                                    no card — and a dead link on a security log is worse
+                                    than plain text: it reads as the record having been
+                                    lost.
+                                #}
                                 <td>
                                     {% if scan.kind == 'guest' %}
-                                        👷 пропуск{% if scan.guestPassId %} <span class="text-muted">#{{ scan.guestPassId }}</span>{% endif %}
+                                        {% if scan.guestPassId and scan.guestPassId in live_pass_ids %}
+                                            <a href="#pass-{{ scan.guestPassId }}" class="text-decoration-none">👷 пропуск <span class="text-muted">#{{ scan.guestPassId }}</span></a>
+                                        {% else %}
+                                            👷 пропуск{% if scan.guestPassId %} <span class="text-muted">#{{ scan.guestPassId }}</span>{% endif %}
+                                        {% endif %}
                                     {% else %}
-                                        🪪 мешканець
+                                        {% if scan.subjectAccount %}
+                                            <a href="{{ path('app_admin_object', {id: scan.subjectAccount.id}) }}" class="text-decoration-none">🪪 мешканець</a>
+                                        {% else %}
+                                            🪪 мешканець
+                                        {% endif %}
                                     {% endif %}
                                 </td>
                                 {#

@@ -102,6 +102,71 @@ class AdminScansPageTest extends KernelTestCase
         $this->assertStringContainsString('активний до', $html);
     }
 
+    /**
+     * «Що це було» leads to the thing it names.
+     *
+     * The cell said «👷 пропуск #2» and did nothing, on a page whose whole job is being
+     * opened after the fact: the pass is three lines up in a list of near-identical rows,
+     * and finding it by eye is what the anchor removes. The flash is the `:target` rule in
+     * base.html.twig, shared with /admin/links.
+     */
+    public function testThePassLinkFindsItsRowUpThePage(): void
+    {
+        $pass = (new GuestPass())->setAccount($this->flat(9))->setLabel('Бригада, ремонт');
+        (new \ReflectionProperty(GuestPass::class, 'id'))->setValue($pass, 4);
+
+        $html = $this->render([$this->scan(QrScan::KIND_GUEST, QrScan::RESULT_OK)], [$pass]);
+
+        $this->assertStringContainsString('href="#pass-4"', $html);
+        $this->assertStringContainsString('id="pass-4"', $html, 'the anchor must land on a row that is on the page');
+    }
+
+    /**
+     * A pass that is no longer listed is not linked to.
+     *
+     * Revoked passes are left out of the table above, so the anchor would scroll nowhere —
+     * and a dead link in a security log reads as the record having been lost, which is the
+     * one thing this page must never suggest.
+     */
+    public function testAScanOfAPassThatIsGoneIsNotALink(): void
+    {
+        $html = $this->render([$this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED)]);
+
+        $this->assertStringContainsString('пропуск', $html);
+        $this->assertStringNotContainsString('href="#pass-', $html);
+    }
+
+    /** A resident scan opens the flat whose code it was. */
+    public function testAResidentScanOpensTheObjectCard(): void
+    {
+        $scan = $this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING)
+            ->setSubjectAccount($this->flat(12));
+
+        $this->assertStringContainsString('/admin/objects/12', $this->render([$scan]));
+    }
+
+    /** …and says the same words with no link when the account is gone (SET NULL). */
+    public function testAResidentScanWithoutAnAccountIsStillNamed(): void
+    {
+        $html = $this->render([$this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING)]);
+
+        $this->assertStringContainsString('мешканець', $html);
+        $this->assertStringNotContainsString('/admin/objects/', $html);
+    }
+
+    private function flat(int $id): Account
+    {
+        $account = (new Account())
+            ->setAccountNumber('2200' . $id)
+            ->setApartmentNumber((string)$id)
+            ->setHouseNumber('19')
+            ->setStreet('Козацька');
+
+        (new \ReflectionProperty(Account::class, 'id'))->setValue($account, $id);
+
+        return $account;
+    }
+
     public function testAnEmptyLogStillRenders(): void
     {
         $this->assertStringContainsString('Сканування QR', $this->render([]));
