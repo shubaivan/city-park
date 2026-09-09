@@ -13,24 +13,25 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 /**
- * The pavilion board — read by two people asking two different questions.
+ * The pavilion board: who is in the альтанка now, and who is booked for the rest of today.
  *
- * **The guard** («🛡 Хто зараз в альтанці») walks up to whoever is sitting there and asks
- * who they are. Everything this screen does is let him finish that sentence: it names the
- * flat that booked the hour he is standing in, and then the rest of tonight so he is not
- * surprised at 22:00.
+ * **One board, and every confirmed resident reads it — flats included** (Иван, 09.09.2026).
+ * It shipped with two versions: the guard's named the flat, everybody else's said
+ * «зайнято», on the reasoning that publishing «this household is out between 18:00 and
+ * 21:00» to 457 people was a different feature from the one asked for. Two things undid
+ * that. The scan of a resident's QR already names the flat to whoever reads it, so the
+ * house was being shown the same fact through one door and refused it through another; and
+ * a booking means the household is *twenty metres away in the yard*, not out for the
+ * evening, which is what made the original worry weak. The debtors' board publishes flat
+ * and sum to the same readers every month.
  *
- * **A resident** («🏛 Альтанки зараз») is asking «вільно чи ні, і коли звільниться» before
- * walking down with a kettle. That question is answered by the hours and the pavilion; the
- * flat number adds nothing to it. So the board renders **without flat numbers for
- * everybody but the guard** — publishing to 457 people that a named household is out of
- * its flat between 18:00 and 21:00, on a screen with a refresh button, is a different
- * feature from the one anybody asked for. Their own booking is still marked «📌 це ви»,
- * the same way the debtors' board marks the reader's own line.
+ * What it is *not* open to is an unlinked visitor — this says what is happening in the
+ * ЖК's own yard, and somebody who opened the bot through 🔑 Оренда to browse flats is not
+ * part of the house. A guard is admitted whether or not he has an особовий рахунок: he is
+ * staff, not a resident.
  *
- * `board()` takes that as a **required** argument rather than a defaulted one: this is
- * exactly the switch whose permissive default would leak while looking like the feature
- * working, which is the same reason an empty GUARD_TELEGRAM_IDS means nobody.
+ * The reader's own booking is still marked «📌 це ви» — three near-identical lines and
+ * «ви треті» underneath is a puzzle, the same one the debtors' board's podium had.
  *
  * Still not on the slash menu: `/guard` is registered as a handler but deliberately left
  * out of `BotMenuUpdateCommand::MENU`.
@@ -72,7 +73,7 @@ class GuardCommand
         }
 
         $now = SchedulePavilionService::createNewDate();
-        $text = $this->board($now, namesFlats: $isGuard, viewer: $viewer);
+        $text = $this->board($now, viewer: $viewer);
 
         $markup = InlineKeyboardMarkup::make()
             ->addRow(InlineKeyboardButton::make('🔄 Оновити', callback_data: self::MENU_CALLBACK))
@@ -102,7 +103,7 @@ class GuardCommand
      * Kept free of Nutgram so it can be read in a test — the ordering and the wording are
      * the whole feature, and they are what a guard reads in the dark on a phone.
      */
-    public function board(\DateTimeInterface $now, bool $namesFlats, ?Account $viewer = null): string
+    public function board(\DateTimeInterface $now, ?Account $viewer = null): string
     {
         $sessions = $this->guard->sessionsOfDay($now);
 
@@ -122,7 +123,7 @@ class GuardCommand
         }
 
         $lines = [
-            sprintf('%s <b>Альтанки — %s</b>', $namesFlats ? '🛡' : '🏛', $this->day($now)),
+            sprintf('🏛 <b>Альтанки — %s</b>', $this->day($now)),
             sprintf('<i>Станом на %s</i>', $now->format('H:i')),
             '',
         ];
@@ -133,7 +134,7 @@ class GuardCommand
             $lines[] = '🔴 <b>Зараз</b>';
 
             foreach ($running as $session) {
-                $lines[] = $this->line($session, $namesFlats, $viewer);
+                $lines[] = $this->line($session, $viewer);
             }
         }
 
@@ -142,7 +143,7 @@ class GuardCommand
             $lines[] = '⏭ <b>Далі сьогодні</b>';
 
             foreach ($later as $session) {
-                $lines[] = $this->line($session, $namesFlats, $viewer);
+                $lines[] = $this->line($session, $viewer);
             }
         }
 
@@ -152,41 +153,32 @@ class GuardCommand
         }
 
         $lines[] = '';
-        // Two audiences, two next actions. The guard's line is an instruction for the
-        // case the board exists to catch; a resident reading it would be told to go
-        // interrogate their neighbours.
-        $lines[] = $namesFlats
-            ? '<i>Якщо в альтанці хтось є, а тут його немає — запитайте номер квартири '
-                . 'і передайте в ОСББ.</i>'
-            : '<i>Вільну годину можна зайняти кнопкою «Бронювання».</i>';
+        // One line for everybody, and it is the resident's: «go and interrogate your
+        // neighbours» is an instruction for staff, and the board is now read by the house.
+        // The guard's own next action needs no printing — checking who is there is the
+        // whole of his job.
+        $lines[] = '<i>Вільну годину можна зайняти кнопкою «Бронювання».</i>';
 
         return implode("\n", $lines);
     }
 
     /**
-     * One session.
+     * One session: the hours, the pavilion and the flat that booked it.
      *
-     * The flat is printed only for the guard — for everybody else the line says «зайнято»,
-     * which is the entire answer to the question they opened this with. The exception is
-     * the reader's own booking: «📌 це ви» tells them at a glance which of three
-     * near-identical lines is theirs, exactly as the debtors' board marks their own row.
-     * That is their own information, not a neighbour's.
+     * The reader's own line says so as well — «буд. 19, кв. 85 · 📌 це ви» — because
+     * finding your own booking among three near-identical lines is otherwise a small
+     * puzzle, and the mark is matched across the whole owner group: a flat and its
+     * паркомісце are one household.
      *
      * @param array{pavilion:int, start:\DateTimeImmutable, end:\DateTimeImmutable, account:?Account, user:\App\Entity\TelegramUser} $session
      */
-    private function line(array $session, bool $namesFlats, ?Account $viewer = null): string
+    private function line(array $session, ?Account $viewer = null): string
     {
         $own = $viewer instanceof Account
             && $session['account'] instanceof Account
             && $this->sameHousehold($session['account'], $viewer);
 
-        if ($namesFlats) {
-            $who = GuardService::place($session);
-        } elseif ($own) {
-            $who = '📌 це ви';
-        } else {
-            $who = 'зайнято';
-        }
+        $who = GuardService::place($session) . ($own ? ' · 📌 це ви' : '');
 
         return sprintf(
             '• <b>%s–%s</b> · %s альтанка · <b>%s</b>',

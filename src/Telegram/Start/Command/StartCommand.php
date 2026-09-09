@@ -449,12 +449,10 @@ class StartCommand extends Command
         // rows below, every one of them already gated on what they actually have.
         $markup = InlineKeyboardMarkup::make();
 
-        if (self::isGuard($bot)) {
-            $markup->addRow(InlineKeyboardButton::make(
-                '🛡 Хто зараз в альтанці',
-                callback_data: GuardCommand::MENU_CALLBACK,
-            ));
-        }
+        // The guard's own copy of the board used to sit here, above everything, because his
+        // version named flats and nobody else's did. There is one board now (09.09.2026),
+        // so there is one button — drawn below with the rest of the pavilion row, where a
+        // resident looks for it.
 
         $markup
             // Оренда sits first on purpose: it is the newest section and residents were
@@ -503,14 +501,12 @@ class StartCommand extends Command
             );
         }
 
-        // The same board the guard reads, without the flat numbers: a resident opens it
-        // asking «вільно чи ні», which the hours answer on their own. It sits directly
-        // above «Бронювання» because that is the sequence — look, then book — and it is
-        // hidden from a guard, who already has his own copy of it at the top of the menu
-        // under a name that says what his version is for.
-        if ($account instanceof Account && !self::isGuard($bot)) {
+        // Directly above «Бронювання», because that is the sequence: look, then book. Open
+        // to every confirmed resident and to the guard, who may have no особовий рахунок of
+        // his own — one board, one button, since 09.09.2026.
+        if ($account instanceof Account || self::isGuard($bot)) {
             $markup->addRow(InlineKeyboardButton::make(
-                '🏛 Альтанки зараз',
+                '🏛 Хто зараз в альтанці',
                 callback_data: GuardCommand::MENU_CALLBACK,
             ));
         }

@@ -244,7 +244,7 @@ class GuardBoardRulesTest extends TestCase
             $this->set($this->user(2), 2, 22),
         ]);
 
-        $board = $this->commandWith($sessions)->board($now, namesFlats: true);
+        $board = $this->commandWith($sessions)->board($now);
 
         $this->assertStringContainsString('🔴 <b>Зараз</b>', $board);
         $this->assertStringContainsString('⏭ <b>Далі сьогодні</b>', $board);
@@ -264,7 +264,7 @@ class GuardBoardRulesTest extends TestCase
     public function testAnEmptyEveningSaysTheePavilionsAreFree(): void
     {
         $now = new \DateTimeImmutable('2026-09-07 20:30', new \DateTimeZone('Europe/Kyiv'));
-        $board = $this->commandWith([])->board($now, namesFlats: true);
+        $board = $this->commandWith([])->board($now);
 
         $this->assertStringContainsString('вільні', $board);
         $this->assertStringNotContainsString('🔴', $board);
@@ -276,7 +276,7 @@ class GuardBoardRulesTest extends TestCase
         $now = new \DateTimeImmutable('2026-09-07 22:30', new \DateTimeZone('Europe/Kyiv'));
         $sessions = GuardService::group([$this->set($this->user(1), 1, 20)]);
 
-        $board = $this->commandWith($sessions)->board($now, namesFlats: true);
+        $board = $this->commandWith($sessions)->board($now);
 
         $this->assertStringNotContainsString('20:00–21:00', $board);
         $this->assertStringContainsString('вільні', $board);
@@ -287,16 +287,19 @@ class GuardBoardRulesTest extends TestCase
     #############
 
     /**
-     * The board is open to every confirmed resident, and it does not name their
-     * neighbours.
+     * One board, and it names the flats — to every confirmed resident, not only the guard.
      *
-     * A resident opens it asking «вільно чи ні» — a question the hours answer on their
-     * own. Printing the flat would publish to 457 people that a named household is out of
-     * its flat between 18:00 and 21:00, on a screen with a refresh button. That is a
-     * different feature from the one that was asked for, and `board()` takes the switch as
-     * a **required** argument so no call site can arrive at it by forgetting.
+     * It shipped with two versions and the resident's said «зайнято», on the reasoning that
+     * telling 457 people a named household is out between 18:00 and 21:00 was a different
+     * feature from the one asked for. Иван opened it on 09.09.2026, and two things had
+     * undone that reasoning by then: scanning a resident's QR already names the flat to
+     * whoever reads it, so the house was shown the same fact through one door and refused
+     * it through another — and a booking means the household is twenty metres away in the
+     * yard, not away for the evening.
+     *
+     * What stays is the gate around the board: an unlinked visitor sees none of it.
      */
-    public function testAResidentSeesTheHoursButNotTheFlats(): void
+    public function testTheBoardNamesTheFlatsForEveryReader(): void
     {
         $now = new \DateTimeImmutable('2026-09-07 20:30', new \DateTimeZone('Europe/Kyiv'));
 
@@ -305,15 +308,13 @@ class GuardBoardRulesTest extends TestCase
             $this->set($this->user(2), 2, 22),
         ]);
 
-        $board = $this->commandWith($sessions)->board($now, namesFlats: false);
+        $board = $this->commandWith($sessions)->board($now);
 
         $this->assertStringContainsString('20:00–21:00', $board);
         $this->assertStringContainsString('Перша альтанка', $board);
-        $this->assertStringContainsString('зайнято', $board);
-
-        $this->assertStringNotContainsString('кв. 41', $board, 'a neighbour\'s flat is not the resident\'s business');
-        $this->assertStringNotContainsString('кв. 42', $board);
-        $this->assertStringNotContainsString('буд. 19', $board);
+        $this->assertStringContainsString('кв. 41', $board);
+        $this->assertStringContainsString('буд. 19', $board, 'five buildings repeat their flat numbers');
+        $this->assertStringNotContainsString('зайнято', $board, 'the anonymous version is gone');
     }
 
     /**
@@ -331,11 +332,11 @@ class GuardBoardRulesTest extends TestCase
             $this->set($this->user(2), 2, 20),
         ]);
 
-        $board = $this->commandWith($sessions)->board($now, namesFlats: false, viewer: $mine->getAccount());
+        $board = $this->commandWith($sessions)->board($now, viewer: $mine->getAccount());
 
         $this->assertStringContainsString('📌 це ви', $board);
-        $this->assertStringContainsString('зайнято', $board, 'the other flat stays anonymous');
-        $this->assertStringNotContainsString('кв. 4', $board, 'not even their own flat needs printing');
+        $this->assertStringContainsString('кв. 41', $board, 'their own line names the flat like every other');
+        $this->assertStringContainsString('кв. 42', $board, 'and so does the neighbour’s');
     }
 
     /**
@@ -357,7 +358,7 @@ class GuardBoardRulesTest extends TestCase
         $sibling->setOwnerGroupId(1);
 
         $board = $this->commandWith(GuardService::group([$this->set($booker, 1, 20)]))
-            ->board($now, namesFlats: false, viewer: $sibling);
+            ->board($now, viewer: $sibling);
 
         $this->assertStringContainsString('📌 це ви', $board);
     }
@@ -380,21 +381,27 @@ class GuardBoardRulesTest extends TestCase
         $stranger = $this->user(9)->getAccount();
 
         $board = $this->commandWith(GuardService::group([$this->set($booker, 1, 20)]))
-            ->board($now, namesFlats: false, viewer: $stranger);
+            ->board($now, viewer: $stranger);
 
         $this->assertStringNotContainsString('📌', $board);
-        $this->assertStringContainsString('зайнято', $board);
+        $this->assertStringContainsString('кв. 41', $board);
     }
 
-    /** The guard's closing instruction is for the guard; a resident gets a next action. */
-    public function testEachReaderGetsTheirOwnClosingLine(): void
+    /**
+     * One closing line, and it is the resident's.
+     *
+     * «Запитайте номер квартири і передайте в ОСББ» is an instruction for staff; with the
+     * board in the hands of the house it would be telling neighbours to go and interrogate
+     * each other. The guard's own next action needs no printing — checking who is there is
+     * the whole of his job.
+     */
+    public function testTheClosingLineOffersTheNextAction(): void
     {
         $now = new \DateTimeImmutable('2026-09-07 20:30', new \DateTimeZone('Europe/Kyiv'));
-        $command = $this->commandWith([]);
+        $board = $this->commandWith([])->board($now);
 
-        $this->assertStringContainsString('передайте в ОСББ', $command->board($now, namesFlats: true));
-        $this->assertStringNotContainsString('передайте в ОСББ', $command->board($now, namesFlats: false));
-        $this->assertStringContainsString('Бронювання', $command->board($now, namesFlats: false));
+        $this->assertStringContainsString('Бронювання', $board);
+        $this->assertStringNotContainsString('передайте в ОСББ', $board);
     }
 
     #############

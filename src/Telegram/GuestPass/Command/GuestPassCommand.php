@@ -10,6 +10,7 @@ use App\Telegram\Guard\Command\GuardQrCommand;
 use App\Telegram\Start\Command\StartCommand;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
+use SergiX44\Nutgram\Telegram\Types\Message\LinkPreviewOptions;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
@@ -223,7 +224,7 @@ class GuestPassCommand
         }
 
         $markup
-            ->addRow(InlineKeyboardButton::make('🔗 Текст для пересилання', callback_data: self::SHARE_PREFIX . $pass->getId()))
+            ->addRow(InlineKeyboardButton::make('🔗 Те саме текстом (Viber, SMS)', callback_data: self::SHARE_PREFIX . $pass->getId()))
             ->addRow(InlineKeyboardButton::make('🗑 Скасувати пропуск', callback_data: self::REVOKE_PREFIX . $pass->getId()))
             ->addRow(
                 InlineKeyboardButton::make('👷 Усі пропуски', callback_data: self::MENU_CALLBACK),
@@ -388,12 +389,17 @@ class GuestPassCommand
 
         $bot->sendMessage(
             text: sprintf(
-                "Пропуск у ЖК City Park\n%s\n%s\n\nПокажіть охороні цей код: %s",
+                "Перешліть це тим, кого чекаєте — якщо їм зручніше не в Telegram.\n\n"
+                    . "———\n"
+                    . "Пропуск у ЖК City Park\n%s\n%s\n\nПокажіть охороні цей код: %s",
                 $pass->getLabel(),
                 $pass->getAccount()?->getPlaceLabel() ?? '',
                 $link,
             ),
-            link_preview_options: ['is_disabled' => true],
+            // The object, not an array: Nutgram type-hints this parameter, and an array
+            // threw a TypeError — /hook answered 500 and Telegram retried the same tap
+            // until the callback expired, which from the outside is «жму і нічого».
+            link_preview_options: LinkPreviewOptions::make(is_disabled: true),
         );
     }
 

@@ -933,18 +933,19 @@ the person who booked, so the check was «зателефонуйте Аліні�
 `GuardCommand` renders what is running **now** and then the rest of today, with a 🔄 that
 edits the message in place.
 
-- **The board has two readers and two versions** (since 08.09.2026). The guard's, «🛡 Хто
-  зараз в альтанці», names the flat — that *is* his check. Every confirmed resident gets
-  «🏛 Альтанки зараз», the same board with «зайнято» where the flat would be, because the
-  question they open it with is «вільно чи ні, і коли звільниться» and the hours answer it
-  on their own. Printing the flat there would publish to 457 people that a named household
-  is out of its flat between 18:00 and 21:00, on a screen with a refresh button — a
-  different feature from the one that was asked for. Their **own** booking is marked
-  «📌 це ви», matched across the whole `owner_group_id` household and on an explicit group
-  id on both sides, never a bare one (the trap `DebtBoardService::isViewer()` is written
-  around). `board()` takes `namesFlats` as a **required** argument, not a defaulted one:
-  this is precisely the switch whose permissive default would leak while looking like the
-  feature working.
+- **One board, and it names the flats to every confirmed resident** (09.09.2026). It
+  shipped a day earlier with two versions — the guard's naming flats, everybody else's
+  saying «зайнято» — on the reasoning that telling 457 people a named household is out
+  between 18:00 and 21:00 was a different feature from the one asked for. Иван opened it,
+  and by then two things had undone that reasoning: **scanning a resident's QR already
+  names the flat** to whoever reads it, so the house was shown the same fact through one
+  door and refused it through another; and a booking means the household is *twenty metres
+  away in the yard*, not out for the evening. The debtors' board publishes flat and sum to
+  the same readers every month. Their **own** booking is still marked «📌 це ви», matched
+  across the whole `owner_group_id` household and on an explicit group id on both sides,
+  never a bare one (the trap `DebtBoardService::isViewer()` is written around). The
+  `namesFlats` switch is gone with the second version; the gate that remains is the one
+  that matters — an unlinked visitor sees none of it.
 - **Guards are Telegram ids in `.env.local`** (`GUARD_TELEGRAM_IDS`), same shape as
   `COMPLAINT_MANAGER_TELEGRAM_IDS`, and **an empty list means nobody, never everybody** —
   that list is what decides who sees flat numbers, so the permissive default would be a
