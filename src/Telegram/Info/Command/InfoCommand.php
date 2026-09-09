@@ -301,6 +301,26 @@ class InfoCommand
     }
 
     /**
+     * The linkable topics by their id, for anything outside the bot that has to name one.
+     *
+     * `/admin/links` counted taps on «інструкція #1» and could say no more than that —
+     * a number nobody can read. The titles live here, next to the ids they belong to, so
+     * a new linkable topic cannot be added without the panel learning its name.
+     *
+     * @return array<int, string>
+     */
+    public static function linkableTitles(): array
+    {
+        $titles = [];
+
+        foreach (self::LINKABLE as $key => $id) {
+            $titles[$id] = self::TOPICS[$key]['title'] ?? $key;
+        }
+
+        return $titles;
+    }
+
+    /**
      * Topics that answer half of the same question each.
      *
      * The announcement links straight to «🪪 QR-код мешканця», and a reader arriving there

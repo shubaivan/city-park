@@ -22,6 +22,7 @@ use App\Repository\RentalListingRepository;
 use App\Repository\GuestPassRepository;
 use App\Repository\LinkClickRepository;
 use App\Repository\QrScanRepository;
+use App\Telegram\Info\Command\InfoCommand;
 use App\Repository\ServiceOfferRepository;
 use App\Repository\ScheduledSetRepository;
 use App\Repository\TariffRepository;
@@ -755,9 +756,15 @@ class AdminController extends AbstractController
             }
         }
 
+        // The instructions are not rows in a table — the topic titles live in the bot,
+        // next to the ids they belong to, so the page cannot invent a name for one it
+        // does not know.
+        $infoTitles = InfoCommand::linkableTitles();
+
         return $this->render('admin/links.html.twig', [
             'summary' => $summary,
             'titles' => $titles,
+            'info_titles' => $infoTitles,
             'by_kind' => self::clicksByKind($summary),
             'recent' => $clicks->recent(),
         ]);

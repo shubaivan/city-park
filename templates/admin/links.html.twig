@@ -43,6 +43,13 @@
     {%- elseif kind == 'rental' -%}{{ path('app_admin_rentals') }}#listing-{{ id }}
     {%- elseif kind == 'vote' -%}{{ path('app_admin_block_votes') }}
     {%- elseif kind == 'debt' -%}{{ path('app_admin_debt') }}
+    {#
+        The instructions live in the bot, not in the panel, so this is the one destination
+        that leaves the panel: the same deep link the residents followed. Opening it counts
+        as a click like anybody else's — said out loud in the title rather than quietly
+        excluded, because a log with private exceptions is not a log.
+    #}
+    {%- elseif kind == 'info' -%}https://t.me/che_city_park_bot?start=i-{{ id }}
     {%- endif -%}
 {% endmacro %}
 
@@ -120,7 +127,9 @@
                     </thead>
                     <tbody>
                     {% for row in summary %}
-                        {% set target = titles[row.kind][row.target_id] ?? null %}
+                        {% set target = row.kind == 'info'
+                            ? (info_titles[row.target_id] ?? null)
+                            : (titles[row.kind][row.target_id] ?? null) %}
                         {#
                             Straight to the row, not to the top of a page somebody then has
                             to scan: this table is read to answer «а що це було», and the
@@ -146,6 +155,8 @@
                                         {# The link always opens the current board; the snapshot says which post it was. #}
                                         <b>Оголошення про борги</b>
                                         <small class="text-muted">{{ target.takenAt|date('d.m.Y') }}</small>
+                                    {% elseif row.kind == 'info' %}
+                                        <b>{{ target }}</b>
                                     {% else %}
                                         <b>#{{ row.target_id }}</b>
                                     {% endif %}
@@ -217,8 +228,15 @@
                             </td>
                             <td>
                                 {% set clickHref = link.targetHref(click.kind, click.targetId)|trim %}
-                                {% if clickHref %}<a href="{{ clickHref }}">{% endif %}
-                                    {{ link.kindIcon(click.kind) }} {{ link.kindWord(click.kind) }} #{{ click.targetId }}
+                                {% set clickName = click.kind == 'info'
+                                    ? (info_titles[click.targetId] ?? null)
+                                    : null %}
+                                {% if clickHref %}<a href="{{ clickHref }}"
+                                    {%- if click.kind == 'info' %} target="_blank" rel="noopener"
+                                        title="Відкриється в боті. Ваш перехід теж потрапить у цей журнал."{% endif %}>{% endif %}
+                                    {{ link.kindIcon(click.kind) }}
+                                    {%- if clickName %} {{ clickName }}
+                                    {%- else %} {{ link.kindWord(click.kind) }} #{{ click.targetId }}{% endif %}
                                 {% if clickHref %}</a>{% endif %}
                             </td>
                         </tr>
