@@ -39,6 +39,25 @@ class VotingMenuCommand
      */
     public const REFRESH_CALLBACK = 'voting-refresh';
 
+    /** One vote, opened from the list: everything about it and its two buttons. */
+    public const CARD_PREFIX = 'vote:view:';
+
+    /** «🔄 Оновити» on a card — the tally is a snapshot and a vote runs a week. */
+    public const REFRESH_PREFIX = 'vote:refresh:';
+
+    /** The index, page by page. */
+    public const PAGE_PREFIX = 'vote:page:';
+
+    /**
+     * Open votes per page of the index.
+     *
+     * One button per row, so this is a screenful and no more. The house has had three
+     * campaigns in three months, but «а якщо їх буде сорок» is the question every board
+     * here has already answered the same way, and answering it once costs less than the
+     * screen that would otherwise have to be scrolled past to reach «На головну».
+     */
+    private const PAGE_SIZE = 8;
+
     /** The «you voted» pill is a label, not a button — it answers with nothing. */
     private const NOOP_CALLBACK = 'vote:noop';
 
@@ -68,6 +87,21 @@ class VotingMenuCommand
             return;
         }
 
+        if (str_starts_with($data, self::CARD_PREFIX)) {
+            $this->openCard($bot, (int)substr($data, strlen(self::CARD_PREFIX)));
+            return;
+        }
+
+        if (str_starts_with($data, self::REFRESH_PREFIX)) {
+            $this->openCard($bot, (int)substr($data, strlen(self::REFRESH_PREFIX)), refreshing: true);
+            return;
+        }
+
+        if (str_starts_with($data, self::PAGE_PREFIX)) {
+            $this->renderMenu($bot, edit: true, page: (int)substr($data, strlen(self::PAGE_PREFIX)));
+            return;
+        }
+
         if (str_starts_with($data, 'vote:drop:')) {
             $this->dropOwn($bot, (int)substr($data, strlen('vote:drop:')));
             return;
@@ -93,19 +127,43 @@ class VotingMenuCommand
     /**
      * Somebody tapped «↗️ Проголосувати в боті» under the post in the residents' chat.
      *
-     * The open list, not the campaign in isolation: a vote is cast from the menu and the
-     * menu already shows every vote this person may cast, marked with how they voted. When
-     * the one they came for is over, the archive is where it went — and renderMenu()
-     * already offers that row, so they land one tap from the answer rather than on an
-     * error.
+     * Straight onto the vote the post was about, now that a vote has a card of its own —
+     * the link named one thing and used to answer with the whole section, which on a busy
+     * week is the reader hunting for the row they came from. When it is over or not theirs
+     * to vote on, the section opens instead: the archive row is one tap from there, which
+     * is an answer rather than an error.
      */
     public function openFromDeepLink(Nutgram $bot, int $campaignId): void
     {
-        $this->renderMenu($bot, edit: false);
+        $account = $this->currentAccount($bot);
+        $campaign = $campaignId > 0 ? $this->campaignRepository->find($campaignId) : null;
+
+        if (!$account || !$campaign || !$this->voteService->isVotable($campaign)
+            || !$this->voteService->isEligibleVoter($account, $campaign)) {
+            $this->renderMenu($bot, edit: false);
+
+            return;
+        }
+
+        $this->renderCard($bot, $campaign, $account, false, count($this->votableFor($account)) === 1);
     }
 
-    private function renderMenu(Nutgram $bot, bool $edit, ?string $notice = null, bool $refreshing = false): void
-    {
+    /**
+     * The section: an index of open votes, or the single vote itself when there is one.
+     *
+     * It used to render every open vote in full into one message and stack all their
+     * buttons at the bottom. With two questions open (09.09.2026) nobody could tell which
+     * row answered which — the keyboard hangs screens below the text it belongs to — and
+     * the answer to «а якщо їх буде сорок» is a message no phone can read. Same shape as
+     * every other board here: buttons in the index, one card behind each.
+     */
+    private function renderMenu(
+        Nutgram $bot,
+        bool $edit,
+        ?string $notice = null,
+        bool $refreshing = false,
+        int $page = 1,
+    ): void {
         $account = $this->currentAccount($bot);
 
         if (!$account) {
@@ -129,12 +187,7 @@ class VotingMenuCommand
             return;
         }
 
-        // Only votable campaigns (open + before deadline) this account may vote on.
-        $campaigns = array_values(array_filter(
-            $this->campaignRepository->findOpen(),
-            fn(BlockVoteCampaign $c) => $this->voteService->isVotable($c)
-                && $this->voteService->isEligibleVoter($account, $c)
-        ));
+        $campaigns = $this->votableFor($account);
 
         if (!$campaigns) {
             $this->respond(
@@ -149,90 +202,215 @@ class VotingMenuCommand
             return;
         }
 
+        // One vote is not a list: a menu of a single button, to reach the only thing the
+        // menu is about, is a tap that answers nothing. Same call «📌 Моє оголошення»
+        // makes on the services board.
+        if (count($campaigns) === 1) {
+            $this->renderCard($bot, $campaigns[0], $account, $edit, true, $notice, $refreshing);
+
+            return;
+        }
+
+        $this->renderList($bot, $campaigns, $account, $edit, $notice, $refreshing, $page);
+    }
+
+    /** Open votes this account may actually cast a ballot on, newest deadline last. */
+    private function votableFor(Account $account): array
+    {
+        return array_values(array_filter(
+            $this->campaignRepository->findOpen(),
+            fn(BlockVoteCampaign $c) => $this->voteService->isVotable($c)
+                && $this->voteService->isEligibleVoter($account, $c)
+        ));
+    }
+
+    /**
+     * The index: what is open, how many, and one button each.
+     *
+     * The page number is clamped rather than trusted — a callback from an older, longer
+     * list must not answer with an empty page, the same rule the debtors' board is written
+     * around.
+     */
+    private function renderList(
+        Nutgram $bot,
+        array $campaigns,
+        Account $account,
+        bool $edit,
+        ?string $notice,
+        bool $refreshing,
+        int $page,
+    ): void {
+        $total = count($campaigns);
+        $pages = max(1, (int)ceil($total / self::PAGE_SIZE));
+        $page = max(1, min($page, $pages));
+        $offset = ($page - 1) * self::PAGE_SIZE;
+        $shown = array_slice($campaigns, $offset, self::PAGE_SIZE);
+
         $lines = [];
+
         if ($notice) {
             $lines[] = $notice;
             $lines[] = '';
         }
+
         $lines[] = '🗳️ <b>Голосування</b>';
         $lines[] = '';
-        $lines[] = 'Один акаунт — один голос. Голос остаточний: змінити його не можна.';
-        $lines[] = '';
+        $lines[] = sprintf('Відкритих голосувань: <b>%d</b>. Оберіть, щоб прочитати й проголосувати.', $total);
+        $lines[] = '<i>Один акаунт — один голос. Голос остаточний: змінити його не можна.</i>';
+
+        if ($pages > 1) {
+            $lines[] = '';
+            $lines[] = sprintf(
+                '<i>Показано %d–%d · сторінка %d з %d.</i>',
+                $offset + 1,
+                $offset + count($shown),
+                $page,
+                $pages,
+            );
+        }
 
         $markup = InlineKeyboardMarkup::make();
 
-        // **With more than one vote open, every block and every button carries its number.**
-        // The keyboard hangs at the bottom of one message, far from the question it belongs
-        // to, so «👍 За» under two questions is a button nobody can aim: on 09.09.2026 the
-        // menu held a Face ID poll and a mobile-signal one, and the row that had already
-        // been used («✅ Ви проголосували: За») sat under the question that had not. One
-        // vote needs no number and does not get one.
-        $numbered = count($campaigns) > 1;
-        $index = 0;
+        foreach ($shown as $campaign) {
+            $markup->addRow(InlineKeyboardButton::make(
+                $this->buttonLabel($campaign, $account),
+                callback_data: self::CARD_PREFIX . $campaign->getId(),
+            ));
+        }
 
-        foreach ($campaigns as $campaign) {
-            $mark = $numbered ? self::numberBadge(++$index) . ' ' : '';
-            $tally = $this->ballotRepository->tally($campaign);
-            $ballot = $this->ballotRepository->findOneByCampaignAndVoter($campaign, $account);
-            $mine = $ballot === null ? null : $ballot->getValue();
+        if ($pages > 1) {
+            $nav = [];
 
-            $voted = $mine === null ? '' : ($mine ? "\n<i>Ваш голос: За</i>" : "\n<i>Ваш голос: Проти</i>");
-
-            if ($campaign->isQuestion()) {
-                // No «треба N»: a question crosses no line and enacts nothing, so a target
-                // beside it would be a promise the bot cannot keep. What it does say is
-                // who decides — otherwise a resident reasonably reads a vote as binding.
-                $details = $campaign->getDetails();
-
-                if ($mark !== '' && $index > 1) {
-                    $lines[] = '———';
-                    $lines[] = '';
-                }
-
-                $lines[] = sprintf(
-                    "%s❓ <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b>\n🗓 %s — <b>%s</b>%s",
-                    $mark,
-                    self::esc((string)$campaign->getQuestion()),
-                    $details !== null ? "\n<i>" . self::esc($details) . '</i>' : '',
-                    $tally['yes'],
-                    $tally['no'],
-                    // Started and ends: «до 15.09» alone leaves a reader unable to tell a
-                    // vote opened this morning from one that has been sitting a week with
-                    // three ballots on it, and those call for different urgency.
-                    $campaign->getCreatedAt()?->format('d.m') ?? '—',
-                    $campaign->getDeadlineAt()->format('d.m.Y'),
-                    $voted,
-                );
-                $lines[] = '<i>Рішення ухвалює ОСББ — результат голосування покаже, чого хочуть мешканці.</i>';
-                $lines[] = '';
-
-                $id = $campaign->getId();
-                // Once cast, the row becomes a statement rather than a choice: a live
-                // button under a final vote invites a tap that can only be refused.
-                $markup->addRow($mine === null
-                    ? InlineKeyboardButton::make($mark . '👍 За', callback_data: 'bvote:' . $id . ':yes')
-                    : InlineKeyboardButton::make(
-                        $mark . ($mine ? '✅ Ви проголосували: За' : '✅ Ви проголосували: Проти'),
-                        callback_data: self::NOOP_CALLBACK,
-                    ),
-                    ...($mine === null
-                        ? [InlineKeyboardButton::make($mark . '👎 Проти', callback_data: 'bvote:' . $id . ':no')]
-                        : []),
-                );
-
-                continue;
+            if ($page > 1) {
+                $nav[] = InlineKeyboardButton::make('⬅️', callback_data: self::PAGE_PREFIX . ($page - 1));
             }
 
-            $priorBlocks = $campaign->getCandidate()?->getVoteBlockCount() ?? 0;
+            $nav[] = InlineKeyboardButton::make(
+                sprintf('%d/%d', $page, $pages),
+                callback_data: self::NOOP_CALLBACK,
+            );
 
-            if ($mark !== '' && $index > 1) {
-                $lines[] = '———';
-                $lines[] = '';
+            if ($page < $pages) {
+                $nav[] = InlineKeyboardButton::make('➡️', callback_data: self::PAGE_PREFIX . ($page + 1));
             }
+
+            $markup->addRow(...$nav);
+        }
+
+        $this->withAsk($markup, $account);
+        $this->withArchive($markup)->addRow(StartCommand::homeButton());
+
+        $this->respond($bot, $edit, implode("\n", $lines), $markup, $refreshing);
+    }
+
+    /**
+     * «до 16.09 · ❓ Чи погоджуєтеся ви… ✅»
+     *
+     * The deadline leads, at a fixed width, so the dates line up down the column and the
+     * list is read in one movement. On this board it is the closing date rather than the
+     * opening one: a vote is something you still have time to do, or you have not.
+     *
+     * The ✅ is last, because Telegram truncates a button from the right and «ви вже
+     * проголосували» is the only part that can be lost without costing anybody a ballot.
+     */
+    private function buttonLabel(BlockVoteCampaign $campaign, Account $account): string
+    {
+        $voted = $this->ballotRepository->findOneByCampaignAndVoter($campaign, $account) !== null;
+
+        $title = $campaign->isQuestion()
+            ? '❓ ' . (string)$campaign->getQuestion()
+            : '👤 ' . $this->voteService->candidateLabel($campaign->getCandidate());
+
+        return sprintf(
+            'до %s · %s%s',
+            $campaign->getDeadlineAt()->format('d.m'),
+            self::shorten($title, 42),
+            $voted ? ' ✅' : '',
+        );
+    }
+
+    private static function shorten(string $text, int $max): string
+    {
+        return mb_strlen($text) <= $max ? $text : mb_substr($text, 0, $max - 1) . '…';
+    }
+
+    /** A card opened from the index, or refreshed in place. */
+    private function openCard(Nutgram $bot, int $campaignId, bool $refreshing = false): void
+    {
+        $account = $this->currentAccount($bot);
+        $campaign = $campaignId > 0 ? $this->campaignRepository->find($campaignId) : null;
+
+        if (!$account || !$campaign || !$this->voteService->isVotable($campaign)
+            || !$this->voteService->isEligibleVoter($account, $campaign)) {
+            $this->renderMenu($bot, edit: true, notice: '⚠️ Це голосування більше недоступне.');
+
+            return;
+        }
+
+        $this->renderCard(
+            $bot,
+            $campaign,
+            $account,
+            true,
+            count($this->votableFor($account)) === 1,
+            null,
+            $refreshing,
+        );
+    }
+
+    /**
+     * One vote, alone in its own message: the question, the count, the deadline and the
+     * two buttons directly under it.
+     *
+     * `$standalone` is the only-open-vote case, where there is no list to go back to — the
+     * card carries the section's own rows instead of «⬅️ До списку».
+     */
+    private function renderCard(
+        Nutgram $bot,
+        BlockVoteCampaign $campaign,
+        Account $account,
+        bool $edit,
+        bool $standalone,
+        ?string $notice = null,
+        bool $refreshing = false,
+    ): void {
+        $tally = $this->ballotRepository->tally($campaign);
+        $ballot = $this->ballotRepository->findOneByCampaignAndVoter($campaign, $account);
+        $mine = $ballot === null ? null : $ballot->getValue();
+        $voted = $mine === null ? '' : ($mine ? "\n<i>Ваш голос: За</i>" : "\n<i>Ваш голос: Проти</i>");
+
+        $lines = [];
+
+        if ($notice) {
+            $lines[] = $notice;
+            $lines[] = '';
+        }
+
+        if ($campaign->isQuestion()) {
+            // No «треба N»: a question crosses no line and enacts nothing, so a target
+            // beside it would be a promise the bot cannot keep. What it does say is who
+            // decides — otherwise a resident reasonably reads a vote as binding.
+            $details = $campaign->getDetails();
 
             $lines[] = sprintf(
-                "%s👤 <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b> · Треба «За»: <b>%d</b> з %d\n🗓 %s — <b>%s</b>%s",
-                $mark,
+                "❓ <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b>\n🗓 %s — <b>%s</b>%s",
+                self::esc((string)$campaign->getQuestion()),
+                $details !== null ? "\n<i>" . self::esc($details) . '</i>' : '',
+                $tally['yes'],
+                $tally['no'],
+                // Started and ends: «до 15.09» alone leaves a reader unable to tell a vote
+                // opened this morning from one that has been sitting a week with three
+                // ballots on it, and those call for different urgency.
+                $campaign->getCreatedAt()?->format('d.m') ?? '—',
+                $campaign->getDeadlineAt()->format('d.m.Y'),
+                $voted,
+            );
+            $lines[] = '<i>Рішення ухвалює ОСББ — результат голосування покаже, чого хочуть мешканці.</i>';
+        } else {
+            $priorBlocks = $campaign->getCandidate()?->getVoteBlockCount() ?? 0;
+
+            $lines[] = sprintf(
+                "👤 <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b> · Треба «За»: <b>%d</b> з %d\n🗓 %s — <b>%s</b>%s",
                 $this->voteService->candidateLabel($campaign->getCandidate()),
                 $priorBlocks > 0 ? sprintf("\n<i>раніше блокувався за рішенням спільноти: %d раз(и)</i>", $priorBlocks) : '',
                 $tally['yes'],
@@ -243,42 +421,48 @@ class VotingMenuCommand
                 $campaign->getDeadlineAt()->format('d.m.Y'),
                 $voted,
             );
-            $lines[] = '';
-
-            $id = $campaign->getId();
-            $markup->addRow($mine === null
-                ? InlineKeyboardButton::make($mark . 'За блокування', callback_data: 'bvote:' . $id . ':yes')
-                : InlineKeyboardButton::make(
-                    $mark . ($mine ? '✅ Ви проголосували: За' : '✅ Ви проголосували: Проти'),
-                    callback_data: self::NOOP_CALLBACK,
-                ),
-                ...($mine === null
-                    ? [InlineKeyboardButton::make($mark . 'Проти', callback_data: 'bvote:' . $id . ':no')]
-                    : []),
-            );
         }
 
-        // Directly under the tallies it re-reads, above the rows that navigate away.
-        $this->withRefresh($markup);
-        $this->withAsk($markup, $account);
-        $this->withArchive($markup)->addRow(StartCommand::homeButton());
+        $lines[] = '';
+        $lines[] = '<i>Один акаунт — один голос. Голос остаточний: змінити його не можна.</i>';
+
+        $id = $campaign->getId();
+        $yes = $campaign->isQuestion() ? '👍 За' : 'За блокування';
+        $no = $campaign->isQuestion() ? '👎 Проти' : 'Проти';
+
+        $markup = InlineKeyboardMarkup::make();
+
+        // Once cast, the row becomes a statement rather than a choice: a live button under
+        // a final vote invites a tap that can only be refused.
+        $markup->addRow($mine === null
+            ? InlineKeyboardButton::make($yes, callback_data: 'bvote:' . $id . ':yes')
+            : InlineKeyboardButton::make(
+                $mine ? '✅ Ви проголосували: За' : '✅ Ви проголосували: Проти',
+                callback_data: self::NOOP_CALLBACK,
+            ),
+            ...($mine === null
+                ? [InlineKeyboardButton::make($no, callback_data: 'bvote:' . $id . ':no')]
+                : []),
+        );
+
+        $markup->addRow(InlineKeyboardButton::make(
+            '🔄 Оновити',
+            callback_data: self::REFRESH_PREFIX . $id,
+        ));
+
+        if ($standalone) {
+            $this->withAsk($markup, $account);
+            $this->withArchive($markup);
+        } else {
+            $markup->addRow(InlineKeyboardButton::make(
+                '⬅️ До списку',
+                callback_data: self::MENU_CALLBACK,
+            ));
+        }
+
+        $markup->addRow(StartCommand::homeButton());
 
         $this->respond($bot, $edit, implode("\n", $lines), $markup, $refreshing);
-    }
-
-    /**
-     * 1️⃣, 2️⃣ … — the same glyph on the block of text and on its buttons.
-     *
-     * Past ten it falls back to «11.», which is ugly and will never be reached: eleven open
-     * votes at once is a different problem than a label.
-     */
-    private static function numberBadge(int $n): string
-    {
-        return match (true) {
-            $n >= 1 && $n <= 9 => [1 => '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'][$n],
-            $n === 10 => '🔟',
-            default => $n . '.',
-        };
     }
 
     /**
@@ -441,10 +625,14 @@ class VotingMenuCommand
             $this->telegramUserService->getCurrentUser(),
         );
 
+        // The card this tap came from, redrawn in place — not the whole section: the
+        // reader is looking at one vote and must go on looking at it.
+        $standalone = count($this->votableFor($account)) === 1;
+
         if (($result['already'] ?? false) === true) {
             // Says what their vote is rather than only refusing: somebody tapping again is
             // usually checking, not attacking the rule.
-            $this->renderMenu($bot, edit: true, notice: sprintf(
+            $this->renderCard($bot, $campaign, $account, true, $standalone, sprintf(
                 'ℹ️ Ви вже проголосували: <b>%s</b>. Голос змінити не можна.',
                 $result['value'] ? 'За' : 'Проти',
             ));
@@ -461,7 +649,7 @@ class VotingMenuCommand
             $notice = '✅ Ваш голос враховано.';
         }
 
-        $this->renderMenu($bot, edit: true, notice: $notice);
+        $this->renderCard($bot, $campaign, $account, true, $standalone, $notice);
     }
 
     private function respond(
