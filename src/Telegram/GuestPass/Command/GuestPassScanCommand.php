@@ -7,7 +7,6 @@ use App\Entity\QrScan;
 use App\Service\GuardService;
 use App\Service\GuestPassService;
 use App\Service\TelegramUserService;
-use App\Telegram\Guard\Command\GuardCommand;
 use App\Telegram\Start\Command\StartCommand;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
@@ -122,15 +121,20 @@ class GuestPassScanCommand
         ));
     }
 
+    /**
+     * Home, and nothing else.
+     *
+     * The first version offered «🏛 Альтанки зараз» here, copied from the resident-code
+     * answer where a booking is at least what the code is about. Under a builder's pass it
+     * is a button about somebody else's pavilion hours, shown to a guard at a gate — an
+     * offer that reads as if the bot misunderstood the question.
+     */
     private function answer(Nutgram $bot, string $text): void
     {
         $bot->sendMessage(
             text: $text,
             parse_mode: ParseMode::HTML,
-            reply_markup: InlineKeyboardMarkup::make()->addRow(InlineKeyboardButton::make(
-                '🏛 Альтанки зараз',
-                callback_data: GuardCommand::MENU_CALLBACK,
-            )),
+            reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
         );
     }
 
