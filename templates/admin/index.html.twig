@@ -105,8 +105,11 @@
             {% if is_granted('ROLE_ADMIN') %}<a class="card hub-card" href="{{ path('app_admin_block_votes') }}">
                 <div class="card-body">
                     <div class="hub-emoji">🗳️</div>
-                    <b>Голосування за блокування</b>
-                    <div class="hub-note">Рішення спільноти заблокувати акаунт на 30 днів.</div>
+                    <b>Голосування спільноти</b>
+                    {# Two kinds since 08.09.2026, and the questions are what the house
+                       actually uses: the card named only the block campaigns and read as
+                       a page about punishing somebody. #}
+                    <div class="hub-note">Питання до мешканців і голосування за блокування. Тут же їх розсилають.</div>
                 </div>
             </a>{% endif %}
 
