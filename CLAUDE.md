@@ -947,10 +947,15 @@ edits the message in place.
   `namesFlats` switch is gone with the second version; the gate that remains is the one
   that matters — an unlinked visitor sees none of it.
 - **Guards are Telegram ids in `.env.local`** (`GUARD_TELEGRAM_IDS`), same shape as
-  `COMPLAINT_MANAGER_TELEGRAM_IDS`, and **an empty list means nobody, never everybody** —
-  that list is what decides who sees flat numbers, so the permissive default would be a
-  leak that looks exactly like the feature working. `GuardBoardRulesTest` pins it, and
-  pins the resident's view alongside.
+  `COMPLAINT_MANAGER_TELEGRAM_IDS`, and **an empty list means nobody, never everybody**.
+  It is **empty on prod since 09.09.2026**: the ЖК has exactly one guard («Охорона
+  Ситипарк», +380 68 369 47 58) and he has not opened the bot yet, so the two ids in there
+  were Иван and Сергій — testers, and the scan log was labelling their checks «Охорона»,
+  which is simply untrue. Nothing was lost by emptying it: since the board names flats for
+  every resident, the flag now decides only two things — the «охорона» label in `QrScan`
+  and whether somebody with **no особовий рахунок** may read the board at all. Put the
+  guard's id in the day he presses /start. `GuardBoardRulesTest` pins the empty-means-nobody
+  rule.
 - **An unlinked visitor gets neither version.** Like the debtors' board and the complaints
   register, this says what is happening in the ЖК's own yard; somebody who opened the bot
   through 🔑 Оренда to browse flats is not part of the house. A guard is admitted whether

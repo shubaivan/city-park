@@ -60,13 +60,21 @@ class GuestPassScanTest extends KernelTestCase
         $this->assertStringNotContainsString('кв. 85', $text, 'a withdrawn pass tells the scanner nothing');
     }
 
-    /** An unlinked visitor reads nothing — same line every resident-only screen draws. */
-    public function testAnUnlinkedVisitorIsToldNothing(): void
+    /**
+     * Whoever opens the link without being a resident is told who opens it instead.
+     *
+     * Most of them are not lost residents: they are the very builders the pass was made
+     * for, tapping their own link out of curiosity. «Ви ще не підтверджені» reads to them
+     * as a pass that does not work, and the next thing they do is ring the flat. They
+     * still learn nothing about the holder — the flat is not in this answer.
+     */
+    public function testSomebodyWhoIsNotAResidentIsToldTheGuardOpensIt(): void
     {
         $text = $this->scan($this->pass(activeToday: true), linked: false);
 
-        $this->assertStringContainsString('підтверджені мешканці', $text);
-        $this->assertStringNotContainsString('кв. 85', $text);
+        $this->assertStringContainsString('охорона на вході', $text);
+        $this->assertStringNotContainsString('кв. 85', $text, 'a stranger learns nothing about the flat');
+        $this->assertStringNotContainsString('Бригада', $text);
     }
 
     private function scan(GuestPass $pass, bool $linked = true): string

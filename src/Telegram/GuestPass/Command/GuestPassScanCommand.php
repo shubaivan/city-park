@@ -46,11 +46,17 @@ class GuestPassScanCommand
         $viewerAccount = $user ? $this->telegramUserService->resolveAccount($user) : null;
 
         if (!$this->guard->mayScan($user, $viewerAccount)) {
+            // Most people who reach this are not lost residents — they are the very
+            // builders the pass was made for, opening their own link out of curiosity.
+            // Telling them «ви ще не підтверджені» reads as a pass that does not work, and
+            // the next thing they do is ring the flat. So: what it is, and who opens it.
             $bot->sendMessage(
-                text: "🔒 <b>Пропуск мешканця ЖК</b>\n\n"
-                    . "Такі коди читають підтверджені мешканці — щоб побачити, кого і в яку "
-                    . "квартиру чекають.\n\n"
-                    . 'Ви ще не підтверджені: натисніть /phone і поділіться номером телефону.',
+                text: "🔒 <b>Це пропуск у ЖК «City Park»</b>\n\n"
+                    . "Його відкриває <b>охорона на вході</b> — саме вона побачить, хто ви "
+                    . "і в яку квартиру вас чекають. Просто покажіть їй це посилання або "
+                    . "QR-картинку.\n\n"
+                    . '<i>Якщо ви мешканець ЖК — натисніть /phone і поділіться номером '
+                    . 'телефону, тоді бот упізнає вас і покаже більше.</i>',
                 parse_mode: ParseMode::HTML,
                 reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
             );

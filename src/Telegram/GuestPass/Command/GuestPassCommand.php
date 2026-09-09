@@ -387,13 +387,25 @@ class GuestPassCommand
             return;
         }
 
+        // Two halves: a line for the host explaining what this is, then the block itself,
+        // written to the person who will be standing at the gate holding it. The old
+        // version said «Покажіть охороні цей код: <url>» — and a бригадир who taps his own
+        // link is told «код читають підтверджені мешканці», which reads as a pass that
+        // does not work. It has to say, in the message itself, that the link is opened by
+        // the guard and not by them.
         $bot->sendMessage(
             text: sprintf(
                 "Перешліть це тим, кого чекаєте — якщо їм зручніше не в Telegram.\n\n"
                     . "———\n"
-                    . "Пропуск у ЖК City Park\n%s\n%s\n\nПокажіть охороні цей код: %s",
+                    . "Пропуск у ЖК «City Park»\n%s\n%s\n"
+                    . "Дійсний: %s\n\n"
+                    . "Покажіть це охороні на вході. Відкриває посилання охоронець "
+                    . "зі свого телефону (або наводить камеру на QR-картинку):\n%s",
                 $pass->getLabel(),
                 $pass->getAccount()?->getPlaceLabel() ?? '',
+                $pass->isActiveAt(new \DateTime('now', new \DateTimeZone('Europe/Kyiv')))
+                    ? 'сьогодні до ' . $pass->getActiveUntil()?->format('H:i')
+                    : 'мешканець вмикає його на час вашого приходу',
                 $link,
             ),
             // The object, not an array: Nutgram type-hints this parameter, and an array
