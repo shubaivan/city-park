@@ -1100,6 +1100,27 @@ one the post was about. The ids are **explicit and permanent**, never positions 
 a sixteenth. These *are* recorded as clicks, unlike the QR kinds: «did anybody actually read
 it» is the only interesting question about an announcement.
 
+## Every stored moment is a Kyiv wall clock, and PHP has to agree
+
+`Kernel::__construct()` calls `date_default_timezone_set('Europe/Kyiv')`, and that line is
+load-bearing. Doctrine's `datetime` writes `Y-m-d H:i:s` with no offset, and this codebase
+writes Kyiv (`new \DateTime('now', new \DateTimeZone('Europe/Kyiv'))`, or a `setTimezone`
+into it) — so the column holds a wall-clock reading. Hydration rebuilds it in PHP's default
+zone, which on this server is **UTC**: `11:22` came back meaning 11:22 UTC, i.e. 14:22
+Kyiv, and every comparison of a stored moment against «now» was three hours late.
+
+Found 09.09.2026 on a builder's pass that had expired at 11:22 and still answered «✅ Діє
+до 11:22» at 14:00 — a guard would have let the crew in for three hours after the flat
+closed the window. The same arithmetic sits under `Account::isUnderVoteBlock()`, the 30-day
+expiry of every advert, each vote deadline and the `now` bound into
+`ScheduledSetRepository`: nothing failed anywhere, they were all simply late by the offset,
+which is why it survived months. `ApplicationTimezoneTest` pins both halves — the zone and
+a pass that must read dead two hours after its window.
+
+Comparisons written through `format('Y-m-d H:i:s')` were always right (two wall clocks), and
+that is why the guard board and the photo cron looked correct while the object comparisons
+did not. Prefer neither shape now: with the zone set, both mean the same thing.
+
 ## Backups
 
 `db:backup` dumps the database and **delivers it off the server** — a copy that lives on the
