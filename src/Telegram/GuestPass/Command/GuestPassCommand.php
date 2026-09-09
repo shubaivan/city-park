@@ -10,7 +10,6 @@ use App\Telegram\Guard\Command\GuardQrCommand;
 use App\Telegram\Start\Command\StartCommand;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
-use SergiX44\Nutgram\Telegram\Types\Message\LinkPreviewOptions;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
@@ -224,7 +223,7 @@ class GuestPassCommand
         }
 
         $markup
-            ->addRow(InlineKeyboardButton::make('🔗 Те саме текстом (Viber, SMS)', callback_data: self::SHARE_PREFIX . $pass->getId()))
+            ->addRow(InlineKeyboardButton::make('📤 Переслати у Viber / SMS', callback_data: self::SHARE_PREFIX . $pass->getId()))
             ->addRow(InlineKeyboardButton::make('🗑 Скасувати пропуск', callback_data: self::REVOKE_PREFIX . $pass->getId()))
             ->addRow(
                 InlineKeyboardButton::make('👷 Усі пропуски', callback_data: self::MENU_CALLBACK),
@@ -368,11 +367,13 @@ class GuestPassCommand
     }
 
     /**
-     * A block of plain text with the link spelled out.
+     * The forwardable copy: the QR picture with a plain-text block under it.
      *
-     * The QR picture is for the guard's camera; this is for the бригадир who works in
-     * Viber, or who wants the thing in writing. No markup at all — somebody selects it with
-     * a thumb and drops it into another app.
+     * What the бригадир does with this is hold up his phone at the gate, so the picture is
+     * the part that has to survive the trip — a link he can paste into Viber is a link
+     * nobody can scan. The text carries the same link spelled out for a guard who is in
+     * Telegram, and no markup at all: somebody selects it with a thumb and drops it into
+     * another app.
      */
     private function share(Nutgram $bot, Account $account, int $id): void
     {
@@ -387,20 +388,35 @@ class GuestPassCommand
             return;
         }
 
-        // Two halves: a line for the host explaining what this is, then the block itself,
-        // written to the person who will be standing at the gate holding it. The old
-        // version said «Покажіть охороні цей код: <url>» — and a бригадир who taps his own
-        // link is told «код читають підтверджені мешканці», which reads as a pass that
-        // does not work. It has to say, in the message itself, that the link is opened by
-        // the guard and not by them.
-        $bot->sendMessage(
-            text: sprintf(
-                "Перешліть це тим, кого чекаєте — якщо їм зручніше не в Telegram.\n\n"
+        $photo = GuardQrCommand::photo($link);
+
+        if ($photo === null) {
+            $bot->sendMessage(text: '⚠️ Не вдалося створити код. Спробуйте ще раз за хвилину.');
+
+            return;
+        }
+
+        // **The picture is the pass; the link is only the shortcut.** This block was text
+        // and a url, on the reading that a бригадир outside Telegram needs something he
+        // can paste — but what he does with it is stand at the gate and hold up his phone,
+        // and a guard cannot scan a link. Sent as the QR with the text under it, one
+        // message serves both: forwarded inside Telegram it arrives whole, and saved into
+        // Viber it is a picture with a caption to copy.
+        //
+        // Two halves in the text: a line for the host explaining what this is, then the
+        // block itself, written to the person who will be standing at the gate holding it.
+        // An older version said «Покажіть охороні цей код: <url>» — and a бригадир who
+        // taps his own link is told «код читають підтверджені мешканці», which reads as a
+        // pass that does not work. It has to say who opens what.
+        $bot->sendPhoto(
+            photo: $photo,
+            caption: sprintf(
+                "Перешліть цю картинку тим, кого чекаєте — разом із текстом під нею.\n\n"
                     . "———\n"
                     . "Пропуск у ЖК «City Park»\n%s\n%s\n"
                     . "Дійсний: %s\n\n"
-                    . "Покажіть це охороні на вході. Відкриває посилання охоронець "
-                    . "зі свого телефону (або наводить камеру на QR-картинку):\n%s",
+                    . "Покажіть цю картинку охороні на вході — охоронець наведе на неї "
+                    . "камеру. Якщо він у Telegram, те саме відкриває посилання:\n%s",
                 $pass->getLabel(),
                 $pass->getAccount()?->getPlaceLabel() ?? '',
                 $pass->isActiveAt(new \DateTime('now', new \DateTimeZone('Europe/Kyiv')))
@@ -408,10 +424,6 @@ class GuestPassCommand
                     : 'мешканець вмикає його на час вашого приходу',
                 $link,
             ),
-            // The object, not an array: Nutgram type-hints this parameter, and an array
-            // threw a TypeError — /hook answered 500 and Telegram retried the same tap
-            // until the callback expired, which from the outside is «жму і нічого».
-            link_preview_options: LinkPreviewOptions::make(is_disabled: true),
         );
     }
 
