@@ -86,14 +86,16 @@ class SchedulePavilion extends Conversation
         $currentUser = $this->telegramUserService->getCurrentUser();
 
         if (!$currentUser->getPhoneNumber()) {
+            // One message, and in Ukrainian. It used to be two — «Підтвердження телефону
+            // обов'язкове» followed by «Подтрібно натиснути», which is not a word in
+            // either language — and this is the first thing a new resident sees.
             $bot->sendMessage(
-                text: 'Підтвердження телефону обов\'язкове'
-            );
-            $bot->sendMessage(
-                text: 'Подтрібно натиснути *Підтвердіть ВАШ телефон*',
-                parse_mode: ParseMode::MARKDOWN,
-                reply_markup: ReplyKeyboardMarkup::make(one_time_keyboard: true)->addRow(
-                    KeyboardButton::make('Підтвердіть ВАШ телефон', true),
+                text: "📱 <b>Спершу підтвердіть номер телефону</b>\n\n"
+                    . 'Натисніть кнопку внизу — Telegram надішле ваш номер, '
+                    . 'і бот знайде вашу квартиру в реєстрі ОСББ.',
+                parse_mode: ParseMode::HTML,
+                reply_markup: ReplyKeyboardMarkup::make(one_time_keyboard: true, resize_keyboard: true)->addRow(
+                    KeyboardButton::make('📱 Поділитися номером телефону', true),
                 )
             );
             return;
@@ -103,7 +105,7 @@ class SchedulePavilion extends Conversation
 
         if (!$account) {
             $bot->sendMessage(
-                text: "Ви не можете бронювати! Ваш аккаунт не підтверджений ОСББ.\n\nЗв'яжіться з нами:\n" . OsbbContacts::BOTH_LINES,
+                text: "Ви не можете бронювати! Ваш акаунт не підтверджений ОСББ.\n\nЗв'яжіться з нами:\n" . OsbbContacts::BOTH_LINES,
                 parse_mode: ParseMode::HTML,
             );
             return;
@@ -113,7 +115,7 @@ class SchedulePavilion extends Conversation
             $bot->sendMessage(
                 text: "🚫 <b>Бронювання альтанки недоступне для кладових.</b>\n\n"
                     . "Власники кладових не сплачують внесок на утримання двору, тож альтанки для них наразі недоступні.\n\n"
-                    . "Якщо у вас є й квартира або паркомісце, і кладова — бронюйте з аккаунта квартири чи паркомісця.\n\n"
+                    . "Якщо у вас є й квартира або паркомісце, і кладова — бронюйте з акаунта квартири чи паркомісця.\n\n"
                     . "Дякуємо за розуміння.",
                 parse_mode: ParseMode::HTML,
             );
@@ -143,7 +145,7 @@ class SchedulePavilion extends Conversation
                 $blocking,
             );
             $bot->sendMessage(
-                text: "❌ Ви не можете бронювати!\n\nЗа цією групою аккаунтів є борг:\n"
+                text: "❌ Ви не можете бронювати!\n\nЗа цією групою акаунтів є борг:\n"
                     . implode("\n", $lines)
                     . "\n\nБудь ласка, сплатіть заборгованість для можливості бронювання.",
                 parse_mode: ParseMode::HTML

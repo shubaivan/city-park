@@ -19,7 +19,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\ReplyKeyboardRemove;
 class EventApprovePhoneCommand extends Command
 {
     protected string $command = 'eventContact';
-    protected ?string $description = 'Підтвердіть ВАШ телефон';
+    protected ?string $description = '📱 Підтвердити номер телефону';
 
     public function __construct(
         private TelegramUserService $telegramUserService,
@@ -47,15 +47,15 @@ class EventApprovePhoneCommand extends Command
         $user = $this->telegramUserService->getCurrentUser();
         $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
 
+        // The keyboard is taken away by the answer itself. It used to be a second message
+        // reading «Removing keyboard...» — English, in a Ukrainian bot, on the screen a
+        // resident sees once and judges the whole thing by — which was then deleted; on a
+        // phone it still flashes, and a delete that fails leaves it standing.
         $bot->sendMessage(
             text: $account instanceof Account ? $this->confirmedText($account) : $this->notFoundText(),
             parse_mode: ParseMode::HTML,
-        );
-
-        $bot->sendMessage(
-            text: 'Removing keyboard...',
             reply_markup: ReplyKeyboardRemove::make(true),
-        )?->delete();
+        );
     }
 
     /**

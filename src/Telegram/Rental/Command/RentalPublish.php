@@ -93,7 +93,7 @@ class RentalPublish extends Conversation
 
         if (!$account) {
             $bot->sendMessage(
-                text: "Ваш аккаунт не підтверджений ОСББ — опублікувати оголошення не вийде.\n"
+                text: "Ваш акаунт не підтверджений ОСББ — опублікувати оголошення не вийде.\n"
                     . "Зв'яжіться з бухгалтером ОСББ:\n" . OsbbContacts::ACCOUNTANT_LINE,
                 parse_mode: ParseMode::HTML,
             );
@@ -330,7 +330,7 @@ class RentalPublish extends Conversation
         $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
 
         if (!$account) {
-            $bot->sendMessage(text: '⚠️ Не вдалося визначити ваш аккаунт. Спробуйте пізніше.');
+            $bot->sendMessage(text: '⚠️ Не вдалося визначити ваш акаунт. Спробуйте пізніше.');
             $this->end();
             return;
         }

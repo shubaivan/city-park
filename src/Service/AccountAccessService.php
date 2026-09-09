@@ -69,13 +69,13 @@ class AccountAccessService
         $this->em->flush();
 
         $this->notify($account, match ($reason) {
-            'debt' => "⛔ <b>Ваш аккаунт заблоковано</b>\n\n"
+            'debt' => "⛔ <b>Ваш акаунт заблоковано</b>\n\n"
                 . "Причина: <b>борг</b> — сума перевищила персональний поріг (площа × тариф ОСББ × 1.5).\n\n"
                 . OsbbContacts::askThem(),
-            'photo' => "⛔ <b>Ваш аккаунт заблоковано</b>\n\n"
+            'photo' => "⛔ <b>Ваш акаунт заблоковано</b>\n\n"
                 . "Причина: не завантажене фото після бронювання.\n\n"
                 . OsbbContacts::askThem(),
-            default => "⛔ <b>Ваш аккаунт заблоковано</b>\n\n"
+            default => "⛔ <b>Ваш акаунт заблоковано</b>\n\n"
                 . OsbbContacts::askThem('Зверніться для уточнення причини та розблокування:'),
         }, 'block');
 

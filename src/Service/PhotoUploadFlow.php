@@ -159,7 +159,7 @@ class PhotoUploadFlow
         if (!$account) {
             $this->photoLogger->info('photoEvent ignored: no linked account', ['chat_id' => $chatId]);
             $bot->sendMessage(
-                text: '📷 Дякуємо, але у вас немає прив\'язаного аккаунту, тож завантаження зараз не потрібне.',
+                text: '📷 Дякуємо, але у вас немає прив\'язаного акаунту, тож завантаження зараз не потрібне.',
             );
             return;
         }
