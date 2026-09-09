@@ -985,13 +985,35 @@ edits the message in place.
   from a guard, who already has his own copy at the top of the menu under a name that says
   what his version is for.
 
-**The QR half** (Иван's idea, same day): «🔒 QR для охорони» appears on the resident's own
-menu **only while their booking is running**, which is why it needs no explaining — it is
-there when you are sitting in the альтанка and gone the rest of the month. It renders a
-deep link, `t.me/<bot>?start=g-<account>-<signature>`, so the guard needs no scanner app:
-his camera opens Telegram and `GuardScanCommand` replies ✅ with the flat, the pavilion and
-the hours, or ❌ «броні на зараз немає» — which is the answer that matters, since a
-screenshot from last Saturday has to read as plainly wrong rather than as a bot error.
+**The QR half** (Иван's idea, 07.09.2026): «🪪 Мій QR-код» renders a deep link,
+`t.me/<bot>?start=g-<account>-<signature>`, so nobody needs a scanner app — a camera opens
+Telegram and `GuardScanCommand` replies. ✅ with the flat, the pavilion and the hours for a
+guard, or ❌ «броні на зараз немає», which is the answer that matters: a screenshot from
+last Saturday has to read as plainly wrong rather than as a bot error.
+
+**It is a resident's pass, not a booking ticket, and the whole house can read it**
+(09.09.2026). Both halves were narrower on the day it shipped and both were opened by Иван:
+«я хотел бы чтоб кто угодно из ЖК мог проверить кого угодно, а не только охрана», «считать
+код и получить информацию может любой подтвержденный житель ЖК».
+
+- **Who holds one** — any confirmed resident whose access is not blocked
+  (`GuardService::mayHoldQr()`), all month. The button used to appear only while a booking
+  was running, which needed no explaining and also meant almost nobody knew it existed. A
+  blocked account gets none: that is the whole meaning of «не заблокований» on a pass, and
+  the one thing the picture can honestly say about its holder without publishing why.
+- **Who reads one** — any confirmed resident, and the guard (`GuardService::mayScan()`).
+  Two guards cannot perform a check for 457 people; the person standing in the yard asking
+  «ці люди тут по броні?» is almost never staff. A block is deliberately **not** checked
+  here: it decides whether somebody may *book*, and refusing a debtor the right to read a
+  neighbour's code protects nothing. An unlinked visitor still gets nothing — the same line
+  the debtors' board and the complaints register draw.
+- **The flat goes only to the guard.** His check *is* «яка квартира»; a neighbour's is «чи
+  це мешканець і чи є в них зараз бронь», and the flat adds nothing to it — while the
+  picture is forwardable, so one screenshot in the house chat would name a flat to
+  everyone. Same call as `board()`'s `namesFlats`. `GuardScanAudienceTest` drives the
+  handler through FakeNutgram and asserts on what was actually sent: the first version of
+  that test matched the source with a regex, and a deliberately leaking version passed it.
+  Prove such a test fails before believing it.
 
 - **Signed, and stored nowhere.** `hash_hmac` over the account id with `APP_SECRET`, 12
   hex characters. The flats and особові рахунки of the largest debtors are published to
@@ -1000,8 +1022,6 @@ screenshot from last Saturday has to read as plainly wrong rather than as a bot 
   does have a booking. The signature is what makes the bot the only thing that can mint
   one. Nothing is written: the question is «is this household in the альтанка now», and
   the bookings table already answers it, so the code needs no expiry either.
-- **Only a guard gets an answer.** A resident scanning their own code, or anyone the
-  picture is forwarded to, is told «цей QR-код зчитує охорона» and nothing about the flat.
 - **`start {payload}` cannot swallow a plain `/start`.** Nutgram anchors command patterns,
   so the deep-link handler needs the space and a payload while `/start` alone still reaches
   `StartCommand`. `GuardWiringTest` pins it: getting that wrong takes the main menu away

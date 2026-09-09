@@ -28,9 +28,15 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
  * camera opens Telegram and the bot replies. Nothing is stored: the question is «is this
  * household in the альтанка right now», and the bookings table already answers it.
  *
- * **The button appears only while a booking is running**, which is also why it needs no
- * explaining: it is on the menu when you are sitting in the pavilion and gone the rest of
- * the month.
+ * **It is a resident's pass, not a booking ticket** (Иван, 09.09.2026). It began as the
+ * second: the button appeared only while a booking was running and was gone the rest of the
+ * month, which needed no explaining but also meant almost nobody ever saw it exist. Now
+ * every confirmed resident whose access is not blocked has it on the menu, and the scan
+ * says two things — that the holder is one of us, and whether the альтанка is theirs right
+ * now. `GuardService::mayHoldQr()` is the one definition of who gets one.
+ *
+ * **A blocked account gets no code**, and that is the whole meaning of a pass: it is the
+ * one thing this picture can honestly say about its holder without publishing why.
  */
 class GuardQrCommand
 {
@@ -46,16 +52,22 @@ class GuardQrCommand
         $user = $this->telegramUserService->getCurrentUser();
         $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
         $now = SchedulePavilionService::createNewDate();
-        $session = $account instanceof Account ? $this->guard->runningSessionFor($account, $now) : null;
 
-        if ($session === null) {
+        if (!$this->guard->mayHoldQr($account)) {
+            // Marked and explained rather than silently missing: the button is drawn only
+            // for somebody who may have a code, so anyone who reaches this has arrived from
+            // an older keyboard, and «нічого не сталося» is the worst possible answer.
             $bot->answerCallbackQuery(
-                text: 'QR-код працює лише під час вашого бронювання.',
+                text: $account instanceof Account
+                    ? 'Доступ до вашого рахунку обмежено — код зараз не видається.'
+                    : 'Спершу підтвердіть номер телефону: /phone',
                 show_alert: true,
             );
 
             return;
         }
+
+        $session = $this->guard->runningSessionFor($account, $now);
 
         $bot->answerCallbackQuery();
 
@@ -80,17 +92,26 @@ class GuardQrCommand
             return;
         }
 
+        // The booking line is the half that changes; the pass itself does not. Printed only
+        // when there is one, because «броні зараз немає» on your own pass is noise: you
+        // know, you did not book anything.
+        $booking = $session === null ? '' : sprintf(
+            "🏛 Зараз ваша бронь: %s альтанка · <b>%s–%s</b>\n",
+            SchedulePavilionService::pavilionName($session['pavilion']),
+            $session['start']->format('H:i'),
+            $session['end']->format('H:i'),
+        );
+
         $bot->sendPhoto(
             photo: $photo,
             caption: sprintf(
-                "🔒 <b>QR для охорони</b>\n\n%s альтанка · <b>%s–%s</b>\n%s\n\n"
-                    . "Покажіть цей екран охоронцю — він наведе камеру і бот підтвердить, "
-                    . "що альтанка зараз ваша.\n\n"
-                    . "<i>Код діє, поки триває бронювання.</i>",
-                SchedulePavilionService::pavilionName($session['pavilion']),
-                $session['start']->format('H:i'),
-                $session['end']->format('H:i'),
-                htmlspecialchars(GuardService::place($session), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                "🪪 <b>QR-код мешканця</b>\n\n%s\n%s\n"
+                    . "Покажіть цей екран охоронцю або сусідові — камера відкриє бота, "
+                    . "і він підтвердить, що ви мешканець ЖК та чи є у вас зараз бронь "
+                    . "на альтанку.\n\n"
+                    . "<i>Код ваш постійний. Показувати його стороннім не варто.</i>",
+                htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                $booking,
             ),
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),

@@ -67,6 +67,55 @@ class GuardBoardRulesTest extends TestCase
      * that opened it to everybody who pressed /start would be a privacy leak that looks
      * exactly like the feature working.
      */
+    /**
+     * Who may read a scanned code: any confirmed resident, and the guard.
+     *
+     * It was the guard's tool alone and everybody else was answered «цей код зчитує
+     * охорона» — with two guards against 457 residents, which means the check almost never
+     * happened. Opened to the house on 09.09.2026: «я хотел бы чтоб кто угодно из ЖК мог
+     * проверить кого угодно, а не только охрана». An unlinked visitor is still out, the
+     * same line the debtors' board and the complaints register draw.
+     */
+    public function testAnyConfirmedResidentMayScanAndAStrangerMayNot(): void
+    {
+        $service = $this->service('777');
+
+        $guard = $this->user(1, '777');
+        $resident = $this->user(2, '888');
+
+        $this->assertTrue($service->mayScan($guard, $guard->getAccount()), 'the guard reads codes');
+        $this->assertTrue($service->mayScan($resident, $resident->getAccount()), 'so does any resident');
+
+        // The guard is staff and may have no особовий рахунок of his own.
+        $this->assertTrue($service->mayScan($guard, null), 'a guard with no flat still reads codes');
+
+        $this->assertFalse($service->mayScan($this->user(3, '999'), null), 'an unlinked visitor reads nothing');
+        $this->assertFalse($service->mayScan(null, null));
+    }
+
+    /**
+     * Who may hold one: a confirmed resident whose access is not blocked.
+     *
+     * The code used to be a booking ticket and appeared for the three hours of a booking;
+     * since 09.09.2026 it is a pass and sits on the menu all month. A blocked account gets
+     * none — that is the whole meaning of «не заблокований» on a pass, and the one thing
+     * the picture can honestly say about its holder without publishing why.
+     */
+    public function testOnlyAnUnblockedResidentHoldsAQr(): void
+    {
+        $service = $this->service('777');
+
+        $active = $this->user(4, '444')->getAccount();
+        $active->setIsActive(true);
+
+        $blocked = $this->user(5, '555')->getAccount();
+        $blocked->setIsActive(false);
+
+        $this->assertTrue($service->mayHoldQr($active));
+        $this->assertFalse($service->mayHoldQr($blocked), 'a blocked account carries no pass');
+        $this->assertFalse($service->mayHoldQr(null), 'and neither does somebody with no flat');
+    }
+
     public function testAnEmptyGuardListMeansNobody(): void
     {
         $guard = $this->service('');

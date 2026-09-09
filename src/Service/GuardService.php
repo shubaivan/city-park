@@ -213,6 +213,38 @@ class GuardService
     }
 
     /**
+     * Who may hold a QR code: a confirmed resident whose access is not blocked.
+     *
+     * The code is a resident's pass now, not a booking ticket — Иван's call, 09.09.2026 —
+     * so it is on the menu the whole month rather than for the three hours of a booking.
+     * A blocked account does not get one: that is the whole meaning of «не заблокований»
+     * on a pass, and it is the one thing the code can honestly say about its holder
+     * without publishing why.
+     */
+    public function mayHoldQr(?Account $account): bool
+    {
+        return $account instanceof Account && $account->isActive();
+    }
+
+    /**
+     * Who may read a scanned code: **any confirmed resident**, and the guard.
+     *
+     * It began as the guard's tool and everybody else was told «цей код зчитує охорона».
+     * Иван opened it to the house on 09.09.2026: «я хотел бы чтоб кто угодно из ЖК мог
+     * проверить кого угодно, а не только охрана». There are two guards and 457 residents,
+     * and the question «ці люди тут по броні?» is asked by whoever is standing in the yard
+     * at that moment — usually not staff.
+     *
+     * A block is not checked here. It decides whether somebody may *book*, and refusing a
+     * debtor the right to read a neighbour's code protects nothing and tells them nothing
+     * they could not see by walking past.
+     */
+    public function mayScan(?TelegramUser $user, ?Account $viewerAccount): bool
+    {
+        return $this->isGuard($user) || $viewerAccount instanceof Account;
+    }
+
+    /**
      * The payload behind the resident's QR code: `g-<account>-<signature>`.
      *
      * **Signed, and deliberately not stored.** The особові рахунки of the largest debtors
