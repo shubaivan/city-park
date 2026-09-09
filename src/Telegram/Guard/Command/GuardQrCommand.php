@@ -60,17 +60,21 @@ class GuardQrCommand
             // Marked and explained rather than silently missing: the button is drawn only
             // for somebody who may have a code, so anyone who reaches this has arrived from
             // an older keyboard, and «нічого не сталося» is the worst possible answer.
-            $bot->answerCallbackQuery(
-                text: 'Спершу підтвердіть номер телефону: /phone',
-                show_alert: true,
-            );
+            // Reached as a button *and* as /qr from the slash menu, where there is no
+            // callback query to answer — answering one that does not exist throws.
+            $bot->isCallbackQuery()
+                ? $bot->answerCallbackQuery(
+                    text: 'Спершу підтвердіть номер телефону: /phone',
+                    show_alert: true,
+                )
+                : $bot->sendMessage(text: 'Спершу підтвердіть номер телефону: /phone');
 
             return;
         }
 
         $session = $this->guard->runningSessionFor($account, $now);
 
-        $bot->answerCallbackQuery();
+        $bot->isCallbackQuery() && $bot->answerCallbackQuery();
 
         // Asked of Telegram rather than configured: the dev bot and the prod bot are
         // different usernames, and a link built from the wrong one is a QR that opens a

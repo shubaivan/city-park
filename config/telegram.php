@@ -134,6 +134,9 @@ $bot->onCommand('guard', \App\Telegram\Guard\Command\GuardCommand::class);
 // straight to one handler: the QR was the first such link, and the day a second appeared
 // every link that was not a QR would have been answered «цей QR-код зчитує охорона».
 $bot->onCallbackQueryData(\App\Telegram\Guard\Command\GuardQrCommand::MENU_CALLBACK, \App\Telegram\Guard\Command\GuardQrCommand::class);
+// Also a slash command: the inline button only exists on a freshly drawn menu, and the
+// person looking for their code an hour later is scrolling the ≡ list.
+$bot->onCommand('qr', \App\Telegram\Guard\Command\GuardQrCommand::class);
 $bot->onCommand('start {payload}', \App\Telegram\Start\Command\StartPayloadCommand::class);
 
 // Passes for the people a flat lets in — the crew, the delivery, the fitter. Same shape as
