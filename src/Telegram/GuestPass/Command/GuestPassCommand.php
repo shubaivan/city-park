@@ -223,7 +223,7 @@ class GuestPassCommand
         }
 
         $markup
-            ->addRow(InlineKeyboardButton::make('📤 Переслати у Viber / SMS', callback_data: self::SHARE_PREFIX . $pass->getId()))
+            ->addRow(InlineKeyboardButton::make('📤 Переслати робітникам', callback_data: self::SHARE_PREFIX . $pass->getId()))
             ->addRow(InlineKeyboardButton::make('🗑 Скасувати пропуск', callback_data: self::REVOKE_PREFIX . $pass->getId()))
             ->addRow(
                 InlineKeyboardButton::make('👷 Усі пропуски', callback_data: self::MENU_CALLBACK),
@@ -370,10 +370,10 @@ class GuestPassCommand
      * The forwardable copy: the QR picture with a plain-text block under it.
      *
      * What the бригадир does with this is hold up his phone at the gate, so the picture is
-     * the part that has to survive the trip — a link he can paste into Viber is a link
-     * nobody can scan. The text carries the same link spelled out for a guard who is in
-     * Telegram, and no markup at all: somebody selects it with a thumb and drops it into
-     * another app.
+     * the whole message — a link he can paste into Viber is a link nobody can scan, and the
+     * url spelled out under it served no one: he will not forward it and the guard will not
+     * type it. It was there for one version and came straight back out. No markup at all in
+     * the text: somebody selects it with a thumb and drops it into another app.
      */
     private function share(Nutgram $bot, Account $account, int $id): void
     {
@@ -396,12 +396,11 @@ class GuestPassCommand
             return;
         }
 
-        // **The picture is the pass; the link is only the shortcut.** This block was text
-        // and a url, on the reading that a бригадир outside Telegram needs something he
-        // can paste — but what he does with it is stand at the gate and hold up his phone,
-        // and a guard cannot scan a link. Sent as the QR with the text under it, one
-        // message serves both: forwarded inside Telegram it arrives whole, and saved into
-        // Viber it is a picture with a caption to copy.
+        // **The picture is the pass.** This block was text and a url, on the reading that
+        // a бригадир outside Telegram needs something he can paste — but what he does with
+        // it is stand at the gate and hold up his phone, and a guard cannot scan a link.
+        // The url is not in the caption either: nobody in this exchange would ever use it,
+        // and a link under a code invites somebody to send the link instead of the code.
         //
         // Two halves in the text: a line for the host explaining what this is, then the
         // block itself, written to the person who will be standing at the gate holding it.
@@ -416,13 +415,13 @@ class GuestPassCommand
                     . "Пропуск у ЖК «City Park»\n%s\n%s\n"
                     . "Дійсний: %s\n\n"
                     . "Покажіть цю картинку охороні на вході — охоронець наведе на неї "
-                    . "камеру. Якщо він у Telegram, те саме відкриває посилання:\n%s",
+                    . "камеру. Сама картинка і є пропуск: зберігати чи роздруковувати "
+                    . "нічого більше не треба.",
                 $pass->getLabel(),
                 $pass->getAccount()?->getPlaceLabel() ?? '',
                 $pass->isActiveAt(new \DateTime('now', new \DateTimeZone('Europe/Kyiv')))
                     ? 'сьогодні до ' . $pass->getActiveUntil()?->format('H:i')
                     : 'мешканець вмикає його на час вашого приходу',
-                $link,
             ),
         );
     }
