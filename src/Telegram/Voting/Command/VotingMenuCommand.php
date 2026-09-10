@@ -255,7 +255,8 @@ class VotingMenuCommand
 
         $lines[] = '🗳️ <b>Голосування</b>';
         $lines[] = '';
-        $lines[] = sprintf('Відкритих голосувань: <b>%d</b>. Оберіть, щоб прочитати й проголосувати.', $total);
+        $lines[] = sprintf('Відкритих голосувань: <b>%d</b>.', $total);
+        $lines[] = self::whatThisIs($shown);
         $lines[] = '<i>Один акаунт — один голос. Голос остаточний: змінити його не можна.</i>';
 
         if ($pages > 1) {
@@ -271,9 +272,14 @@ class VotingMenuCommand
 
         $markup = InlineKeyboardMarkup::make();
 
-        foreach ($shown as $campaign) {
+        foreach (array_values($shown) as $i => $campaign) {
+            $number = self::numeral($i + 1);
+
+            $lines[] = '';
+            $lines[] = $number . ' ' . $this->entry($campaign, $account);
+
             $markup->addRow(InlineKeyboardButton::make(
-                $this->buttonLabel($campaign, $account),
+                $this->buttonLabel($campaign, $account, $number),
                 callback_data: self::CARD_PREFIX . $campaign->getId(),
             ));
         }
@@ -304,34 +310,86 @@ class VotingMenuCommand
     }
 
     /**
-     * «до 16.09 · ❓ Чи погоджуєтеся ви… ✅»
+     * The question itself, in full, in the body of the message.
      *
-     * The deadline leads, at a fixed width, so the dates line up down the column and the
-     * list is read in one movement. On this board it is the closing date rather than the
-     * opening one: a vote is something you still have time to do, or you have not.
+     * It used to live on the button — «до 16.09 · ❓ Чи погоджуєтеся ви на встановлення
+     * обла…» — and a question is the one thing on this board that cannot survive being cut.
+     * A button is a single line whatever we put in it: Telegram truncates it to the width
+     * of the phone, so even without our own `shorten()` the reader was choosing between two
+     * halves of two sentences. «Не зрозуміло, що це і за що» (Иван, 10.09.2026). The body
+     * of a message wraps, so the whole question is readable before anybody taps anything,
+     * and the button keeps only the number that points at it.
      *
-     * The ✅ is last, because Telegram truncates a button from the right and «ви вже
-     * проголосували» is the only part that can be lost without costing anybody a ballot.
+     * **Both dates.** «до 16.09» alone cannot tell a vote opened this morning from one that
+     * has been sitting a week — the same reason the card carries both, and the reader of a
+     * list is exactly who has to decide which of them to open first.
      */
-    private function buttonLabel(BlockVoteCampaign $campaign, Account $account): string
+    private function entry(BlockVoteCampaign $campaign, Account $account): string
     {
         $voted = $this->ballotRepository->findOneByCampaignAndVoter($campaign, $account) !== null;
 
         $title = $campaign->isQuestion()
-            ? '❓ ' . (string)$campaign->getQuestion()
-            : '👤 ' . $this->voteService->candidateLabel($campaign->getCandidate());
+            ? '❓ <b>' . self::esc((string)$campaign->getQuestion()) . '</b>'
+            : '👤 <b>' . self::esc($this->voteService->candidateLabel($campaign->getCandidate())) . '</b>';
 
         return sprintf(
-            'до %s · %s%s',
-            $campaign->getDeadlineAt()->format('d.m'),
-            self::shorten($title, 42),
-            $voted ? ' ✅' : '',
+            "%s
+<i>🗓 розміщено %s · голосування до %s</i>%s",
+            $title,
+            $campaign->getCreatedAt()?->format('d.m') ?? '—',
+            $campaign->getDeadlineAt()->format('d.m.Y'),
+            $voted ? "
+<i>✅ ви вже проголосували</i>" : '',
         );
     }
 
-    private static function shorten(string $text, int $max): string
+    /**
+     * The button is the number and nothing else it can lose: the question is above it.
+     *
+     * The ✅ is last, because Telegram truncates a button from the right and «ви вже
+     * проголосували» is the only part that can be lost without costing anybody a ballot.
+     */
+    private function buttonLabel(BlockVoteCampaign $campaign, Account $account, string $number): string
     {
-        return mb_strlen($text) <= $max ? $text : mb_substr($text, 0, $max - 1) . '…';
+        $voted = $this->ballotRepository->findOneByCampaignAndVoter($campaign, $account) !== null;
+
+        return $voted
+            ? $number . ' Переглянути ✅'
+            : $number . ' Читати й проголосувати';
+    }
+
+    /** 1️⃣…8️⃣ — one page holds {@see PAGE_SIZE} votes, and the numeral ties a row to its button. */
+    private static function numeral(int $n): string
+    {
+        $glyphs = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+
+        return $glyphs[$n - 1] ?? ($n . '.');
+    }
+
+    /**
+     * What the reader is looking at, before the first question.
+     *
+     * «Не зрозуміло, що це і за що»: a screen headed «Голосування» with two sentences on it
+     * reads as the bot deciding something, and a resident who thinks a tap enacts a levy
+     * does not tap. A question here enacts nothing — that is the design, not a caveat — so
+     * the screen says so, and says who does decide.
+     *
+     * Worded off what is actually open: promising that nothing is enacted would be a lie on
+     * a page carrying a block campaign, which enacts a 30-day block the moment it passes.
+     *
+     * @param array<int, BlockVoteCampaign> $shown
+     */
+    private static function whatThisIs(array $shown): string
+    {
+        foreach ($shown as $campaign) {
+            if (!$campaign->isQuestion()) {
+                return '<i>Тут два види: опитування мешканців (нічого не ухвалює, показує думку дому) '
+                    . 'і голосування спільноти щодо блокування. Оберіть, щоб прочитати повністю.</i>';
+            }
+        }
+
+        return '<i>Це опитування мешканців: воно нічого не ухвалює і нікому нічого не нараховує, '
+            . 'а показує, чого хоче дім. Рішення ухвалює ОСББ.</i>';
     }
 
     /** A card opened from the index, or refreshed in place. */
