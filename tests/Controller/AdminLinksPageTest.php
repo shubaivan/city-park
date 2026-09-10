@@ -160,6 +160,10 @@ class AdminLinksPageTest extends WebTestCase
             'offer-' => 'templates/admin/services.html.twig',
             'listing-' => 'templates/admin/rentals.html.twig',
             'complaint-' => 'templates/admin/complaints.html.twig',
+            // The votes page was the last one linked to bare: a click on «голосування #5»
+            // opened the register at the top, and with the open and the finished tables
+            // both on it, finding #5 was the reader's problem.
+            'vote-' => 'templates/admin/block-votes.html.twig',
         ];
 
         foreach ($pages as $prefix => $page) {

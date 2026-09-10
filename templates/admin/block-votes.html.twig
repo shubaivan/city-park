@@ -178,7 +178,14 @@
                     </thead>
                     <tbody>
                     {% for c in open %}
-                        <tr>
+                        {#
+                            The click log links straight at the campaign («#vote-4»), so a
+                            reader arriving from /admin/links lands on the one row among a
+                            dozen near-identical ones that the post was about. The ballots
+                            row under it is deliberately not the target: the mark belongs on
+                            the vote, not on the list of who cast what.
+                        #}
+                        <tr id="vote-{{ c.id }}">
                             <td>
                                 {% if c.kind == 'question' %}❓{% else %}🚫{% endif %}
                                 {{ c.label }}
@@ -280,7 +287,7 @@
                     </thead>
                     <tbody>
                     {% for c in recent %}
-                        <tr>
+                        <tr id="vote-{{ c.id }}">
                             <td>{% if c.kind == 'question' %}❓{% else %}🚫{% endif %} {{ c.label }}</td>
                             <td>{{ c.account_number ?? '—' }}</td>
                             <td>{% if c.blocks > 0 %}<span class="badge bg-warning text-dark">{{ c.blocks }}×</span>{% else %}—{% endif %}</td>
