@@ -17,13 +17,22 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 class BotMenuUpdateCommand extends Command
 {
     /** [command, description] pairs. Keep <= 32 chars per description (Telegram limit). */
-    /** Order here is the order Telegram shows in the slash menu — first line is the most visible. */
+    /**
+     * Order here is the order Telegram shows in the slash menu — first line is the most visible.
+     *
+     * `/start` leads it. Every other entry opens one section; this is the one that opens
+     * everything, and it is the way back when somebody is lost inside a card — which is
+     * exactly when they are scrolling this list. Fifth in a list of thirteen identical rows
+     * it was simply not being found (Иван, 10.09.2026), and a resident who cannot get back
+     * to the menu reads that as the bot having stopped working. 🔑 Оренда keeps the top of
+     * the inline menu, where there is no «головне меню» to compete with it.
+     */
     private const MENU = [
+        ['start', '🏠 Головне меню'],
         ['rent', '🔑 Оренда та продаж'],
         ['services', '🛠 Послуги'],
         ['chat', '🏘 Чат мешканців'],
         ['problem', '🔧 Заявки та скарги'],
-        ['start', '🏠 Головне меню'],
         ['schedule', '📅 Бронювання альтанки'],
         ['history', '📜 Історія бронювань'],
         ['photo', '📸 Завантажити фото'],
