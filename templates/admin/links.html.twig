@@ -41,7 +41,7 @@
     {%- elseif not is_granted('ROLE_ADMIN') -%}
     {%- elseif kind == 'service' -%}{{ path('app_admin_services') }}#offer-{{ id }}
     {%- elseif kind == 'rental' -%}{{ path('app_admin_rentals') }}#listing-{{ id }}
-    {%- elseif kind == 'vote' -%}{{ path('app_admin_block_votes') }}
+    {%- elseif kind == 'vote' -%}{{ path('app_admin_block_votes') }}#vote-{{ id }}
     {%- elseif kind == 'debt' -%}{{ path('app_admin_debt') }}
     {#
         The instructions live in the bot, not in the panel, so this is the one destination
