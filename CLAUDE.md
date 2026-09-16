@@ -948,14 +948,21 @@ edits the message in place.
   that matters — an unlinked visitor sees none of it.
 - **Guards are Telegram ids in `.env.local`** (`GUARD_TELEGRAM_IDS`), same shape as
   `COMPLAINT_MANAGER_TELEGRAM_IDS`, and **an empty list means nobody, never everybody**.
-  It is **empty on prod since 09.09.2026**: the ЖК has exactly one guard («Охорона
-  Ситипарк», +380 68 369 47 58) and he has not opened the bot yet, so the two ids in there
-  were Иван and Сергій — testers, and the scan log was labelling their checks «Охорона»,
-  which is simply untrue. Nothing was lost by emptying it: since the board names flats for
-  every resident, the flag now decides only two things — the «охорона» label in `QrScan`
-  and whether somebody with **no особовий рахунок** may read the board at all. Put the
-  guard's id in the day he presses /start. `GuardBoardRulesTest` pins the empty-means-nobody
-  rule.
+  It held the ЖК's one real guard since **16.09.2026** («Охорона Ситипарк»,
+  +380 68 369 47 58, telegram id `8889997372`, `telegram_user` #485) — Иван walked over to
+  the гардпост and opened the bot from his phone, which is the only way this was ever going
+  to happen. It had been **empty since 09.09.2026**, deliberately: the two ids in there were
+  Иван and Сергій, testers, and the scan log was labelling their checks «Охорона», which is
+  simply untrue. The flag now decides three things — the «охорона» label in `QrScan`,
+  whether somebody with **no особовий рахунок** may read the board, and since 16.09.2026
+  whether they get into the residents' chat as an observer. `GuardBoardRulesTest` pins the
+  empty-means-nobody rule.
+
+  **He has no особовий рахунок and must not be given one.** The temptation is real — his
+  row reads «⏳ Не прив'язаний» in `/admin/users` like the other 268 — and linking him to a
+  flat would hand him that household's bookings, debts and заявки, and put a guard's name
+  on somebody's property. His rights come from the flag, never from an Account; the two are
+  independent on purpose.
 - **An unlinked visitor gets neither version.** Like the debtors' board and the complaints
   register, this says what is happening in the ЖК's own yard; somebody who opened the bot
   through 🔑 Оренда to browse flats is not part of the house. A guard is admitted whether
@@ -979,12 +986,17 @@ edits the message in place.
   buttons shipped and simply did not appear — no error, nothing in any log, indistinguishable
   from «ще не задеплоїли». `MenuContainerLookupsTest` walks the lookups in `StartCommand`
   against `config/services.yaml`.
-- The guard is **staff, not a resident**: with no особовий рахунок he gets his own
-  one-button menu and header, because the resident menu over an empty header is a screen
-  of buttons he cannot use. A guard who *is* a resident (which is how it gets tested, and
-  could be how a resident earns a shift) keeps the full resident menu with the guard
-  button on top — collapsing it would take his own flat, bookings and debts away the
-  moment his id joined the list.
+- The guard is **staff, not a resident** — but the flag **adds his button and takes
+  nothing away**. The first shape returned a one-button menu to anybody in the list, which
+  is wrong twice over: it strips a resident-guard of his own flat, bookings and debts the
+  moment his id is added, and the same shape would have taken «🔧 Заявки» from Сергій, who
+  has no особовий рахунок either and runs the register. So `mainMenuMarkup()` draws one
+  extra row and every other row stays gated on what the person actually has. What a guard
+  with no flat therefore sees is a menu that looks like an unlinked visitor's — no header
+  at all (`header()` returns `''` with no Account), no 🛠 Послуги, 🔧 Заявки, 🪪 QR,
+  👷 Пропуски or 💸 Звіт — plus «🏛 Хто зараз в альтанці». **That is correct, not a
+  half-applied flag**, and it was asked about within ten minutes of the first guard being
+  added.
 - `/guard` is registered as a handler but deliberately **left out of
   `BotMenuUpdateCommand::MENU`**, which is pushed to all private chats. The resident's
   «🏛 Альтанки зараз» sits directly above «Бронювання» — look, then book — and is hidden
@@ -1467,6 +1479,31 @@ whoever taps first.
   pavilion photo blocks *booking*, and the chat is where the ОСББ announces things —
   including that the person owes money. Parking-only accounts are let in too
   (`isNonResidential()` bars booking the pavilion, not reading the house chat).
+- **The guard is the one non-resident inside, and he is muted** (16.09.2026). He has no
+  особовий рахунок and never will, so `mayJoin()` shut him out of the one place the ОСББ
+  says the water is off on Thursday and a resident says there are strangers in the yard —
+  which is the half of his job the bot cannot tell him. He is admitted on the same
+  `GUARD_TELEGRAM_IDS` flag that gives him the board and the scanner, and
+  `ResidentChatService::mute()` takes every sending permission with
+  `use_independent_chat_permissions` (Telegram's default has some of them imply the
+  others, so a bare `can_send_messages: false` leaves holes that differ by API version).
+  **Reactions stay on**: a 👍 under an announcement is not a voice in the discussion and
+  it is the only way the house can tell a guard who read it from one who did not.
+
+  The cost is real and was accepted: he cannot answer «хто це ходить по двору» in the
+  thread where it is asked, and the house reaches him by phone as it did before. Иван's
+  call — «права наблюдателя». The conservative half is the reversible one: widening it
+  later is one flag, narrowing it after he has been talking in the thread for a month is
+  a conversation with him.
+
+  **The mute follows the missing особовий рахунок, never the guard flag on its own** — a
+  guard who lives here has a flat in this house and the same right to argue about it as
+  his neighbours. And the welcome **says he cannot write**, because the alternative is
+  that he finds out by typing: Telegram's own grey refusal reads as the chat being broken
+  or as a snub, and the one person who would then not ask about it is the one who is staff
+  here rather than a neighbour. `ResidentChatRulesTest` pins all three, including that an
+  empty `GUARD_TELEGRAM_IDS` opens the chat to nobody — a bug reading it as "anyone" would
+  admit every stranger who ever pressed /start, approved in silence.
 - **A member is not offered the door again.** `ResidentChatService::isMember()` asks
   `getChatMember` at render time, so somebody already inside sees «✅ Ви вже в чаті» and a
   «🚪 Відкрити чат» button instead of an invitation. `RESTRICTED` counts as a member only

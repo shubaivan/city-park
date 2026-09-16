@@ -4,7 +4,9 @@ namespace App\Tests\Service;
 
 use App\Entity\Account;
 use App\Entity\TelegramUser;
+use App\Repository\ScheduledSetRepository;
 use App\Repository\TelegramUserRepository;
+use App\Service\GuardService;
 use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
 use PHPUnit\Framework\TestCase;
@@ -31,7 +33,7 @@ use Psr\Log\NullLogger;
  */
 class ResidentChatRulesTest extends TestCase
 {
-    private function service(): ResidentChatService
+    private function service(string $guardIds = ''): ResidentChatService
     {
         // resolveAccount() short-circuits on a user that already has an account, so the
         // repository is never reached in these cases.
@@ -44,6 +46,7 @@ class ResidentChatRulesTest extends TestCase
             $users,
             $userService,
             new NullLogger(),
+            new GuardService($this->createMock(ScheduledSetRepository::class), $guardIds),
             '-1002345678901',
             'https://t.me/+abc123',
         );
@@ -98,12 +101,62 @@ class ResidentChatRulesTest extends TestCase
         $this->assertFalse($this->service()->mayJoin($this->user(null)));
     }
 
+    /**
+     * The gate's own man is in the chat, and he is the only non-resident who is.
+     *
+     * He has no особовий рахунок and never will — he is staff. The chat is where the
+     * ОСББ says the water is off on Thursday and where a resident says there are
+     * strangers in the yard, which is the half of his job the bot cannot tell him.
+     */
+    public function testTheGuardIsLetInWithoutAFlat(): void
+    {
+        $guard = $this->user(null)->setTelegramId('8889997372');
+
+        $this->assertTrue($this->service('8889997372')->mayJoin($guard));
+    }
+
+    /**
+     * And he is let in to read, not to speak — Иван's call on 16.09.2026.
+     *
+     * The mute follows the missing особовий рахунок, never the guard flag on its own:
+     * a guard who lives here has a flat in this house and the same right to argue about
+     * it as his neighbours.
+     */
+    public function testTheGuardIsAnObserverAndAResidentGuardIsNot(): void
+    {
+        $service = $this->service('8889997372');
+
+        $staff = $this->user(null)->setTelegramId('8889997372');
+        $this->assertTrue($service->isObserver($staff));
+
+        $residentGuard = $this->user($this->account('85'))->setTelegramId('8889997372');
+        $this->assertFalse($service->isObserver($residentGuard));
+
+        $neighbour = $this->user($this->account('85'))->setTelegramId('471925876');
+        $this->assertFalse($service->isObserver($neighbour));
+    }
+
+    /**
+     * **An empty list means nobody, never everybody** — the same rule the board and the
+     * scanner are built on. It matters more here than there: a bug that read an empty
+     * `GUARD_TELEGRAM_IDS` as "anyone" would open the house chat to every stranger who
+     * ever pressed /start, and the gate would approve them in silence.
+     */
+    public function testAnEmptyGuardListLetsNobodyIn(): void
+    {
+        $stranger = $this->user(null)->setTelegramId('8889997372');
+
+        $this->assertFalse($this->service('')->mayJoin($stranger));
+        $this->assertFalse($this->service('')->isObserver($stranger));
+    }
+
     public function testGateIsInertUntilTheChatExists(): void
     {
         $unconfigured = new ResidentChatService(
             $this->createMock(TelegramUserRepository::class),
             $this->createMock(TelegramUserService::class),
             new NullLogger(),
+            new GuardService($this->createMock(ScheduledSetRepository::class)),
         );
 
         $this->assertFalse($unconfigured->isConfigured());
