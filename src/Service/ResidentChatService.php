@@ -9,6 +9,7 @@ use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ChatMemberStatus;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Chat\ChatJoinRequest;
+use SergiX44\Nutgram\Telegram\Types\Chat\ChatPermissions;
 
 /**
  * The gate on the residents' Telegram group.
@@ -30,6 +31,13 @@ use SergiX44\Nutgram\Telegram\Types\Chat\ChatJoinRequest;
  *   different question from whether they may read the house chat.
  * - **A declined request is not a ban.** Telegram lets the same person ask again after
  *   they link their account, which is exactly the path the refusal text describes.
+ * - **The gate on the gate is the one exception** (16.09.2026). «Охорона Ситипарк» is
+ *   staff: he has no особовий рахунок and never will, so the rule above shuts him out of
+ *   the chat where the ОСББ says the water is off on Thursday and a resident says there
+ *   are strangers in the yard. He is admitted on the same `GUARD_TELEGRAM_IDS` flag that
+ *   gives him the board and the scanner, and **muted** — see isObserver() for what that
+ *   costs and why it was still the call. An empty list means nobody here too, so this
+ *   opens the chat to no one by default.
  */
 class ResidentChatService
 {
@@ -58,6 +66,7 @@ class ResidentChatService
         private TelegramUserRepository $telegramUserRepository,
         private TelegramUserService $telegramUserService,
         private LoggerInterface $chatLogger,
+        private GuardService $guards,
         private string $residentChatId = '',
         private string $residentChatInviteLink = '',
         private string $topicComplaints = '',
@@ -197,7 +206,35 @@ class ResidentChatService
      */
     public function mayJoin(TelegramUser $user): bool
     {
-        return $this->telegramUserService->resolveAccount($user) !== null;
+        return $this->telegramUserService->resolveAccount($user) !== null
+            || $this->guards->isGuard($user);
+    }
+
+    /**
+     * Somebody who is in the chat to read it, and not to write in it.
+     *
+     * The guard on the gate is the one person here who is staff rather than a resident.
+     * He has no особовий рахунок and never will, so the ordinary rule shuts the door on
+     * him — and it is the wrong door: the chat is where the ОСББ says the water is off
+     * on Thursday and where a resident says there are strangers in the yard, which is
+     * the half of his job the bot cannot tell him. So he is let in and muted.
+     *
+     * **Muted on purpose, and this is the cost.** He cannot answer «хто це ходить по
+     * двору» in the thread where it is asked; the house reaches him by phone, as it did
+     * before the chat existed. That was Иван's call on 16.09.2026 («права
+     * наблюдателя»), and it is the conservative half of the trade — the group is 95
+     * residents discussing their own building, and a voice in it is a different grant
+     * from a window onto it. Widening it later is one flag; narrowing it after he has
+     * been talking in the thread for a month is a conversation with him.
+     *
+     * A guard who **is** a resident is not an observer: he has a flat in this house and
+     * the same right to argue about it as his neighbours. The mute follows the missing
+     * особовий рахунок, never the guard flag on its own.
+     */
+    public function isObserver(TelegramUser $user): bool
+    {
+        return $this->telegramUserService->resolveAccount($user) === null
+            && $this->guards->isGuard($user);
     }
 
     /**
@@ -301,6 +338,16 @@ class ResidentChatService
         try {
             if ($allowed) {
                 $bot->approveChatJoinRequest($request->chat->id, $request->from->id);
+
+                // Approve first, mute second, and never the other way round: Telegram
+                // will not restrict somebody who is not a member yet. A mute that fails
+                // is logged and the guard stays in the chat able to write — the wrong
+                // half to lose, but far better than an exception between the approval
+                // and the welcome, which would leave him inside and told nothing.
+                if ($this->isObserver($user)) {
+                    $this->mute($bot, $request->from->id);
+                }
+
                 $this->say($bot, $request->user_chat_id, $this->welcomeText($user));
             } else {
                 $this->say($bot, $request->user_chat_id, $this->refusalText());
@@ -322,8 +369,73 @@ class ResidentChatService
         ]);
     }
 
+    /**
+     * Take the voice, leave the window.
+     *
+     * Every sending permission is switched off explicitly and
+     * `use_independent_chat_permissions` is set, because Telegram's default is that
+     * some of these imply the others — `can_send_polls` implies `can_send_messages`,
+     * and so on. Listing them and asking for independence is the only shape that means
+     * exactly what it says; a bare `can_send_messages: false` leaves holes that differ
+     * by API version.
+     *
+     * Reactions stay on. A 👍 under «воду вимкнуть у четвер» is the cheapest way for the
+     * gate to say «прочитав», it is not a voice in the discussion, and without it the
+     * house has no way to tell a guard who read the announcement from one who did not.
+     *
+     * Never fatal. A failed mute is logged; the alternative — letting it escape — would
+     * break the approval it follows.
+     */
+    private function mute(Nutgram $bot, int $telegramId): void
+    {
+        try {
+            $bot->restrictChatMember(
+                chat_id: $this->residentChatId,
+                user_id: $telegramId,
+                permissions: new ChatPermissions(
+                    can_send_messages: false,
+                    can_send_audios: false,
+                    can_send_documents: false,
+                    can_send_photos: false,
+                    can_send_videos: false,
+                    can_send_video_notes: false,
+                    can_send_voice_notes: false,
+                    can_send_polls: false,
+                    can_send_other_messages: false,
+                    can_add_web_page_previews: false,
+                    can_react_to_messages: true,
+                    can_change_info: false,
+                    can_invite_users: false,
+                    can_pin_messages: false,
+                    can_manage_topics: false,
+                ),
+                use_independent_chat_permissions: true,
+            );
+
+            $this->chatLogger->info('resident chat: muted as observer', [
+                'telegram_id' => (string)$telegramId,
+            ]);
+        } catch (\Throwable $t) {
+            $this->chatLogger->error('resident chat: observer mute failed: ' . $t->getMessage(), [
+                'telegram_id' => (string)$telegramId,
+            ]);
+        }
+    }
+
     private function welcomeText(TelegramUser $user): string
     {
+        // Said out loud, because the alternative is that he finds out by typing. A
+        // keyboard that refuses with Telegram's own grey notice reads as the chat being
+        // broken, or as a snub — and the one person who would then not ask about it is
+        // the one who is staff here rather than a neighbour.
+        if ($this->isObserver($user)) {
+            return "✅ <b>Вітаємо в чаті будинку!</b>\n\n"
+                . "Ви заходите як <b>охорона</b> — читати все, що тут пишуть, ви можете.\n\n"
+                . "<i>Писати в чаті не вийде: він для мешканців, і повідомлення від вас "
+                . "Telegram не пропустить. Якщо треба щось передати мешканцям — "
+                . "зателефонуйте голові ОСББ, вона напише в чат.</i>";
+        }
+
         $apartment = $user->getAccount()?->getApartmentNumber();
 
         return sprintf(

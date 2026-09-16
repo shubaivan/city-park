@@ -2,7 +2,9 @@
 
 namespace App\Tests\Service;
 
+use App\Repository\ScheduledSetRepository;
 use App\Repository\TelegramUserRepository;
+use App\Service\GuardService;
 use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
 use PHPUnit\Framework\TestCase;
@@ -26,6 +28,7 @@ class ResidentChatTopicsTest extends TestCase
             $this->createMock(TelegramUserRepository::class),
             $this->createMock(TelegramUserService::class),
             new NullLogger(),
+            new GuardService($this->createMock(ScheduledSetRepository::class)),
             '-1001234567890',
             'https://t.me/+abc',
             $complaints,
