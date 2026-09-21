@@ -160,6 +160,70 @@
                 </div>
 
                 <div class="card obj-card">
+                    <div class="card-header">📇 Очікуємо в боті ({{ expected|length }})</div>
+                    <div class="card-body p-3">
+                        {#
+                            The register of numbers the ОСББ says belong to this object, written
+                            down before their owner is in the bot. The bot writes only to people
+                            it has — so an object with nobody linked receives none of its own
+                            notices, and there are ~790 of those. A number here links itself the
+                            moment it reaches the bot; nobody has to notice the person arrived.
+                        #}
+                        {% if expected|length %}
+                            <ul class="list-unstyled mb-2">
+                                {% for e in expected %}
+                                    <li class="py-1 d-flex justify-content-between align-items-start">
+                                        <span>
+                                            {% set digits = e.phone|replace({'+': '', ' ': '', '-': '', '(': '', ')': ''}) %}
+                                            <a href="tel:+{{ digits }}">+{{ digits }}</a>
+                                            {% if e.fullName %}· {{ e.fullName }}{% endif %}
+                                            <div class="small text-muted">
+                                                {% if e.claimed %}
+                                                    <span class="text-success">✅ прийшов {{ e.claimedAt|date('d.m.Y') }}</span>
+                                                    {% if e.claimedBy %}
+                                                        · <a href="{{ path('app_admin_resident', {id: e.claimedBy.id}) }}">{{ e.claimedBy.displayName }}</a>
+                                                    {% endif %}
+                                                {% else %}
+                                                    ⏳ чекаємо
+                                                {% endif %}
+                                                · записав {{ e.createdBy ?: '—' }}, {{ e.createdAt|date('d.m.Y') }}
+                                            </div>
+                                        </span>
+                                        {% if is_granted('ROLE_ADMIN') and not e.claimed %}
+                                            <form method="post" action="{{ path('app_admin_objects_expected_remove') }}">
+                                                <input type="hidden" name="expected_id" value="{{ e.id }}">
+                                                <button class="btn btn-sm btn-outline-danger">×</button>
+                                            </form>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="small text-muted">
+                                Якщо ОСББ знає, чий це об'єкт, — впишіть номер телефону власника.
+                                Щойно цей номер з'явиться в боті, людина прив'яжеться до цього
+                                рахунку сама, без ручної прив'язки.
+                            </p>
+                        {% endif %}
+
+                        {% if is_granted('ROLE_ADMIN') %}<form method="post" action="{{ path('app_admin_objects_expected_add') }}">
+                            <input type="hidden" name="account_id" value="{{ account.id }}">
+                            <div class="form-row">
+                                <div class="col-12 col-sm-6 mb-1">
+                                    <input type="text" name="phone" class="form-control form-control-sm"
+                                           placeholder="+380 XX XXX XX XX" required>
+                                </div>
+                                <div class="col-12 col-sm-6 mb-1">
+                                    <input type="text" name="full_name" class="form-control form-control-sm"
+                                           placeholder="ПІБ (необов'язково)">
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-success">Очікувати цей номер</button>
+                        </form>{% endif %}
+                    </div>
+                </div>
+
+                <div class="card obj-card">
                     <div class="card-header">🔗 Той самий власник</div>
                     <div class="card-body p-3">
                         {% if siblings|length %}

@@ -92,6 +92,11 @@ class ComplaintsRoleTest extends WebTestCase
             // No 'creating an object' row: that route is gone (08.09.2026) — the register
             // is imported from the ОСББ's file and nothing in the panel creates a row.
             'grouping two objects' => ['POST', '/admin/objects/group/link'],
+            // Writing a phone down against an object is a linking decision like any other:
+            // the number written here attaches whoever owns it to that flat, with its
+            // debts and its bookings, and nobody looks at it again when it happens.
+            'expecting a resident on an object' => ['POST', '/admin/objects/expected/add'],
+            'withdrawing an expected resident' => ['POST', '/admin/objects/expected/remove'],
         ];
     }
 

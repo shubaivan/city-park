@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Entity\Account;
+use App\Entity\ExpectedResident;
 use App\Entity\Complaint;
 use App\Entity\AccountStatusLog;
 use App\Entity\RentalListing;
@@ -13,6 +14,7 @@ use App\Repository\AccountRepository;
 use App\Service\AvatarService;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use App\Repository\ComplaintRepository;
+use App\Repository\ExpectedResidentRepository;
 use App\Repository\DebtSnapshotRepository;
 use App\Repository\AccountStatusLogRepository;
 use App\Repository\AdminLoginRepository;
@@ -36,6 +38,7 @@ use App\Service\BlockVoteService;
 use App\Service\DebtAnnouncer;
 use App\Service\ImportArchive;
 use App\Service\OwnerGroupService;
+use App\Service\PhoneKey;
 use App\Service\PropertyRegistry;
 use App\Service\AccountAccessService;
 use App\Service\ComplaintService;
@@ -1157,6 +1160,7 @@ class AdminController extends AbstractController
         BlockReasonResolver $blockReasonResolver,
         ComplaintRepository $complaints,
         TariffRepository $tariffRepository,
+        ExpectedResidentRepository $expectedResidents,
         EntityManagerInterface $em,
     ): Response {
         $account = $accountRepository->find($id);
@@ -1181,6 +1185,7 @@ class AdminController extends AbstractController
                 (float)($account->getDebt() ?? 0),
             ),
             'complaints' => $complaints->findByAccount($account),
+            'expected' => $expectedResidents->forAccount($account),
             'history' => $this->statusLogRepository->findRecentForAccount($account, 10),
         ]);
     }
@@ -1246,6 +1251,115 @@ class AdminController extends AbstractController
         ));
 
         return $this->redirectToRoute('app_admin_object', ['id' => $account->getId()]);
+    }
+
+    /**
+     * Write down a phone the ОСББ says belongs to this object, before its owner is in the bot.
+     *
+     * The link then happens by itself: the next time that number reaches the bot —
+     * through /phone, or on any screen at all if it is already saved — `resolveAccount()`
+     * finds this row and attaches the person to this object. Nobody has to notice they
+     * arrived and link them by hand, which is what stood between буд. 19, кв. 50 and its
+     * 16 314 грн of arrears on 21.09.2026.
+     *
+     * A duplicate is refused **by name**, not by letting the unique index throw: a person
+     * belongs to one object, so the same number on two of them is a question only a human
+     * can answer, and the accountant needs to be told which object already has it.
+     */
+    #[Route('/admin/objects/expected/add', name: 'app_admin_objects_expected_add', methods: [Request::METHOD_POST])]
+    public function objectsExpectedAdd(
+        Request $request,
+        AccountRepository $accountRepository,
+        ExpectedResidentRepository $expectedResidents,
+        PropertyRegistry $registry,
+        EntityManagerInterface $em,
+    ): Response {
+        $account = $accountRepository->find((int)$request->request->get('account_id'));
+        $phone = trim((string)$request->request->get('phone'));
+        $fullName = trim((string)$request->request->get('full_name'));
+
+        if (!$account instanceof Account) {
+            $this->addFlash('error', 'Об’єкт не знайдено.');
+
+            return $this->redirectToRoute('app_admin_objects');
+        }
+
+        if (PhoneKey::of($phone) === '') {
+            $this->addFlash('error', 'Це не схоже на номер телефону — потрібно щонайменше 9 цифр.');
+
+            return $this->redirectToRoute('app_admin_object', ['id' => $account->getId()]);
+        }
+
+        $existing = $expectedResidents->findByPhone($phone);
+        if ($existing instanceof ExpectedResident) {
+            $holder = $existing->getAccount();
+            $this->addFlash('error', sprintf(
+                'Цей номер уже записано за об’єктом %s (%s)%s.',
+                $holder instanceof Account ? $registry->place($holder) : '—',
+                $holder?->getAccountNumber() ?? '—',
+                $existing->isClaimed() ? ' — і мешканець уже за ним прийшов' : '',
+            ));
+
+            return $this->redirectToRoute('app_admin_object', ['id' => $account->getId()]);
+        }
+
+        $em->persist(new ExpectedResident(
+            $account,
+            $phone,
+            $fullName === '' ? null : $fullName,
+            $this->getUser()?->getUserIdentifier(),
+        ));
+        $em->flush();
+
+        $this->addFlash('notice', sprintf(
+            'Записано: %s чекає на цьому об’єкті. Щойно цей номер з’явиться в боті — прив’яжеться сам.',
+            $fullName === '' ? $phone : sprintf('%s (%s)', $fullName, $phone),
+        ));
+
+        return $this->redirectToRoute('app_admin_object', ['id' => $account->getId()]);
+    }
+
+    /**
+     * Take a number back off an object.
+     *
+     * A claimed row is left alone: it is the record that somebody really did arrive on
+     * that number, and deleting it would take away the only evidence the pre-registration
+     * ever worked. Unlinking the person who arrived is a separate button on their card,
+     * where it says what it costs.
+     */
+    #[Route('/admin/objects/expected/remove', name: 'app_admin_objects_expected_remove', methods: [Request::METHOD_POST])]
+    public function objectsExpectedRemove(
+        Request $request,
+        ExpectedResidentRepository $expectedResidents,
+        EntityManagerInterface $em,
+    ): Response {
+        $expected = $expectedResidents->find((int)$request->request->get('expected_id'));
+
+        if (!$expected instanceof ExpectedResident) {
+            $this->addFlash('error', 'Запис не знайдено.');
+
+            return $this->redirectToRoute('app_admin_objects');
+        }
+
+        $accountId = $expected->getAccount()?->getId();
+
+        if ($expected->isClaimed()) {
+            $this->addFlash('error', 'За цим номером мешканець уже прийшов — запис залишається як свідчення. Відв’язати людину можна в її картці.');
+
+            return $accountId
+                ? $this->redirectToRoute('app_admin_object', ['id' => $accountId])
+                : $this->redirectToRoute('app_admin_objects');
+        }
+
+        $phone = $expected->getPhone();
+        $em->remove($expected);
+        $em->flush();
+
+        $this->addFlash('notice', sprintf('Номер %s більше не очікується на цьому об’єкті.', $phone));
+
+        return $accountId
+            ? $this->redirectToRoute('app_admin_object', ['id' => $accountId])
+            : $this->redirectToRoute('app_admin_objects');
     }
 
     #[Route('/admin/objects/group/link', name: 'app_admin_objects_group_link', methods: [Request::METHOD_POST])]

@@ -6,6 +6,7 @@ use App\Repository\ScheduledSetRepository;
 use App\Service\SchedulePavilionService;
 use App\Service\UkDateFormatter;
 use App\Service\WeatherService;
+use App\Service\PavilionPhotoService;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
@@ -102,11 +103,16 @@ class RemindCommand extends Command
                 foreach ($endingSets as $scheduledSet) {
                     $endHour = ($currentHour + 1) % 24;
                     $endLabel = UkDateFormatter::hourEmoji($endHour) . ' ' . sprintf('%02d:00', $endHour);
+                    // The one moment the photo is easiest to take: the person is still
+                    // standing in the альтанка. The obligation used to be announced only
+                    // after it was already running out — a reminder at end+20 to somebody
+                    // who has already walked home.
                     $this->bot->sendMessage(
                         text: sprintf(
-                            '🔔 Ваше бронювання альтанки №%s закінчується о <b>%s</b>. Будь ласка, звільніть альтанку.',
+                            "🔔 Ваше бронювання альтанки №%s закінчується о <b>%s</b>. Будь ласка, звільніть альтанку.\n\n%s",
                             $scheduledSet->getPavilion(),
-                            $endLabel
+                            $endLabel,
+                            PavilionPhotoService::obligationNotice()
                         ),
                         chat_id: $scheduledSet->getTelegramUserid()->getChatId(),
                         parse_mode: ParseMode::HTML

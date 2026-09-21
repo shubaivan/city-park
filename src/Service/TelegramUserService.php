@@ -4,6 +4,7 @@ namespace App\Service;
 
 use App\Entity\Account;
 use App\Entity\TelegramUser;
+use App\Repository\ExpectedResidentRepository;
 use App\Repository\TelegramUserRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -13,6 +14,7 @@ class TelegramUserService
 
     public function __construct(
         private TelegramUserRepository $telegramUserRepository,
+        private ExpectedResidentRepository $expectedResidents,
         private EntityManagerInterface $em
     ) {}
 
@@ -87,7 +89,49 @@ class TelegramUserService
         if ($account) {
             $user->setAccount($account);
             $this->em->flush();
+
+            return $account;
         }
+
+        return $this->claimExpected($user);
+    }
+
+    /**
+     * The second door: a number the ОСББ wrote down against an object before its owner
+     * ever opened the bot.
+     *
+     * The conditional-phone lookup above hangs off a TelegramUser, so it can only ever
+     * work on an object that already has somebody in the bot — and roughly 790 of the
+     * ЖК's 966 objects have nobody, which is exactly the set whose debts and blocks
+     * reach no one. `ExpectedResident` is where the accountant records what she was told
+     * («буд. 19, кв. 50 — Іван Доненко, +380…»), and this is where it takes effect.
+     *
+     * It runs from every resolveAccount() call, not only from /phone, so somebody who
+     * shared their number weeks ago and was told «в реєстрі ОСББ його немає» is linked
+     * the next time they open anything, with nobody having to ask them to press /phone
+     * again.
+     *
+     * The registry name is copied onto the resident when they have none of their own:
+     * the bot holds no owner names, so this is usually the only real name that exists
+     * for them, and it is what makes them findable in /admin/users by the name the
+     * accountant knows.
+     */
+    private function claimExpected(TelegramUser $user): ?Account
+    {
+        $expected = $this->expectedResidents->findUnclaimedByPhone($user->getPhoneNumber());
+
+        if ($expected === null || !$expected->getAccount() instanceof Account) {
+            return null;
+        }
+
+        $account = $expected->getAccount();
+
+        $user->setAccount($account);
+        if (!$user->getFullName() && $expected->getFullName()) {
+            $user->setFullName($expected->getFullName());
+        }
+        $expected->claim($user);
+        $this->em->flush();
 
         return $account;
     }
