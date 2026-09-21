@@ -831,6 +831,45 @@ forbidden — sometimes that is the intent. `AdminResidentPageTest` pins the but
 warning and its absence for somebody with no flat; `ComplaintsRoleTest` pins that Сергій
 gets 403.
 
+**A number can be written down against an object before its owner is in the bot**
+(«📇 Очікуємо в боті» on the object card, 21.09.2026). The bot could already recognise a
+newcomer by their phone — `resolveAccount()` looks a shared contact up among the «умовні
+власники» of somebody already linked — but that lookup hangs off a `TelegramUser`, so it
+only ever worked on an object that **already had a resident in the bot**, and roughly 790
+of the 966 objects have nobody. Those are exactly the rows whose debt reaches no one.
+`ExpectedResident` puts the fact where it belongs — on the object, as the ОСББ's own
+statement that this number is this flat's — and `TelegramUserService::claimExpected()` acts
+on it from **every** `resolveAccount()` call, not only from `/phone`, so somebody who shared
+their number weeks ago and was told «в реєстрі ОСББ його немає» is linked the next time they
+open anything.
+
+Found through буд. 19, кв. 50 on 21.09.2026: 16 314 грн of arrears, fourteenth in the house,
+the head of the ОСББ handing over the owner's name and number, and nowhere to put them —
+the only available answer was «нехай натисне /start, а потім Аліна прив'яже руками».
+
+- **One normaliser, `PhoneKey::of()`** — the last nine digits, which is what `380…`, `+380 …`
+  and `0…` all share. It was private inside `TelegramUserRepository`; the day the two
+  recognisers disagree is the day one of them links somebody the other would not, so the
+  rule is now in one place and `ExpectedResidentRulesTest` pins that the old path still
+  delegates to it. A key shorter than nine digits matches **nothing** — an empty key compared
+  with an empty key is equal, and that would hand a flat to whoever typed a blank.
+- **`phone_key` is unique across the table.** A person points at one Account, so the same
+  number expected on two objects is a question only a human can answer; the panel refuses
+  the duplicate **by name** («цей номер уже записано за буд. 19, кв. 50») rather than letting
+  the index throw. Several objects of one household are what `owner_group_id` is for.
+- **The row survives being used.** It is stamped, not deleted: the card then reads
+  «✅ прийшов 21.09» with a link to the person, and a claimed row cannot be withdrawn from
+  the page. A record that vanished on being used is indistinguishable from one nobody ever
+  typed, and the person who typed it is the one asking whether it did anything. Detaching
+  the resident afterwards is the separate button on *their* card, which says what it costs.
+- **The registry name is copied onto the resident** when they have none of their own. The bot
+  holds no owner names — it knows a flat and a phone — so this is usually the only real name
+  that exists for them, and it is what makes them findable by the name the accountant knows.
+- ROLE_ADMIN only, like every other linking decision: this is the one mechanism in the bot
+  that attaches a person to a flat with nobody looking at it. `ComplaintsRoleTest` pins the
+  403, `AdminObjectPageTest` pins that the form is actually drawn (and that Сергій sees none
+  of it).
+
 **Objects are created on `/admin/objects`, not by moving a person.** A resident's card can
 only ever attach somebody to an object that already exists — «Прив'язати» and «Перенести»
 answer «Рахунку N немає в базі» rather than creating one, because a кладова entered on a

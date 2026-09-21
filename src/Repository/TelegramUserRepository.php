@@ -4,6 +4,7 @@ namespace App\Repository;
 
 use App\Entity\Account;
 use App\Entity\TelegramUser;
+use App\Service\PhoneKey;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -77,12 +78,14 @@ class TelegramUserRepository extends ServiceEntityRepository
      * admin panel ("380...", "+380...", "0...") match the format Telegram
      * reports for a shared contact. Returns '' for anything too short to be
      * a real number.
+     *
+     * The rule itself lives in PhoneKey (21.09.2026), because the register of
+     * residents the ОСББ expects on an object has to recognise exactly the same
+     * numbers as this does — two copies of it is one copy that gets fixed.
      */
     private function normalizePhone(?string $phone): string
     {
-        $digits = preg_replace('/\D+/', '', (string) $phone);
-
-        return strlen($digits) >= 9 ? substr($digits, -9) : '';
+        return PhoneKey::of($phone);
     }
 
     /**
