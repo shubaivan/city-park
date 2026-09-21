@@ -237,6 +237,18 @@ account renders as `⏳ Не прив'язаний`, never as a red «Забло
 for someone the bot has no flat for, and calling that "blocked" accuses it of blocking a
 person it never heard of.
 
+**Who somebody is to the flat rides beside their name** — «Ваня, власник», «Lena, член
+сім'ї» (21.09.2026). It was a column of its own at the far right, which on a table this
+wide is off-screen on the accountant's phone and two columns away from the name it
+qualifies on a desktop, so the one question it answers — «хто це взагалі» — was being
+asked of the resident's card instead. Lower-cased after the comma because it is an
+apposition and not a title, and drawn only for a real role: `role` is «—» on most rows,
+and a dash after a comma would ride on every line of the table. The column itself is
+retired the documented way (`visible: false` on index 18, never deleted), and the
+per-field «Хто це» dropdown still filters on it server-side. `UsersTableColumnsTest` pins
+the append order that decides that index — a new column inserted before `role` moves it
+and un-hides a duplicate.
+
 **Retire a column with `visible: false`, never by deleting it from `$dataTableFields`.**
 Every `columnDef` in `telegram_users.js` / `schedule.js` targets its column by **index**, so
 removing one from the middle shifts the rest and repaints the wrong cells (the debt renderer
