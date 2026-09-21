@@ -61,6 +61,19 @@ visitor browsing 🔑 Оренда is not owed the officers' phones.
 
 `PavilionPhoto` (artifact) and `PhotoUploadRequest` (obligation) are separate. The cron `pavilion:photo:check` (every 20 min) materialises requests for past sessions inside `PavilionPhotoService::LOOKBACK_HOURS` (26). Reminders fire at end+20/+40 min; block at end+`BLOCK_AFTER_MIN` (60), i.e. within the hour, so the photo stays fresh evidence of the pavilion's condition before the next booker can change it. Reminders/block that would land 23:00–09:00 Kyiv are deferred to 09:00. (Cadence aligns with the 20-min cron: +20 reminder1, +40 reminder2, +60 block.) After block, the user still has `UPLOAD_GRACE_AFTER_BLOCK_MIN` (120 min / 2h, counted from the actual deferred block instant) to self-upload and auto-unblock; past that the bot refuses the photo and points to the accountant. User-facing copy renders the window via `PavilionPhotoService::uploadGraceLabel()` (the `/info` FAQ string hardcodes "2 години" since it lives in a `const` array).
 
+**The obligation is stated before it is enforced** (21.09.2026). It was enforced for
+months and announced nowhere: a resident booked, sat in the альтанка, went home, and an
+hour later found booking closed over a photo nobody had ever mentioned. Аліна — «Бо
+дістали, ніхто про це не знає» — and every one of those people rings her. Three places,
+each a different moment: the **confirm screen** before «Підтверджую» (a condition that
+first appears after the agreement is one nobody agreed to), the **confirmation** itself
+(the message people scroll back to, with what to photograph, where to send it and what
+happens if they do not), and the **«закінчується о» reminder** (the last moment the photo
+is easy to take, while they are still standing there). The copy lives in
+`PavilionPhotoService::obligationNotice()` / `obligationBlock()` and reads its deadline
+from `BLOCK_AFTER_MIN`, never a retyped number — a sentence that announces a rule must
+not be able to disagree with the rule. `PhotoObligationIsAnnouncedTest` pins all three.
+
 Incoming photos are handled by `PhotoUploadFlow` (service), reached from two entry points: the global `onPhoto` handler (`UploadPhotoCommand`) and any **active conversation** — Nutgram routes every update from a user with a live conversation into that conversation, so `SchedulePavilion` and `OwnSchedule` both call `PhotoUploadFlow::interceptConversationPhoto()`, which ends the conversation and saves the photo inline (never "please resend" — the obligation window is only ~1h). A photo arriving with **no pavilion booking behind it at all** no longer ends the
 conversation: `interceptConversationPhoto()` checks `hasPavilionContext()` first (open
 request, running session, or one that ended inside `LOOKBACK_HOURS`) and, finding none,

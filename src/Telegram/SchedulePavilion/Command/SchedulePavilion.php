@@ -7,6 +7,7 @@ use App\Entity\ScheduledSet;
 use App\Service\BlockReasonResolver;
 use App\Service\DebtPolicy;
 use App\Service\PhotoUploadFlow;
+use App\Service\PavilionPhotoService;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
 use App\Service\UkDateFormatter;
@@ -257,9 +258,15 @@ class SchedulePavilion extends Conversation
         $dateTime->setTime((int)$this->hour, 0);
         $pavilionName = $this->pavilion == '1' ? 'Перша' : 'Друга';
 
+        // The photo obligation is read here, before «Підтверджую», and not only in the
+        // confirmation: it is a condition of the booking, and a condition that first
+        // appears after the agreement is one nobody agreed to. Аліна, 21.09.2026 —
+        // «ніхто про це не знає», and every resident who finds out by being blocked is a
+        // call to her.
         $this->safeEdit($bot,
-            sprintf("🏠 Альтанка: <b>%s</b>\n📅 Дата: <b>%s</b>\n⏰ Час: <b>%s</b>\n\nЯкщо згодні натисніть <b>Підтверджую</b>",
-                $pavilionName, UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime)),
+            sprintf("🏠 Альтанка: <b>%s</b>\n📅 Дата: <b>%s</b>\n⏰ Час: <b>%s</b>\n\n%s\n\nЯкщо згодні натисніть <b>Підтверджую</b>",
+                $pavilionName, UkDateFormatter::dayDate($dateTime), UkDateFormatter::time($dateTime),
+                PavilionPhotoService::obligationNotice()),
             InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make(text: '✅ Підтверджую', callback_data: 'confirm'),
                 InlineKeyboardButton::make(text: '⬅️ Назад', callback_data: 'back'),
@@ -345,10 +352,11 @@ class SchedulePavilion extends Conversation
 
         $this->safeEdit($bot,
             sprintf(
-                "🎉🎉🎉\n\n<b>Бронювання підтверджено!</b>\n\n🏠 Альтанка: <b>%s</b>\n📅 Дата: <b>%s</b>\n⏰ Час: <b>%s</b>\n\n📲 Нагадування прийде за 15 хвилин до початку.\n\n🎉🎉🎉",
+                "🎉🎉🎉\n\n<b>Бронювання підтверджено!</b>\n\n🏠 Альтанка: <b>%s</b>\n📅 Дата: <b>%s</b>\n⏰ Час: <b>%s</b>\n\n📲 Нагадування прийде за 15 хвилин до початку.\n\n%s",
                 $pavilionName,
                 UkDateFormatter::dayDate($dateTime),
-                UkDateFormatter::time($dateTime)
+                UkDateFormatter::time($dateTime),
+                PavilionPhotoService::obligationBlock()
             ),
             null,
             ParseMode::HTML

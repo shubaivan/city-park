@@ -69,6 +69,84 @@ class PavilionPhotoService
         return $h . ' ' . $word;
     }
 
+    /**
+     * The obligation, in one sentence, for the screen where somebody agrees to it.
+     *
+     * The rule was enforced long before it was ever stated: a resident booked, left, and
+     * an hour later found booking closed over a photo nobody had told them about. Аліна,
+     * 21.09.2026: «Бо дістали, ніхто про це не знає» — every one of those is a call to
+     * her, and the bot had the whole booking flow to say it and said nothing.
+     *
+     * It is read **before** «Підтверджую», not after: a condition of booking that first
+     * appears in the confirmation is a condition nobody agreed to. The deadline is given
+     * in words the reader can act on, and the number comes from BLOCK_AFTER_MIN, so the
+     * copy that announces the rule cannot drift away from the cron that enforces it.
+     */
+    public static function obligationNotice(): string
+    {
+        return sprintf(
+            "📸 <b>Після відпочинку потрібне фото альтанки.</b> Надішліть його боту "
+            . "%s після завершення броні — інакше бот тимчасово закриє вам бронювання.",
+            self::blockAfterLabel(),
+        );
+    }
+
+    /**
+     * The same obligation, spelled out, for the message that confirms the booking.
+     *
+     * The confirmation is the message people scroll back to, so this is where the detail
+     * belongs: what to photograph, when, and what happens if they do not. «Просто
+     * надішліть фото сюди, в цей чат» matters as much as the deadline — a picture sent to
+     * this bot is always pavilion evidence, and residents were looking for a button.
+     */
+    public static function obligationBlock(): string
+    {
+        return sprintf(
+            "📸 <b>Не забудьте про фото</b>\n"
+            . "Коли закінчите, сфотографуйте альтанку, як ви її залишаєте, і просто "
+            . "надішліть фото сюди, в цей чат.\n"
+            . "⏳ Час на це — %s після завершення броні. Бот нагадає.\n"
+            . "🚫 Без фото бронювання тимчасово закривається — і відкривається одразу, "
+            . "щойно фото надійде (ще %s після закриття).",
+            self::blockAfterDuration(),
+            self::uploadGraceLabel(),
+        );
+    }
+
+    /** «протягом години» — the deadline as a phrase, for a sentence that warns. */
+    public static function blockAfterLabel(): string
+    {
+        return 'протягом ' . self::blockAfterGenitive();
+    }
+
+    /**
+     * «година» / «2 години» — the deadline as a plain length of time.
+     *
+     * Read from BLOCK_AFTER_MIN for the same reason uploadGraceLabel() reads its own
+     * constant: copy that states a rule must not be able to disagree with the rule.
+     */
+    public static function blockAfterDuration(): string
+    {
+        $min = self::BLOCK_AFTER_MIN;
+        if ($min % 60 !== 0) {
+            return $min . ' хв';
+        }
+        $h = intdiv($min, 60);
+
+        return $h === 1 ? 'година' : $h . ' ' . ($h < 5 ? 'години' : 'годин');
+    }
+
+    private static function blockAfterGenitive(): string
+    {
+        $min = self::BLOCK_AFTER_MIN;
+        if ($min % 60 !== 0) {
+            return $min . ' хв';
+        }
+        $h = intdiv($min, 60);
+
+        return $h === 1 ? 'години' : $h . ' ' . ($h < 5 ? 'годин' : 'годин');
+    }
+
     /** Reminders that would fire between 23:00 and 09:00 Kyiv time are deferred to 09:00. */
     public const NIGHT_START_HOUR = 23;
     public const NIGHT_END_HOUR = 9;
