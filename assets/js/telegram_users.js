@@ -188,10 +188,27 @@ document.addEventListener("DOMContentLoaded", function () {
             // ПІБ from the ОСББ registry leads when it exists — that is the name on a
             // квитанція. The Telegram name stays underneath: it is how the accountant
             // recognises who is writing in the residents' chat, and the two rarely match.
+            // Who this person is to the flat, on the same line as the name: «Лена,
+            // член сім'ї». It lived in a column of its own at the far right, where on a
+            // table this wide it is off-screen on the accountant's phone and two columns
+            // away from the name it qualifies on a desktop — so the one question it
+            // answers, «хто це взагалі», was being asked of a card instead.
+            //
+            // Lower-cased because it follows a comma and is an apposition, not a title:
+            // «Ваня, власник» reads as a sentence, «Ваня, Власник» as two labels.
+            // Only a real role is shown — role is «—» for most rows, and a dash after a
+            // comma is noise that would ride on every line of the table.
+            var role = row.role && String(row.role).trim();
+            var roleSuffix = (role && role !== '—')
+                ? '<span class="text-muted">, ' + role.charAt(0).toLowerCase() + role.slice(1) + '</span>'
+                : '';
+
             var names = registry
-                ? '<b>' + registry + '</b>'
+                ? '<b>' + registry + '</b>' + roleSuffix
                     + (telegramName ? '<div class="text-muted small">' + telegramName + '</div>' : '')
-                : (telegramName || '<span class="text-muted">—</span>');
+                : (telegramName
+                    ? telegramName + roleSuffix
+                    : '<span class="text-muted">—</span>' + roleSuffix);
 
             // Sorting and filtering get the text; only the drawn cell gets the picture.
             if (type !== 'display') {
@@ -281,6 +298,14 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // vote_blocks (index 17) — hidden; rendered next to the status by voteBlockNote().
+    // role (index 18) — drawn inside the name column above, beside the name it
+    // qualifies. Hidden rather than removed: the defs here target columns by index, and
+    // the per-field «Хто це» dropdown still filters on this column server-side.
+    common_defs.push({
+        "targets": 18,
+        "visible": false
+    });
+
     common_defs.push({
         "targets": 17,
         "visible": false
