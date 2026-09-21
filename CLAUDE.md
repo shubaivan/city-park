@@ -1341,6 +1341,62 @@ consulted — this is about the debt, not about booking rights. The viewer's own
 («📌 Ваша квартира у списку: … , N місце» / «✅ боргів не має») is the half that makes it
 readable by the 86 residents who owe nothing.
 
+## SMS — the channel that costs money
+
+Every other channel here is free and reaches only Telegram. On 21.09.2026 that meant the
+bot could write to **83 of the 531 objects with a debt**, and to **three of the 77 owing
+more than 5 000 грн** (815 788 грн between them). SMS is how the rest are reached —
+through TurboSMS, chosen on price at this volume (~0.98 грн against AlphaSMS's 1.20).
+
+- **Who receives it is a choice at send time, never a rule in the code.**
+  `--audience=all` writes to every debtor whose number we have, which is what the head of
+  the ОСББ asked for; `--audience=unreachable` writes only to those Telegram does not
+  reach. The first costs ~450 грн for a house-wide announcement, the second a few dozen
+  hryvnia. Both figures are printed before anything is sent, so the decision is made with
+  the number in front of whoever is making it. The default is `all` — her call, her money.
+- **A debt never goes into the residents' chat.** The board publishes flats and sums
+  monthly and that was argued and decided; a *reminder aimed at one household* is a
+  different act, and its place is a private message — Telegram, SMS or email. The chat
+  carries only what is everybody's: gas, water, meetings. `debt:notify-sms` posts nowhere.
+- **A Cyrillic SMS is 70 characters, not 160**, and one Ukrainian letter in an otherwise
+  Latin text prices the whole message as Cyrillic. Past 70 it splits and costs twice, so
+  every text is written to fit one part and `SmsSender::parts()` is what makes an overflow
+  visible rather than silently doubling the bill. `SmsRulesTest` pins the debt text at one
+  part for sums from 81 to 123 456 грн.
+- **`sms_log` is one row per attempt — to whom, when, what, and what came back.** Asked
+  for in the same breath as the sending (Иван, 21.09.2026), and it is what makes the
+  channel defensible: an SMS costs the ОСББ money and arrives unasked. The flat and the
+  phone are kept as **snapshots** beside the FKs, the `ComplaintComment.author_label`
+  rule, so a row still reads like a fact about a household after the resident is unlinked.
+  **Failures are rows too** — a wrong number, an exhausted balance, a sender name the
+  operators have not approved — since none of that is visible from the bot's side unless
+  it is stored.
+- **The same number is not written to twice in one day** for one purpose
+  (`SmsLogRepository::alreadySentToday`). A cron that runs again, or a debt file
+  re-uploaded after a correction, is the commonest way to spend money twice and to read as
+  harassment.
+- **Nothing throws.** A resident who cannot be reached must not stop the loop reaching the
+  next one; the failure is a journal row with its reason. `--dry-run` prices the whole run
+  and records what it would have sent.
+- **The branding and the sending are separate.** The alpha-name «CityPark» was submitted
+  21.09.2026 on the ОСББ's own registration (ЄДРПОУ 44715815) and takes 10–14 working days
+  at the operators; until then TurboSMS sends from its general sender, which is allowed.
+  So the registration gates what the recipient sees, never whether we can send. Watch that
+  the operators file it as «національне» — an «міжнародне» name is **5.95 грн** per SMS
+  instead of ~1.
+- `TURBOSMS_TOKEN` / `TURBOSMS_SENDER` are bound to `SmsSender` **explicitly** in
+  `services.yaml`, not through the global `bind:` — `$token` and `$sender` are names any
+  future service could use, and a container-wide binding would hand it these credentials
+  by accident. An empty token means «not configured», and the bot says so instead of
+  producing a run of failures that read as the provider refusing us.
+- `sms:test [phone]` checks token, balance and sender name, and optionally sends one
+  message. It exists so that the minute a token is pasted in there is exactly one command
+  between that and knowing — rather than finding out during a run against 77 debtors.
+
+**The real blocker is not any of this: it is the register of owners' phones**, which only
+the ОСББ has. Until it arrives, `debt:notify-sms` reports how many objects with a debt
+have no number at all, which is the argument for asking again.
+
 ## Complaints register («🔧 Заявки»)
 
 What broke in the house and what is being done about it: a dead lift, a burst hose, a
