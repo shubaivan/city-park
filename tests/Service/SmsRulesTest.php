@@ -78,6 +78,42 @@ class SmsRulesTest extends TestCase
         }
     }
 
+    /**
+     * A foreign number is never "helpfully" turned into a Ukrainian one.
+     *
+     * All three of these are real rows on prod (21.09.2026). `79595221999` is a `+7 959`
+     * mobile from occupied Luhansk and belongs to a resident **linked to буд. 23, кв. 47**;
+     * `48796496316` is Polish. Taking the last nine digits and putting `380` in front of
+     * them turns the first into `380595221999` and the second into `380796496316` — real
+     * Ukrainian subscribers who are not these people, and who would have received a
+     * stranger's flat number and debt.
+     */
+    public function testAForeignNumberIsRefusedRatherThanConverted(): void
+    {
+        foreach (['79595221999', '48796496316', '4555206399'] as $foreign) {
+            $this->assertFalse(
+                PhoneKey::isUkrainian($foreign),
+                sprintf('«%s» is not a Ukrainian number and must never be sent to', $foreign),
+            );
+        }
+    }
+
+    /** The shapes the ОСББ's own records actually use are all accepted. */
+    public function testEveryUkrainianShapeIsAccepted(): void
+    {
+        foreach (['+380 93 272 99 51', '380932729951', '0932729951', '932729951'] as $ours) {
+            $this->assertTrue(PhoneKey::isUkrainian($ours), $ours);
+        }
+    }
+
+    /** Nonsense is not a number either, and an empty field is not "some subscriber". */
+    public function testRubbishIsNotAUkrainianNumber(): void
+    {
+        foreach (['', null, '12345', '00000000000000'] as $rubbish) {
+            $this->assertFalse(PhoneKey::isUkrainian($rubbish));
+        }
+    }
+
     /** A journal row records the outcome, and a failure is as much a row as a success. */
     public function testTheJournalKeepsFailuresToo(): void
     {

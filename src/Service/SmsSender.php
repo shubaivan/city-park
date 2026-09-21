@@ -120,6 +120,16 @@ class SmsSender
             return $this->persist($log->markFailed('номер не схожий на телефон'));
         }
 
+        // A foreign number is refused outright rather than "helpfully" converted. The
+        // conversion below puts 380 in front of the last nine digits, which for the
+        // `+7 959` and `+48` numbers really on prod produces a *different, real*
+        // Ukrainian subscriber — somebody who would receive a stranger's debt and flat
+        // number. Refusing costs one resident an SMS; guessing costs the ОСББ an
+        // apology it cannot make, because it would not know it had happened.
+        if (!PhoneKey::isUkrainian($phone)) {
+            return $this->persist($log->markFailed('не український номер — SMS не надсилаємо'));
+        }
+
         if ($dryRun) {
             return $this->persist($log->markDryRun());
         }
@@ -205,6 +215,10 @@ class SmsSender
      * A number stored as `0932729951` is the same phone as `+380 93 272 99 51`, and the
      * registry holds both shapes — PhoneKey already knows that, so the country code is
      * put back on its nine digits rather than guessed from the prefix.
+     *
+     * Only ever reached for a number `PhoneKey::isUkrainian()` has already accepted: on
+     * anything else this line silently invents a Ukrainian subscriber out of a foreign
+     * one. See the guard in send().
      */
     private function msisdn(string $phone): string
     {

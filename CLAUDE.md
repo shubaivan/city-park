@@ -1371,6 +1371,16 @@ through TurboSMS, chosen on price at this volume (~0.98 грн against AlphaSMS'
   **Failures are rows too** — a wrong number, an exhausted balance, a sender name the
   operators have not approved — since none of that is visible from the bot's side unless
   it is stored.
+- **A foreign number is refused, never converted.** `msisdn()` puts `380` in front of the
+  last nine digits, which is right for every shape the registry actually uses and
+  catastrophic for anything else: prod carries three foreign numbers, and one of them —
+  `79595221999`, a `+7 959` mobile from occupied Luhansk — belongs to a resident **linked
+  to буд. 23, кв. 47**. Converted, it becomes `380595221999`: a real Ukrainian subscriber
+  who is not her, and who would have received a stranger's flat number and debt. The
+  Polish `48796496316` does the same. `PhoneKey::isUkrainian()` is the gate and
+  `SmsRulesTest` pins it on those exact numbers. `RentalListingService::formatPhone()`
+  was already safe — it returns null rather than guessing — which is why no foreign
+  number has ever reached a board.
 - **The same number is not written to twice in one day** for one purpose
   (`SmsLogRepository::alreadySentToday`). A cron that runs again, or a debt file
   re-uploaded after a correction, is the commonest way to spend money twice and to read as
