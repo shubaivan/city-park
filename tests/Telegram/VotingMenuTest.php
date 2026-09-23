@@ -195,4 +195,25 @@ class VotingMenuTest extends TestCase
             'the count must not depend on whether this account already voted',
         );
     }
+
+    /**
+     * A finished vote tells the reader how *they* voted.
+     *
+     * The archive used to carry only «За: 78 · Проти: 31», and a resident who voted
+     * against read the first number as his own ballot and took it to the house chat as
+     * rigging (23.09.2026). Against: the word «Проти» must be there and «За» must not.
+     */
+    public function testTheArchiveNamesTheReadersOwnVote(): void
+    {
+        $this->assertStringContainsString('Проти', VotingMenuCommand::ownVoteLine(false));
+        $this->assertStringNotContainsString('За', VotingMenuCommand::ownVoteLine(false));
+        $this->assertStringContainsString('За', VotingMenuCommand::ownVoteLine(true));
+        $this->assertStringNotContainsString('Проти', VotingMenuCommand::ownVoteLine(true));
+        $this->assertStringContainsString('не голосували', VotingMenuCommand::ownVoteLine(null));
+
+        $source = (string)file_get_contents(__DIR__ . '/../../src/Telegram/Voting/Command/VotingMenuCommand.php');
+        $archive = substr($source, (int)strpos($source, 'function renderArchive'));
+        $archive = substr($archive, 0, (int)strpos($archive, 'function ownVoteLine'));
+        $this->assertStringContainsString('ownVoteLine(', $archive, 'renderArchive must print the reader\'s own vote');
+    }
 }

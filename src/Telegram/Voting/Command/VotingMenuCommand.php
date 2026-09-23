@@ -607,6 +607,7 @@ class VotingMenuCommand
     private function renderArchive(Nutgram $bot): void
     {
         $finished = $this->campaignRepository->findFinished(20);
+        $account = $this->currentAccount($bot);
 
         $lines = ['📜 <b>Минулі голосування</b>', ''];
 
@@ -643,6 +644,12 @@ class VotingMenuCommand
                     : '<i>Рішення: не блокувати — голосів не вистачило.</i>';
             }
 
+            if ($account !== null) {
+                $lines[] = self::ownVoteLine(
+                    $this->ballotRepository->findOneByCampaignAndVoter($campaign, $account)?->getValue(),
+                );
+            }
+
             $lines[] = '';
         }
 
@@ -654,6 +661,23 @@ class VotingMenuCommand
                 ->addRow(InlineKeyboardButton::make('🗳️ Відкриті голосування', callback_data: self::MENU_CALLBACK))
                 ->addRow(StartCommand::homeButton()),
         );
+    }
+
+    /**
+     * The reader's own ballot under a finished vote.
+     *
+     * Without it the archive showed only «За: 78 · Проти: 31», and a resident who had voted
+     * against read the first number as their own vote and took it to the chat as ballot
+     * rigging (23.09.2026) — the live card says «Ваш голос», the archive said nothing, and
+     * once a vote closed the archive was the only place left to look.
+     */
+    public static function ownVoteLine(?bool $mine): string
+    {
+        return match ($mine) {
+            true => '<i>Ваш голос: 👍 За</i>',
+            false => '<i>Ваш голос: 👎 Проти</i>',
+            null => '<i>Ви не голосували.</i>',
+        };
     }
 
     private static function esc(string $value): string
