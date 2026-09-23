@@ -41,6 +41,7 @@ class ServiceOfferService
         private ImageStore $images,
         private ResidentChatService $residentChat,
         private DeepLink $links,
+        private string $serviceUncappedIds = '',
     ) {}
 
     public static function now(): \DateTime
@@ -82,7 +83,26 @@ class ServiceOfferService
      */
     public function mayPublishMore(?TelegramUser $author): bool
     {
-        return count($this->activeForAuthor($author)) < ServiceOffer::MAX_PER_AUTHOR;
+        return $this->isUncapped($author)
+            || count($this->activeForAuthor($author)) < ServiceOffer::MAX_PER_AUTHOR;
+    }
+
+    /**
+     * The one person the cap does not apply to — Иван's own call (23.09.2026): he posts
+     * the masters the house recommends to him, not his own trades, and three is too few
+     * for that. A Telegram id in `.env.local` (`SERVICE_UNCAPPED_TELEGRAM_IDS`), same shape
+     * as the guard list, and **empty means nobody** — a bug reading it as "everyone" would
+     * quietly remove the cap for the whole house.
+     */
+    public function isUncapped(?TelegramUser $author): bool
+    {
+        $id = (string)($author?->getTelegramId() ?? '');
+
+        if ($id === '') {
+            return false;
+        }
+
+        return in_array($id, array_filter(array_map('trim', explode(',', $this->serviceUncappedIds))), true);
     }
 
     /** @return ServiceOffer[] */

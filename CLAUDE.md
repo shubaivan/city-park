@@ -387,7 +387,10 @@ opt-in phone, admin take-down. What differs from it differs on purpose:
   особовий рахунок. The cap is checked on the button *and* in `mayPublishMore()`, since a
   resident can reach «➕ Пропоную послугу» from a keyboard drawn before they published their
   third somewhere else; at the ceiling the button is replaced by a sentence saying why,
-  never silently removed.
+  never silently removed. **One exemption:** Telegram ids in `SERVICE_UNCAPPED_TELEGRAM_IDS`
+  (`.env.local`) have no cap — Иван's (23.09.2026), who posts the masters the house
+  recommends rather than his own trades. Empty means nobody, never everybody
+  (`ServiceOfferService::isUncapped()`, pinned in `ServiceOfferRulesTest`).
 - **Publishing adds; editing is its own path.** While one offer per person was the rule,
   «✏️ Змінити» restarted the publish flow and let it *replace* whatever was there, which is
   a reasonable spelling of "edit" for exactly as long as there is only one. With three, that

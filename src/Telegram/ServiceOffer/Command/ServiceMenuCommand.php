@@ -298,7 +298,7 @@ class ServiceMenuCommand
             $markup->addRow(InlineKeyboardButton::make('🛠 Усі послуги', callback_data: self::MENU_CALLBACK));
         }
 
-        if (count($mine) < ServiceOffer::MAX_PER_AUTHOR) {
+        if (count($mine) < ServiceOffer::MAX_PER_AUTHOR || $this->offerService->isUncapped($user)) {
             $markup->addRow(InlineKeyboardButton::make(
                 '➕ Пропоную послугу',
                 callback_data: ServicePublish::START_CALLBACK,
