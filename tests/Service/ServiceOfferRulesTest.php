@@ -207,6 +207,25 @@ class ServiceOfferRulesTest extends KernelTestCase
     }
 
     /**
+     * The exemption list is opt-in: empty exempts nobody, a listed id is exempt, and a
+     * person with no Telegram id is never matched against it.
+     */
+    public function testTheUncappedListIsEmptyMeansNobody(): void
+    {
+        $person = (new \App\Entity\TelegramUser())->setTelegramId('12345');
+        $service = (new \ReflectionClass(ServiceOfferService::class))->newInstanceWithoutConstructor();
+        $prop = new \ReflectionProperty(ServiceOfferService::class, 'serviceUncappedIds');
+
+        $prop->setValue($service, '');
+        $this->assertFalse($service->isUncapped($person), 'empty list must exempt nobody');
+        $this->assertFalse($service->isUncapped(null));
+
+        $prop->setValue($service, ' 999, 12345 ');
+        $this->assertTrue($service->isUncapped($person));
+        $this->assertFalse($service->isUncapped((new \App\Entity\TelegramUser())->setTelegramId(null)));
+    }
+
+    /**
      * The cap counts the person, not the flat.
      *
      * Father recommends his electrician and daughter posts her manicurist on the same

@@ -32,6 +32,9 @@ services:
             # Telegram ids of the gate. Same shape and the same rule: empty means nobody,
             # never everybody — this board names which flat is in which pavilion.
             $guardIds: '%env(string:GUARD_TELEGRAM_IDS)%'
+            # Telegram ids exempt from the three-offers-per-person cap on 🛠 Послуги.
+            # Empty means nobody, never everybody.
+            $serviceUncappedIds: '%env(string:SERVICE_UNCAPPED_TELEGRAM_IDS)%'
             # Signs the resident's QR code. Nothing is stored: the signature is the only
             # thing that stops a code being drawn for a flat read off the debtors' board.
             $appSecret: '%env(string:APP_SECRET)%'
