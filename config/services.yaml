@@ -18,6 +18,7 @@ services:
             $pavilion1PhotoFileId: '%env(string:PAVILION1_PHOTO_FILE_ID)%'
             $pavilion2PhotoFileId: '%env(string:PAVILION2_PHOTO_FILE_ID)%'
             $residentChatId: '%env(string:RESIDENT_CHAT_ID)%'
+
             $residentChatInviteLink: '%env(string:RESIDENT_CHAT_INVITE_LINK)%'
             # Forum topics of that group. Empty means «post into General», which is what
             # the bot did before the group had topics at all.
@@ -56,6 +57,21 @@ services:
     App\Service\DebtPolicy:
         arguments:
             $threshold: '%app.debt_block_threshold%'
+
+    # SMS. Bound here and not in the global `bind:` because «$token» and «$sender» are
+    # names any future service could use, and a container-wide binding would hand it
+    # TurboSMS credentials by accident.
+    #
+    # An empty token means the channel is not configured — SmsSender says so and writes
+    # a journal row explaining it, rather than producing a run of failures that read as
+    # the provider refusing us. The sender name stays empty until the operators finish
+    # registering «CityPark» (submitted 21.09.2026, 10–14 working days); until then
+    # TurboSMS sends from its own general sender, which is allowed — so the registration
+    # gates the branding, never the sending.
+    App\Service\SmsSender:
+        arguments:
+            $token: '%env(string:TURBOSMS_TOKEN)%'
+            $sender: '%env(string:TURBOSMS_SENDER)%'
 
     # StartCommand resolves this at render time via $bot->getContainer(), which
     # delegates to '@service_container' — and that only exposes PUBLIC services.
