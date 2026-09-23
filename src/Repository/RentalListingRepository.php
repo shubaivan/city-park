@@ -17,6 +17,19 @@ class RentalListingRepository extends ServiceEntityRepository
         parent::__construct($registry, RentalListing::class);
     }
 
+    /** How many listings are live right now — the count on the menu button. */
+    public function countActive(\DateTime $now): int
+    {
+        return (int)$this->createQueryBuilder('l')
+            ->select('COUNT(l.id)')
+            ->andWhere('l.status = :active')
+            ->andWhere('l.expires_at > :now')
+            ->setParameter('active', RentalListing::STATUS_ACTIVE)
+            ->setParameter('now', $now)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
     /**
      * Everything currently on offer, newest first — the list residents see in the bot.
      *

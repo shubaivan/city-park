@@ -14,6 +14,7 @@ use App\Service\SchedulePavilionService;
 use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
 use App\Repository\ComplaintRepository;
+use App\Repository\RentalListingRepository;
 use App\Repository\ServiceOfferRepository;
 use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\ServiceOffer\Command\ServiceMenuCommand;
@@ -459,7 +460,7 @@ class StartCommand extends Command
             // not finding it at the bottom of the menu, under three rows they already
             // know by heart. Booking is the everyday action and stays one tap away.
             ->addRow(
-                InlineKeyboardButton::make('🔑 Оренда та продаж', callback_data: 'rental-menu'),
+                InlineKeyboardButton::make(self::rentalsLabel($bot), callback_data: 'rental-menu'),
             );
 
         // Directly under Оренда, and only for a confirmed resident: every offer names the
@@ -560,6 +561,30 @@ class StartCommand extends Command
         }
 
         return $markup;
+    }
+
+    /**
+     * «🔑 Оренда та продаж (4)» — how many flats are on the board right now.
+     *
+     * Same shape as «🛠 Послуги»: shown to everyone who sees the button, linked or not,
+     * because reading the rental board is open to anybody. RentalListingRepository must
+     * stay `public: true` for the same reason as the other menu counts.
+     */
+    private static function rentalsLabel(Nutgram $bot): string
+    {
+        try {
+            $repo = $bot->getContainer()->get(RentalListingRepository::class);
+
+            if ($repo instanceof RentalListingRepository) {
+                $open = $repo->countActive(new \DateTime());
+
+                return $open > 0 ? sprintf('🔑 Оренда та продаж (%d)', $open) : '🔑 Оренда та продаж';
+            }
+        } catch (\Throwable) {
+            // A count is decoration; the button must appear either way.
+        }
+
+        return '🔑 Оренда та продаж';
     }
 
     /**

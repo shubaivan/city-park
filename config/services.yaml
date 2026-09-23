@@ -92,6 +92,10 @@ services:
     App\Repository\ServiceOfferRepository:
         public: true
 
+    # «🔑 Оренда та продаж (4)» — the same render-time count, the same reason.
+    App\Repository\RentalListingRepository:
+        public: true
+
     # Same reason once more, and this one shipped broken for an evening: the menu asks it
     # whether the reader is a guard and whether their booking is running right now. Both
     # lookups are wrapped in `catch (\Throwable) { return false; }` — the right shape for a
