@@ -196,7 +196,15 @@
                             <td><small>{{ click.createdAt|date('d.m.Y H:i') }}</small></td>
                             <td>
                                 {% if click.user %}
-                                    {{ click.user.fullName ?? (click.user.firstName ~ ' ' ~ click.user.lastName)|trim }}
+                                    {#
+                                        The name opens the resident's card — for everyone, the
+                                        unlinked included: the flat link beside it only exists
+                                        for somebody with a flat, and «хто це?» is asked about
+                                        the unlinked ones most of all.
+                                    #}
+                                    <a href="{{ path('app_admin_resident', {id: click.user.id}) }}">
+                                        {{- click.user.fullName ?? (click.user.firstName ~ ' ' ~ click.user.lastName)|trim -}}
+                                    </a>
                                     {#
                                         The @username opens the chat with that person.
 

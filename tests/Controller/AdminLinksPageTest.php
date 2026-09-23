@@ -87,6 +87,22 @@ class AdminLinksPageTest extends WebTestCase
     }
 
     /**
+     * The name opens the resident's card for everyone, the unlinked included.
+     *
+     * The flat beside it links to the same card, but only for somebody who has a flat — so
+     * the people nobody recognises, the ones the question «хто це?» is really about, had no
+     * way through at all.
+     */
+    public function testTheNameOpensTheResidentCardEvenWithoutAFlat(): void
+    {
+        $this->assertMatchesRegularExpression(
+            "/\{% if click\.user %\}(?:(?!click\.user\.account).)*?path\('app_admin_resident'/s",
+            $this->template(),
+            'the name must link to the card before, and regardless of, the flat check',
+        );
+    }
+
+    /**
      * Every kind of link the bot can mint must be named by this page.
      *
      * Both tables used to end in a bare `else` that meant "complaint", so the Face ID vote
