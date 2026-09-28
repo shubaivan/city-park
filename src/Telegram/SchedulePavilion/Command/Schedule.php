@@ -2,29 +2,18 @@
 
 namespace App\Telegram\SchedulePavilion\Command;
 
+use App\Telegram\Start\Command\StartCommand;
 use SergiX44\Nutgram\Handlers\Type\Command;
 use SergiX44\Nutgram\Nutgram;
-use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
-use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class Schedule extends Command
 {
     protected string $command = 'schedule';
     protected ?string $description = 'Бронювання';
 
+    /** The same screen as «📅 Бронювання альтанки» on the main menu — one menu, not two. */
     public function handle(Nutgram $bot): void
     {
-        $bot->sendMessage(
-            text: 'Бронювання:',
-            reply_markup: InlineKeyboardMarkup::make()
-                ->addRow(
-                    InlineKeyboardButton::make('Бронювання альтанки', callback_data: 'schedule-pavilion'),
-                    InlineKeyboardButton::make('Переглянути свої', callback_data: 'own-schedule'),
-                )
-                ->addRow(
-                    InlineKeyboardButton::make('📜 Історія бронювань', callback_data: 'booking-history'),
-                    InlineKeyboardButton::make('📸 Завантажити фото', callback_data: 'photo-upload-info'),
-                )
-        );
+        StartCommand::pavilionMenu($bot);
     }
 }

@@ -47,7 +47,7 @@ class OwnSchedule extends Conversation
                     $bot,
                     $this->step,
                     '📷 Ви надіслали фото — обробляємо його, попередню дію скасовано. '
-                        . 'Щоб повернутися до бронювань, натисніть «Переглянути свої».',
+                        . 'Щоб повернутися до бронювань, натисніть «📋 Мої бронювання».',
                 );
             } catch (\Throwable $e) {
                 $this->photoLogger?->error('photo interception failed outright', [

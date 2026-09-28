@@ -157,7 +157,7 @@ class GuardCommand
         // neighbours» is an instruction for staff, and the board is now read by the house.
         // The guard's own next action needs no printing — checking who is there is the
         // whole of his job.
-        $lines[] = '<i>Вільну годину можна зайняти кнопкою «Бронювання».</i>';
+        $lines[] = '<i>Вільну годину можна зайняти кнопкою «📅 Бронювання альтанки».</i>';
 
         return implode("\n", $lines);
     }

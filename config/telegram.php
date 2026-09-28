@@ -67,6 +67,7 @@ $bot->onPhoto(\App\Telegram\Photo\Command\UploadPhotoCommand::class);
 $bot->onLocation(\App\Telegram\Location\Command\LocationCommand::class);
 $bot->onCallbackQueryData('type:route', \App\Telegram\Location\Command\RouteCommand::class);
 
+$bot->onCallbackQueryData(\App\Telegram\Start\Command\StartCommand::PAVILION_MENU_CALLBACK, fn (Nutgram $bot) => \App\Telegram\Start\Command\StartCommand::pavilionMenu($bot));
 $bot->onCallbackQueryData('schedule-pavilion', \App\Telegram\SchedulePavilion\Command\SchedulePavilion::class);
 $bot->onCommand('обрати павільйон', \App\Telegram\SchedulePavilion\Command\SchedulePavilion::class);
 $bot->onCallbackQueryData('own-schedule', \App\Telegram\SchedulePavilion\Command\OwnSchedule::class);
