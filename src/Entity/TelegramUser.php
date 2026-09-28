@@ -403,8 +403,27 @@ class TelegramUser
         return $this;
     }
 
+    /**
+     * Who holds an hour, as the booking screen shows it to the other residents: phone,
+     * name, username. The phone is there on purpose — residents use it to reach
+     * whoever has the альтанка.
+     *
+     * The name is the ПІБ the accountant typed in from the ОСББ registry when there is
+     * one, and the Telegram name only otherwise — «Олена» from somebody's Telegram
+     * profile tells a neighbour much less than «Коваленко Олена Іванівна». Missing parts
+     * are skipped rather than printed: sprintf over nulls rendered «+380… Олена null».
+     */
     public function concatNameInfo(): string
     {
-        return sprintf('%s %s %s %s', $this->phone_number, $this->first_name, $this->last_name, $this->username);
+        $name = ($this->full_name ?? null) !== null && trim($this->full_name) !== ''
+            ? $this->full_name
+            : trim(sprintf('%s %s', $this->first_name ?? '', $this->last_name ?? ''));
+
+        $parts = array_filter(
+            [$this->phone_number ?? null, $name, $this->username ?? null],
+            static fn (?string $part) => $part !== null && trim($part) !== '',
+        );
+
+        return implode(' ', array_map('trim', $parts));
     }
 }
