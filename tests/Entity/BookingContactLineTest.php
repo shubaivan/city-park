@@ -31,6 +31,17 @@ class BookingContactLineTest extends TestCase
         $this->assertSame('+380991112233 Олена Коваленко olena_k', $user->concatNameInfo());
     }
 
+    public function testTheRegistryNameWinsOverTheTelegramOne(): void
+    {
+        $user = (new TelegramUser())
+            ->setPhoneNumber('+380991112233')
+            ->setFirstName('Олена')
+            ->setLastName('К.')
+            ->setFullName('Коваленко Олена Іванівна');
+
+        $this->assertSame('+380991112233 Коваленко Олена Іванівна', $user->concatNameInfo());
+    }
+
     public function testBlankPartsDoNotLeaveDoubleSpaces(): void
     {
         $user = (new TelegramUser())->setPhoneNumber('+380991112233')->setFirstName(' ')->setLastName('Коваленко');
