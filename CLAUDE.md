@@ -30,9 +30,10 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 | Button | Callback | Slash | Handler |
 |---|---|---|---|
 | 🔑 Оренда та продаж | `rental-menu` / `rent:new` / `rent:new-sale` / `rent:deal:<all\|rent\|sale>:<page>` / `rent:{view,page,photos,contact,phone,extend,remove}:<id>` / `rent:pic:<id>:<n>` | `/rent` | `RentalMenuCommand` + `RentalPublish` (conversation) |
-| Бронювання | `schedule-pavilion` | `/schedule` | `SchedulePavilion` (conversation) |
-| Переглянути свої | `own-schedule` | — | `OwnSchedule` |
-| Як доїхати? | `type:route` | — | `RouteCommand` |
+| 📅 Бронювання альтанки (submenu, 28.09.2026) | `pavilion-menu` | `/schedule` | `StartCommand::pavilionMenu()` — holds 🏛 Хто зараз, 📅 Забронювати, 📋 Мої бронювання, 📜 Історія, 📸 Фото |
+| 📅 Забронювати | `schedule-pavilion` | — | `SchedulePavilion` (conversation) |
+| 📋 Мої бронювання | `own-schedule` | — | `OwnSchedule` |
+| 🗺 Як доїхати? (main menu, beside FAQ) | `type:route` | — | `RouteCommand` |
 | 📜 Історія бронювань | `booking-history` + `bh:week:YYYY-Www` | `/history` | `BookingHistory` (weekly paginated, last 30 days, photo status badges) |
 | 📸 Завантажити фото | `photo-upload-info` | `/photo` | `PhotoUploadInfo` (lists open requests) |
 | ℹ️ Інструкція та FAQ | `info-menu` / `info-topic:*` | `/info` | `InfoCommand` (edit `TOPICS` const) |

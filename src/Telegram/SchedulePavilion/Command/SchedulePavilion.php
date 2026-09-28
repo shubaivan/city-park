@@ -67,7 +67,7 @@ class SchedulePavilion extends Conversation
                     $bot,
                     $this->step,
                     "📷 Ви надіслали фото під час оформлення бронювання — бронювання призупинено, "
-                        . "обробляємо фото. Щоб забронювати, натисніть «Бронювання» ще раз.",
+                        . "обробляємо фото. Щоб забронювати, натисніть «📅 Забронювати» ще раз.",
                 );
             } catch (\Throwable $e) {
                 $this->photoLogger?->error('photo interception failed outright', [

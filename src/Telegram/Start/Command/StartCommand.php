@@ -35,6 +35,7 @@ class StartCommand extends Command
     protected ?string $description = 'Початок спілкування';
 
     public const MAIN_MENU_CALLBACK = 'main-menu';
+    public const PAVILION_MENU_CALLBACK = 'pavilion-menu';
 
     public function handle(Nutgram $bot): void
     {
@@ -370,8 +371,17 @@ class StartCommand extends Command
             . OsbbContacts::repairs() . "\n"
             . "<i>Що зламалось у будинку і що з цим робиться — до нього, або через «🔧 Заявки».</i>\n"
             . OsbbContacts::developer() . "\n"
-            . "<i>Не працює кнопка, дивна відповідь бота, помилка в даних — до нього.</i>\n\n";
+            . "<i>Не працює кнопка, дивна відповідь бота, помилка в даних — до нього.</i>\n\n"
+            . self::GATES_NOTICE . "\n\n";
     }
+
+    /**
+     * Ворота ЖК відчиняються з додатку McLaut «Ворота», а номер туди вносить ОСББ — і до
+     * 28.09.2026 бот про це не казав ніде. Мешканка дізналась від McLaut і спитала в чаті
+     * «чому про це ніде ні слова?». Під контактами, бо відповідь на це — «зверніться в ОСББ».
+     */
+    public const GATES_NOTICE = "🚧 <b>Ворота</b> відчиняються з додатку <b>McLaut «Ворота»</b>. "
+        . 'Щоб ваш номер додали в додаток — зверніться в ОСББ (контакти вище).';
 
     /**
      * The house's total debt and the three largest debtors, above the menu.
@@ -434,6 +444,53 @@ class StartCommand extends Command
     public static function homeButton(): InlineKeyboardButton
     {
         return InlineKeyboardButton::make('🏠 На головну', callback_data: self::MAIN_MENU_CALLBACK);
+    }
+
+    /**
+     * «📅 Бронювання альтанки» — the one screen for everything about the pavilion: who is
+     * in it now, booking, your own bookings, the history and the photo. Reached from the
+     * main menu and from `/schedule`.
+     *
+     * «Хто зараз в альтанці» leads, because that is the sequence: look, then book. Same
+     * gate as it always had — a confirmed resident or the guard.
+     */
+    public static function pavilionMenu(Nutgram $bot): void
+    {
+        $account = self::currentAccount($bot);
+        $markup = InlineKeyboardMarkup::make();
+
+        if ($account instanceof Account || self::isGuard($bot)) {
+            $markup->addRow(InlineKeyboardButton::make(
+                '🏛 Хто зараз в альтанці',
+                callback_data: GuardCommand::MENU_CALLBACK,
+            ));
+        }
+
+        $markup
+            ->addRow(
+                InlineKeyboardButton::make('📅 Забронювати', callback_data: 'schedule-pavilion'),
+                InlineKeyboardButton::make('📋 Мої бронювання', callback_data: 'own-schedule'),
+            )
+            ->addRow(
+                InlineKeyboardButton::make('📜 Історія бронювань', callback_data: 'booking-history'),
+                InlineKeyboardButton::make('📸 Завантажити фото', callback_data: 'photo-upload-info'),
+            )
+            ->addRow(self::homeButton());
+
+        $text = "📅 <b>Бронювання альтанки</b>\n\n"
+            . "Дві альтанки, з 09:00 до 23:00. Після кожного бронювання — фото альтанки в бот.";
+
+        if ($bot->isCallbackQuery()) {
+            try {
+                $bot->editMessageText(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
+
+                return;
+            } catch (\Throwable) {
+                // fall through to a new message
+            }
+        }
+
+        $bot->sendMessage(text: $text, parse_mode: ParseMode::HTML, reply_markup: $markup);
     }
 
     private static function mainMenuMarkup(Nutgram $bot, ?Account $account = null): InlineKeyboardMarkup
@@ -502,10 +559,21 @@ class StartCommand extends Command
             );
         }
 
-        // Directly above «Бронювання», because that is the sequence: look, then book. Open
-        // to every confirmed resident and to the guard, who may have no особовий рахунок of
-        // his own — one board, one button, since 09.09.2026.
-        if ($account instanceof Account || self::isGuard($bot)) {
+        // Everything about the альтанка is one button and one screen (28.09.2026). It used
+        // to be six buttons across four rows of the main menu — «Хто зараз», three bare
+        // words squeezed into one row, history, photo — and on a phone the booking row read
+        // as text rather than as buttons. The submenu is `pavilionMenu()` below.
+        //
+        // «Як доїхати?» is about reaching the ЖК, not the альтанка, so it stays out here
+        // beside the FAQ.
+        $markup
+            ->addRow(
+                InlineKeyboardButton::make('📅 Бронювання альтанки', callback_data: self::PAVILION_MENU_CALLBACK),
+            );
+
+        // The guard opens the bot for one thing, standing outside, and has no booking of
+        // his own — so his board stays one tap away rather than behind the submenu.
+        if (!$account instanceof Account && self::isGuard($bot)) {
             $markup->addRow(InlineKeyboardButton::make(
                 '🏛 Хто зараз в альтанці',
                 callback_data: GuardCommand::MENU_CALLBACK,
@@ -514,16 +582,10 @@ class StartCommand extends Command
 
         $markup
             ->addRow(
-                InlineKeyboardButton::make('Бронювання', callback_data: 'schedule-pavilion'),
-                InlineKeyboardButton::make('Переглянути свої', callback_data: 'own-schedule'),
-                InlineKeyboardButton::make('Як доїхати?', callback_data: 'type:route'),
-            )
-            ->addRow(
-                InlineKeyboardButton::make('📜 Історія бронювань', callback_data: 'booking-history'),
-                InlineKeyboardButton::make('📸 Завантажити фото', callback_data: 'photo-upload-info'),
-            )
-            ->addRow(
                 InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'),
+                InlineKeyboardButton::make('🗺 Як доїхати?', callback_data: 'type:route'),
+            )
+            ->addRow(
                 InlineKeyboardButton::make(self::votingLabel($bot, $account), callback_data: 'voting-menu'),
             );
 
