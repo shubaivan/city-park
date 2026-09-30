@@ -39,4 +39,34 @@ final class PhoneKey
 
         return $left !== '' && $left === self::of($b);
     }
+
+    /**
+     * Is this actually a Ukrainian number?
+     *
+     * `of()` answers «which subscriber is this» and is deliberately forgiving, because the
+     * registry holds every shape a human types. This answers a different question — «may
+     * we treat the last nine digits as a Ukrainian subscriber» — and it has to be strict,
+     * because the caller that needs it is the one that puts `380` back in front of them.
+     *
+     * Found on prod 21.09.2026: three residents carry foreign numbers, and one of them is
+     * linked to a flat — `79595221999`, a `+7 959` mobile from occupied Luhansk. Its last
+     * nine digits are `595221999`, so the friendly conversion turned it into
+     * `380595221999`, a real Ukrainian number belonging to a stranger. A debt reminder
+     * naming somebody's flat and sum would have gone to them. The Polish `48796496316`
+     * does the same thing.
+     *
+     * Accepted: `380XXXXXXXXX`, `0XXXXXXXXX`, and a bare nine digits — the three shapes
+     * the ОСББ's own records actually use.
+     */
+    public static function isUkrainian(?string $phone): bool
+    {
+        $digits = preg_replace('/\D+/', '', (string)$phone);
+
+        return match (strlen($digits)) {
+            12 => str_starts_with($digits, '380'),
+            10 => str_starts_with($digits, '0'),
+            self::LENGTH => true,
+            default => false,
+        };
+    }
 }
