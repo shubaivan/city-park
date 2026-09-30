@@ -48,6 +48,24 @@ class AdminSmsPageTest extends KernelTestCase
         $this->assertStringContainsString('debt:notify-sms', $html);
     }
 
+    /** The flat and what it owed when the message went — a snapshot, not today's debt. */
+    public function testItShowsTheAddressAndTheDebtAtTheMomentOfSending(): void
+    {
+        $account = (new \App\Entity\Account())->setDebt('5430.00');
+        $log = (new SmsLog('380671234567', 'Буд.27 кв.63: борг 5430 грн. Просимо сплатити.', SmsLog::PURPOSE_DEBT))
+            ->setPlaceLabel('буд. 27, кв. 63')
+            ->setRecipient($account, null)
+            ->markSent('abc');
+
+        $account->setDebt('0');
+
+        $html = $this->render([$log]);
+
+        $this->assertStringContainsString('буд. 27, кв. 63', $html);
+        $this->assertStringContainsString('борг 5 430.00 грн', $html);
+        $this->assertStringContainsString('станом на ' . date('d.m'), $html);
+    }
+
     /** An SMS costs the ОСББ money, so the page says how much — per message and for the month. */
     public function testItShowsWhatTheSmsCost(): void
     {
