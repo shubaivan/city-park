@@ -53,6 +53,8 @@ class ComplaintsRoleTest extends WebTestCase
             # «Хто їх пустив і коли вони заходили» is asked by whoever is dealing with what
             # happened, which is as often the repairs side as the accountant. GET only.
             'the QR scan log' => ['/admin/scans'],
+            // Иван's call, 30.09.2026: everybody who signs in sees what was sent to whom.
+            'the SMS journal' => ['/admin/sms'],
         ];
     }
 
@@ -84,8 +86,6 @@ class ComplaintsRoleTest extends WebTestCase
             'the debt upload' => ['GET', '/admin/debt'],
             'the area registry' => ['GET', '/admin/area'],
             'the tariff' => ['GET', '/admin/tariff'],
-            // Each row is a flat, a phone and usually that flat's debt.
-            'the SMS journal' => ['GET', '/admin/sms'],
             'community blocking votes' => ['GET', '/admin/block-votes'],
             'linking a resident to a flat' => ['POST', '/admin/users/1/move'],
             'unlinking a resident from their flat' => ['POST', '/admin/users/1/account/unlink'],
