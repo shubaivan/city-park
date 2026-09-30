@@ -68,6 +68,19 @@ class SmsLog
     #[ORM\Column(type: Types::STRING, length: 120, nullable: true)]
     private ?string $place_label = null;
 
+    /**
+     * What the flat owed when the message went, and the date of the file that figure came
+     * from. Snapshots for the same reason as the label: `Account.debt` is overwritten by
+     * every import, so a month later «борг 5 430» in the text would otherwise sit beside
+     * whatever the flat owes *now* — and «ми написали їй, коли вона була винна скільки?»
+     * is the question this row gets asked.
+     */
+    #[ORM\Column(type: Types::DECIMAL, precision: 10, scale: 2, nullable: true)]
+    private ?string $debt = null;
+
+    #[ORM\Column(type: Types::DATE_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $debt_as_of = null;
+
     #[ORM\ManyToOne(targetEntity: Account::class)]
     #[ORM\JoinColumn(name: 'account_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?Account $account = null;
@@ -113,6 +126,8 @@ class SmsLog
     public function getPhone(): string { return $this->phone; }
     public function getPhoneKey(): string { return $this->phone_key; }
     public function getPlaceLabel(): ?string { return $this->place_label; }
+    public function getDebt(): ?string { return $this->debt; }
+    public function getDebtAsOf(): ?\DateTimeImmutable { return $this->debt_as_of; }
     public function getAccount(): ?Account { return $this->account; }
     public function getUser(): ?TelegramUser { return $this->user; }
     public function getText(): string { return $this->text; }
@@ -134,8 +149,10 @@ class SmsLog
         $this->account = $account;
         $this->user = $user;
 
-        if ($this->place_label === null && $account instanceof Account) {
-            $this->place_label = $account->getPlaceLabel();
+        if ($account instanceof Account) {
+            $this->place_label ??= $account->getPlaceLabel();
+            $this->debt = $account->getDebt();
+            $this->debt_as_of = $account->getDebtUpdatedAt();
         }
 
         return $this;

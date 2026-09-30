@@ -49,7 +49,14 @@
                                     <td class="text-nowrap">{{ e.createdAt|date('d.m.Y H:i', 'Europe/Kyiv') }}</td>
                                     <td class="text-nowrap">
                                         <a href="tel:+{{ e.phone|trim('+') }}">{{ e.phone }}</a>
-                                        <div class="text-muted">{{ e.placeLabel ?? '—' }}</div>
+                                        {% set place = e.placeLabel ?: (e.account ? e.account.placeLabel : null) %}
+                                        <div>{{ place ?: '—' }}</div>
+                                        {% if e.debt is not null %}
+                                            <div class="text-muted">
+                                                {% if e.debt > 0 %}борг {{ e.debt|number_format(2, '.', ' ') }} грн{% else %}без боргу{% endif %}{% if e.debtAsOf %}
+                                                <span title="дата файлу боргів, з якого взято суму">· станом на {{ e.debtAsOf|date('d.m') }}</span>{% endif %}
+                                            </div>
+                                        {% endif %}
                                     </td>
                                     <td>
                                         {% if e.status == 'sent' %}✅ надіслано

@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Entity\Account;
+use App\Entity\ExpectedResident;
 use App\Entity\SmsLog;
 use App\Entity\TelegramUser;
 use App\Repository\SmsLogRepository;
@@ -111,6 +112,12 @@ class SmsSender
         ?string $sentBy = null,
         bool $dryRun = false,
     ): SmsLog {
+        // A number typed by hand (sms:test) still belongs to somebody. Without this the
+        // journal shows a bare phone, and «кому це пішло» is answered over SSH again.
+        if ($account === null) {
+            [$account, $user] = $this->recipientByPhone($phone, $user);
+        }
+
         $log = (new SmsLog($phone, $text, $purpose))
             ->setParts(self::parts($text))
             ->setSentBy($sentBy)
@@ -251,5 +258,40 @@ class SmsSender
         }
 
         return $log;
+    }
+
+    /**
+     * Whose number this is: a linked resident first, then an object that expects it.
+     *
+     * @return array{0: ?Account, 1: ?TelegramUser}
+     */
+    private function recipientByPhone(string $phone, ?TelegramUser $user): array
+    {
+        $key = PhoneKey::of($phone);
+        if ($key === '') {
+            return [null, $user];
+        }
+
+        try {
+            /** @var TelegramUser|null $resident */
+            $resident = $this->em->getRepository(TelegramUser::class)->createQueryBuilder('tu')
+                ->andWhere('tu.account IS NOT NULL')
+                ->andWhere('tu.phone_number LIKE :tail')->setParameter('tail', '%' . $key)
+                ->orderBy('tu.id', 'ASC')
+                ->setMaxResults(1)
+                ->getQuery()
+                ->getOneOrNullResult();
+            if ($resident instanceof TelegramUser) {
+                return [$resident->getAccount(), $user ?? $resident];
+            }
+
+            $expected = $this->em->getRepository(ExpectedResident::class)->findOneBy(['phone_key' => $key]);
+
+            return [$expected?->getAccount(), $user];
+        } catch (\Throwable $e) {
+            $this->logger->warning('SMS: could not resolve recipient by phone', ['error' => $e->getMessage()]);
+
+            return [null, $user];
+        }
     }
 }
