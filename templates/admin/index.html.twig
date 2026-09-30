@@ -129,6 +129,14 @@
                 </div>
             </a>{% endif %}
 
+            {% if is_granted('ROLE_ADMIN') %}<a class="card hub-card" href="{{ path('app_admin_sms') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">✉️</div>
+                    <b>SMS</b>
+                    <div class="hub-note">Кому, коли і що надіслано — і що не дійшло.</div>
+                </div>
+            </a>{% endif %}
+
             <a class="card hub-card" href="{{ path('app_admin_links') }}">
                 <div class="card-body">
                     <div class="hub-emoji">↗️</div>

@@ -1,0 +1,75 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}SMS · ОСББ City Park{% endblock %}
+
+{#
+    The SMS journal: one row per attempt, sent or not. Failures stay on the page on
+    purpose — «чому їй не прийшло» is answered by the row that says why.
+#}
+{% block body %}
+    {{ parent() }}
+
+    {% set purposes = {'debt': '💸 борг', 'announcement': '📢 оголошення', 'test': '🧪 тест'} %}
+
+    <div class="container-fluid py-3" style="max-width: 1000px;">
+        <p class="mb-2"><a href="{{ path('app_admin') }}">← На головну адмінки</a></p>
+
+        <h4 class="mb-1">✉️ SMS</h4>
+        <p class="text-muted small mb-3">
+            Кому, коли і що бот надіслав через TurboSMS. Невдалі спроби теж тут — з причиною.
+        </p>
+
+        <div class="card mb-3">
+            <div class="card-body py-2 px-3 small">
+                За цей місяць: надіслано <b>{{ month.sent }}</b>
+                ({{ month.parts }} SMS до оплати){% if month.failed > 0 %},
+                не надіслано <b>{{ month.failed }}</b>{% endif %}.
+            </div>
+        </div>
+
+        {% if entries is empty %}
+            <div class="alert alert-light py-2 px-3 small mb-0">Поки що жодної SMS.</div>
+        {% else %}
+            <div class="card">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 small">
+                        <thead>
+                            <tr>
+                                <th>Коли</th>
+                                <th>Кому</th>
+                                <th>Текст</th>
+                                <th class="d-none d-md-table-cell">Хто</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in entries %}
+                                <tr class="{{ e.failed ? 'table-warning' : '' }}">
+                                    <td class="text-nowrap">{{ e.createdAt|date('d.m.Y H:i', 'Europe/Kyiv') }}</td>
+                                    <td class="text-nowrap">
+                                        <a href="tel:+{{ e.phone|trim('+') }}">{{ e.phone }}</a>
+                                        <div class="text-muted">{{ e.placeLabel ?? '—' }}</div>
+                                    </td>
+                                    <td>
+                                        {% if e.status == 'sent' %}✅ надіслано
+                                        {% elseif e.status == 'dry_run' %}👁 пробний запуск, не надсилалось
+                                        {% else %}⛔ не надіслано{% if e.error %}: <b>{{ e.error }}</b>{% endif %}
+                                        {% endif %}
+                                        <span class="text-muted">· {{ purposes[e.purpose] ?? e.purpose }}{% if e.parts > 1 %} · {{ e.parts }} SMS{% endif %}</span>
+                                        <div style="white-space: pre-wrap">{{ e.text }}</div>
+                                        <div class="d-md-none text-muted">{{ e.sentBy ?? '—' }}</div>
+                                    </td>
+                                    <td class="d-none d-md-table-cell text-muted">{{ e.sentBy ?? '—' }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <p class="small text-muted mt-2 mb-0">
+                Показано останні {{ entries|length }} записів{% if entries|length == shown %} (більше не вміщається на сторінку){% endif %}.
+                Час київський.
+            </p>
+        {% endif %}
+    </div>
+{% endblock %}
