@@ -84,6 +84,8 @@ class ComplaintsRoleTest extends WebTestCase
             'the debt upload' => ['GET', '/admin/debt'],
             'the area registry' => ['GET', '/admin/area'],
             'the tariff' => ['GET', '/admin/tariff'],
+            // Each row is a flat, a phone and usually that flat's debt.
+            'the SMS journal' => ['GET', '/admin/sms'],
             'community blocking votes' => ['GET', '/admin/block-votes'],
             'linking a resident to a flat' => ['POST', '/admin/users/1/move'],
             'unlinking a resident from their flat' => ['POST', '/admin/users/1/account/unlink'],

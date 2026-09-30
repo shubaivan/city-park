@@ -24,6 +24,7 @@ use App\Repository\RentalListingRepository;
 use App\Repository\GuestPassRepository;
 use App\Repository\LinkClickRepository;
 use App\Repository\QrScanRepository;
+use App\Repository\SmsLogRepository;
 use App\Telegram\Info\Command\InfoCommand;
 use App\Repository\ServiceOfferRepository;
 use App\Repository\ScheduledSetRepository;
@@ -103,6 +104,28 @@ class AdminController extends AbstractController
             'last_seen' => $logins->lastSeenByLogin(),
             'failed_week' => $logins->countFailedSince(new \DateTimeImmutable('-7 days')),
             'shown' => self::LOGINS_SHOWN,
+        ]);
+    }
+
+    /** SMS drawn on /admin/sms. A debt run is a few hundred rows; this is one run and change. */
+    private const SMS_SHOWN = 500;
+
+    /**
+     * Every SMS the bot tried to send: to whom, when, what, and what came back.
+     *
+     * The journal existed from the first day of the channel and had no page, so «кому і що
+     * ми відправили» was answerable only over SSH. ROLE_ADMIN only: each row is a flat, a
+     * phone and usually that flat's debt, which is the accountant's side of the house.
+     */
+    #[Route('/admin/sms', name: 'app_admin_sms', methods: [Request::METHOD_GET])]
+    public function sms(SmsLogRepository $sms): Response
+    {
+        $monthStart = new \DateTime('first day of this month 00:00', new \DateTimeZone('Europe/Kyiv'));
+
+        return $this->render('admin/sms.html.twig', [
+            'entries' => $sms->recent(self::SMS_SHOWN),
+            'month' => $sms->summarySince($monthStart),
+            'shown' => self::SMS_SHOWN,
         ]);
     }
 
