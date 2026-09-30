@@ -25,6 +25,7 @@ use App\Repository\GuestPassRepository;
 use App\Repository\LinkClickRepository;
 use App\Repository\QrScanRepository;
 use App\Repository\SmsLogRepository;
+use App\Service\SmsSender;
 use App\Telegram\Info\Command\InfoCommand;
 use App\Repository\ServiceOfferRepository;
 use App\Repository\ScheduledSetRepository;
@@ -126,6 +127,7 @@ class AdminController extends AbstractController
             'entries' => $sms->recent(self::SMS_SHOWN),
             'month' => $sms->summarySince($monthStart),
             'shown' => self::SMS_SHOWN,
+            'price' => SmsSender::PRICE_PER_PART,
         ]);
     }
 

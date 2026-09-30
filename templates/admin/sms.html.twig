@@ -22,8 +22,10 @@
         <div class="card mb-3">
             <div class="card-body py-2 px-3 small">
                 За цей місяць: надіслано <b>{{ month.sent }}</b>
-                ({{ month.parts }} SMS до оплати){% if month.failed > 0 %},
+                ({{ month.parts }} SMS до оплати × {{ price|number_format(2, '.', ' ') }} грн
+                = <b>{{ (month.parts * price)|number_format(2, '.', ' ') }} грн</b>){% if month.failed > 0 %},
                 не надіслано <b>{{ month.failed }}</b>{% endif %}.
+                <div class="text-muted">Ціна TurboSMS — {{ price|number_format(2, '.', ' ') }} грн за одну SMS; невдалі спроби не оплачуються.</div>
             </div>
         </div>
 
@@ -54,7 +56,7 @@
                                         {% elseif e.status == 'dry_run' %}👁 пробний запуск, не надсилалось
                                         {% else %}⛔ не надіслано{% if e.error %}: <b>{{ e.error }}</b>{% endif %}
                                         {% endif %}
-                                        <span class="text-muted">· {{ purposes[e.purpose] ?? e.purpose }}{% if e.parts > 1 %} · {{ e.parts }} SMS{% endif %}</span>
+                                        <span class="text-muted">· {{ purposes[e.purpose] ?? e.purpose }}{% if e.parts > 1 %} · {{ e.parts }} SMS{% endif %}{% if e.status == 'sent' %} · {{ (e.parts * price)|number_format(2, '.', ' ') }} грн{% endif %}</span>
                                         <div style="white-space: pre-wrap">{{ e.text }}</div>
                                         <div class="d-md-none text-muted">{{ e.sentBy ?? '—' }}</div>
                                     </td>
