@@ -46,6 +46,9 @@ security:
         # with what happened, and that is as often the repairs side as the accountant.
         # GET only: a security log that can be edited is not a log.
         - { path: ^/admin/scans$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        # The SMS journal: read by everyone who can sign in (Иван, 30.09.2026 — «всем»).
+        # GET only: a log of what was sent is not anybody's to change.
+        - { path: ^/admin/sms$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
         # A resident's cached Telegram photo. Both roles already read the resident register,
         # and a face is the least of what is on that page — but it is still served from
         # var/, behind this login, rather than published under public/.
