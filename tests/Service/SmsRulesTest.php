@@ -2,6 +2,8 @@
 
 namespace App\Tests\Service;
 
+use App\Command\DebtNotifySmsCommand;
+use App\Entity\Account;
 use App\Entity\SmsLog;
 use App\Service\PhoneKey;
 use App\Service\SmsSender;
@@ -45,25 +47,75 @@ class SmsRulesTest extends TestCase
         $this->assertSame(2, SmsSender::parts($latin . 'і'));
     }
 
-    /** The text the debtors actually get has to be one SMS, with a real sum in it. */
+    /**
+     * The text the debtors actually get is one SMS — built by the command itself, on the
+     * longest labels the house has and a five-digit sum, not on a copy of the template.
+     */
     public function testTheDebtMessageIsOneSms(): void
     {
-        foreach ([81, 1024, 5430, 16314, 123456] as $debt) {
-            $text = sprintf('ОСББ Сіті Парк: борг %d грн. Деталі у боті t.me/che_city_park_bot', $debt);
+        foreach ([
+            ['230063', '63', '27'],
+            ['237138', '138', '19'],
+            ['235168', '168', '19'],
+        ] as [$number, $unit, $house]) {
+            foreach ([81, 5430, 16314, 123456] as $debt) {
+                $account = (new Account())
+                    ->setAccountNumber($number)
+                    ->setApartmentNumber($unit)
+                    ->setHouseNumber($house)
+                    ->setDebt((string)$debt);
 
-            $this->assertSame(
-                1,
-                SmsSender::parts($text),
-                sprintf('«%s» must fit one SMS (%d chars)', $text, mb_strlen($text)),
-            );
+                $text = DebtNotifySmsCommand::text($account);
+
+                $this->assertNotNull($text, sprintf('%s owing %d must still get an SMS', $account->getPlaceLabel(), $debt));
+                $this->assertSame(1, SmsSender::parts($text), sprintf('«%s» must fit one SMS (%d chars)', $text, mb_strlen($text)));
+                $this->assertStringContainsString((string)$debt, $text);
+            }
         }
+    }
+
+    /** No greeting and no link — Иван's call, 30.09.2026. The sender line says who it is. */
+    public function testTheDebtMessageSaysWhereHowMuchAndAsks(): void
+    {
+        $account = (new Account())
+            ->setAccountNumber('530063')
+            ->setApartmentNumber('63')
+            ->setHouseNumber('27')
+            ->setDebt('5430.49');
+
+        $this->assertSame('Буд.27 кв.63: борг 5430 грн. Просимо сплатити.', DebtNotifySmsCommand::text($account));
+    }
+
+    /**
+     * A second part is refused before it costs anything, whoever wrote the text.
+     *
+     * «Дві — це занадто жирно» (30.09.2026): the run is quoted per SMS, and a template
+     * that grows past 70 characters must show up as failures in the journal, not as a
+     * doubled bill.
+     */
+    public function testTheSenderRefusesASecondPart(): void
+    {
+        $sender = new SmsSender(
+            $this->createMock(\Symfony\Contracts\HttpClient\HttpClientInterface::class),
+            $this->createMock(\Doctrine\ORM\EntityManagerInterface::class),
+            $this->createMock(\App\Repository\SmsLogRepository::class),
+            $this->createMock(\Psr\Log\LoggerInterface::class),
+            'token',
+        );
+
+        $one = $sender->send('380932729951', str_repeat('а', 70), SmsLog::PURPOSE_DEBT, dryRun: true);
+        $two = $sender->send('380932729951', str_repeat('а', 71), SmsLog::PURPOSE_DEBT, dryRun: true);
+
+        $this->assertFalse($one->isFailed());
+        $this->assertTrue($two->isFailed());
+        $this->assertStringContainsString('лише одну', (string)$two->getError());
     }
 
     /** Price is parts × tariff, and a two-part message really does cost twice. */
     public function testCostFollowsTheParts(): void
     {
-        $this->assertSame(0.98, SmsSender::cost(str_repeat('а', 70), 0.98));
-        $this->assertSame(1.96, SmsSender::cost(str_repeat('а', 71), 0.98));
+        $this->assertSame(1.29, SmsSender::cost(str_repeat('а', 70), 1.29));
+        $this->assertSame(2.58, SmsSender::cost(str_repeat('а', 71), 1.29));
     }
 
     /**

@@ -1362,7 +1362,8 @@ readable by the 86 residents who owe nothing.
 Every other channel here is free and reaches only Telegram. On 21.09.2026 that meant the
 bot could write to **83 of the 531 objects with a debt**, and to **three of the 77 owing
 more than 5 000 грн** (815 788 грн between them). SMS is how the rest are reached —
-through TurboSMS, chosen on price at this volume (~0.98 грн against AlphaSMS's 1.20).
+through TurboSMS, **1.29 грн a part** (30.09.2026; 1.28 from a 10 000 грн top-up — the
+~0.98 this file first quoted was never on their price list, and `--price` defaulted to it).
 
 - **Who receives it is a choice at send time, never a rule in the code.**
   `--audience=all` writes to every debtor whose number we have, which is what the head of
@@ -1377,8 +1378,15 @@ through TurboSMS, chosen on price at this volume (~0.98 грн against AlphaSMS'
 - **A Cyrillic SMS is 70 characters, not 160**, and one Ukrainian letter in an otherwise
   Latin text prices the whole message as Cyrillic. Past 70 it splits and costs twice, so
   every text is written to fit one part and `SmsSender::parts()` is what makes an overflow
-  visible rather than silently doubling the bill. `SmsRulesTest` pins the debt text at one
-  part for sums from 81 to 123 456 грн.
+  visible rather than silently doubling the bill.
+- **One part, or nothing** (Иван, 30.09.2026: «дві — це занадто жирно»). `SmsSender::send()`
+  refuses any text over one part and journals the reason, so a template that grows shows
+  up as failures in a dry run, before anything is spent. The debt text is
+  «Буд.27 кв.63: борг 5430 грн. Просимо сплатити.» — **no greeting and no link to the
+  bot**, by his call the same day: the sender line already reads «CityPark», and the room
+  is what keeps «паркомісце 138» with a five-digit sum inside one part.
+  `DebtNotifySmsCommand::text()` is static so `SmsRulesTest` pins the real output on the
+  longest labels, not a copy of the template.
 - **`sms_log` is one row per attempt — to whom, when, what, and what came back.** Asked
   for in the same breath as the sending (Иван, 21.09.2026), and it is what makes the
   channel defensible: an SMS costs the ОСББ money and arrives unasked. The flat and the

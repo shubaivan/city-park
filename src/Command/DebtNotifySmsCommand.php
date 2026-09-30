@@ -51,7 +51,7 @@ class DebtNotifySmsCommand extends Command
         $this
             ->addOption('min', null, InputOption::VALUE_REQUIRED, 'Мінімальний борг, грн', (string)self::DEFAULT_MIN_DEBT)
             ->addOption('audience', null, InputOption::VALUE_REQUIRED, 'all | unreachable', 'all')
-            ->addOption('price', null, InputOption::VALUE_REQUIRED, 'Ціна за одну SMS, грн', '0.98')
+            ->addOption('price', null, InputOption::VALUE_REQUIRED, 'Ціна за одну SMS, грн', (string)SmsSender::PRICE_PER_PART)
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Порахувати і показати, нічого не надсилати');
     }
 
@@ -107,7 +107,12 @@ class DebtNotifySmsCommand extends Command
                 continue;
             }
 
-            $text = $this->text($account);
+            $text = self::text($account);
+            if ($text === null) {
+                $failed++;
+                $io->writeln(sprintf('  <fg=red>✗</> %s — адреса задовга для однієї SMS', $account->getPlaceLabel()));
+                continue;
+            }
 
             $log = $this->sms->send(
                 $phone,
@@ -200,18 +205,25 @@ class DebtNotifySmsCommand extends Command
     }
 
     /**
-     * One SMS, and it has to stay one.
+     * One SMS, and it has to stay one — or nothing.
      *
-     * 70 Cyrillic characters is the whole budget, so this says three things and stops:
-     * who is writing, how much, and where to look. The sum is printed without kopecks —
-     * «16314» is the same information as «16 314,49» to somebody deciding whether to pay,
-     * and the spaces and the comma cost four characters that the link needs.
+     * Which object, how much, and the ask. Nothing else (Иван, 30.09.2026): no greeting
+     * and no link to the bot. The sender line already says «CityPark», so the text does not
+     * need to say who is writing, and every character saved is one that keeps a long label
+     * — «паркомісце 138» with a five-digit sum — inside a single part. The object leads
+     * because a household with a flat and a parking space has to know which one owes.
+     *
+     * Null when even this does not fit, never a second part — SmsSender refuses one anyway.
      */
-    private function text(Account $account): string
+    public static function text(Account $account): ?string
     {
-        return sprintf(
-            'ОСББ Сіті Парк: борг %d грн. Деталі у боті t.me/che_city_park_bot',
-            (int)round((float)($account->getDebt() ?? 0)),
-        );
+        $house = trim((string)$account->getHouseNumber());
+        $unit = str_replace('кв. ', 'кв.', $account->getUnitLabel());
+        $place = $house === '' ? $unit : sprintf('Буд.%s %s', $house, $unit);
+        $place = mb_strtoupper(mb_substr($place, 0, 1)) . mb_substr($place, 1);
+
+        $text = sprintf('%s: борг %d грн. Просимо сплатити.', $place, (int)round((float)($account->getDebt() ?? 0)));
+
+        return SmsSender::parts($text) === 1 ? $text : null;
     }
 }

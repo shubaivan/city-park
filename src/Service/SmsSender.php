@@ -23,7 +23,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  */
 class SmsSender
 {
-    /** TurboSMS, chosen on price at our volume: ~0.98 грн against AlphaSMS's 1.20. */
+    /** TurboSMS: 1.29 грн a part on 30.09.2026 (1.28 from a 10 000 грн top-up, 1.26 from 50 000). */
+    public const PRICE_PER_PART = 1.29;
+
     private const SEND_URL = 'https://api.turbosms.ua/message/send.json';
     private const BALANCE_URL = 'https://api.turbosms.ua/user/balance.json';
 
@@ -128,6 +130,19 @@ class SmsSender
         // apology it cannot make, because it would not know it had happened.
         if (!PhoneKey::isUkrainian($phone)) {
             return $this->persist($log->markFailed('не український номер — SMS не надсилаємо'));
+        }
+
+        // One part, always. A second part doubles what the run costs, and Иван's call on
+        // 30.09.2026 was that it is never worth it («дві — це занадто жирно»). A text that
+        // does not fit is refused here rather than sent, so a template that grows past 70
+        // characters shows up as rows of failures in the journal — and in a dry run, before
+        // anything is spent — instead of as a doubled bill.
+        if ($log->getParts() > 1) {
+            return $this->persist($log->markFailed(sprintf(
+                'текст на %d SMS — надсилаємо лише одну (%d символів)',
+                $log->getParts(),
+                mb_strlen($text),
+            )));
         }
 
         if ($dryRun) {
