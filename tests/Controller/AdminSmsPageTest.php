@@ -25,6 +25,7 @@ class AdminSmsPageTest extends KernelTestCase
             'entries' => $entries,
             'month' => ['sent' => 1, 'failed' => 1, 'parts' => 1],
             'shown' => 500,
+            'price' => 1.29,
         ]);
     }
 
@@ -45,5 +46,18 @@ class AdminSmsPageTest extends KernelTestCase
         $this->assertStringContainsString('✅ надіслано', $html);
         $this->assertStringContainsString('сьогодні вже надсилали на цей номер', $html);
         $this->assertStringContainsString('debt:notify-sms', $html);
+    }
+
+    /** An SMS costs the ОСББ money, so the page says how much — per message and for the month. */
+    public function testItShowsWhatTheSmsCost(): void
+    {
+        $sent = (new SmsLog('380671234567', 'Буд.27 кв.63: борг 5430 грн. Просимо сплатити.', SmsLog::PURPOSE_DEBT))
+            ->markSent('abc');
+
+        $html = $this->render([$sent]);
+
+        $this->assertStringContainsString('1.29 грн за одну SMS', $html);
+        $this->assertStringContainsString('× 1.29 грн', $html);
+        $this->assertStringContainsString('· 1.29 грн', $html);
     }
 }
