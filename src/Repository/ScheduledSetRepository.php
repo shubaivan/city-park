@@ -266,6 +266,10 @@ class ScheduledSetRepository extends ServiceEntityRepository
                 a.is_active,
                 tu.phone_number,
                 tu.username,
+                tu.id AS user_id,
+                tu.full_name,
+                tu.first_name,
+                tu.last_name,
                 b.pavilion,
                 date_format(b.scheduled_at, \'%Y-%m-%d %H:%i:%s\') as scheduled_at
                 FROM App\Entity\ScheduledSet b

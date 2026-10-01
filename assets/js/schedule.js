@@ -59,6 +59,45 @@ common_defs.push({
         }
     });
 
+    // A phone number alone does not say who booked; the name leads, and it is a link to
+    // the resident's card, which is where every next question about them is answered.
+    // Rows carry only what the query selected, so the name is built here the way
+    // TelegramUser::getDisplayName() builds it.
+    function esc(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+    }
+
+    common_defs.push({
+        "targets": 6,
+        "render": function (data, type, row, meta) {
+            if (type !== 'display') {
+                return data;
+            }
+            var phone = data ? esc(data) : '<span class="text-muted">—</span>';
+            if (!row.user_id) {
+                return phone;
+            }
+            var name = row.full_name
+                || [row.first_name, row.last_name].filter(Boolean).join(' ')
+                || 'без імені';
+
+            return '<a href="/admin/users/' + parseInt(row.user_id, 10) + '">' + esc(name) + '</a>'
+                + '<br><small class="text-muted">' + phone + '</small>';
+        }
+    });
+
+    common_defs.push({
+        "targets": 7,
+        "render": function (data, type, row, meta) {
+            if (type !== 'display' || !data) {
+                return data || '';
+            }
+            return '<a href="https://t.me/' + encodeURIComponent(data) + '" target="_blank" rel="noopener">@' + esc(data) + '</a>';
+        }
+    });
+
     // vote_blocks (last column) — hidden; drawn next to the status above.
     common_defs.push({
         "targets": 11,
