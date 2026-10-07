@@ -36,6 +36,7 @@ class AdminSmsPageTest extends KernelTestCase
             'preview' => $preview,
             'min_debt' => 5000.0,
             'balance' => $balance,
+            'turbosms_id' => '8980641',
         ]);
     }
 
@@ -127,6 +128,22 @@ class AdminSmsPageTest extends KernelTestCase
         $unknown = $this->render([], null, 'ROLE_ADMIN', null);
         $this->assertStringContainsString('невідомий', $unknown);
         $this->assertStringNotContainsString('0.00 грн</b>', $unknown);
+    }
+
+    /**
+     * How to top it up is on the page, with the ID a terminal asks for — the ОСББ pays
+     * without going through Иван — and it opens by itself when the balance is low.
+     */
+    public function testItSaysHowToTopUp(): void
+    {
+        $html = $this->render([], null, 'ROLE_ADMIN', 412.5);
+        $this->assertStringContainsString('Як поповнити рахунок TurboSMS', $html);
+        $this->assertStringContainsString('8980641', $html);
+        $this->assertStringContainsString('EasyPay', $html);
+        $this->assertStringNotContainsString('<details class="mt-2" open', $html);
+
+        $low = $this->render([], null, 'ROLE_ADMIN', 9.13);
+        $this->assertStringContainsString('<details class="mt-2" open', $low);
     }
 
     /** Сергій reads the journal and never sees the button. */

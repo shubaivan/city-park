@@ -27,6 +27,13 @@ class SmsSender
     /** TurboSMS: 1.29 грн a part on 30.09.2026 (1.28 from a 10 000 грн top-up, 1.26 from 50 000). */
     public const PRICE_PER_PART = 1.29;
 
+    /**
+     * The ОСББ's account number at TurboSMS — what a terminal asks for to top it up.
+     * Not a secret: it lets anybody *add* money, nothing else, and it is exactly what the
+     * person paying has to type (/admin/sms prints it under the balance).
+     */
+    public const ACCOUNT_ID = '8980641';
+
     private const SEND_URL = 'https://api.turbosms.ua/message/send.json';
     private const BALANCE_URL = 'https://api.turbosms.ua/user/balance.json';
 

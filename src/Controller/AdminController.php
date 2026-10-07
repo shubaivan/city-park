@@ -152,6 +152,7 @@ class AdminController extends AbstractController
             'preview' => $preview,
             'min_debt' => DebtSmsCampaign::DEFAULT_MIN_DEBT,
             'balance' => $balance,
+            'turbosms_id' => SmsSender::ACCOUNT_ID,
         ]);
     }
 
