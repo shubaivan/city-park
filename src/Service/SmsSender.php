@@ -204,6 +204,23 @@ class SmsSender
     }
 
     /**
+     * A journal row for a message that was deliberately not sent — never reaches TurboSMS.
+     *
+     * For a run stopped half-way (the balance ran out): the households after that point
+     * get a row saying why, so «чому мені не прийшло» is answered by the journal rather
+     * than by a gap in it.
+     */
+    public function refuse(string $phone, string $text, string $purpose, ?Account $account, ?string $sentBy, string $reason): SmsLog
+    {
+        $log = (new SmsLog($phone, $text, $purpose))
+            ->setParts(self::parts($text))
+            ->setSentBy($sentBy)
+            ->setRecipient($account, null);
+
+        return $this->persist($log->markFailed($reason));
+    }
+
+    /**
      * The account balance, or null when it cannot be asked.
      *
      * Null is not zero and must not be rendered as «0 грн»: one means «we have no money»,

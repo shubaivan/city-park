@@ -13,19 +13,29 @@ use Twig\Environment;
  */
 class AdminSmsPageTest extends KernelTestCase
 {
-    private function render(array $entries): string
+    private function render(array $entries, ?array $preview = null, string $role = 'ROLE_ADMIN', ?float $balance = 412.5): string
     {
         self::bootKernel();
 
         self::getContainer()->get('security.token_storage')->setToken(
-            new UsernamePasswordToken(new InMemoryUser('alina', null, ['ROLE_ADMIN']), 'main', ['ROLE_ADMIN']),
+            new UsernamePasswordToken(new InMemoryUser('alina', null, [$role]), 'main', [$role]),
         );
+
+        // csrf_token() on the send form needs a session to keep the token in.
+        $request = new \Symfony\Component\HttpFoundation\Request();
+        $request->setSession(new \Symfony\Component\HttpFoundation\Session\Session(
+            new \Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage(),
+        ));
+        self::getContainer()->get('request_stack')->push($request);
 
         return self::getContainer()->get(Environment::class)->render('admin/sms.html.twig', [
             'entries' => $entries,
             'month' => ['sent' => 1, 'failed' => 1, 'parts' => 1],
             'shown' => 500,
             'price' => 1.29,
+            'preview' => $preview,
+            'min_debt' => 5000.0,
+            'balance' => $balance,
         ]);
     }
 
@@ -77,5 +87,75 @@ class AdminSmsPageTest extends KernelTestCase
         $this->assertStringContainsString('1.29 грн за одну SMS', $html);
         $this->assertStringContainsString('× 1.29 грн', $html);
         $this->assertStringContainsString('· 1.29 грн', $html);
+    }
+
+    /** The first tap only counts: no send form until the list and the price are on screen. */
+    public function testTheFirstStepOnlyOffersToCount(): void
+    {
+        $html = $this->render([]);
+
+        $this->assertStringContainsString('Порахувати, скільки це коштує', $html);
+        $this->assertStringNotContainsString('/admin/sms/debt', $html);
+    }
+
+    /** The second step says on the button how many SMS go and what they cost. */
+    public function testThePreviewNamesTheCountAndThePriceOnTheButton(): void
+    {
+        $preview = $this->preview(3, balance: 100.0);
+
+        $html = $this->render([], $preview);
+
+        $this->assertStringContainsString('Отримають: <b>3</b> адреси', $html);
+        $this->assertStringContainsString('Надіслати 3 SMS · 3.87 грн', $html);
+        $this->assertStringContainsString('name="expected" value="3"', $html);
+        $this->assertStringContainsString('буд. 27, кв. 63', $html);
+    }
+
+    /** Not enough money on TurboSMS: say so instead of offering a send that half-fails. */
+    public function testALowBalanceHidesTheSendButton(): void
+    {
+        $html = $this->render([], $this->preview(3, balance: 1.0));
+
+        $this->assertStringNotContainsString('/admin/sms/debt', $html);
+        $this->assertStringContainsString('Поповніть рахунок', $html);
+    }
+
+    /** What is left on TurboSMS is on the page for everybody, and «unknown» is never «0». */
+    public function testItShowsTheTurboSmsBalance(): void
+    {
+        $this->assertStringContainsString('Баланс TurboSMS:', $html = $this->render([], null, 'ROLE_COMPLAINTS'));
+        $this->assertStringContainsString('412.50 грн', $html);
+        $this->assertStringContainsString('≈ 319 SMS', $html);
+
+        $unknown = $this->render([], null, 'ROLE_ADMIN', null);
+        $this->assertStringContainsString('невідомий', $unknown);
+        $this->assertStringNotContainsString('0.00 грн</b>', $unknown);
+    }
+
+    /** Сергій reads the journal and never sees the button. */
+    public function testTheComplaintsRoleDoesNotSeeTheButton(): void
+    {
+        $html = $this->render([], null, 'ROLE_COMPLAINTS');
+
+        $this->assertStringNotContainsString('Порахувати', $html);
+    }
+
+    private function preview(int $n, ?float $balance): array
+    {
+        $recipients = [];
+        for ($i = 0; $i < $n; $i++) {
+            $account = (new \App\Entity\Account())->setDebt('5430.00')->setHouseNumber('27')->setApartmentNumber('63')->setAccountNumber('520063');
+            $recipients[] = ['account' => $account, 'phone' => '380671234567', 'text' => 'x'];
+        }
+
+        return [
+            'recipients' => $recipients,
+            'tooLong' => [],
+            'noPhone' => 5,
+            'skippedTelegram' => 0,
+            'cost' => $n * 1.29,
+            'balance' => $balance,
+            'configured' => true,
+        ];
     }
 }
