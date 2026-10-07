@@ -3,11 +3,8 @@
 namespace App\Command;
 
 use App\Entity\Account;
-use App\Entity\SmsLog;
-use App\Repository\AccountRepository;
-use App\Repository\ExpectedResidentRepository;
+use App\Service\DebtSmsCampaign;
 use App\Service\SmsSender;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -34,14 +31,9 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 #[AsCommand(name: 'debt:notify-sms', description: 'SMS to debtors above a threshold')]
 class DebtNotifySmsCommand extends Command
 {
-    /** Иван's and the ОСББ's figure: above this a debt is worth paying to chase. */
-    private const DEFAULT_MIN_DEBT = 5000.0;
-
     public function __construct(
-        private AccountRepository $accounts,
-        private ExpectedResidentRepository $expected,
+        private DebtSmsCampaign $campaign,
         private SmsSender $sms,
-        private EntityManagerInterface $em,
     ) {
         parent::__construct();
     }
@@ -49,7 +41,7 @@ class DebtNotifySmsCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('min', null, InputOption::VALUE_REQUIRED, 'Мінімальний борг, грн', (string)self::DEFAULT_MIN_DEBT)
+            ->addOption('min', null, InputOption::VALUE_REQUIRED, 'Мінімальний борг, грн', (string)DebtSmsCampaign::DEFAULT_MIN_DEBT)
             ->addOption('audience', null, InputOption::VALUE_REQUIRED, 'all | unreachable', 'all')
             ->addOption('price', null, InputOption::VALUE_REQUIRED, 'Ціна за одну SMS, грн', (string)SmsSender::PRICE_PER_PART)
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Порахувати і показати, нічого не надсилати');
@@ -86,61 +78,35 @@ class DebtNotifySmsCommand extends Command
             $dryRun ? ' · DRY RUN' : '',
         ));
 
-        $sent = $skippedTelegram = $noPhone = $failed = 0;
-        $parts = 0;
+        $plan = $this->campaign->plan($min, $audience);
 
-        foreach ($this->accounts->findAll() as $account) {
-            if (!$account instanceof Account || (float)($account->getDebt() ?? 0) < $min) {
-                continue;
-            }
+        foreach ($plan['tooLong'] as $account) {
+            $io->writeln(sprintf('  <fg=red>✗</> %s — адреса задовга для однієї SMS', $account->getPlaceLabel()));
+        }
 
-            $reachable = $this->reachableInTelegram($account);
+        $run = $this->campaign->send($plan, 'debt:notify-sms', $dryRun);
 
-            if ($audience === 'unreachable' && $reachable) {
-                $skippedTelegram++;
-                continue;
-            }
-
-            $phone = $this->phoneFor($account);
-            if ($phone === null) {
-                $noPhone++;
-                continue;
-            }
-
-            $text = self::text($account);
-            if ($text === null) {
-                $failed++;
-                $io->writeln(sprintf('  <fg=red>✗</> %s — адреса задовга для однієї SMS', $account->getPlaceLabel()));
-                continue;
-            }
-
-            $log = $this->sms->send(
-                $phone,
-                $text,
-                SmsLog::PURPOSE_DEBT,
-                $account,
-                null,
-                'debt:notify-sms',
-                $dryRun,
-            );
-
-            $parts += $log->getParts();
-
+        foreach ($run['logs'] as $log) {
+            $account = $log->getAccount();
             if ($log->isFailed()) {
-                $failed++;
-                $io->writeln(sprintf('  <fg=red>✗</> %s — %s', $account->getPlaceLabel(), $log->getError()));
+                $io->writeln(sprintf('  <fg=red>✗</> %s — %s', $account?->getPlaceLabel(), $log->getError()));
                 continue;
             }
 
-            $sent++;
             $io->writeln(sprintf(
                 '  <fg=green>%s</> %s · %s грн · %d SMS',
                 $dryRun ? '·' : '✓',
-                $account->getPlaceLabel(),
-                number_format((float)$account->getDebt(), 2, '.', ' '),
+                $account?->getPlaceLabel(),
+                number_format((float)$account?->getDebt(), 2, '.', ' '),
                 $log->getParts(),
             ));
         }
+
+        $sent = $run['sent'];
+        $parts = $run['parts'];
+        $failed = $run['failed'] + count($plan['tooLong']);
+        $skippedTelegram = $plan['skippedTelegram'];
+        $noPhone = $plan['noPhone'];
 
         $io->newLine();
         $io->writeln(sprintf(
@@ -166,42 +132,6 @@ class DebtNotifySmsCommand extends Command
         }
 
         return Command::SUCCESS;
-    }
-
-    /** Somebody on this account whom the bot can write to for free. */
-    private function reachableInTelegram(Account $account): bool
-    {
-        foreach ($account->getUsers() as $user) {
-            if ($user->getChatId()) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * A number for this flat, from whichever half of the register has one.
-     *
-     * A linked resident's own number first — it was confirmed by them sharing it with the
-     * bot — and otherwise whatever the ОСББ wrote down against the object, which is the
-     * only thing there is for the ~790 objects with nobody in the bot.
-     */
-    private function phoneFor(Account $account): ?string
-    {
-        foreach ($account->getUsers() as $user) {
-            if ($user->getPhoneNumber()) {
-                return $user->getPhoneNumber();
-            }
-        }
-
-        foreach ($this->expected->forAccount($account) as $expected) {
-            if ($expected->getPhone() !== '') {
-                return $expected->getPhone();
-            }
-        }
-
-        return null;
     }
 
     /**

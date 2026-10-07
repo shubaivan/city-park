@@ -99,6 +99,9 @@ class ComplaintsRoleTest extends WebTestCase
             // debts and its bookings, and nobody looks at it again when it happens.
             'expecting a resident on an object' => ['POST', '/admin/objects/expected/add'],
             'withdrawing an expected resident' => ['POST', '/admin/objects/expected/remove'],
+            // He reads the SMS journal; sending costs the ОСББ money and is Людмила's and
+            // the accountant's call (07.10.2026).
+            'sending the debt SMS' => ['POST', '/admin/sms/debt'],
         ];
     }
 

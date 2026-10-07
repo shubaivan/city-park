@@ -171,6 +171,10 @@
                     <a class="nav-link px-2 {{ section starts with 'app_admin_debt' ? 'active font-weight-bold' }}"
                        href="{{ path('app_admin_debt') }}">💰 <span class="d-none d-sm-inline">Борги</span></a>
                 </li>{% endif %}
+                <li class="nav-item">
+                    <a class="nav-link px-2 {{ section starts with 'app_admin_sms' ? 'active font-weight-bold' }}"
+                       href="{{ path('app_admin_sms') }}">✉️ <span class="d-none d-sm-inline">SMS</span></a>
+                </li>
             </ul>
 
             <span class="navbar-text text-white-50 small mr-2 d-none d-md-inline">{{ app.user.userIdentifier }}</span>

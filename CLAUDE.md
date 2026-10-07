@@ -1427,6 +1427,20 @@ through TurboSMS, **1.29 грн a part** (30.09.2026; 1.28 from a 10 000 грн 
   message. It exists so that the minute a token is pasted in there is exactly one command
   between that and knowing — rather than finding out during a run against 77 debtors.
 
+**The panel has the button** (`/admin/sms`, ROLE_ADMIN; Людмила, 07.10.2026 — «кнопка, щоб
+з телефона відправити всім, у кого борг понад 5 тис.»). The page opens on the whole picture
+— debtors above the threshold, how many have a number, the cost, the TurboSMS balance — and
+one «📨 Надіслати N SMS · X грн» that sends exactly that list after a confirm (Иван's shape:
+«админ зашёл — ему показало … и кнопка»); drawing it sends and writes nothing. The POST re-plans and refuses if the count moved since the screen was
+drawn (a debt file uploaded in between turns «3 SMS» into thirty). Both the button and
+`debt:notify-sms` go through `DebtSmsCampaign` — one definition of «a debtor with a number».
+**Money:** the TurboSMS balance is printed on the page for everyone; the send button is not
+drawn when the balance is short **or unknown**, the POST checks again at the tap, and a run
+that hits an empty balance mid-way stops and journals the rest as «закінчились кошти»
+(`DebtSmsCampaign::OUT_OF_MONEY`) rather than firing fifty refusals. Pressing again after a
+top-up is safe — the same-day guard skips everyone already reached. Journal rows from the
+button read «панель: <login>».
+
 **The real blocker is not any of this: it is the register of owners' phones**, which only
 the ОСББ has. Until it arrives, `debt:notify-sms` reports how many objects with a debt
 have no number at all, which is the argument for asking again.
