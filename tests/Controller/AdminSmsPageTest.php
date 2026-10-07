@@ -89,23 +89,20 @@ class AdminSmsPageTest extends KernelTestCase
         $this->assertStringContainsString('· 1.29 грн', $html);
     }
 
-    /** The first tap only counts: no send form until the list and the price are on screen. */
-    public function testTheFirstStepOnlyOffersToCount(): void
-    {
-        $html = $this->render([]);
-
-        $this->assertStringContainsString('Порахувати, скільки це коштує', $html);
-        $this->assertStringNotContainsString('/admin/sms/debt', $html);
-    }
-
-    /** The second step says on the button how many SMS go and what they cost. */
-    public function testThePreviewNamesTheCountAndThePriceOnTheButton(): void
+    /**
+     * On arrival: debtors, how many have a number, what it costs, what is on the account,
+     * and the button saying how many and for how much.
+     */
+    public function testTheSummaryAndTheButtonAreThereOnArrival(): void
     {
         $preview = $this->preview(3, balance: 100.0);
 
         $html = $this->render([], $preview);
 
-        $this->assertStringContainsString('Отримають: <b>3</b> адреси', $html);
+        $this->assertMatchesRegularExpression('/Боржників понад 5 000 грн<\/td><td[^>]*><b>8<\/b>/u', $html);
+        $this->assertMatchesRegularExpression('/З них відомий номер<\/td><td[^>]*><b>3<\/b>/u', $html);
+        $this->assertStringContainsString('<b>3.87 грн</b>', $html);
+        $this->assertStringContainsString('<b>100.00 грн</b>', $html);
         $this->assertStringContainsString('Надіслати 3 SMS · 3.87 грн', $html);
         $this->assertStringContainsString('name="expected" value="3"', $html);
         $this->assertStringContainsString('буд. 27, кв. 63', $html);
@@ -117,7 +114,7 @@ class AdminSmsPageTest extends KernelTestCase
         $html = $this->render([], $this->preview(3, balance: 1.0));
 
         $this->assertStringNotContainsString('/admin/sms/debt', $html);
-        $this->assertStringContainsString('Поповніть рахунок', $html);
+        $this->assertStringContainsString('Бракує 2.87 грн', $html);
     }
 
     /** What is left on TurboSMS is on the page for everybody, and «unknown» is never «0». */
@@ -137,7 +134,7 @@ class AdminSmsPageTest extends KernelTestCase
     {
         $html = $this->render([], null, 'ROLE_COMPLAINTS');
 
-        $this->assertStringNotContainsString('Порахувати', $html);
+        $this->assertStringNotContainsString('debt-sms', $html);
     }
 
     private function preview(int $n, ?float $balance): array
@@ -156,6 +153,7 @@ class AdminSmsPageTest extends KernelTestCase
             'cost' => $n * 1.29,
             'balance' => $balance,
             'configured' => true,
+            'debtors' => $n + 5,
         ];
     }
 }

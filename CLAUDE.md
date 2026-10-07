@@ -1428,9 +1428,10 @@ through TurboSMS, **1.29 грн a part** (30.09.2026; 1.28 from a 10 000 грн 
   between that and knowing — rather than finding out during a run against 77 debtors.
 
 **The panel has the button** (`/admin/sms`, ROLE_ADMIN; Людмила, 07.10.2026 — «кнопка, щоб
-з телефона відправити всім, у кого борг понад 5 тис.»). Two taps, on purpose: «🔎 Порахувати»
-lists who and prices it and sends nothing, writes nothing; «📨 Надіслати N SMS · X грн» sends
-exactly that list. The POST re-plans and refuses if the count moved since the screen was
+з телефона відправити всім, у кого борг понад 5 тис.»). The page opens on the whole picture
+— debtors above the threshold, how many have a number, the cost, the TurboSMS balance — and
+one «📨 Надіслати N SMS · X грн» that sends exactly that list after a confirm (Иван's shape:
+«админ зашёл — ему показало … и кнопка»); drawing it sends and writes nothing. The POST re-plans and refuses if the count moved since the screen was
 drawn (a debt file uploaded in between turns «3 SMS» into thirty). Both the button and
 `debt:notify-sms` go through `DebtSmsCampaign` — one definition of «a debtor with a number».
 **Money:** the TurboSMS balance is printed on the page for everyone; the send button is not

@@ -43,75 +43,72 @@
             </div>
         </div>
 
-        {% if is_granted('ROLE_ADMIN') %}
+        {% if preview is not null %}
             {#
-                Людмила's button (07.10.2026), in two taps on purpose: the first only counts —
-                who, how many SMS, what it costs — and sends nothing; the second sends exactly
-                that list, and says on itself how many and for how much.
+                Людмила's button (07.10.2026). The summary is drawn on arrival — debtors,
+                numbers, cost, balance — and the one button sends exactly that list. Nothing
+                on this card spends anything until it is pressed and confirmed.
             #}
+            {% set n = preview.recipients|length %}
+            {% set short = preview.balance is not null and preview.balance < preview.cost %}
             <div class="card mb-3 border-primary" id="debt-sms">
                 <div class="card-body py-2 px-3">
-                    <h6 class="mb-1">💸 SMS боржникам понад {{ min_debt|number_format(0, '.', ' ') }} грн</h6>
-                    <p class="small text-muted mb-2">
-                        Текст: «Буд.27 кв.63: борг 5430 грн. Просимо сплатити.» — одна SMS на адресу,
-                        на номер мешканця з бота або записаний в «Очікуємо в боті».
-                        Повторно в той самий день на той самий номер не піде.
-                    </p>
+                    <h6 class="mb-2">💸 SMS боржникам понад {{ min_debt|number_format(0, '.', ' ') }} грн</h6>
 
-                    {% if preview is null %}
-                        <a href="{{ path('app_admin_sms', {preview: 1, '_fragment': 'debt-sms'}) }}"
-                           class="btn btn-outline-primary btn-block-xs">🔎 Порахувати, скільки це коштує</a>
-                        <div class="small text-muted mt-1">Нічого не надсилає — лише показує список і ціну.</div>
-                    {% else %}
-                        {% set n = preview.recipients|length %}
-                        <div class="mb-2">
-                            Отримають: <b>{{ n }}</b> {{ n == 1 ? 'адреса' : (n % 10 in [2,3,4] and n % 100 not in [12,13,14] ? 'адреси' : 'адрес') }}
-                            · <b>{{ n }} SMS × {{ price|number_format(2, '.', ' ') }} = {{ preview.cost|number_format(2, '.', ' ') }} грн</b>
-                            <div class="small text-muted">
-                                Баланс TurboSMS: {{ preview.balance is null ? 'невідомий' : preview.balance|number_format(2, '.', ' ') ~ ' грн' }}
-                                {% if preview.noPhone > 0 %}· без жодного номера: {{ preview.noPhone }} (їм SMS не піде){% endif %}
-                                {% if preview.tooLong|length > 0 %}· не влазить в одну SMS: {{ preview.tooLong|length }}{% endif %}
-                            </div>
-                        </div>
-
-                        {% if n > 0 %}
-                            <details class="mb-2 small">
-                                <summary>Кому саме ({{ n }})</summary>
-                                <ul class="list-unstyled mb-0 mt-1">
-                                    {% for r in preview.recipients %}
-                                        <li class="py-1 border-bottom">
-                                            {{ r.account.placeLabel }} · <b>{{ r.account.debt|number_format(2, '.', ' ') }} грн</b>
-                                            <div class="text-muted">{{ r.phone }}</div>
-                                        </li>
-                                    {% endfor %}
-                                </ul>
-                            </details>
+                    <table class="table table-sm mb-2" style="max-width: 420px;">
+                        <tr><td>Боржників понад {{ min_debt|number_format(0, '.', ' ') }} грн</td><td class="text-right"><b>{{ preview.debtors }}</b></td></tr>
+                        <tr><td>З них відомий номер</td><td class="text-right"><b>{{ n }}</b></td></tr>
+                        {% if preview.noPhone > 0 %}
+                            <tr class="text-muted"><td>Без номера (SMS не піде)</td><td class="text-right">{{ preview.noPhone }}</td></tr>
                         {% endif %}
-
-                        {% if not preview.configured %}
-                            <div class="alert alert-warning py-2 px-3 small mb-0">TurboSMS не налаштовано на сервері — надіслати нема чим.</div>
-                        {% elseif n == 0 %}
-                            <div class="alert alert-light py-2 px-3 small mb-0">Нікому надсилати.</div>
-                        {% elseif preview.balance is null %}
-                            <div class="alert alert-warning py-2 px-3 small mb-0">
-                                TurboSMS не відповів, скільки на рахунку. Без цього не надсилаємо — спробуйте за кілька хвилин.
-                            </div>
-                        {% elseif preview.balance < preview.cost %}
-                            <div class="alert alert-warning py-2 px-3 small mb-0">
-                                На балансі TurboSMS {{ preview.balance|number_format(2, '.', ' ') }} грн, а розсилка коштує
-                                {{ preview.cost|number_format(2, '.', ' ') }} грн — бракує {{ (preview.cost - preview.balance)|number_format(2, '.', ' ') }} грн.
-                                Поповніть рахунок на turbosms.ua і натисніть «Порахувати» ще раз.
-                            </div>
-                        {% else %}
-                            <form method="post" action="{{ path('app_admin_sms_debt') }}"
-                                  onsubmit="if (!confirm('Надіслати {{ n }} SMS за {{ preview.cost|number_format(2, '.', ' ') }} грн?')) return false; this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Надсилаю…';">
-                                <input type="hidden" name="_token" value="{{ csrf_token('sms-debt') }}">
-                                <input type="hidden" name="expected" value="{{ n }}">
-                                <button type="submit" class="btn btn-danger btn-block-xs">📨 Надіслати {{ n }} SMS · {{ preview.cost|number_format(2, '.', ' ') }} грн</button>
-                                <a href="{{ path('app_admin_sms') }}" class="btn btn-link btn-sm">Скасувати</a>
-                            </form>
+                        {% if preview.tooLong|length > 0 %}
+                            <tr class="text-muted"><td>Адреса не влазить в одну SMS</td><td class="text-right">{{ preview.tooLong|length }}</td></tr>
                         {% endif %}
+                        <tr><td>Вартість: {{ n }} SMS × {{ price|number_format(2, '.', ' ') }} грн</td><td class="text-right"><b>{{ preview.cost|number_format(2, '.', ' ') }} грн</b></td></tr>
+                        <tr class="{{ short ? 'table-warning' }}"><td>На рахунку TurboSMS</td><td class="text-right"><b>{{ preview.balance is null ? 'невідомо' : preview.balance|number_format(2, '.', ' ') ~ ' грн' }}</b></td></tr>
+                    </table>
+
+                    {% if n > 0 %}
+                        <details class="mb-2 small">
+                            <summary>Кому саме ({{ n }})</summary>
+                            <ul class="list-unstyled mb-0 mt-1">
+                                {% for r in preview.recipients %}
+                                    <li class="py-1 border-bottom">
+                                        {{ r.account.placeLabel }} · <b>{{ r.account.debt|number_format(2, '.', ' ') }} грн</b>
+                                        <div class="text-muted">{{ r.phone }}</div>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </details>
                     {% endif %}
+
+                    {% if not preview.configured %}
+                        <div class="alert alert-warning py-2 px-3 small mb-0">TurboSMS не налаштовано на сервері — надіслати нема чим.</div>
+                    {% elseif n == 0 %}
+                        <div class="alert alert-light py-2 px-3 small mb-0">Нікому надсилати.</div>
+                    {% elseif preview.balance is null %}
+                        <div class="alert alert-warning py-2 px-3 small mb-0">
+                            TurboSMS не відповів, скільки на рахунку. Без цього не надсилаємо — оновіть сторінку за кілька хвилин.
+                        </div>
+                    {% elseif short %}
+                        <div class="alert alert-warning py-2 px-3 small mb-0">
+                            Бракує {{ (preview.cost - preview.balance)|number_format(2, '.', ' ') }} грн.
+                            Поповніть рахунок на turbosms.ua і оновіть сторінку.
+                        </div>
+                    {% else %}
+                        <form method="post" action="{{ path('app_admin_sms_debt') }}"
+                              onsubmit="if (!confirm('Надіслати {{ n }} SMS за {{ preview.cost|number_format(2, '.', ' ') }} грн?')) return false; this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Надсилаю…';">
+                            <input type="hidden" name="_token" value="{{ csrf_token('sms-debt') }}">
+                            <input type="hidden" name="expected" value="{{ n }}">
+                            <button type="submit" class="btn btn-danger btn-block-xs">📨 Надіслати {{ n }} SMS · {{ preview.cost|number_format(2, '.', ' ') }} грн</button>
+                        </form>
+                    {% endif %}
+
+                    <div class="small text-muted mt-2">
+                        Текст: «Буд.27 кв.63: борг 5430 грн. Просимо сплатити.» — одна SMS на адресу, на номер мешканця
+                        з бота або записаний в «Очікуємо в боті». Той самий номер двічі за день не отримає.
+                        Надіслані з'являться в журналі нижче — кому, коли і хто надіслав.
+                    </div>
                 </div>
             </div>
         {% endif %}

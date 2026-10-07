@@ -120,24 +120,28 @@ class AdminController extends AbstractController
      * only — Иван's call (30.09.2026), same as the sign-in and scan logs.
      */
     #[Route('/admin/sms', name: 'app_admin_sms', methods: [Request::METHOD_GET])]
-    public function sms(Request $request, SmsLogRepository $sms, DebtSmsCampaign $campaign, SmsSender $sender): Response
+    public function sms(SmsLogRepository $sms, DebtSmsCampaign $campaign, SmsSender $sender): Response
     {
         $monthStart = new \DateTime('first day of this month 00:00', new \DateTimeZone('Europe/Kyiv'));
 
-        // The «скільки це коштує» step: who would get it and what it costs, computed and
-        // shown, nothing sent and nothing written to the journal. Only for whoever may
-        // press the second button — the journal itself stays readable by everybody.
         // What is left on TurboSMS, on every visit and for everybody who opens the page —
         // «скільки на рахунку» is asked before any send, and the answer was only on
         // turbosms.ua behind a login nobody but Иван has. Null means «unknown», not zero.
         $balance = $sender->balance();
 
+        // The picture as it stands, drawn on every visit (Иван, 07.10.2026: «админ зашёл —
+        // ему показало»): how many owe above the threshold, how many of them have a number,
+        // what sending costs, what is on the account — and the button. Computing it sends
+        // nothing and writes nothing. Only for whoever may press the button; the journal
+        // and the balance stay readable by everybody.
         $preview = null;
-        if ($request->query->getBoolean('preview') && $this->isGranted('ROLE_ADMIN')) {
+        if ($this->isGranted('ROLE_ADMIN')) {
             $preview = $campaign->plan();
             $preview['cost'] = count($preview['recipients']) * SmsSender::PRICE_PER_PART;
             $preview['balance'] = $balance;
             $preview['configured'] = $sender->isConfigured();
+            $preview['debtors'] = count($preview['recipients']) + $preview['noPhone']
+                + count($preview['tooLong']) + $preview['skippedTelegram'];
         }
 
         return $this->render('admin/sms.html.twig', [
@@ -152,7 +156,7 @@ class AdminController extends AbstractController
     }
 
     /**
-     * The «відправити» step behind the preview — Людмила's button (07.10.2026).
+     * The «відправити» button under the summary — Людмила's button (07.10.2026).
      *
      * The list is computed again here rather than trusted from the form, and if it no
      * longer has as many people as the screen she tapped on said, nothing is sent: a debt
@@ -163,7 +167,7 @@ class AdminController extends AbstractController
     public function smsDebt(Request $request, DebtSmsCampaign $campaign, SmsSender $sender): Response
     {
         if (!$this->isCsrfTokenValid('sms-debt', (string)$request->request->get('_token'))) {
-            $this->addFlash('error', 'Сторінка застаріла — натисніть «Порахувати» ще раз.');
+            $this->addFlash('error', 'Сторінка застаріла — оновіть її і натисніть ще раз.');
 
             return $this->redirectToRoute('app_admin_sms');
         }
@@ -177,10 +181,10 @@ class AdminController extends AbstractController
                 $count,
             ));
 
-            return $this->redirectToRoute('app_admin_sms', ['preview' => 1, '_fragment' => 'debt-sms']);
+            return $this->redirectToRoute('app_admin_sms', ['_fragment' => 'debt-sms']);
         }
 
-        // Asked again at the moment of the tap, not trusted from the preview: the screen
+        // Asked again at the moment of the tap, not trusted from the summary: the screen
         // may have been open for an hour. Unknown is refused as well as short — TurboSMS
         // not answering about the balance is no reason to believe it will answer a send,
         // and fifty failed rows teach nobody anything one sentence would not.
@@ -189,7 +193,7 @@ class AdminController extends AbstractController
         if ($balance === null) {
             $this->addFlash('error', 'TurboSMS зараз не відповідає — не вдалося перевірити баланс. Нічого не надіслано, спробуйте пізніше.');
 
-            return $this->redirectToRoute('app_admin_sms', ['preview' => 1, '_fragment' => 'debt-sms']);
+            return $this->redirectToRoute('app_admin_sms', ['_fragment' => 'debt-sms']);
         }
         if ($balance < $cost) {
             $this->addFlash('error', sprintf(
@@ -198,7 +202,7 @@ class AdminController extends AbstractController
                 number_format($cost, 2, '.', ' '),
             ));
 
-            return $this->redirectToRoute('app_admin_sms', ['preview' => 1, '_fragment' => 'debt-sms']);
+            return $this->redirectToRoute('app_admin_sms', ['_fragment' => 'debt-sms']);
         }
 
         $run = $campaign->send($plan, 'панель: ' . $this->getUser()?->getUserIdentifier());

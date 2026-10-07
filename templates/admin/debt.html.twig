@@ -7,7 +7,7 @@
 
     <div class="container mt-4">
         <h3>Завантаження файлу боржників</h3>
-        <p class="mb-3"><a href="{{ path('app_admin_sms', {preview: 1, '_fragment': 'debt-sms'}) }}"
+        <p class="mb-3"><a href="{{ path('app_admin_sms', {'_fragment': 'debt-sms'}) }}"
               class="btn btn-sm btn-outline-primary">✉️ SMS боржникам понад {{ constant('App\\Service\\DebtSmsCampaign::DEFAULT_MIN_DEBT')|number_format(0, '.', ' ') }} грн →</a></p>
 
         <div class="alert alert-info">
