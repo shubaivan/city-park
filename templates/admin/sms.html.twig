@@ -40,6 +40,30 @@
                 = <b>{{ (month.parts * price)|number_format(2, '.', ' ') }} грн</b>){% if month.failed > 0 %},
                 не надіслано <b>{{ month.failed }}</b>{% endif %}.
                 <div class="text-muted">Ціна TurboSMS — {{ price|number_format(2, '.', ' ') }} грн за одну SMS; невдалі спроби не оплачуються.</div>
+                {#
+                    How to put money on it, so the ОСББ does not need Иван for that (07.10.2026).
+                    Copied from TurboSMS's own top-up page: a terminal takes the account ID with
+                    no login; every other way goes through the cabinet, which is Иван's.
+                #}
+                <details class="mt-2" {{ balance is not null and balance < 20 ? 'open' }}>
+                    <summary>💳 Як поповнити рахунок TurboSMS</summary>
+                    <ol class="pl-3 mb-1 mt-1">
+                        <li class="mb-1">
+                            <b>Самостійно, без входу в кабінет</b> — термінал або застосунок
+                            <b>EasyPay</b> (комісія 1,5%) чи <b>City24</b> (3%): у пошуку знайдіть
+                            «TurboSMS», введіть ID <b style="user-select: all">{{ turbosms_id }}</b>, суму — і оплатіть.
+                            Гроші зараховуються одразу.
+                        </li>
+                        <li class="mb-1">
+                            <b>Безготівково з рахунку ОСББ</b> — тоді TurboSMS надає акт для бухгалтерії.
+                            Рахунок на оплату формується в кабінеті turbosms.ua: напишіть Івану суму.
+                        </li>
+                        <li>
+                            Карткою, через Приват24 або LiqPay (без комісії) — теж лише через кабінет, тобто через Івана.
+                        </li>
+                    </ol>
+                    <div class="text-muted">Після поповнення оновіть цю сторінку — баланс угорі зміниться.</div>
+                </details>
             </div>
         </div>
 
