@@ -83,6 +83,20 @@ class AdminObjectPageTest extends KernelTestCase
     }
 
     /**
+     * The accountant types «098…» — ten digits, no country code. Printed as «+098…» it
+     * looks like a typo and dials nowhere.
+     */
+    public function testANumberTypedWithoutTheCountryCodeIsShownWithIt(): void
+    {
+        $expected = new ExpectedResident($this->account(), '0980447048', 'Кіт Тетяна', 'main_admin');
+
+        $html = $this->render(['expected' => [$expected]]);
+
+        $this->assertStringContainsString('href="tel:+380980447048"', $html);
+        $this->assertStringNotContainsString('+0980447048', $html);
+    }
+
+    /**
      * The card has to say that the pre-registration worked.
      *
      * A row that vanished on being used is indistinguishable from one nobody ever typed,
