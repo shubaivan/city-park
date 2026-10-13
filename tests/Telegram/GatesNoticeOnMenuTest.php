@@ -3,6 +3,7 @@
 namespace App\Tests\Telegram;
 
 use App\Entity\Account;
+use App\Service\OsbbContacts;
 use App\Telegram\Start\Command\StartCommand;
 use PHPUnit\Framework\TestCase;
 
@@ -18,6 +19,15 @@ class GatesNoticeOnMenuTest extends TestCase
 
         self::assertStringContainsString(StartCommand::GATES_NOTICE, $block);
         self::assertStringContainsString('McLaut', $block);
+    }
+
+    /** «Який телефон охорони?» — the most-asked number, so it sits with the others. */
+    public function testLinkedResidentIsGivenTheGuardPhone(): void
+    {
+        $block = $this->chairBlock(new Account());
+
+        self::assertStringContainsString(OsbbContacts::GUARD_LINE, $block);
+        self::assertStringContainsString('href="tel:+380683694758"', $block);
     }
 
     public function testUnlinkedVisitorSeesNothing(): void

@@ -50,6 +50,10 @@ each with one italic line saying what they are for. The two officers get `t.me/+
 because neither has a @username; Сергій and the developer get theirs, and **Сергій's phone
 is deliberately not published**: the officers' numbers are the ОСББ's own published lines,
 his is a private one that would reach 457 people the moment it were printed there.
+Under them, since 13.10.2026, **the guard post** — «💂 Охорона ЖК — +380 68 369 47 58»
+(`OsbbContacts::GUARD_LINE`), the number residents ask for most. It is the post's work
+phone, so it is published like the officers' lines, but as `tel:` only: he is muted in the
+residents' chat by design, and a «написати» link would promise a channel he does not answer.
 The header also names the head of the ОСББ (Людмила Осипенко) with her number and a
 `t.me/+<phone>` link — she has no Telegram @username, the registry field is empty. Shown to
 linked residents only, the same call already made for the accountant's number: an unlinked

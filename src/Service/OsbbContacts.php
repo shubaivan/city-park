@@ -44,6 +44,19 @@ class OsbbContacts
     public const REPAIRS_USERNAME = 'differz';
 
     /**
+     * The guard post («Охорона Ситипарк», telegram_user #485, in the bot since
+     * 16.09.2026). Residents ask for this number more than for any other on the menu —
+     * «хто там ходить по двору», «не можу заїхати». It is the post's work phone, not a person's, so it is published
+     * the way the two officers' lines are. A `tel:` link only: the guard is rung, and he
+     * is muted in the residents' chat by design, so «написати» would promise a channel he
+     * is not meant to answer on.
+     */
+    public const GUARD_PHONE = '+380 68 369 47 58';
+
+    public const GUARD_LINE = '💂 Охорона ЖК — '
+        . '<a href="tel:+380683694758">' . self::GUARD_PHONE . '</a>';
+
+    /**
      * Constants, not method calls, because the FAQ keeps its whole text in a `const` array
      * and PHP constant expressions cannot call anything. Concatenating constants is
      * allowed, so the one definition still lives here and the FAQ still reads it.
@@ -99,6 +112,11 @@ class OsbbContacts
     public static function developer(): string
     {
         return self::DEV_LINE;
+    }
+
+    public static function guard(): string
+    {
+        return self::GUARD_LINE;
     }
 
     public static function repairs(): string
