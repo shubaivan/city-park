@@ -285,6 +285,15 @@ class TelegramUserRepository extends ServiceEntityRepository
             $bindParams['house_filter'] = trim((string)$params['house_filter']);
         }
 
+        // The flat, exactly. «102» in «Адреса» also matches кв. 1020, буд. 19's о/р and
+        // any street with those digits; «Квартира» + a building chip is «хто в буд. 19,
+        // кв. 102» and nothing else. Apartment numbers repeat across the five buildings,
+        // so on its own it answers «хто в кв. 102 у будь-якому будинку».
+        if (!$total && isset($params['flat_filter']) && trim((string)$params['flat_filter']) !== '') {
+            $conditions[] = 'a.apartment_number = :flat_filter';
+            $bindParams['flat_filter'] = trim((string)$params['flat_filter']);
+        }
+
         if (!$total && !empty($params['search_address'])) {
             $conditions[] = '(ILIKE(a.street, :search_address) = TRUE
                 OR ILIKE(a.house_number, :search_address) = TRUE
