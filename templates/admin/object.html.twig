@@ -140,6 +140,8 @@
                                         <div class="small">
                                             {% if o.phoneNumber %}
                                                 {% set digits = o.phoneNumber|replace({'+': '', ' ': '', '-': '', '(': '', ')': ''}) %}
+{# A number typed as «098…» is ten digits with no country code; «+098…» dials nowhere. #}
+{% if digits|length == 10 and digits starts with '0' %}{% set digits = '38' ~ digits %}{% endif %}
                                                 <a href="tel:+{{ digits }}">+{{ digits }}</a>
                                             {% endif %}
                                             {% if o.username %}
@@ -175,6 +177,8 @@
                                     <li class="py-1 d-flex justify-content-between align-items-start">
                                         <span>
                                             {% set digits = e.phone|replace({'+': '', ' ': '', '-': '', '(': '', ')': ''}) %}
+{# A number typed as «098…» is ten digits with no country code; «+098…» dials nowhere. #}
+{% if digits|length == 10 and digits starts with '0' %}{% set digits = '38' ~ digits %}{% endif %}
                                             <a href="tel:+{{ digits }}">+{{ digits }}</a>
                                             {% if e.fullName %}· {{ e.fullName }}{% endif %}
                                             <div class="small text-muted">
