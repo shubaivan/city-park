@@ -254,6 +254,24 @@ class AdminUserSearchTest extends TestCase
      * $total answers "how many rows does this table have at all" — the denominator
      * DataTables prints as «усього в базі N». A filter that moved it would measure nothing.
      */
+    public function testFlatFilterMatchesTheFlatExactly(): void
+    {
+        [$conditions, $params] = TelegramUserRepository::buildDataTablesFilters([
+            'house_filter' => '19',
+            'flat_filter' => ' 102 ',
+        ]);
+
+        $this->assertContains('a.apartment_number = :flat_filter', $conditions);
+        $this->assertContains('a.house_number = :house_filter', $conditions);
+        $this->assertSame('102', $params['flat_filter']);
+
+        // An empty box narrows nothing, and the total is never narrowed.
+        [$empty] = TelegramUserRepository::buildDataTablesFilters(['flat_filter' => ' ']);
+        $this->assertNotContains('a.apartment_number = :flat_filter', $empty);
+        [$total] = TelegramUserRepository::buildDataTablesFilters(['flat_filter' => '102'], null, true);
+        $this->assertNotContains('a.apartment_number = :flat_filter', $total);
+    }
+
     public function testHouseFilterDoesNotChangeTheTotal(): void
     {
         [$conditions] = TelegramUserRepository::buildDataTablesFilters(['house_filter' => '19'], null, true);

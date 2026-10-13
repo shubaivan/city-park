@@ -348,6 +348,8 @@ document.addEventListener("DOMContentLoaded", function () {
         // The building, exactly. Typing «19» into «Адреса» also matches кв. 19, and
         // "хто в 19-му будинку" is one of the questions this table is opened with.
         house: '',
+        // The flat, exactly — «Адреса» is an ILIKE, so «102» there also finds кв. 1020.
+        flat: '',
     };
 
     table = $('#telegramUserTable').DataTable({
@@ -390,6 +392,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 d.role_filter = fieldFilters.role;
                 d.search_address = fieldFilters.address;
                 d.house_filter = fieldFilters.house;
+                d.flat_filter = fieldFilters.flat;
             }
         },
         columns: th_keys,
@@ -441,6 +444,7 @@ document.addEventListener("DOMContentLoaded", function () {
             ],
         },
         { key: 'address',        label: 'Адреса',         placeholder: 'вулиця / буд / кв' },
+        { key: 'flat',           label: 'Квартира',       placeholder: 'точний номер' },
     ];
 
     var debounceTimers = {};
