@@ -87,6 +87,15 @@ class DeepLink
      */
     public const KIND_CARS = 'cars';
 
+    /**
+     * Kinds the click log never records. The two QR kinds are nobody's post — their scans
+     * live in `QrScan`. «🚗 Внести своє авто» under the cars topic is a post, but one that
+     * repeats with every household and only ever opens the reader's own list: Иван looked
+     * at the log the day it shipped, found it full of these, and said they are not worth
+     * keeping (20.10.2026).
+     */
+    public const UNRECORDED = [self::KIND_GUARD, self::KIND_PASS, self::KIND_CARS];
+
     public function __construct(
         private Nutgram $bot,
         private EntityManagerInterface $em,
@@ -159,8 +168,7 @@ class DeepLink
     {
         if ($id <= 0
             || !isset(self::PREFIXES[$kind])
-            || $kind === self::KIND_GUARD
-            || $kind === self::KIND_PASS
+            || in_array($kind, self::UNRECORDED, true)
         ) {
             return;
         }

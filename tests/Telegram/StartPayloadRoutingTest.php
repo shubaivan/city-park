@@ -165,6 +165,12 @@ class StartPayloadRoutingTest extends KernelTestCase
         $this->command(cars: $cars)($this->bot(), 'a-42');
     }
 
+    /** The cars button is followed but not logged — it repeats under every household's post. */
+    public function testACarsLinkIsNotRecordedAsAClick(): void
+    {
+        $this->assertContains(DeepLink::KIND_CARS, DeepLink::UNRECORDED);
+    }
+
     /** A tap is recorded before the card renders — a slow render must not lose the click. */
     public function testTheClickIsRecordedWithTheKindAndTheId(): void
     {

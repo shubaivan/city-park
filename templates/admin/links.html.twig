@@ -160,8 +160,6 @@
                                         <small class="text-muted">{{ target.takenAt|date('d.m.Y') }}</small>
                                     {% elseif row.kind == 'info' %}
                                         <b>{{ target }}</b>
-                                    {% elseif row.kind == 'cars' %}
-                                        <b>Внесли авто: {{ target.placeLabel }}</b>
                                     {% else %}
                                         <b>#{{ row.target_id }}</b>
                                     {% endif %}
