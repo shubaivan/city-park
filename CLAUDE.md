@@ -1186,11 +1186,21 @@ the resident card's «🚗 Авто» shows the flat's cars plus anything that p
 another object («вніс сам(а)» for theirs, a link for the rest), and the object card shows
 its own — one partial, `admin/_car_plates.html.twig`, so the two cannot drift.
 
-**Only the standard shape is accepted** — two letters, four digits, two letters, the
-letters being the twelve plate ones (Иван, 20.10.2026, after the first three real entries).
-The first version took any 4–10 letters and digits, and a list meant to feed a gate is
-worth exactly as much as its worst typo. A foreign or individual plate is refused and the
-prompt names whom to write to; widen `PlateKey::of()` when such cars actually turn up.
+**Any plate a car can actually carry is accepted** — 4–10 Latin letters and digits, at
+least one of each, after folding the twelve Cyrillic twins (and «У» → Y). For one afternoon
+(20.10.2026) only «СА 1234 АВ» with the twelve plate letters passed, and two residents wrote
+the same day that they could not add their car — one of them electric, whose series uses
+Latin letters outside the twelve. A Cyrillic letter with no twin is still refused, never
+dropped, and `PlateKey::problem()` names it in the reply. Every refusal is logged
+(`car plate refused`, photo channel → `photo-upload.log`) with what was typed, because the
+first two complaints arrived with nothing on our side saying what had gone wrong.
+
+**🅿️ Паркомісце is per car, optional and free text** (`CarPlate.parking_spot`): asked straight
+after a number is added with «⏭ Пропустити», and from the car's own card (`car:view:<id>` →
+`car:spot:<id>`, `CarPlateSpot`) for cars added before it existed. Per car because a family
+with two cars often has one on its own space and the other on a rented one; optional because
+plenty of cars here have no space and only pull up by the lift. The guard sees it in his
+verdict, the panel and the CSV carry it.
 
 **The chat hears who joined the list, never what they wrote** (`CarPlateAnnouncer`, topic
 «🚗 Авто мешканців», `RESIDENT_CHAT_TOPIC_CARS`): «Буд. 19, кв. 85 — внесли своє авто…

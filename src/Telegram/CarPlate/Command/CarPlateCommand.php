@@ -25,6 +25,7 @@ class CarPlateCommand
     public const MENU_CALLBACK = 'car:list';
     public const DELETE_PREFIX = 'car:del:';
     public const DELETE_OK_PREFIX = 'car:delok:';
+    public const VIEW_PREFIX = 'car:view:';
 
     public function __construct(
         private CarPlateService $plates,
@@ -45,6 +46,12 @@ class CarPlateCommand
                 parse_mode: ParseMode::HTML,
                 reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
             );
+
+            return;
+        }
+
+        if (str_starts_with($data, self::VIEW_PREFIX)) {
+            $this->view($bot, $account, (int)substr($data, strlen(self::VIEW_PREFIX)));
 
             return;
         }
@@ -73,8 +80,8 @@ class CarPlateCommand
 
         foreach ($plates as $plate) {
             $markup->addRow(InlineKeyboardButton::make(
-                '🗑 ' . $plate->getDisplay(),
-                callback_data: self::DELETE_PREFIX . $plate->getId(),
+                '🚗 ' . $plate->getDisplay() . ($plate->getParkingSpot() !== null ? ' · 🅿️ ' . $plate->getParkingSpot() : ''),
+                callback_data: self::VIEW_PREFIX . $plate->getId(),
             ));
         }
 
@@ -99,7 +106,7 @@ class CarPlateCommand
         return "🚗 <b>Мої авто</b>\n\n"
             . "<b>За бажанням, не обов'язково.</b> Внесіть номери автомобілів вашої квартири — "
             . "так у ЖК складеться перелік авто мешканців, який можна буде використати для "
-            . "доступу на паркінг.\n\n"
+            . "доступу на паркінг. Якщо є паркомісце — його теж можна вказати.\n\n"
             . '<i>Номери бачите ви й ваша родина в боті, охорона та ОСББ. Сусіди їх не бачать.</i>';
     }
 
@@ -114,8 +121,9 @@ class CarPlateCommand
 
         $lines = array_map(
             static fn (CarPlate $p): string => sprintf(
-                '• <b>%s</b>%s',
+                '• <b>%s</b>%s%s',
                 $p->getDisplay(),
+                $p->getParkingSpot() !== null ? ' · 🅿️ ' . self::esc($p->getParkingSpot()) : '',
                 $p->getAddedBy() !== null
                     ? sprintf(' <i>— додав(ла) %s, %s</i>', self::esc($p->getAddedBy()->getDisplayName()), $p->getCreatedAt()->format('d.m'))
                     : '',
@@ -125,9 +133,39 @@ class CarPlateCommand
 
         $tail = count($plates) >= CarPlate::MAX_PER_ACCOUNT
             ? sprintf("\n\n<i>Це максимум — %d номерів на квартиру. Видаліть зайвий, щоб додати інший.</i>", CarPlate::MAX_PER_ACCOUNT)
-            : "\n\n<i>Щоб видалити номер, натисніть на нього нижче.</i>";
+            : "\n\n<i>Щоб вказати паркомісце або видалити номер, натисніть на нього нижче.</i>";
 
         return sprintf("Авто за %s:\n%s", $place, implode("\n", $lines)) . $tail;
+    }
+
+    /** One car: its space, and the two things that can be done to it. */
+    private function view(Nutgram $bot, Account $account, int $id): void
+    {
+        $bot->answerCallbackQuery();
+
+        $plate = $this->plates->own($account, $id);
+
+        if ($plate === null) {
+            $this->list($bot, $account, '⚠️ Цей номер уже видалено.');
+
+            return;
+        }
+
+        $bot->sendMessage(
+            text: sprintf(
+                "🚗 <b>%s</b>\n🅿️ Паркомісце: %s",
+                $plate->getDisplay(),
+                $plate->getParkingSpot() !== null ? '<b>' . self::esc($plate->getParkingSpot()) . '</b>' : '<i>не вказано</i>',
+            ),
+            parse_mode: ParseMode::HTML,
+            reply_markup: InlineKeyboardMarkup::make()
+                ->addRow(InlineKeyboardButton::make(
+                    $plate->getParkingSpot() !== null ? '🅿️ Змінити паркомісце' : '🅿️ Вказати паркомісце',
+                    callback_data: CarPlateSpot::START_PREFIX . $plate->getId(),
+                ))
+                ->addRow(InlineKeyboardButton::make('🗑 Видалити номер', callback_data: self::DELETE_PREFIX . $plate->getId()))
+                ->addRow(InlineKeyboardButton::make('⬅️ До списку', callback_data: self::MENU_CALLBACK)),
+        );
     }
 
     private function askDelete(Nutgram $bot, Account $account, int $id): void

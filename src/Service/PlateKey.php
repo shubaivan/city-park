@@ -10,45 +10,88 @@ namespace App\Service;
  * often mixed inside one number. Compared as typed, the same car is two cars — the base
  * looks full and the guard's lookup finds nothing. So everything is folded into Latin
  * before it is stored or compared, the same job `PhoneKey` does for the four shapes a
- * phone number arrives in.
+ * phone number arrives in. «У» folds to «Y» for the same reason: it is the glyph somebody
+ * reaches for on a Cyrillic keyboard when the plate says Y.
  *
- * **A letter outside those twelve is refused, never dropped.** Stripping whatever is not
- * A–Z would turn «СЖ 1234» into «C1234» — a different plate, and a confident wrong match.
+ * **Any Latin letter and any length from 4 to 10 is accepted** (20.10.2026). For a few
+ * hours only the standard «СА 1234 АВ» shape with the twelve plate letters passed, and two
+ * residents wrote in the same afternoon that they could not add their car — one of them
+ * because it is electric, whose series uses Latin letters outside those twelve. Foreign and
+ * individual plates are real here too. A list nobody can get onto is worth less than one
+ * with the odd typo, and the admin can remove a wrong number.
  *
- * **Only the standard shape is accepted: two letters, four digits, two letters**
- * (Иван, 20.10.2026). The first version took anything of 4–10 letters and digits with a
- * digit in it, so a list meant to feed an access system would have filled with «AB123»,
- * a missing letter, and a stray «1234» — and no gate can match a typo. The letters are the
- * twelve the plates use, so a Latin «D» or «Z» is a typo too. A foreign or individual plate
- * is refused, and the prompt says whom to write to; when there are enough of those to
- * matter, that is the moment to widen this, not before.
+ * **A Cyrillic letter with no Latin twin is still refused, never dropped.** Stripping it
+ * would turn «СЖ 1234» into «C1234» — a different plate, and a confident wrong match. The
+ * refusal names the letter ({@see problem()}), so the person knows what to change.
  */
 final class PlateKey
 {
     private const CYRILLIC_TO_LATIN = [
         'А' => 'A', 'В' => 'B', 'С' => 'C', 'Е' => 'E', 'Н' => 'H', 'І' => 'I',
         'К' => 'K', 'М' => 'M', 'О' => 'O', 'Р' => 'P', 'Т' => 'T', 'Х' => 'X',
+        'У' => 'Y',
     ];
 
-    /** The plate letters, after folding. */
-    private const LETTERS = 'ABCEHIKMOPTX';
+    public const MIN_LENGTH = 4;
+    public const MAX_LENGTH = 10;
 
     /** The stored form, or '' when this is not something a plate can be. */
     public static function of(?string $plate): string
     {
-        $key = mb_strtoupper(trim((string)$plate), 'UTF-8');
-        $key = strtr($key, self::CYRILLIC_TO_LATIN);
-        // What people put between the parts of a number, and nothing else.
-        $key = (string)preg_replace('/[\s\-\.·]+/u', '', $key);
-
-        $letters = '[' . self::LETTERS . ']';
-
-        return preg_match('/^' . $letters . '{2}\d{4}' . $letters . '{2}$/', $key) === 1 ? $key : '';
+        return self::problem($plate) === null ? self::fold($plate) : '';
     }
 
     /**
-     * «CA 1234 AB» for the standard Ukrainian shape, the bare key otherwise (only rows
-     * stored before the shape was enforced can be anything else).
+     * Why this cannot be stored, in words for the person who typed it — or null if it can.
+     *
+     * One reason, the first that applies: the person is holding a keyboard and needs to
+     * know what to change, not a list of rules.
+     */
+    public static function problem(?string $plate): ?string
+    {
+        $key = self::fold($plate);
+
+        if ($key === '') {
+            return 'Напишіть номер авто.';
+        }
+
+        if (preg_match('/\p{Cyrillic}/u', $key, $m) === 1) {
+            return sprintf(
+                'Літери «%s» на номерних знаках не буває. Напишіть номер так, як на табличці — '
+                    . 'українськими чи латинськими літерами.',
+                $m[0],
+            );
+        }
+
+        if (preg_match('/[^A-Z0-9]/u', $key) === 1) {
+            return 'Лише літери й цифри номера, без інших слів і знаків.';
+        }
+
+        $length = strlen($key);
+
+        if ($length < self::MIN_LENGTH || $length > self::MAX_LENGTH) {
+            return sprintf('У номері від %d до %d літер і цифр.', self::MIN_LENGTH, self::MAX_LENGTH);
+        }
+
+        // Every plate carries both; a bare word or a bare number is something else typed here.
+        if (preg_match('/\d/', $key) !== 1 || preg_match('/[A-Z]/', $key) !== 1) {
+            return 'У номері мають бути і літери, і цифри.';
+        }
+
+        return null;
+    }
+
+    private static function fold(?string $plate): string
+    {
+        $key = mb_strtoupper(trim((string)$plate), 'UTF-8');
+        $key = strtr($key, self::CYRILLIC_TO_LATIN);
+
+        // What people put between the parts of a number, and nothing else.
+        return (string)preg_replace('/[\s\-\.·_\/]+/u', '', $key);
+    }
+
+    /**
+     * «CA 1234 AB» for the standard Ukrainian shape, the bare key otherwise.
      *
      * Shown in Latin: the twelve letters are the same glyphs in either alphabet, so the
      * reader sees exactly the plate on the car.

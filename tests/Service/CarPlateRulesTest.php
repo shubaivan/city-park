@@ -95,20 +95,54 @@ class CarPlateRulesTest extends TestCase
     }
 
     /**
-     * Two letters, four digits, two letters — and nothing else. A list meant for an access
-     * system is worth exactly as much as its worst typo: «СА 123 АВ» or «СА12345В» must be
-     * sent back, not stored as some other car.
+     * Electric, foreign and individual plates get on the list. The strict «СА 1234 АВ» shape
+     * lasted an afternoon: two residents could not add their cars, one because it is electric.
      */
-    public function testOnlyTheStandardShapeIsAccepted(): void
+    public function testElectricForeignAndIndividualPlatesPass(): void
     {
-        foreach (['СА 123 АВ', 'СА 12345 АВ', 'С 1234 АВ', 'СА 1234 А', '1234 СААВ', 'WX 12345', 'CA 1234 DZ', 'AA1234'] as $typed) {
-            $this->assertSame('', PlateKey::of($typed), sprintf('«%s»', $typed));
-        }
+        $this->assertSame('CA1234YZ', PlateKey::of('CA 1234 YZ'));
+        $this->assertSame('CA1234DZ', PlateKey::of('ca1234dz'));
+        $this->assertSame('WX12345', PlateKey::of('WX 12345'));
+        $this->assertSame('KYIV777', PlateKey::of('KYIV 777'));
+        $this->assertSame('WX12345', PlateKey::display('WX12345'));
 
-        // The three numbers on prod the day the shape was enforced.
+        // «У» typed on a Cyrillic keyboard for the Y on the plate.
+        $this->assertSame('CA1234YZ', PlateKey::of('СА 1234 УZ'));
+
         foreach (['CA0801KK', 'CA0800KP', 'CA5410CA'] as $real) {
             $this->assertSame($real, PlateKey::of($real));
         }
+    }
+
+    /** The refusal says what to change, naming the letter when it is a letter. */
+    public function testARefusalNamesWhatIsWrong(): void
+    {
+        $this->assertStringContainsString('«Ж»', (string)PlateKey::problem('СЖ 1234 АВ'));
+        $this->assertNotNull(PlateKey::problem('1234'));
+        $this->assertNotNull(PlateKey::problem('Тойота'));
+        $this->assertNull(PlateKey::problem('СА 1234 АВ'));
+    }
+
+    /** Where the car stands: optional, free text, and «немає» means none. */
+    public function testTheParkingSpotIsOptionalAndFreeText(): void
+    {
+        $plate = $this->plateOn($this->account(1), 'CA1234AB');
+        $service = $this->service();
+
+        $service->setSpot($plate, '  45,   орендоване ');
+        $this->assertSame('45, орендоване', $plate->getParkingSpot());
+
+        $service->setSpot($plate, 'немає');
+        $this->assertNull($plate->getParkingSpot());
+
+        $service->setSpot($plate, str_repeat('7', 100));
+        $this->assertSame(CarPlate::SPOT_MAX_LENGTH, mb_strlen((string)$plate->getParkingSpot()));
+    }
+
+    public function testTheGuardSeesTheSpotWhenThereIsOne(): void
+    {
+        $this->assertStringContainsString('🅿️ Паркомісце: 138', CarPlateCheck::verdict('CA1234AB', 'буд. 19, кв. 85', '138'));
+        $this->assertStringNotContainsString('🅿️', CarPlateCheck::verdict('CA1234AB', 'буд. 19, кв. 85'));
     }
 
     public function testTheStandardShapeIsShownWithItsSpaces(): void

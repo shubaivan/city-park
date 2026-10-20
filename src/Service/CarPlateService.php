@@ -107,6 +107,15 @@ class CarPlateService
             : null;
     }
 
+    /** Where the car stands — set, changed, or cleared with an empty string. */
+    public function setSpot(CarPlate $plate, ?string $spot): void
+    {
+        // «немає» typed in answer to «яке паркомісце?» is the answer, not the space's name.
+        $none = ['-', '—', 'немає', 'нема', 'ні', 'нет', 'no'];
+        $plate->setParkingSpot(in_array(mb_strtolower(trim((string)$spot)), $none, true) ? null : $spot);
+        $this->em->flush();
+    }
+
     public function remove(CarPlate $plate): void
     {
         $this->em->remove($plate);

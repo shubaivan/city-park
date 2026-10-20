@@ -38,11 +38,12 @@
                 <table class="table table-sm align-middle mb-0" id="car-table">
                     <tbody>
                     {% for plate in plates %}
-                        <tr data-key="{{ plate.plate }} {{ plate.account.placeLabel|lower }} {{ plate.account.accountNumber }} {{ plate.addedBy ? plate.addedBy.displayName|lower : '' }}">
+                        <tr data-key="{{ plate.plate }} {{ plate.account.placeLabel|lower }} {{ plate.account.accountNumber }} {{ plate.addedBy ? plate.addedBy.displayName|lower : '' }} {{ plate.parkingSpot|default('')|lower }}">
                             <td class="py-2" style="width: 1%;"><span class="car-plate">{{ plate.display }}</span></td>
                             <td class="py-2 small">
                                 <a href="{{ path('app_admin_object', {id: plate.account.id}) }}">{{ plate.account.placeLabel }}</a>
                                 <span class="text-muted">· о/р {{ plate.account.accountNumber }}</span>
+                                {% if plate.parkingSpot %}<span>· 🅿️ <b>{{ plate.parkingSpot }}</b></span>{% endif %}
                                 <div class="text-muted">
                                     {% if plate.addedBy %}
                                         додав(ла) <a href="{{ path('app_admin_resident', {id: plate.addedBy.id}) }}">{{ plate.addedBy.displayName }}</a>{% if plate.addedBy.username %} (@{{ plate.addedBy.username }}){% endif %}

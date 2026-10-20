@@ -15,6 +15,7 @@
         {% for car in cars %}
             <li class="py-1{% if not loop.last %} border-bottom{% endif %}">
                 <span class="car-plate">{{ car.display }}</span>
+                {% if car.parkingSpot %}<span class="small">🅿️ <b>{{ car.parkingSpot }}</b></span>{% endif %}
                 <div class="small text-muted">
                     {% if show_place|default(true) %}
                         <a href="{{ path('app_admin_object', {id: car.account.id}) }}">{{ car.account.placeLabel }}</a> ·
