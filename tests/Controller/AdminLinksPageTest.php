@@ -119,7 +119,7 @@ class AdminLinksPageTest extends WebTestCase
 
         // The two QR kinds are excluded on both sides: `DeepLink::record()` refuses them,
         // so no click of theirs can ever reach this page. Their own log is /admin/scans.
-        $kinds = array_diff(array_keys(DeepLink::PREFIXES), [DeepLink::KIND_GUARD, DeepLink::KIND_PASS]);
+        $kinds = array_diff(array_keys(DeepLink::PREFIXES), DeepLink::UNRECORDED);
         $this->assertNotEmpty($kinds);
 
         foreach ($kinds as $kind) {
@@ -149,7 +149,7 @@ class AdminLinksPageTest extends WebTestCase
         preg_match('/private static function clicksByKind\(.*?\n    \}/s', $controller, $match);
         $this->assertNotEmpty($match, 'clicksByKind() is what fills the per-board table');
 
-        foreach (array_diff(array_keys(DeepLink::PREFIXES), [DeepLink::KIND_GUARD, DeepLink::KIND_PASS]) as $kind) {
+        foreach (array_diff(array_keys(DeepLink::PREFIXES), DeepLink::UNRECORDED) as $kind) {
             $this->assertStringContainsString(
                 'KIND_' . strtoupper($kind),
                 $match[0],
