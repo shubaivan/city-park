@@ -41,6 +41,7 @@ class AdminObjectPageTest extends KernelTestCase
             'groupDebt' => 16314.49,
             'complaints' => [],
             'expected' => [],
+            'cars' => [],
             'history' => [],
         ], $extra));
     }
@@ -129,5 +130,21 @@ class AdminObjectPageTest extends KernelTestCase
         $this->assertStringContainsString('Іван Доненко', $html);
         $this->assertStringNotContainsString('/admin/objects/expected/add', $html);
         $this->assertStringNotContainsString('/admin/objects/expected/remove', $html);
+    }
+
+    /** The object's cars, with who wrote each one down — the flat is the card itself. */
+    public function testTheObjectListsItsCars(): void
+    {
+        $user = new \App\Entity\TelegramUser();
+        $user->setFirstName('Ніка');
+        (new \ReflectionProperty(\App\Entity\TelegramUser::class, 'id'))->setValue($user, 9);
+
+        $plate = (new \App\Entity\CarPlate())->setAccount($this->account())->setAddedBy($user)->setPlate('CA1234AB');
+
+        $html = $this->render(['cars' => [$plate]], 'ROLE_COMPLAINTS');
+
+        $this->assertStringContainsString('🚗 Авто (1)', $html);
+        $this->assertStringContainsString('CA 1234 AB', $html);
+        $this->assertStringContainsString('/admin/users/9', $html);
     }
 }

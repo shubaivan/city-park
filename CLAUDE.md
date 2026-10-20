@@ -1180,6 +1180,12 @@ time; on day one almost every resident's car is absent.
   «🚗 Перевірити номер авто»; both panel roles read `/admin/cars`. Opening a «чия машина
   перекрила виїзд» lookup to the house is a separate decision, not a tidy-up.
 
+**In the panel the plate leads every line**, then the flat, then who wrote it down
+(`.car-plate` in `base.html.twig`, drawn like a plate). `/admin/cars` is the whole list;
+the resident card's «🚗 Авто» shows the flat's cars plus anything that person added on
+another object («вніс сам(а)» for theirs, a link for the rest), and the object card shows
+its own — one partial, `admin/_car_plates.html.twig`, so the two cannot drift.
+
 `CarPlateRulesTest`, `CarPlateWiringTest`, `AdminCarsPageTest`; both conversations are in
 the shared provider in `BookingConversationPhotoGuardTest`.
 

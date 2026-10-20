@@ -39,6 +39,7 @@ class AdminResidentPageTest extends KernelTestCase
             'history' => [],
             'roommates' => [],
             'upcomingBookings' => 0,
+            'cars' => [],
         ], $extra));
     }
 
@@ -241,5 +242,36 @@ class AdminResidentPageTest extends KernelTestCase
 
         $this->assertStringContainsString('буд. 19, кв. 85', $html, 'the address still has to be readable');
         $this->assertStringContainsString('Контакти', $html, 'and so does the contact block');
+    }
+
+    /**
+     * «Які номери він вносив» — answered on his own card: the plate first, then whose flat
+     * it is on, and «вніс сам» for the ones he typed, a link to whoever typed the rest.
+     */
+    public function testTheCardShowsTheCarsAndWhoWroteThemDown(): void
+    {
+        $account = $this->account();
+        $user = $this->user(1, account: $account);
+        $wife = $this->user(7, 'Марина', $account);
+
+        $his = (new \App\Entity\CarPlate())->setAccount($account)->setAddedBy($user)->setPlate('CA1234AB');
+        $hers = (new \App\Entity\CarPlate())->setAccount($account)->setAddedBy($wife)->setPlate('BC7777BC');
+
+        $html = $this->render($user, $account, ['cars' => [$his, $hers]]);
+
+        $this->assertStringContainsString('🚗 Авто (2)', $html);
+        $this->assertStringContainsString('<span class="car-plate">CA 1234 AB</span>', $html);
+        $this->assertStringContainsString('вніс сам(а)', $html);
+        $this->assertStringContainsString('/admin/users/7', $html);
+        $this->assertStringContainsString('Марина', $html);
+    }
+
+    public function testACardWithNoCarsSaysWhyNotThatThereAreNone(): void
+    {
+        $html = $this->render($this->user(1), null);
+
+        $this->assertStringContainsString('🚗 Авто (0)', $html);
+        $this->assertStringContainsString('за', $html);
+        $this->assertStringContainsString('бажанням', $html);
     }
 }

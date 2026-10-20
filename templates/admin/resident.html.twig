@@ -149,6 +149,14 @@
                     </div>
                 </div>
 
+                {# ---------- cars ---------- #}
+                <div class="card res-card">
+                    <div class="card-header">🚗 Авто ({{ cars|length }})</div>
+                    <div class="card-body p-3">
+                        {% include 'admin/_car_plates.html.twig' with {cars: cars, highlight_user: user} %}
+                    </div>
+                </div>
+
                 {# ---------- ПІБ ---------- #}
                 {% if is_granted('ROLE_ADMIN') %}
                 <div class="card res-card">
