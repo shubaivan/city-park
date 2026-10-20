@@ -4,6 +4,7 @@ namespace App\Telegram\Start\Command;
 
 use App\Service\DeepLink;
 use App\Service\TelegramUserService;
+use App\Telegram\CarPlate\Command\CarPlateCommand;
 use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\Voting\Command\VotingMenuCommand;
@@ -32,6 +33,7 @@ use SergiX44\Nutgram\Nutgram;
  *   d-<snapshot>              the debtors' board     → DebtBoardCommand
  *   v-<campaign>              a vote of the house    → VotingMenuCommand
  *   i-<topic>                 one FAQ topic          → InfoCommand
+ *   a-<account>               «🚗 Мої авто»          → CarPlateCommand (the reader's own)
  *
  * **An unknown payload opens the main menu**, rather than erroring or refusing. A link may
  * be forwarded months later, from a post that has since been deleted, or simply mistyped;
@@ -51,6 +53,7 @@ class StartPayloadCommand
         private DebtBoardCommand $debts,
         private VotingMenuCommand $votes,
         private InfoCommand $info,
+        private CarPlateCommand $cars,
         private DeepLink $links,
         private TelegramUserService $telegramUserService,
     ) {}
@@ -95,6 +98,8 @@ class StartPayloadCommand
             DeepLink::KIND_DEBT => $this->debts->openFromDeepLink($bot, $id),
             DeepLink::KIND_VOTE => $this->votes->openFromDeepLink($bot, $id),
             DeepLink::KIND_INFO => $this->info->openFromDeepLink($bot, $id),
+            // The id is whose post it was; the list opened is always the reader's.
+            DeepLink::KIND_CARS => ($this->cars)($bot),
             default => StartCommand::send($bot),
         };
     }

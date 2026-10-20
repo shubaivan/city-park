@@ -37,6 +37,7 @@ class ResidentChatTopicsCommand extends Command
         ResidentChatService::TOPIC_RENTALS => ['🔑 Оренда та продаж', 0x6FB9F0],
         ResidentChatService::TOPIC_SERVICES => ['🛠 Послуги', 0xCB86DB],
         ResidentChatService::TOPIC_VOTES => ['🗳 Голосування', 0xFB6F5F],
+        ResidentChatService::TOPIC_CARS => ['🚗 Авто мешканців', 0x6FB9F0],
         // The bot writes nothing here — it exists so that everything the bot *does* write
         // has somewhere else to be. Without it the chatter lands in «Заявки» and buries
         // the one answer somebody was looking for.
@@ -52,6 +53,7 @@ class ResidentChatTopicsCommand extends Command
         ResidentChatService::TOPIC_RENTALS => 'RESIDENT_CHAT_TOPIC_RENTALS',
         ResidentChatService::TOPIC_SERVICES => 'RESIDENT_CHAT_TOPIC_SERVICES',
         ResidentChatService::TOPIC_VOTES => 'RESIDENT_CHAT_TOPIC_VOTES',
+        ResidentChatService::TOPIC_CARS => 'RESIDENT_CHAT_TOPIC_CARS',
     ];
 
     public function __construct(

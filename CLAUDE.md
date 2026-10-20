@@ -1186,6 +1186,18 @@ the resident card's «🚗 Авто» shows the flat's cars plus anything that p
 another object («вніс сам(а)» for theirs, a link for the rest), and the object card shows
 its own — one partial, `admin/_car_plates.html.twig`, so the two cannot drift.
 
+**Only the standard shape is accepted** — two letters, four digits, two letters, the
+letters being the twelve plate ones (Иван, 20.10.2026, after the first three real entries).
+The first version took any 4–10 letters and digits, and a list meant to feed a gate is
+worth exactly as much as its worst typo. A foreign or individual plate is refused and the
+prompt names whom to write to; widen `PlateKey::of()` when such cars actually turn up.
+
+**The chat hears who joined the list, never what they wrote** (`CarPlateAnnouncer`, topic
+«🚗 Авто мешканців», `RESIDENT_CHAT_TOPIC_CARS`): «Буд. 19, кв. 85 — внесли своє авто…
+Уже внесли: 3 квартири», with «🚗 Внести своє авто» (`a-<account>`, opens the reader's own
+list). Once per household, on its first number. The plate is never posted — that would be
+the lookup the list refuses to be. Silent with the topic unset, never fatal.
+
 `CarPlateRulesTest`, `CarPlateWiringTest`, `AdminCarsPageTest`; both conversations are in
 the shared provider in `BookingConversationPhotoGuardTest`.
 

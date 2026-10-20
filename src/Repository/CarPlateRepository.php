@@ -68,6 +68,15 @@ class CarPlateRepository extends ServiceEntityRepository
         return array_values($byId);
     }
 
+    /** How many objects have at least one number on the list. */
+    public function householdCount(): int
+    {
+        return (int)$this->createQueryBuilder('c')
+            ->select('COUNT(DISTINCT IDENTITY(c.account))')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
     public function findByKey(string $key): ?CarPlate
     {
         return $key === '' ? null : $this->findOneBy(['plate' => $key]);

@@ -7,6 +7,7 @@ use App\Entity\CarPlate;
 use App\Entity\TelegramUser;
 use App\Repository\CarPlateRepository;
 use App\Repository\ScheduledSetRepository;
+use App\Service\CarPlateAnnouncer;
 use App\Service\CarPlateService;
 use App\Service\GuardService;
 use App\Service\PlateKey;
@@ -71,8 +72,9 @@ class CarPlateRulesTest extends TestCase
     /** All twelve plate letters fold onto their Latin twins. */
     public function testEveryPlateLetterHasItsLatinTwin(): void
     {
-        $this->assertSame('ABCEHI1', PlateKey::of('АВСЕНІ1'));
-        $this->assertSame('KMOPTX1', PlateKey::of('КМОРТХ1'));
+        $this->assertSame('AB1234CE', PlateKey::of('АВ1234СЕ'));
+        $this->assertSame('HI1234KM', PlateKey::of('НІ1234КМ'));
+        $this->assertSame('OP1234TX', PlateKey::of('ОР1234ТХ'));
     }
 
     /**
@@ -92,11 +94,21 @@ class CarPlateRulesTest extends TestCase
         }
     }
 
-    /** A car registered abroad is still a resident's car. */
-    public function testAForeignPlatePasses(): void
+    /**
+     * Two letters, four digits, two letters — and nothing else. A list meant for an access
+     * system is worth exactly as much as its worst typo: «СА 123 АВ» or «СА12345В» must be
+     * sent back, not stored as some other car.
+     */
+    public function testOnlyTheStandardShapeIsAccepted(): void
     {
-        $this->assertSame('WX12345', PlateKey::of('WX 12345'));
-        $this->assertSame('WX12345', PlateKey::display('WX12345'));
+        foreach (['СА 123 АВ', 'СА 12345 АВ', 'С 1234 АВ', 'СА 1234 А', '1234 СААВ', 'WX 12345', 'CA 1234 DZ', 'AA1234'] as $typed) {
+            $this->assertSame('', PlateKey::of($typed), sprintf('«%s»', $typed));
+        }
+
+        // The three numbers on prod the day the shape was enforced.
+        foreach (['CA0801KK', 'CA0800KP', 'CA5410CA'] as $real) {
+            $this->assertSame($real, PlateKey::of($real));
+        }
     }
 
     public function testTheStandardShapeIsShownWithItsSpaces(): void
@@ -221,5 +233,24 @@ class CarPlateRulesTest extends TestCase
         $this->assertStringContainsString("За бажанням, не обов'язково", $intro);
         $this->assertLessThan(120, mb_strpos($intro, 'За бажанням'), 'it leads, it is not a footnote');
         $this->assertStringContainsString('Сусіди їх не бачать', $intro);
+    }
+
+    /**
+     * The chat hears that a household joined the list, and how many have — never the
+     * number. A plate in a chat of 457 is the lookup the list refuses to be.
+     */
+    public function testTheChatPostNamesTheFlatAndNeverThePlate(): void
+    {
+        $post = CarPlateAnnouncer::post('буд. 19, кв. 85', 3);
+
+        $this->assertStringContainsString('Буд. 19, кв. 85', $post);
+        $this->assertStringContainsString('3 квартири', $post);
+        $this->assertDoesNotMatchRegularExpression('/[A-ZА-Я]{2}\s?\d{4}\s?[A-ZА-Я]{2}/u', $post);
+        $this->assertStringContainsString("не обов'язково", $post);
+
+        $this->assertStringContainsString('1 квартира', CarPlateAnnouncer::post('буд. 17, кв. 78', 1));
+        $this->assertStringContainsString('11 квартир', CarPlateAnnouncer::post('буд. 17, кв. 78', 11));
+        $this->assertStringContainsString('21 квартира', CarPlateAnnouncer::post('буд. 17, кв. 78', 21));
+        $this->assertStringContainsString('5 квартир', CarPlateAnnouncer::post('буд. 17, кв. 78', 5));
     }
 }

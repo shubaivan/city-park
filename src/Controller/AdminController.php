@@ -861,6 +861,7 @@ class AdminController extends AbstractController
             DeepLink::KIND_VOTE => 'голосування',
             DeepLink::KIND_DEBT => 'борги',
             DeepLink::KIND_INFO => 'інструкція',
+            DeepLink::KIND_CARS => 'авто',
         ];
 
         $out = [];
@@ -932,6 +933,7 @@ class AdminController extends AbstractController
         ComplaintRepository $complaints,
         BlockVoteCampaignRepository $campaigns,
         DebtSnapshotRepository $snapshots,
+        AccountRepository $accounts,
     ): Response {
         $summary = $clicks->summary();
 
@@ -950,6 +952,7 @@ class AdminController extends AbstractController
             DeepLink::KIND_COMPLAINT => $complaints,
             DeepLink::KIND_VOTE => $campaigns,
             DeepLink::KIND_DEBT => $snapshots,
+            DeepLink::KIND_CARS => $accounts,
         ] as $kind => $repository) {
             $ids = array_values(array_map(
                 static fn (array $row): int => (int)$row['target_id'],

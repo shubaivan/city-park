@@ -39,6 +39,7 @@ class DeepLink
         self::KIND_GUARD => 'g-',
         self::KIND_PASS => 'p-',
         self::KIND_INFO => 'i-',
+        self::KIND_CARS => 'a-',
     ];
 
     public const KIND_SERVICE = 'service';
@@ -79,6 +80,12 @@ class DeepLink
      * actually read it» is the only interesting question about an announcement.
      */
     public const KIND_INFO = 'info';
+
+    /**
+     * «🚗 Мої авто» of whoever taps it. The id is the household the post announced, so the
+     * click log says which post worked; the screen it opens is always the reader's own.
+     */
+    public const KIND_CARS = 'cars';
 
     public function __construct(
         private Nutgram $bot,

@@ -14,7 +14,14 @@ namespace App\Service;
  *
  * **A letter outside those twelve is refused, never dropped.** Stripping whatever is not
  * A–Z would turn «СЖ 1234» into «C1234» — a different plate, and a confident wrong match.
- * Latin letters pass as they are, because a car registered abroad is still a resident's car.
+ *
+ * **Only the standard shape is accepted: two letters, four digits, two letters**
+ * (Иван, 20.10.2026). The first version took anything of 4–10 letters and digits with a
+ * digit in it, so a list meant to feed an access system would have filled with «AB123»,
+ * a missing letter, and a stray «1234» — and no gate can match a typo. The letters are the
+ * twelve the plates use, so a Latin «D» or «Z» is a typo too. A foreign or individual plate
+ * is refused, and the prompt says whom to write to; when there are enough of those to
+ * matter, that is the moment to widen this, not before.
  */
 final class PlateKey
 {
@@ -23,8 +30,8 @@ final class PlateKey
         'К' => 'K', 'М' => 'M', 'О' => 'O', 'Р' => 'P', 'Т' => 'T', 'Х' => 'X',
     ];
 
-    public const MIN_LENGTH = 4;
-    public const MAX_LENGTH = 10;
+    /** The plate letters, after folding. */
+    private const LETTERS = 'ABCEHIKMOPTX';
 
     /** The stored form, or '' when this is not something a plate can be. */
     public static function of(?string $plate): string
@@ -34,16 +41,14 @@ final class PlateKey
         // What people put between the parts of a number, and nothing else.
         $key = (string)preg_replace('/[\s\-\.·]+/u', '', $key);
 
-        if (preg_match('/^[A-Z0-9]{' . self::MIN_LENGTH . ',' . self::MAX_LENGTH . '}$/', $key) !== 1) {
-            return '';
-        }
+        $letters = '[' . self::LETTERS . ']';
 
-        // Every plate carries digits; a word that happens to fit is a typo for something else.
-        return preg_match('/\d/', $key) === 1 ? $key : '';
+        return preg_match('/^' . $letters . '{2}\d{4}' . $letters . '{2}$/', $key) === 1 ? $key : '';
     }
 
     /**
-     * «CA 1234 AB» for the standard Ukrainian shape, the bare key otherwise.
+     * «CA 1234 AB» for the standard Ukrainian shape, the bare key otherwise (only rows
+     * stored before the shape was enforced can be anything else).
      *
      * Shown in Latin: the twelve letters are the same glyphs in either alphabet, so the
      * reader sees exactly the plate on the car.
