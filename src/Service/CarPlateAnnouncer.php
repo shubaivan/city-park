@@ -71,25 +71,36 @@ class CarPlateAnnouncer
     public static function post(string $place, int $households, int $cars): string
     {
         return sprintf(
-            "🚗 <b>%s</b> — внесли своє авто до переліку авто мешканців.\n"
-                . "У переліку вже: <b>%d %s · %d авто</b>.\n\n"
+            "🚗 <b>%s</b> — внесли своє авто до переліку авто мешканців.\n\n"
+                . "Загалом на цей момент: дані про авто внесли <b>%d %s</b>, у переліку <b>%d %s</b>.\n\n"
                 . '<i>За бажанням, не обов\'язково. Самі номери в чат не потрапляють — їх бачать лише охорона та ОСББ.</i>',
             htmlspecialchars(mb_strtoupper(mb_substr($place, 0, 1)) . mb_substr($place, 1), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
             $households,
             self::flats($households),
             $cars,
+            self::cars($cars),
         );
     }
 
     private static function flats(int $n): string
     {
+        return self::plural($n, 'квартира', 'квартири', 'квартир');
+    }
+
+    private static function cars(int $n): string
+    {
+        return self::plural($n, 'автомобіль', 'автомобілі', 'автомобілів');
+    }
+
+    private static function plural(int $n, string $one, string $few, string $many): string
+    {
         $mod10 = $n % 10;
         $mod100 = $n % 100;
 
         return match (true) {
-            $mod10 === 1 && $mod100 !== 11 => 'квартира',
-            $mod10 >= 2 && $mod10 <= 4 && ($mod100 < 12 || $mod100 > 14) => 'квартири',
-            default => 'квартир',
+            $mod10 === 1 && $mod100 !== 11 => $one,
+            $mod10 >= 2 && $mod10 <= 4 && ($mod100 < 12 || $mod100 > 14) => $few,
+            default => $many,
         };
     }
 }

@@ -244,7 +244,9 @@ class CarPlateRulesTest extends TestCase
         $post = CarPlateAnnouncer::post('буд. 19, кв. 85', 3, 4);
 
         $this->assertStringContainsString('Буд. 19, кв. 85', $post);
-        $this->assertStringContainsString('3 квартири · 4 авто', $post);
+        $this->assertStringContainsString('дані про авто внесли <b>3 квартири</b>, у переліку <b>4 автомобілі</b>', $post);
+        $this->assertStringContainsString('<b>5 автомобілів</b>', CarPlateAnnouncer::post('буд. 17, кв. 78', 5, 5));
+        $this->assertStringContainsString('<b>1 автомобіль</b>', CarPlateAnnouncer::post('буд. 17, кв. 78', 1, 1));
         $this->assertDoesNotMatchRegularExpression('/[A-ZА-Я]{2}\s?\d{4}\s?[A-ZА-Я]{2}/u', $post);
         $this->assertStringContainsString("не обов'язково", $post);
 
