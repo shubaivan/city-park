@@ -65,6 +65,22 @@ class CarPlate
     #[ORM\Column(type: Types::STRING, length: self::SPOT_MAX_LENGTH, nullable: true)]
     private ?string $parking_spot = null;
 
+    /** «Власне» (true) or «орендоване» (false), as the household said; null — not asked. */
+    #[ORM\Column(type: Types::BOOLEAN, nullable: true)]
+    private ?bool $spot_owned = null;
+
+    /**
+     * The parking object the household picked as its own space. Set on the claim, whether
+     * or not it could be joined to their objects — `parking_linked` says which.
+     */
+    #[ORM\ManyToOne(targetEntity: Account::class)]
+    #[ORM\JoinColumn(name: 'parking_account_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Account $parkingAccount = null;
+
+    /** The bot joined that object to the household's owner group itself. */
+    #[ORM\Column(type: Types::BOOLEAN, nullable: false, options: ['default' => false])]
+    private bool $parking_linked = false;
+
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: false)]
     private \DateTime $created_at;
 
@@ -132,6 +148,48 @@ class CarPlate
         $this->parking_spot = $spot === '' ? null : mb_substr($spot, 0, self::SPOT_MAX_LENGTH);
 
         return $this;
+    }
+
+    public function isSpotOwned(): ?bool
+    {
+        return $this->spot_owned;
+    }
+
+    public function setSpotOwned(?bool $owned): static
+    {
+        $this->spot_owned = $owned;
+
+        return $this;
+    }
+
+    public function getParkingAccount(): ?Account
+    {
+        return $this->parkingAccount;
+    }
+
+    public function setParkingAccount(?Account $account): static
+    {
+        $this->parkingAccount = $account;
+
+        return $this;
+    }
+
+    public function isParkingLinked(): bool
+    {
+        return $this->parking_linked;
+    }
+
+    public function setParkingLinked(bool $linked): static
+    {
+        $this->parking_linked = $linked;
+
+        return $this;
+    }
+
+    /** The first number in what was typed — «Місце 142, 4 під'їзд» → 142. */
+    public function getSpotNumber(): ?string
+    {
+        return preg_match('/\d+/', (string)$this->parking_spot, $m) === 1 ? ltrim($m[0], '0') : null;
     }
 
     public function getCreatedAt(): \DateTime

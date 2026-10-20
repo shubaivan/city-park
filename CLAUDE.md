@@ -1202,6 +1202,19 @@ with two cars often has one on its own space and the other on a rented one; opti
 plenty of cars here have no space and only pull up by the lift. The guard sees it in his
 verdict, the panel and the CSV carry it.
 
+**An owned space joins the household's objects — the one link the bot makes by itself**
+(`ParkingClaimService`, Иван, 20.10.2026). After a space is written the bot asks «🏠 Власне /
+🔑 Орендоване»; for an owned one it offers every parking object carrying that number, one
+button per building, because «142» is in буд. 17, 19 and 21 and the number alone must never
+decide. The pick is joined through `OwnerGroupService::link()` only when nobody else holds the
+space — no resident linked to it, nobody expected on it, not in another household's group.
+Otherwise nothing is joined, the claim is kept (`parking_account_id`, `parking_linked = false`,
+«⚠️ потребує перевірки» on `/admin/cars`) and the reader is told whose it already is —
+building and flat, never a phone — so the two can sort it out in the chat. A rented space is
+recorded and never joined: it is somebody else's object, and joining it would put their
+arrears in this family's header and block this family's booking. A join is undone on the
+object card like any owner group. `ParkingClaimRulesTest`.
+
 **The chat hears who joined the list, never what they wrote** (`CarPlateAnnouncer`, topic
 «🚗 Авто мешканців», `RESIDENT_CHAT_TOPIC_CARS`): «Буд. 19, кв. 85 — внесли своє авто…
 Загалом на цей момент: дані про авто внесли 3 квартири, у переліку 4 автомобілі», with «🚗 Внести своє авто» (`a-<account>`, opens the reader's own

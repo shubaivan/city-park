@@ -15,7 +15,13 @@
         {% for car in cars %}
             <li class="py-1{% if not loop.last %} border-bottom{% endif %}">
                 <span class="car-plate">{{ car.display }}</span>
-                {% if car.parkingSpot %}<span class="small">🅿️ <b>{{ car.parkingSpot }}</b></span>{% endif %}
+                {% if car.parkingSpot %}<span class="small">🅿️ <b>{{ car.parkingSpot }}</b>{% if car.spotOwned is same as(true) %} (власне){% elseif car.spotOwned is same as(false) %} (орендоване){% endif %}</span>{% endif %}
+                {% if car.parkingAccount %}
+                    <div class="small">
+                        {% if car.parkingLinked %}🔗 приєднано:{% else %}⚠️ заявлено, потребує перевірки:{% endif %}
+                        <a href="{{ path('app_admin_object', {id: car.parkingAccount.id}) }}">{{ car.parkingAccount.placeLabel }}</a>
+                    </div>
+                {% endif %}
                 <div class="small text-muted">
                     {% if show_place|default(true) %}
                         <a href="{{ path('app_admin_object', {id: car.account.id}) }}">{{ car.account.placeLabel }}</a> ·

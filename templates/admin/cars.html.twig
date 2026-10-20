@@ -43,7 +43,14 @@
                             <td class="py-2 small">
                                 <a href="{{ path('app_admin_object', {id: plate.account.id}) }}">{{ plate.account.placeLabel }}</a>
                                 <span class="text-muted">· о/р {{ plate.account.accountNumber }}</span>
-                                {% if plate.parkingSpot %}<span>· 🅿️ <b>{{ plate.parkingSpot }}</b></span>{% endif %}
+                                {% if plate.parkingSpot %}<span>· 🅿️ <b>{{ plate.parkingSpot }}</b>{% if plate.spotOwned is same as(true) %} (власне){% elseif plate.spotOwned is same as(false) %} (орендоване){% endif %}</span>{% endif %}
+                                {% if plate.parkingAccount %}
+                                    <div>
+                                        {% if plate.parkingLinked %}🔗 приєднано до об'єктів:{% else %}⚠️ заявлено, потребує перевірки:{% endif %}
+                                        <a href="{{ path('app_admin_object', {id: plate.parkingAccount.id}) }}">{{ plate.parkingAccount.placeLabel }}</a>
+                                        <span class="text-muted">о/р {{ plate.parkingAccount.accountNumber }}</span>
+                                    </div>
+                                {% endif %}
                                 <div class="text-muted">
                                     {% if plate.addedBy %}
                                         додав(ла) <a href="{{ path('app_admin_resident', {id: plate.addedBy.id}) }}">{{ plate.addedBy.displayName }}</a>{% if plate.addedBy.username %} (@{{ plate.addedBy.username }}){% endif %}

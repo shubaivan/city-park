@@ -290,12 +290,14 @@ class AdminController extends AbstractController
     {
         $out = fopen('php://temp', 'r+');
         fwrite($out, "\xEF\xBB\xBF");
-        fputcsv($out, ['Номер', 'Паркомісце', 'Об\'єкт', 'Особовий рахунок', 'Додав', 'Коли'], ';');
+        fputcsv($out, ['Номер', 'Паркомісце', 'Власне/оренда', 'О/р паркомісця', 'Об\'єкт', 'Особовий рахунок', 'Додав', 'Коли'], ';');
 
         foreach ($plates->allWithAccounts() as $plate) {
             fputcsv($out, [
                 $plate->getDisplay(),
                 $plate->getParkingSpot() ?? '',
+                match ($plate->isSpotOwned()) { true => 'власне', false => 'оренда', null => '' },
+                $plate->getParkingAccount()?->getAccountNumber() ?? '',
                 $plate->getAccount()?->getPlaceLabel() ?? '',
                 $plate->getAccount()?->getAccountNumber() ?? '',
                 $plate->getAddedBy()?->getDisplayName() ?? '',

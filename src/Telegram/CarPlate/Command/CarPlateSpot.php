@@ -102,8 +102,11 @@ class CarPlateSpot extends Conversation
             return;
         }
 
+        // A new space means a new answer to «власне чи орендоване?»; an object already
+        // joined stays joined — undoing that is the panel's, like every other unlink.
+        $plate->setSpotOwned(null)->setParkingAccount(null)->setParkingLinked(false);
         $this->plates->setSpot($plate, (string)$bot->message()?->text);
-        $this->menu->list($bot, $account, self::savedNotice($plate));
+        $this->menu->afterSpot($bot, $account, $plate, self::savedNotice($plate));
     }
 
     /** Shared with CarPlateAdd, which asks the same question straight after a new number. */

@@ -107,6 +107,11 @@ class CarPlateService
             : null;
     }
 
+    public function save(): void
+    {
+        $this->em->flush();
+    }
+
     /** Where the car stands — set, changed, or cleared with an empty string. */
     public function setSpot(CarPlate $plate, ?string $spot): void
     {
