@@ -1194,7 +1194,7 @@ prompt names whom to write to; widen `PlateKey::of()` when such cars actually tu
 
 **The chat hears who joined the list, never what they wrote** (`CarPlateAnnouncer`, topic
 «🚗 Авто мешканців», `RESIDENT_CHAT_TOPIC_CARS`): «Буд. 19, кв. 85 — внесли своє авто…
-Уже внесли: 3 квартири», with «🚗 Внести своє авто» (`a-<account>`, opens the reader's own
+У переліку вже: 3 квартири · 4 авто», with «🚗 Внести своє авто» (`a-<account>`, opens the reader's own
 list). Once per household, on its first number. The plate is never posted — that would be
 the lookup the list refuses to be. Silent with the topic unset, never fatal.
 

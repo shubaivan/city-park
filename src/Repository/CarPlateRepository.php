@@ -77,6 +77,12 @@ class CarPlateRepository extends ServiceEntityRepository
             ->getSingleScalarResult();
     }
 
+    /** How many numbers are on the list in all. */
+    public function plateCount(): int
+    {
+        return $this->count([]);
+    }
+
     public function findByKey(string $key): ?CarPlate
     {
         return $key === '' ? null : $this->findOneBy(['plate' => $key]);
