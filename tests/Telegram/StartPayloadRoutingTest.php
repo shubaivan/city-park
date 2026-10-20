@@ -3,6 +3,7 @@
 namespace App\Tests\Telegram;
 
 use App\Service\DeepLink;
+use App\Telegram\CarPlate\Command\CarPlateCommand;
 use App\Service\TelegramUserService;
 use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
@@ -41,6 +42,7 @@ class StartPayloadRoutingTest extends KernelTestCase
         ?DebtBoardCommand $debts = null,
         ?VotingMenuCommand $votes = null,
         ?InfoCommand $info = null,
+        ?CarPlateCommand $cars = null,
     ): StartPayloadCommand {
         return new StartPayloadCommand(
             $guard ?? $this->createMock(GuardScanCommand::class),
@@ -51,6 +53,7 @@ class StartPayloadRoutingTest extends KernelTestCase
             $debts ?? $this->createMock(DebtBoardCommand::class),
             $votes ?? $this->createMock(VotingMenuCommand::class),
             $info ?? $this->createMock(InfoCommand::class),
+            $cars ?? $this->createMock(CarPlateCommand::class),
             $this->createMock(DeepLink::class),
             $this->createMock(TelegramUserService::class),
         );
@@ -153,6 +156,15 @@ class StartPayloadRoutingTest extends KernelTestCase
         $this->command(guard: $guard, services: $services)($this->bot(), 'utm_source=flyer');
     }
 
+    /** «🚗 Внести своє авто» under a chat post opens the reader's own list, whoever was announced. */
+    public function testACarsLinkOpensTheReadersOwnList(): void
+    {
+        $cars = $this->createMock(CarPlateCommand::class);
+        $cars->expects($this->once())->method('__invoke');
+
+        $this->command(cars: $cars)($this->bot(), 'a-42');
+    }
+
     /** A tap is recorded before the card renders — a slow render must not lose the click. */
     public function testTheClickIsRecordedWithTheKindAndTheId(): void
     {
@@ -169,6 +181,7 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(DebtBoardCommand::class),
             $this->createMock(VotingMenuCommand::class),
             $this->createMock(InfoCommand::class),
+            $this->createMock(CarPlateCommand::class),
             $links,
             $this->createMock(TelegramUserService::class),
         ))($this->bot(), 'r-7');
@@ -195,6 +208,7 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(DebtBoardCommand::class),
             $this->createMock(VotingMenuCommand::class),
             $this->createMock(InfoCommand::class),
+            $this->createMock(CarPlateCommand::class),
             $links,
             $this->createMock(TelegramUserService::class),
         ))($this->bot(), 'p-12-abcdef012345');
@@ -214,6 +228,7 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(DebtBoardCommand::class),
             $this->createMock(VotingMenuCommand::class),
             $this->createMock(InfoCommand::class),
+            $this->createMock(CarPlateCommand::class),
             $links,
             $this->createMock(TelegramUserService::class),
         ))($this->bot(), 'g-7-abcdef012345');

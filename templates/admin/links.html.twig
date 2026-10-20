@@ -16,6 +16,7 @@
     {%- elseif kind == 'vote' -%}🗳
     {%- elseif kind == 'debt' -%}💸
     {%- elseif kind == 'info' -%}📖
+    {%- elseif kind == 'cars' -%}🚗
     {%- else -%}↗️
     {%- endif -%}
 {% endmacro %}
@@ -27,6 +28,7 @@
     {%- elseif kind == 'vote' -%}голосування
     {%- elseif kind == 'debt' -%}борги
     {%- elseif kind == 'info' -%}інструкція
+    {%- elseif kind == 'cars' -%}авто
     {%- else -%}посилання
     {%- endif -%}
 {% endmacro %}
@@ -43,6 +45,7 @@
     {%- elseif kind == 'rental' -%}{{ path('app_admin_rentals') }}#listing-{{ id }}
     {%- elseif kind == 'vote' -%}{{ path('app_admin_block_votes') }}#vote-{{ id }}
     {%- elseif kind == 'debt' -%}{{ path('app_admin_debt') }}
+    {%- elseif kind == 'cars' -%}{{ path('app_admin_cars') }}
     {#
         The instructions live in the bot, not in the panel, so this is the one destination
         that leaves the panel: the same deep link the residents followed. Opening it counts
@@ -157,6 +160,8 @@
                                         <small class="text-muted">{{ target.takenAt|date('d.m.Y') }}</small>
                                     {% elseif row.kind == 'info' %}
                                         <b>{{ target }}</b>
+                                    {% elseif row.kind == 'cars' %}
+                                        <b>Внесли авто: {{ target.placeLabel }}</b>
                                     {% else %}
                                         <b>#{{ row.target_id }}</b>
                                     {% endif %}

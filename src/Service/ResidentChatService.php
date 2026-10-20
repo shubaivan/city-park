@@ -62,6 +62,12 @@ class ResidentChatService
     /** Votes of the house: what is being asked, and how it ended. */
     public const TOPIC_VOTES = 'votes';
 
+    /**
+     * «буд. 19, кв. 85 внесли авто» — which households have joined the list of cars, never
+     * the numbers themselves. No General fallback, same call as the services board.
+     */
+    public const TOPIC_CARS = 'cars';
+
     public function __construct(
         private TelegramUserRepository $telegramUserRepository,
         private TelegramUserService $telegramUserService,
@@ -74,6 +80,7 @@ class ResidentChatService
         private string $topicRentals = '',
         private string $topicServices = '',
         private string $topicVotes = '',
+        private string $topicCars = '',
     ) {}
 
     /**
@@ -93,6 +100,7 @@ class ResidentChatService
             self::TOPIC_RENTALS => $this->topicRentals,
             self::TOPIC_SERVICES => $this->topicServices,
             self::TOPIC_VOTES => $this->topicVotes,
+            self::TOPIC_CARS => $this->topicCars,
             default => '',
         };
 

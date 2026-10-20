@@ -4,6 +4,7 @@ namespace App\Telegram\CarPlate\Command;
 
 use App\Entity\Account;
 use App\Entity\CarPlate;
+use App\Service\CarPlateAnnouncer;
 use App\Service\CarPlateService;
 use App\Service\OsbbContacts;
 use App\Service\PhotoUploadFlow;
@@ -24,13 +25,23 @@ class CarPlateAdd extends Conversation
 
     protected ?string $step = 'askPlate';
 
+    /**
+     * A plain property with a default, not a promoted one: a conversation serialised into
+     * `var/pools` before this was added comes back without it, and a promoted property
+     * would be uninitialised and throw. With the default it is simply null for that one.
+     */
+    private ?CarPlateAnnouncer $announcer = null;
+
     public function __construct(
         private TelegramUserService $telegramUserService,
         private CarPlateService $plates,
         private CarPlateCommand $menu,
         private PhotoUploadFlow $photoUploadFlow,
         private ?LoggerInterface $photoLogger = null,
-    ) {}
+        ?CarPlateAnnouncer $announcer = null,
+    ) {
+        $this->announcer = $announcer;
+    }
 
     /**
      * The guard every multi-step conversation in this bot carries — and this one is the
@@ -123,8 +134,11 @@ class CarPlateAdd extends Conversation
             // Stay on this step: the commonest mistake is a typo, and the person is already
             // holding the keyboard.
             $bot->sendMessage(
-                text: "Не схоже на номер авто. Напишіть, наприклад: <b>СА 1234 АВ</b>\n\n"
-                    . '<i>Лише літери й цифри номера, без інших слів.</i>',
+                text: "Не схоже на номер авто. Потрібен формат <b>2 літери · 4 цифри · 2 літери</b>, "
+                    . "наприклад: <b>СА 1234 АВ</b>\n\n"
+                    . "<i>Лише літери й цифри номера, без інших слів.</i>\n\n"
+                    . "Якщо номер у вашого авто іншого формату (іноземний, індивідуальний), напишіть:\n"
+                    . OsbbContacts::DEV_LINE,
                 parse_mode: ParseMode::HTML,
                 reply_markup: InlineKeyboardMarkup::make()
                     ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: CarPlateCommand::MENU_CALLBACK)),
@@ -134,6 +148,10 @@ class CarPlateAdd extends Conversation
         }
 
         $this->end();
+
+        if ($result === CarPlateService::ADDED) {
+            $this->announcer?->afterAdded($account);
+        }
 
         $display = PlateKey::display(PlateKey::of($raw));
 

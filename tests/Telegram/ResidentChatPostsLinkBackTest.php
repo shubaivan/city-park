@@ -41,6 +41,7 @@ class ResidentChatPostsLinkBackTest extends TestCase
             'complaints' => [$root . '/ComplaintService.php'],
             'the debtors\' board' => [$root . '/DebtAnnouncer.php'],
             'votes of the house' => [$root . '/BlockVoteService.php'],
+            'residents\' cars' => [$root . '/CarPlateAnnouncer.php'],
         ];
     }
 
