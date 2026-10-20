@@ -11,6 +11,7 @@ use App\Entity\ServiceOffer;
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
+use App\Repository\CarPlateRepository;
 use App\Service\AvatarService;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use App\Repository\ComplaintRepository;
@@ -254,6 +255,92 @@ class AdminController extends AbstractController
                 ->getResult(),
             'now' => new \DateTime('now', new \DateTimeZone('Europe/Kyiv')),
         ]);
+    }
+
+    /**
+     * The house's list of cars, as the households wrote it («🚗 Мої авто», 20.10.2026).
+     *
+     * The «зелений список» the parking discussion kept asking for. It fills voluntarily, so
+     * the counter is spelled out — how many objects have written anything down is the one
+     * number that says how far this list can be trusted yet.
+     */
+    #[Route('/admin/cars', name: 'app_admin_cars', methods: [Request::METHOD_GET])]
+    public function cars(CarPlateRepository $plates, AccountRepository $accounts): Response
+    {
+        $all = $plates->allWithAccounts();
+        $objects = [];
+
+        foreach ($all as $plate) {
+            $objects[(int)$plate->getAccount()?->getId()] = true;
+        }
+
+        return $this->render('admin/cars.html.twig', [
+            'plates' => $all,
+            'objectCount' => count($objects),
+            'totalObjects' => $accounts->count([]),
+        ]);
+    }
+
+    /**
+     * The same list as a spreadsheet — what an access system, or the meeting that chooses
+     * one, will be handed. UTF-8 with a BOM, or Excel opens «буд.» as mojibake.
+     */
+    #[Route('/admin/cars.csv', name: 'app_admin_cars_csv', methods: [Request::METHOD_GET])]
+    public function carsCsv(CarPlateRepository $plates): Response
+    {
+        $out = fopen('php://temp', 'r+');
+        fwrite($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Номер', 'Об\'єкт', 'Особовий рахунок', 'Додав', 'Коли'], ';');
+
+        foreach ($plates->allWithAccounts() as $plate) {
+            fputcsv($out, [
+                $plate->getDisplay(),
+                $plate->getAccount()?->getPlaceLabel() ?? '',
+                $plate->getAccount()?->getAccountNumber() ?? '',
+                $plate->getAddedBy()?->getDisplayName() ?? '',
+                $plate->getCreatedAt()->format('d.m.Y H:i'),
+            ], ';');
+        }
+
+        rewind($out);
+        $csv = (string)stream_get_contents($out);
+        fclose($out);
+
+        return new Response($csv, Response::HTTP_OK, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => sprintf('attachment; filename="city-park-cars-%s.csv"', date('Y-m-d')),
+        ]);
+    }
+
+    /** A number written against the wrong flat — the dispute the bot sends to a human. */
+    #[Route('/admin/cars/remove', name: 'app_admin_car_remove', methods: [Request::METHOD_POST])]
+    public function carRemove(
+        Request $request,
+        CarPlateRepository $plates,
+        EntityManagerInterface $em,
+        LoggerInterface $logger,
+    ): Response
+    {
+        $id = (int)$request->request->get('plate_id');
+        $plate = $id > 0 ? $plates->find($id) : null;
+
+        if ($plate === null) {
+            $this->addFlash('error', 'Номер не знайдено — можливо, його вже видалили.');
+
+            return $this->redirectToRoute('app_admin_cars');
+        }
+
+        $display = $plate->getDisplay();
+        $em->remove($plate);
+        $em->flush();
+
+        $logger->info('car plate removed in the panel', [
+            'plate' => $display,
+            'by' => (string)$this->getUser()?->getUserIdentifier(),
+        ]);
+        $this->addFlash('success', sprintf('Номер %s видалено.', $display));
+
+        return $this->redirectToRoute('app_admin_cars');
     }
 
     #[Route('/admin', name: 'app_admin')]

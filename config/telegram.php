@@ -153,6 +153,14 @@ $bot->onCallbackQueryData('^pass:hrs:\d+:\d+$', \App\Telegram\GuestPass\Command\
 $bot->onCallbackQueryData(\App\Telegram\GuestPass\Command\GuestPassCreate::START_CALLBACK, \App\Telegram\GuestPass\Command\GuestPassCreate::class);
 $bot->onCommand('pass', \App\Telegram\GuestPass\Command\GuestPassCommand::class);
 
+// «🚗 Мої авто» — the household's car numbers, written voluntarily, and the guard's lookup.
+// CarPlateWiringTest walks the `car:` literals against these.
+$bot->onCallbackQueryData(\App\Telegram\CarPlate\Command\CarPlateCommand::MENU_CALLBACK, \App\Telegram\CarPlate\Command\CarPlateCommand::class);
+$bot->onCallbackQueryData('^car:(?:del|delok):\d+$', \App\Telegram\CarPlate\Command\CarPlateCommand::class);
+$bot->onCallbackQueryData(\App\Telegram\CarPlate\Command\CarPlateAdd::START_CALLBACK, \App\Telegram\CarPlate\Command\CarPlateAdd::class);
+$bot->onCallbackQueryData(\App\Telegram\CarPlate\Command\CarPlateCheck::START_CALLBACK, \App\Telegram\CarPlate\Command\CarPlateCheck::class);
+$bot->onCommand('car', \App\Telegram\CarPlate\Command\CarPlateCommand::class);
+
 // The debtors' board: the menu block is rendered by StartCommand, this is the full list.
 $bot->onCallbackQueryData(\App\Telegram\Debt\Command\DebtBoardCommand::MENU_CALLBACK, \App\Telegram\Debt\Command\DebtBoardCommand::class);
 // The report is 149 flats long and paged; the dead counter button answers with nothing.

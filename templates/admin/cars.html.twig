@@ -1,0 +1,96 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Авто мешканців · ОСББ City Park{% endblock %}
+
+{#
+    The house's list of cars, as the households wrote it. Read on a phone as often as on a
+    desktop: the search box is what somebody standing next to a car uses, so it is the first
+    thing on the page and it matches the plate however it was typed (Cyrillic or Latin).
+#}
+{% block body %}
+    {{ parent() }}
+
+    <div class="container-fluid py-3 px-2 px-sm-3" style="max-width: 1000px;">
+        <p class="mb-2"><a href="{{ path('app_admin') }}">← На головну адмінки</a></p>
+
+        <h4 class="mb-1">🚗 Авто мешканців</h4>
+        <p class="text-muted small mb-2">
+            Номери, які мешканці внесли самі через бот («🚗 Мої авто») — за бажанням, тому
+            відсутність номера тут не означає, що авто чуже. Охорона перевіряє номер у боті.
+        </p>
+        <p class="mb-3">
+            <b>{{ plates|length }}</b> номерів від <b>{{ objectCount }}</b> з {{ totalObjects }} об'єктів
+            {% if plates is not empty %}
+                · <a href="{{ path('app_admin_cars_csv') }}">⬇️ Завантажити CSV</a>
+            {% endif %}
+        </p>
+
+        {% if plates is empty %}
+            <div class="alert alert-secondary">Ще ніхто не вніс жодного номера.</div>
+        {% else %}
+            <input type="search" id="car-filter" class="form-control mb-2" placeholder="Пошук: номер, будинок, квартира…" autocomplete="off">
+
+            <div class="table-responsive">
+                <table class="table table-striped table-sm align-middle small" id="car-table">
+                    <thead>
+                    <tr>
+                        <th>Номер</th>
+                        <th>Об'єкт</th>
+                        <th>Додав</th>
+                        <th>Коли</th>
+                        {% if is_granted('ROLE_ADMIN') %}<th></th>{% endif %}
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for plate in plates %}
+                        <tr data-key="{{ plate.plate }} {{ plate.account.placeLabel|lower }} {{ plate.account.accountNumber }}">
+                            <td class="text-nowrap"><b>{{ plate.display }}</b></td>
+                            <td>
+                                <a href="{{ path('app_admin_object', {id: plate.account.id}) }}">{{ plate.account.placeLabel }}</a>
+                                <br><small class="text-muted">о/р {{ plate.account.accountNumber }}</small>
+                            </td>
+                            <td>
+                                {% if plate.addedBy %}
+                                    {{ plate.addedBy.displayName }}
+                                    {% if plate.addedBy.username %}<br><small>@{{ plate.addedBy.username }}</small>{% endif %}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-nowrap">{{ plate.createdAt|date('d.m.Y H:i') }}</td>
+                            {% if is_granted('ROLE_ADMIN') %}
+                                <td>
+                                    <form method="post" action="{{ path('app_admin_car_remove') }}"
+                                          onsubmit="return confirm('Видалити номер {{ plate.display|e('js') }}?');">
+                                        <input type="hidden" name="plate_id" value="{{ plate.id }}">
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">Видалити</button>
+                                    </form>
+                                </td>
+                            {% endif %}
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <script>
+                (function () {
+                    // The same folding PlateKey does on the server: the twelve plate letters
+                    // have Latin twins, and «са 12» must find «CA 1234 AB».
+                    var twins = {'А':'A','В':'B','С':'C','Е':'E','Н':'H','І':'I','К':'K','М':'M','О':'O','Р':'P','Т':'T','Х':'X'};
+                    var fold = function (text) {
+                        return text.toUpperCase().replace(/[АВСЕНІКМОРТХ]/g, function (c) { return twins[c]; }).replace(/[\s\-.]+/g, '');
+                    };
+                    var input = document.getElementById('car-filter');
+                    var rows = document.querySelectorAll('#car-table tbody tr');
+                    input.addEventListener('input', function () {
+                        var q = fold(input.value);
+                        rows.forEach(function (row) {
+                            row.style.display = q === '' || fold(row.dataset.key).indexOf(q) !== -1 ? '' : 'none';
+                        });
+                    });
+                })();
+            </script>
+        {% endif %}
+    </div>
+{% endblock %}
