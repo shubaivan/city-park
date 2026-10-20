@@ -104,7 +104,10 @@ class CarPlateCheck extends Conversation
 
         if ($key === '') {
             $bot->sendMessage(
-                text: 'Не схоже на номер авто. Напишіть, наприклад: <b>СА 1234 АВ</b>',
+                text: sprintf(
+                    "Не схоже на номер авто: %s\nНапишіть, наприклад: <b>СА 1234 АВ</b>",
+                    htmlspecialchars((string)PlateKey::problem($raw), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                ),
                 parse_mode: ParseMode::HTML,
                 reply_markup: InlineKeyboardMarkup::make()
                     ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: StartCommand::MAIN_MENU_CALLBACK)),
@@ -116,7 +119,11 @@ class CarPlateCheck extends Conversation
         $this->end();
 
         $bot->sendMessage(
-            text: self::verdict($key, $this->plates->lookUp($key)?->getAccount()?->getPlaceLabel()),
+            text: self::verdict(
+                $key,
+                $this->plates->lookUp($key)?->getAccount()?->getPlaceLabel(),
+                $this->plates->lookUp($key)?->getParkingSpot(),
+            ),
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()
                 ->addRow(InlineKeyboardButton::make('🔎 Ще один номер', callback_data: self::START_CALLBACK))
@@ -125,15 +132,18 @@ class CarPlateCheck extends Conversation
     }
 
     /** Static and Nutgram-free: the wording is the whole feature, and a test reads it. */
-    public static function verdict(string $key, ?string $place): string
+    public static function verdict(string $key, ?string $place, ?string $spot = null): string
     {
         $display = PlateKey::display($key);
 
         if ($place !== null && $place !== '') {
             return sprintf(
-                "✅ <b>%s</b> — авто мешканця\n%s",
+                "✅ <b>%s</b> — авто мешканця\n%s%s",
                 $display,
                 htmlspecialchars($place, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                $spot !== null && $spot !== ''
+                    ? "\n🅿️ Паркомісце: " . htmlspecialchars($spot, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                    : '',
             );
         }
 

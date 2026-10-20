@@ -35,6 +35,8 @@ class CarPlate
      */
     public const MAX_PER_ACCOUNT = 5;
 
+    public const SPOT_MAX_LENGTH = 40;
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -51,6 +53,17 @@ class CarPlate
     /** `PlateKey::of()` — Latin, no spaces. Never the raw text. */
     #[ORM\Column(type: Types::STRING, length: 16, nullable: false)]
     private string $plate = '';
+
+    /**
+     * Where this car stands, as the household wrote it — «138», «45, орендоване».
+     *
+     * Optional, and per car rather than per flat: a family with two cars often has one on
+     * its own space and the other on a rented one (asked for by a resident, 20.10.2026).
+     * Free text because that is the shape the answer comes in; plenty of cars here have no
+     * space at all and only pull up by the lift to unload.
+     */
+    #[ORM\Column(type: Types::STRING, length: self::SPOT_MAX_LENGTH, nullable: true)]
+    private ?string $parking_spot = null;
 
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: false)]
     private \DateTime $created_at;
@@ -105,6 +118,20 @@ class CarPlate
     public function getDisplay(): string
     {
         return \App\Service\PlateKey::display($this->plate);
+    }
+
+    public function getParkingSpot(): ?string
+    {
+        return $this->parking_spot;
+    }
+
+    /** Trimmed, spaces collapsed, cut to the column; empty means none. */
+    public function setParkingSpot(?string $spot): static
+    {
+        $spot = trim((string)preg_replace('/\s+/u', ' ', (string)$spot));
+        $this->parking_spot = $spot === '' ? null : mb_substr($spot, 0, self::SPOT_MAX_LENGTH);
+
+        return $this;
     }
 
     public function getCreatedAt(): \DateTime

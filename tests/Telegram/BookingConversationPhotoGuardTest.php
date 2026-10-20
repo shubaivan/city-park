@@ -11,6 +11,7 @@ use App\Telegram\Rental\Command\RentalPublish;
 use App\Telegram\GuestPass\Command\GuestPassCreate;
 use App\Telegram\CarPlate\Command\CarPlateAdd;
 use App\Telegram\CarPlate\Command\CarPlateCheck;
+use App\Telegram\CarPlate\Command\CarPlateSpot;
 use App\Telegram\ServiceOffer\Command\ServicePublish;
 use App\Telegram\SchedulePavilion\Command\OwnSchedule;
 use App\Telegram\SchedulePavilion\Command\SchedulePavilion;
@@ -50,6 +51,7 @@ class BookingConversationPhotoGuardTest extends KernelTestCase
         yield 'guest pass' => [GuestPassCreate::class, 'save'];
         yield 'car plate' => [CarPlateAdd::class, 'save'];
         yield 'guard plate check' => [CarPlateCheck::class, 'answer'];
+        yield 'car parking spot' => [CarPlateSpot::class, 'save'];
     }
 
     /**

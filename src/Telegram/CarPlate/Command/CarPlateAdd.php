@@ -32,6 +32,9 @@ class CarPlateAdd extends Conversation
      */
     private ?CarPlateAnnouncer $announcer = null;
 
+    /** The number just added, for the optional «паркомісце» step that follows. */
+    public ?int $plateId = null;
+
     public function __construct(
         private TelegramUserService $telegramUserService,
         private CarPlateService $plates,
@@ -96,8 +99,9 @@ class CarPlateAdd extends Conversation
         }
 
         $bot->sendMessage(
-            text: "🚗 Напишіть номер авто, наприклад: <b>СА 1234 АВ</b>\n\n"
-                . '<i>Можна українськими чи латинськими літерами, з пробілами чи без.</i>',
+            text: "🚗 Напишіть номер авто так, як на табличці, наприклад: <b>СА 1234 АВ</b>\n\n"
+                . "<i>Можна українськими чи латинськими літерами, великими чи малими, з пробілами "
+                . "чи без. Підходять і номери електромобілів, іноземні та індивідуальні.</i>",
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()
                 ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: CarPlateCommand::MENU_CALLBACK)),
@@ -131,14 +135,24 @@ class CarPlateAdd extends Conversation
         $result = $this->plates->add($account, $this->telegramUserService->getCurrentUser(), $raw);
 
         if ($result === CarPlateService::INVALID) {
+            // Kept, so the next «не можу додати» can be answered from the log instead of by
+            // guessing — two of those arrived on the first afternoon and nothing said what
+            // had been typed. The photo channel because it is the one written unbuffered.
+            $this->photoLogger?->info('car plate refused', [
+                'chat_id' => $bot->chatId(),
+                'typed' => mb_substr($raw, 0, 60),
+                'reason' => PlateKey::problem($raw),
+            ]);
+
             // Stay on this step: the commonest mistake is a typo, and the person is already
-            // holding the keyboard.
+            // holding the keyboard. The reason names what to change.
             $bot->sendMessage(
-                text: "Не схоже на номер авто. Потрібен формат <b>2 літери · 4 цифри · 2 літери</b>, "
-                    . "наприклад: <b>СА 1234 АВ</b>\n\n"
-                    . "<i>Лише літери й цифри номера, без інших слів.</i>\n\n"
-                    . "Якщо номер у вашого авто іншого формату (іноземний, індивідуальний), напишіть:\n"
-                    . OsbbContacts::DEV_LINE,
+                text: sprintf(
+                    "Не вийшло додати номер: %s\n\nНапишіть ще раз, наприклад: <b>СА 1234 АВ</b>\n\n"
+                        . "Якщо не виходить, напишіть розробнику:\n%s",
+                    htmlspecialchars((string)PlateKey::problem($raw), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                    OsbbContacts::DEV_LINE,
+                ),
                 parse_mode: ParseMode::HTML,
                 reply_markup: InlineKeyboardMarkup::make()
                     ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: CarPlateCommand::MENU_CALLBACK)),
@@ -147,11 +161,27 @@ class CarPlateAdd extends Conversation
             return;
         }
 
-        $this->end();
-
         if ($result === CarPlateService::ADDED) {
             $this->announcer?->afterAdded($account);
+
+            $plate = $this->plates->lookUp($raw);
+
+            if ($plate !== null) {
+                // The number is saved; the space is a second, optional question, asked
+                // while the person is still here — and «Пропустити» loses nothing.
+                $this->plateId = $plate->getId();
+                $bot->sendMessage(
+                    text: sprintf('✅ Номер <b>%s</b> додано.', $plate->getDisplay()),
+                    parse_mode: ParseMode::HTML,
+                );
+                CarPlateSpot::sendQuestion($bot, $plate);
+                $this->next('saveSpot');
+
+                return;
+            }
         }
+
+        $this->end();
 
         $display = PlateKey::display(PlateKey::of($raw));
 
@@ -169,6 +199,37 @@ class CarPlateAdd extends Conversation
         };
 
         $this->menu->list($bot, $account, $notice);
+    }
+
+    public function saveSpot(Nutgram $bot): void
+    {
+        $this->end();
+        $account = $this->account();
+
+        if (!$account instanceof Account) {
+            $bot->isCallbackQuery() && $bot->answerCallbackQuery();
+            ($this->menu)($bot);
+
+            return;
+        }
+
+        // «Пропустити», or any other tap: the number stays, without a space.
+        if ($bot->isCallbackQuery()) {
+            $this->menu->list($bot, $account);
+
+            return;
+        }
+
+        $plate = $this->plates->own($account, (int)$this->plateId);
+
+        if ($plate === null) {
+            $this->menu->list($bot, $account);
+
+            return;
+        }
+
+        $this->plates->setSpot($plate, (string)$bot->message()?->text);
+        $this->menu->list($bot, $account, CarPlateSpot::savedNotice($plate));
     }
 
     private function account(): ?Account
