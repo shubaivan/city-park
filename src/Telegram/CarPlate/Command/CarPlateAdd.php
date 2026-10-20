@@ -88,7 +88,7 @@ class CarPlateAdd extends Conversation
 
             if ($account instanceof Account) {
                 $this->menu->list($bot, $account, sprintf(
-                    '⚠️ У вашої квартири вже %d номерів — це максимум.',
+                    '⚠️ У вас уже %d номерів — це максимум.',
                     CarPlate::MAX_PER_ACCOUNT,
                 ));
             } else {
@@ -189,12 +189,12 @@ class CarPlateAdd extends Conversation
             CarPlateService::ADDED => sprintf('✅ Номер <b>%s</b> додано.', $display),
             CarPlateService::ALREADY_OURS => sprintf('ℹ️ Номер <b>%s</b> уже є у вашому списку.', $display),
             CarPlateService::TAKEN => sprintf(
-                "⚠️ Номер <b>%s</b> уже внесено за іншою квартирою.\n"
+                "⚠️ Номер <b>%s</b> уже внесено іншими мешканцями.\n"
                     . "Якщо це ваше авто, напишіть, і ми розберемося:\n%s",
                 $display,
                 OsbbContacts::DEV_LINE,
             ),
-            CarPlateService::FULL => sprintf('⚠️ У вашої квартири вже %d номерів — це максимум.', CarPlate::MAX_PER_ACCOUNT),
+            CarPlateService::FULL => sprintf('⚠️ У вас уже %d номерів — це максимум.', CarPlate::MAX_PER_ACCOUNT),
             default => '',
         };
 
