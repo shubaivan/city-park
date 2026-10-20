@@ -2,6 +2,7 @@
 
 namespace App\Telegram\ResidentChat\Command;
 
+use App\Service\OsbbContacts;
 use App\Service\ResidentChatService;
 use App\Service\TelegramUserService;
 use App\Telegram\Start\Command\StartCommand;
@@ -99,7 +100,8 @@ class ResidentChatCommand
             . "3️⃣ Якщо номер є в реєстрі ОСББ, бот прив’яже вас одразу\n\n"
             . "Після цього поверніться сюди — з’явиться кнопка входу.\n\n"
             . '<i>Живете тут, але номера немає в реєстрі (наприклад, орендуєте квартиру)? '
-            . 'Попросіть власника додати вас або зверніться до бухгалтера ОСББ.</i>';
+            . 'Попросіть власника додати вас або зверніться до бухгалтера ОСББ, '
+            . OsbbContacts::ACCOUNTANT_REQUEST_DETAILS . '.</i>';
     }
 
     private function respond(Nutgram $bot, string $text, InlineKeyboardMarkup $markup): void
