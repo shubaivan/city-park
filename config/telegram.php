@@ -156,8 +156,10 @@ $bot->onCommand('pass', \App\Telegram\GuestPass\Command\GuestPassCommand::class)
 // «🚗 Мої авто» — the household's car numbers, written voluntarily, and the guard's lookup.
 // CarPlateWiringTest walks the `car:` literals against these.
 $bot->onCallbackQueryData(\App\Telegram\CarPlate\Command\CarPlateCommand::MENU_CALLBACK, \App\Telegram\CarPlate\Command\CarPlateCommand::class);
-$bot->onCallbackQueryData('^car:(?:del|delok|view):\d+$', \App\Telegram\CarPlate\Command\CarPlateCommand::class);
+$bot->onCallbackQueryData('^car:(?:del|delok|view|own|rent):\d+$', \App\Telegram\CarPlate\Command\CarPlateCommand::class);
 $bot->onCallbackQueryData('^car:spot:\d+$', \App\Telegram\CarPlate\Command\CarPlateSpot::class);
+// car:pk:<plate>:<parking object>; the pattern also admits the bare prefix the wiring test emits.
+$bot->onCallbackQueryData('^car:pk:[\d:]+$', \App\Telegram\CarPlate\Command\CarPlateCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\CarPlate\Command\CarPlateAdd::START_CALLBACK, \App\Telegram\CarPlate\Command\CarPlateAdd::class);
 $bot->onCallbackQueryData(\App\Telegram\CarPlate\Command\CarPlateCheck::START_CALLBACK, \App\Telegram\CarPlate\Command\CarPlateCheck::class);
 $bot->onCommand('car', \App\Telegram\CarPlate\Command\CarPlateCommand::class);

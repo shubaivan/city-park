@@ -5,6 +5,7 @@ namespace App\Telegram\CarPlate\Command;
 use App\Entity\Account;
 use App\Entity\CarPlate;
 use App\Service\CarPlateService;
+use App\Service\ParkingClaimService;
 use App\Service\TelegramUserService;
 use App\Telegram\Start\Command\StartCommand;
 use SergiX44\Nutgram\Nutgram;
@@ -26,11 +27,24 @@ class CarPlateCommand
     public const DELETE_PREFIX = 'car:del:';
     public const DELETE_OK_PREFIX = 'car:delok:';
     public const VIEW_PREFIX = 'car:view:';
+    public const OWN_PREFIX = 'car:own:';
+    public const RENT_PREFIX = 'car:rent:';
+    public const PICK_PREFIX = 'car:pk:';
+
+    /**
+     * A plain property, not a promoted one: this command rides inside serialised
+     * conversations (CarPlateAdd, CarPlateSpot), and one stored before this was added
+     * comes back without it — uninitialised and throwing if promoted, null with a default.
+     */
+    private ?ParkingClaimService $claims = null;
 
     public function __construct(
         private CarPlateService $plates,
         private TelegramUserService $telegramUserService,
-    ) {}
+        ?ParkingClaimService $claims = null,
+    ) {
+        $this->claims = $claims;
+    }
 
     public function __invoke(Nutgram $bot): void
     {
@@ -46,6 +60,20 @@ class CarPlateCommand
                 parse_mode: ParseMode::HTML,
                 reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
             );
+
+            return;
+        }
+
+        if (str_starts_with($data, self::OWN_PREFIX) || str_starts_with($data, self::RENT_PREFIX)) {
+            $owned = str_starts_with($data, self::OWN_PREFIX);
+            $this->ownership($bot, $account, (int)substr($data, strlen($owned ? self::OWN_PREFIX : self::RENT_PREFIX)), $owned);
+
+            return;
+        }
+
+        if (str_starts_with($data, self::PICK_PREFIX)) {
+            [$plateId, $parkingId] = array_map('intval', array_pad(explode(':', substr($data, strlen(self::PICK_PREFIX))), 2, 0));
+            $this->pick($bot, $account, $plateId, $parkingId);
 
             return;
         }
@@ -136,6 +164,131 @@ class CarPlateCommand
             : "\n\n<i>Щоб вказати паркомісце або видалити номер, натисніть на нього нижче.</i>";
 
         return sprintf("Авто за %s:\n%s", $place, implode("\n", $lines)) . $tail;
+    }
+
+    /**
+     * After a space is written down: is it theirs? Only a space with a number can be
+     * matched against the register, so a text with none goes straight back to the list.
+     */
+    public function afterSpot(Nutgram $bot, Account $account, CarPlate $plate, string $notice): void
+    {
+        if ($plate->getSpotNumber() === null) {
+            $this->list($bot, $account, $notice);
+
+            return;
+        }
+
+        $bot->sendMessage(
+            text: $notice . "\n\n🅿️ Це паркомісце <b>ваше власне</b> чи <b>орендоване</b>?",
+            parse_mode: ParseMode::HTML,
+            reply_markup: InlineKeyboardMarkup::make()
+                ->addRow(
+                    InlineKeyboardButton::make('🏠 Власне', callback_data: self::OWN_PREFIX . $plate->getId()),
+                    InlineKeyboardButton::make('🔑 Орендоване', callback_data: self::RENT_PREFIX . $plate->getId()),
+                )
+                ->addRow(InlineKeyboardButton::make('⏭ Пропустити', callback_data: self::MENU_CALLBACK)),
+        );
+    }
+
+    private function ownership(Nutgram $bot, Account $account, int $id, bool $owned): void
+    {
+        $bot->answerCallbackQuery();
+        $plate = $this->plates->own($account, $id);
+
+        if ($plate === null) {
+            $this->list($bot, $account, '⚠️ Цей номер уже видалено.');
+
+            return;
+        }
+
+        $plate->setSpotOwned($owned);
+
+        if (!$owned) {
+            // A rented space is somebody else's object: written down, never joined.
+            $plate->setParkingAccount(null)->setParkingLinked(false);
+            $this->plates->save();
+            $this->list($bot, $account, sprintf('✅ <b>%s</b> — орендоване паркомісце, записали.', $plate->getDisplay()));
+
+            return;
+        }
+
+        $this->plates->save();
+        $candidates = $this->claims?->candidates($plate) ?? [];
+
+        if ($candidates === []) {
+            $this->list($bot, $account, sprintf(
+                '✅ Записали. Паркомісця з номером %s у реєстрі ОСББ не знайшли — на авто це не впливає.',
+                self::esc((string)$plate->getSpotNumber()),
+            ));
+
+            return;
+        }
+
+        $markup = InlineKeyboardMarkup::make();
+
+        foreach ($candidates as $parking) {
+            $markup->addRow(InlineKeyboardButton::make(
+                '🅿️ ' . $parking->getPlaceLabel(),
+                callback_data: self::PICK_PREFIX . $plate->getId() . ':' . $parking->getId(),
+            ));
+        }
+
+        $markup->addRow(InlineKeyboardButton::make('Немає в списку', callback_data: self::MENU_CALLBACK));
+
+        $bot->sendMessage(
+            text: count($candidates) > 1
+                ? "🅿️ Номери паркомісць повторюються в різних будинках. Яке саме ваше?\n\n"
+                    . '<i>Його буде додано до ваших об\'єктів у боті — разом із квартирою.</i>'
+                : "🅿️ Це ваше паркомісце?\n\n"
+                    . '<i>Його буде додано до ваших об\'єктів у боті — разом із квартирою.</i>',
+            parse_mode: ParseMode::HTML,
+            reply_markup: $markup,
+        );
+    }
+
+    private function pick(Nutgram $bot, Account $account, int $plateId, int $parkingId): void
+    {
+        $bot->answerCallbackQuery();
+        $plate = $this->plates->own($account, $plateId);
+
+        if ($plate === null || $this->claims === null) {
+            $this->list($bot, $account, '⚠️ Цей номер уже видалено.');
+
+            return;
+        }
+
+        // Re-derived, never trusted from the button: the space must still be one the typed
+        // number names.
+        $parking = null;
+
+        foreach ($this->claims->candidates($plate) as $candidate) {
+            if ($candidate->getId() === $parkingId) {
+                $parking = $candidate;
+            }
+        }
+
+        if ($parking === null) {
+            $this->list($bot, $account);
+
+            return;
+        }
+
+        [$result, $holder] = $this->claims->claim($plate, $account, $parking);
+        $place = self::esc($parking->getPlaceLabel());
+
+        $this->list($bot, $account, match ($result) {
+            ParkingClaimService::LINKED => sprintf(
+                "✅ %s додано до ваших об'єктів — тепер його видно на головній разом із квартирою.",
+                $place,
+            ),
+            ParkingClaimService::ALREADY => sprintf("ℹ️ %s уже серед ваших об'єктів.", $place),
+            default => sprintf(
+                "⚠️ %s уже прив'язане в боті до: <b>%s</b>.\n"
+                    . "Якщо це помилка, напишіть у чаті мешканців — або ОСББ перевірить і виправить.",
+                $place,
+                self::esc((string)$holder),
+            ),
+        });
     }
 
     /** One car: its space, and the two things that can be done to it. */
