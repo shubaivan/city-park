@@ -241,16 +241,16 @@ class CarPlateRulesTest extends TestCase
      */
     public function testTheChatPostNamesTheFlatAndNeverThePlate(): void
     {
-        $post = CarPlateAnnouncer::post('буд. 19, кв. 85', 3);
+        $post = CarPlateAnnouncer::post('буд. 19, кв. 85', 3, 4);
 
         $this->assertStringContainsString('Буд. 19, кв. 85', $post);
-        $this->assertStringContainsString('3 квартири', $post);
+        $this->assertStringContainsString('3 квартири · 4 авто', $post);
         $this->assertDoesNotMatchRegularExpression('/[A-ZА-Я]{2}\s?\d{4}\s?[A-ZА-Я]{2}/u', $post);
         $this->assertStringContainsString("не обов'язково", $post);
 
-        $this->assertStringContainsString('1 квартира', CarPlateAnnouncer::post('буд. 17, кв. 78', 1));
-        $this->assertStringContainsString('11 квартир', CarPlateAnnouncer::post('буд. 17, кв. 78', 11));
-        $this->assertStringContainsString('21 квартира', CarPlateAnnouncer::post('буд. 17, кв. 78', 21));
-        $this->assertStringContainsString('5 квартир', CarPlateAnnouncer::post('буд. 17, кв. 78', 5));
+        $this->assertStringContainsString('1 квартира', CarPlateAnnouncer::post('буд. 17, кв. 78', 1, 1));
+        $this->assertStringContainsString('11 квартир', CarPlateAnnouncer::post('буд. 17, кв. 78', 11, 11));
+        $this->assertStringContainsString('21 квартира', CarPlateAnnouncer::post('буд. 17, кв. 78', 21, 21));
+        $this->assertStringContainsString('5 квартир', CarPlateAnnouncer::post('буд. 17, кв. 78', 5, 5));
     }
 }

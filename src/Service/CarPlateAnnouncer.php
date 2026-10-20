@@ -47,7 +47,7 @@ class CarPlateAnnouncer
             }
 
             $this->bot->sendMessage(
-                text: self::post($account->getPlaceLabel(), $this->plates->householdCount()),
+                text: self::post($account->getPlaceLabel(), $this->plates->householdCount(), $this->plates->plateCount()),
                 chat_id: (int)$this->residentChat->chatId(),
                 message_thread_id: $topic,
                 parse_mode: ParseMode::HTML,
@@ -62,16 +62,22 @@ class CarPlateAnnouncer
         }
     }
 
-    /** The flat and the count, and no plate — see the class comment. */
-    public static function post(string $place, int $households): string
+    /**
+     * The flat and both counts, and no plate — see the class comment.
+     *
+     * Flats *and* cars: «Уже внесли: 1 квартира» under a flat that had just added two cars
+     * hid half of what happened, and the list's worth at the gate is counted in cars.
+     */
+    public static function post(string $place, int $households, int $cars): string
     {
         return sprintf(
             "🚗 <b>%s</b> — внесли своє авто до переліку авто мешканців.\n"
-                . "Уже внесли: <b>%d %s</b>.\n\n"
+                . "У переліку вже: <b>%d %s · %d авто</b>.\n\n"
                 . '<i>За бажанням, не обов\'язково. Самі номери в чат не потрапляють — їх бачать лише охорона та ОСББ.</i>',
             htmlspecialchars(mb_strtoupper(mb_substr($place, 0, 1)) . mb_substr($place, 1), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
             $households,
             self::flats($households),
+            $cars,
         );
     }
 
