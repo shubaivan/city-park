@@ -67,6 +67,14 @@ class OsbbContacts
      * back to `t.me/+<phone>`, which is the only handle they have. That is why the shapes
      * differ: it is not a style choice.
      */
+    /**
+     * What to put in the message to the accountant, so the first message is the whole
+     * request (Аліна, 20.10.2026: «бо задовбалась це всім писати»). Without it every
+     * «додайте мене» starts a round of «а яка адреса? а на кого оформлено?».
+     */
+    public const ACCOUNTANT_REQUEST_DETAILS = 'вказавши адресу (або всі адреси, якщо об’єктів кілька), '
+        . 'на кого оформлено та номер телефону';
+
     public const ACCOUNTANT_LINE = '🧾 Аліна, бухгалтер ОСББ — '
         . '<a href="tel:+380936583202">' . self::ACCOUNTANT_PHONE . '</a> · '
         . '<a href="https://t.me/+380936583202">написати</a>';
