@@ -121,6 +121,16 @@ class CarPlateRulesTest extends TestCase
         $this->assertNotNull(PlateKey::problem('1234'));
         $this->assertNotNull(PlateKey::problem('Тойота'));
         $this->assertNull(PlateKey::problem('СА 1234 АВ'));
+
+        // Two cars in one message: what three residents out of three sent on day one.
+        $this->assertSame(PlateKey::ONE_AT_A_TIME, PlateKey::problem("КА0012ХМ\nКА0717ІК"));
+        $this->assertSame(PlateKey::ONE_AT_A_TIME, PlateKey::problem("КА 0012 ХМ\nКА  0717 ІК"));
+        $this->assertSame(PlateKey::ONE_AT_A_TIME, PlateKey::problem('СА9044КС, СА6606YB'));
+        $this->assertSame('', PlateKey::of("КА0012ХМ\nКА0717ІК"));
+        // On one line it cannot be told apart from a long number, but the hint is still there.
+        $this->assertStringContainsString('по одному', (string)PlateKey::problem('КА 0012 ХМ КА 0717 ІК'));
+        // A number written over two lines is still one number.
+        $this->assertNull(PlateKey::problem("СА 1234\nАВ"));
     }
 
     /** Where the car stands: optional, free text, and «немає» means none. */
