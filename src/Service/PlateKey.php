@@ -35,6 +35,9 @@ final class PlateKey
     public const MIN_LENGTH = 4;
     public const MAX_LENGTH = 10;
 
+    public const ONE_AT_A_TIME = 'Якщо авто кілька — надсилайте по одному номеру: спершу один, '
+        . 'а наступний — кнопкою «➕ Додати номер авто».';
+
     /** The stored form, or '' when this is not something a plate can be. */
     public static function of(?string $plate): string
     {
@@ -55,6 +58,14 @@ final class PlateKey
             return 'Напишіть номер авто.';
         }
 
+        // Two cars in one message, one per line — the commonest refusal on the first day:
+        // three people out of three sent theirs this way, were told the number was too long,
+        // and the one who did not guess why gave up. Folded together it is one sixteen-
+        // character «plate», so this has to be asked of the text as it was typed.
+        if (self::severalPlates($plate)) {
+            return self::ONE_AT_A_TIME;
+        }
+
         if (preg_match('/\p{Cyrillic}/u', $key, $m) === 1) {
             return sprintf(
                 'Літери «%s» на номерних знаках не буває. Напишіть номер так, як на табличці — '
@@ -70,7 +81,9 @@ final class PlateKey
         $length = strlen($key);
 
         if ($length < self::MIN_LENGTH || $length > self::MAX_LENGTH) {
-            return sprintf('У номері від %d до %d літер і цифр.', self::MIN_LENGTH, self::MAX_LENGTH);
+            return $length > self::MAX_LENGTH
+                ? sprintf('У номері не більше %d літер і цифр. %s', self::MAX_LENGTH, self::ONE_AT_A_TIME)
+                : sprintf('У номері від %d до %d літер і цифр.', self::MIN_LENGTH, self::MAX_LENGTH);
         }
 
         // Every plate carries both; a bare word or a bare number is something else typed here.
@@ -79,6 +92,20 @@ final class PlateKey
         }
 
         return null;
+    }
+
+    /** More than one line (or comma-separated part) that would each be a plate on its own. */
+    private static function severalPlates(?string $plate): bool
+    {
+        $parts = preg_split('/[\r\n,;]+/u', (string)$plate, -1, PREG_SPLIT_NO_EMPTY);
+
+        // Also what keeps the problem() call below from coming back here for ever.
+        if (count($parts) < 2) {
+            return false;
+        }
+        $plates = array_filter($parts, static fn (string $part): bool => trim($part) !== '' && self::problem($part) === null);
+
+        return count($plates) >= 2;
     }
 
     private static function fold(?string $plate): string
