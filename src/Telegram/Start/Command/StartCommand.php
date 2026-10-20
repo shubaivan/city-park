@@ -20,6 +20,8 @@ use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\ServiceOffer\Command\ServiceMenuCommand;
 use App\Telegram\Guard\Command\GuardCommand;
 use App\Telegram\Guard\Command\GuardQrCommand;
+use App\Telegram\CarPlate\Command\CarPlateCheck;
+use App\Telegram\CarPlate\Command\CarPlateCommand;
 use App\Telegram\GuestPass\Command\GuestPassCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\ResidentChat\Command\ResidentChatCommand;
@@ -582,6 +584,15 @@ class StartCommand extends Command
             ));
         }
 
+        // The guard's lookup of the house's car list. Drawn for the guard flag alone, flat
+        // or no flat: checking a car at the gate is his job, not his household's.
+        if (self::isGuard($bot)) {
+            $markup->addRow(InlineKeyboardButton::make(
+                '🚗 Перевірити номер авто',
+                callback_data: CarPlateCheck::START_CALLBACK,
+            ));
+        }
+
         $markup
             ->addRow(
                 InlineKeyboardButton::make('ℹ️ Інструкція та FAQ', callback_data: 'info-menu'),
@@ -608,6 +619,15 @@ class StartCommand extends Command
                     '👷 Пропуски',
                     callback_data: GuestPassCommand::MENU_CALLBACK,
                 ),
+            );
+        }
+
+        // The household's car numbers — voluntary, and the screen behind it says so first.
+        // Its own row: beside the QR and the passes it would be a third button squeezed
+        // into a line a phone already truncates.
+        if ($account instanceof Account) {
+            $markup->addRow(
+                InlineKeyboardButton::make('🚗 Мої авто', callback_data: CarPlateCommand::MENU_CALLBACK),
             );
         }
 

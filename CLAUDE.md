@@ -42,6 +42,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 | 🔧 Заявки | `complaints-menu` / `cmp:{view,photos,page,del,delok,edit}:<id>` / `cmp:pic:<id>:<n>` / `cmp:status:<id>:<status>` / `cmp:new` | `/problem` | `ComplaintMenuCommand` + `ComplaintCreate` / `ComplaintEdit` (conversations) |
 | 🛡 Хто зараз в альтанці | `guard-board` | `/guard` | `GuardCommand` (guards only — **not** in the pushed slash menu) |
 | 🔒 QR для охорони | `guard-qr` | — | `GuardQrCommand` (resident, only while a booking runs); scanned via `/start g-…` → `GuardScanCommand` |
+| 🚗 Мої авто (linked residents) / 🚗 Перевірити номер авто (guard) | `car:list` / `car:{del,delok}:<id>` / `car:new` / `car:check` | `/car` | `CarPlateCommand` + `CarPlateAdd` / `CarPlateCheck` (conversations) |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
 
 The contact block under the menu header names four people — the head of the ОСББ, the
@@ -1154,6 +1155,33 @@ revoking: tomorrow the same picture works again.
   checked turns a security tool into something people avoid using.
 - **Anybody linked to the рахунок may issue one**, and the flat on the card is who vouches.
   Same reading as the services board's «👤 Розмістив».
+
+## Residents' cars («🚗 Мої авто», 20.10.2026)
+
+The «зелений список» the parking discussion in the Viber group kept asking for: a household
+writes its car numbers down, the guard looks a number up, the panel lists and exports them
+(`/admin/cars`, `/admin/cars.csv`) for whatever access system the house meeting chooses.
+**Voluntary, and every screen says so first** — nothing depends on it, so an absent number
+means nobody wrote it, and the guard's answer says «це ще не означає, що авто чуже» every
+time; on day one almost every resident's car is absent.
+
+- **`PlateKey::of()` is the one spelling.** The twelve plate letters have Latin twins and
+  arrive in either alphabet, mixed; everything is folded to Latin before it is stored or
+  compared. A Cyrillic letter outside those twelve is **refused, never stripped** — dropping
+  it makes a different plate and a confident wrong match.
+- **One plate, one object** (unique index). A number already on another flat is refused
+  **without naming the flat**: «уже за буд. 19, кв. 50» would turn «додати» into a lookup
+  anyone in the bot could run on any car in the yard. The dispute goes to a human; the panel
+  can remove a number (ROLE_ADMIN).
+- **On the object, not the person** — a car is the household's, and stays with the flat
+  when somebody is unlinked. Up to `CarPlate::MAX_PER_ACCOUNT` (5). `is_active` is not
+  checked, same call as the QR pass.
+- **Residents cannot look up each other's cars.** Only the guard (`GUARD_TELEGRAM_IDS`) has
+  «🚗 Перевірити номер авто»; both panel roles read `/admin/cars`. Opening a «чия машина
+  перекрила виїзд» lookup to the house is a separate decision, not a tidy-up.
+
+`CarPlateRulesTest`, `CarPlateWiringTest`, `AdminCarsPageTest`; both conversations are in
+the shared provider in `BookingConversationPhotoGuardTest`.
 
 ## Who scanned whose code (`/admin/scans`)
 

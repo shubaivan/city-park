@@ -49,6 +49,9 @@ security:
         # The SMS journal: read by everyone who can sign in (Иван, 30.09.2026 — «всем»).
         # GET only: a log of what was sent is not anybody's to change.
         - { path: ^/admin/sms$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        # The residents' car numbers and their export: read by both roles, like the people
+        # register they come from. Removing a number is the accountant's (POST, below).
+        - { path: ^/admin/cars(\.csv)?$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
         # A resident's cached Telegram photo. Both roles already read the resident register,
         # and a face is the least of what is on that page — but it is still served from
         # var/, behind this login, rather than published under public/.

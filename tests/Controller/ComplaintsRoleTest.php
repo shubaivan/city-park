@@ -55,6 +55,9 @@ class ComplaintsRoleTest extends WebTestCase
             'the QR scan log' => ['/admin/scans'],
             // Иван's call, 30.09.2026: everybody who signs in sees what was sent to whom.
             'the SMS journal' => ['/admin/sms'],
+            // The residents' car numbers, like the people register they come from.
+            'the car list' => ['/admin/cars'],
+            'its export' => ['/admin/cars.csv'],
         ];
     }
 
@@ -102,6 +105,8 @@ class ComplaintsRoleTest extends WebTestCase
             // He reads the SMS journal; sending costs the ОСББ money and is Людмила's and
             // the accountant's call (07.10.2026).
             'sending the debt SMS' => ['POST', '/admin/sms/debt'],
+            // Taking a number off a flat settles a dispute between two households.
+            'removing a car number' => ['POST', '/admin/cars/remove'],
         ];
     }
 
