@@ -28,42 +28,36 @@
         {% if plates is empty %}
             <div class="alert alert-secondary">Ще ніхто не вніс жодного номера.</div>
         {% else %}
-            <input type="search" id="car-filter" class="form-control mb-2" placeholder="Пошук: номер, будинок, квартира…" autocomplete="off">
+            <input type="search" id="car-filter" class="form-control mb-2" placeholder="Пошук: номер, квартира, ім'я…" autocomplete="off">
 
+            {#
+                The plate is the row; the flat and who wrote it down qualify it. Two columns,
+                not five, so the list reads on a phone as a column of plates.
+            #}
             <div class="table-responsive">
-                <table class="table table-striped table-sm align-middle small" id="car-table">
-                    <thead>
-                    <tr>
-                        <th>Номер</th>
-                        <th>Об'єкт</th>
-                        <th>Додав</th>
-                        <th>Коли</th>
-                        {% if is_granted('ROLE_ADMIN') %}<th></th>{% endif %}
-                    </tr>
-                    </thead>
+                <table class="table table-sm align-middle mb-0" id="car-table">
                     <tbody>
                     {% for plate in plates %}
-                        <tr data-key="{{ plate.plate }} {{ plate.account.placeLabel|lower }} {{ plate.account.accountNumber }}">
-                            <td class="text-nowrap"><b>{{ plate.display }}</b></td>
-                            <td>
+                        <tr data-key="{{ plate.plate }} {{ plate.account.placeLabel|lower }} {{ plate.account.accountNumber }} {{ plate.addedBy ? plate.addedBy.displayName|lower : '' }}">
+                            <td class="py-2" style="width: 1%;"><span class="car-plate">{{ plate.display }}</span></td>
+                            <td class="py-2 small">
                                 <a href="{{ path('app_admin_object', {id: plate.account.id}) }}">{{ plate.account.placeLabel }}</a>
-                                <br><small class="text-muted">о/р {{ plate.account.accountNumber }}</small>
+                                <span class="text-muted">· о/р {{ plate.account.accountNumber }}</span>
+                                <div class="text-muted">
+                                    {% if plate.addedBy %}
+                                        додав(ла) <a href="{{ path('app_admin_resident', {id: plate.addedBy.id}) }}">{{ plate.addedBy.displayName }}</a>{% if plate.addedBy.username %} (@{{ plate.addedBy.username }}){% endif %}
+                                    {% else %}
+                                        додав(ла): —
+                                    {% endif %}
+                                    · {{ plate.createdAt|date('d.m.Y H:i') }}
+                                </div>
                             </td>
-                            <td>
-                                {% if plate.addedBy %}
-                                    {{ plate.addedBy.displayName }}
-                                    {% if plate.addedBy.username %}<br><small>@{{ plate.addedBy.username }}</small>{% endif %}
-                                {% else %}
-                                    <span class="text-muted">—</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-nowrap">{{ plate.createdAt|date('d.m.Y H:i') }}</td>
                             {% if is_granted('ROLE_ADMIN') %}
-                                <td>
+                                <td class="py-2 text-end" style="width: 1%;">
                                     <form method="post" action="{{ path('app_admin_car_remove') }}"
                                           onsubmit="return confirm('Видалити номер {{ plate.display|e('js') }}?');">
                                         <input type="hidden" name="plate_id" value="{{ plate.id }}">
-                                        <button class="btn btn-sm btn-outline-danger" type="submit">Видалити</button>
+                                        <button class="btn btn-sm btn-outline-danger" type="submit" title="Видалити">🗑</button>
                                     </form>
                                 </td>
                             {% endif %}

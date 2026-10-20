@@ -4,6 +4,7 @@ namespace App\Repository;
 
 use App\Entity\Account;
 use App\Entity\CarPlate;
+use App\Entity\TelegramUser;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -25,6 +26,46 @@ class CarPlateRepository extends ServiceEntityRepository
             ->orderBy('c.id', 'ASC')
             ->getQuery()
             ->getResult();
+    }
+
+    /**
+     * What one person wrote down — on their flat, or on one they were linked to before.
+     *
+     * @return CarPlate[]
+     */
+    public function addedBy(TelegramUser $user): array
+    {
+        return $this->createQueryBuilder('c')
+            ->addSelect('a')
+            ->join('c.account', 'a')
+            ->andWhere('c.addedBy = :u')->setParameter('u', $user)
+            ->orderBy('c.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * The resident card's list: the flat's cars, whoever added them, plus anything this
+     * person added on another object. «Які номери він вносив» and «які авто в цій квартирі»
+     * are the two questions asked of that card, and they are usually one list.
+     *
+     * @return CarPlate[]
+     */
+    public function forResident(TelegramUser $user): array
+    {
+        $byId = [];
+
+        foreach ($user->getAccount() ? $this->forAccount($user->getAccount()) : [] as $plate) {
+            $byId[$plate->getId()] = $plate;
+        }
+
+        foreach ($this->addedBy($user) as $plate) {
+            $byId[$plate->getId()] = $plate;
+        }
+
+        ksort($byId);
+
+        return array_values($byId);
     }
 
     public function findByKey(string $key): ?CarPlate

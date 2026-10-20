@@ -1364,6 +1364,7 @@ class AdminController extends AbstractController
         TariffRepository $tariffRepository,
         ExpectedResidentRepository $expectedResidents,
         EntityManagerInterface $em,
+        CarPlateRepository $carPlates,
     ): Response {
         $account = $accountRepository->find($id);
 
@@ -1388,6 +1389,7 @@ class AdminController extends AbstractController
             ),
             'complaints' => $complaints->findByAccount($account),
             'expected' => $expectedResidents->forAccount($account),
+            'cars' => $carPlates->forAccount($account),
             'history' => $this->statusLogRepository->findRecentForAccount($account, 10),
         ]);
     }
@@ -1690,6 +1692,7 @@ class AdminController extends AbstractController
         TariffRepository $tariffRepository,
         EntityManagerInterface $em,
         ScheduledSetRepository $scheduledSetRepository,
+        CarPlateRepository $carPlates,
     ): Response {
         $user = $repository->find($id);
 
@@ -1718,6 +1721,7 @@ class AdminController extends AbstractController
             // the gate's board would then read «❓ без особового рахунку» for an hour
             // somebody has actually reserved.
             'upcomingBookings' => $account ? count($scheduledSetRepository->getOwn($user)) : 0,
+            'cars' => $carPlates->forResident($user),
         ]);
     }
 

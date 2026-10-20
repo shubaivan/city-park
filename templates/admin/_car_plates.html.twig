@@ -1,0 +1,37 @@
+{#
+    The car numbers on a card — the plate first and large, then whose it is and who wrote
+    it down. Shared by the resident card and the object card so the two cannot drift.
+
+    `cars`: CarPlate[]; `show_place`: whether to name the object (the object card already
+    is one); `highlight_user`: the person whose card this is, so «вніс сам» reads at a glance.
+#}
+{% if cars is empty %}
+    <p class="text-muted small mb-0">
+        Жодного номера не внесено. Мешканці вносять їх самі в боті («🚗 Мої авто») — за
+        бажанням, тому порожньо тут не означає, що авто немає.
+    </p>
+{% else %}
+    <ul class="list-unstyled mb-0">
+        {% for car in cars %}
+            <li class="py-1{% if not loop.last %} border-bottom{% endif %}">
+                <span class="car-plate">{{ car.display }}</span>
+                <div class="small text-muted">
+                    {% if show_place|default(true) %}
+                        <a href="{{ path('app_admin_object', {id: car.account.id}) }}">{{ car.account.placeLabel }}</a> ·
+                    {% endif %}
+                    {% if car.addedBy %}
+                        {% if highlight_user is defined and highlight_user and car.addedBy.id == highlight_user.id %}
+                            <b>вніс сам(а)</b>
+                        {% else %}
+                            додав(ла) <a href="{{ path('app_admin_resident', {id: car.addedBy.id}) }}">{{ car.addedBy.displayName }}</a>
+                        {% endif %}
+                    {% else %}
+                        додав(ла): <span class="text-muted">—</span>
+                    {% endif %}
+                    · {{ car.createdAt|date('d.m.Y') }}
+                </div>
+            </li>
+        {% endfor %}
+    </ul>
+{% endif %}
+<div class="small mt-2"><a href="{{ path('app_admin_cars') }}">🚗 Усі авто мешканців →</a></div>
