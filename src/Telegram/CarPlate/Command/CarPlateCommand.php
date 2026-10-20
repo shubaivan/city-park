@@ -132,7 +132,7 @@ class CarPlateCommand
     public static function intro(): string
     {
         return "🚗 <b>Мої авто</b>\n\n"
-            . "<b>За бажанням, не обов'язково.</b> Внесіть номери автомобілів вашої квартири — "
+            . "<b>За бажанням, не обов'язково.</b> Внесіть номери автомобілів вашої родини — "
             . "так у ЖК складеться перелік авто мешканців, який можна буде використати для "
             . "доступу на паркінг. Якщо є паркомісце — його теж можна вказати.\n\n"
             . '<i>Номери бачите ви й ваша родина в боті, охорона та ОСББ. Сусіди їх не бачать.</i>';
@@ -238,9 +238,9 @@ class CarPlateCommand
         $bot->sendMessage(
             text: count($candidates) > 1
                 ? "🅿️ Номери паркомісць повторюються в різних будинках. Яке саме ваше?\n\n"
-                    . '<i>Його буде додано до ваших об\'єктів у боті — разом із квартирою.</i>'
+                    . '<i>Його буде додано до ваших об\'єктів у боті.</i>'
                 : "🅿️ Це ваше паркомісце?\n\n"
-                    . '<i>Його буде додано до ваших об\'єктів у боті — разом із квартирою.</i>',
+                    . '<i>Його буде додано до ваших об\'єктів у боті.</i>',
             parse_mode: ParseMode::HTML,
             reply_markup: $markup,
         );
@@ -278,7 +278,7 @@ class CarPlateCommand
 
         $this->list($bot, $account, match ($result) {
             ParkingClaimService::LINKED => sprintf(
-                "✅ %s додано до ваших об'єктів — тепер його видно на головній разом із квартирою.",
+                "✅ %s додано до ваших об'єктів — тепер його видно на головній.",
                 $place,
             ),
             ParkingClaimService::ALREADY => sprintf("ℹ️ %s уже серед ваших об'єктів.", $place),
@@ -334,7 +334,7 @@ class CarPlateCommand
         }
 
         $bot->sendMessage(
-            text: sprintf('🗑 Видалити номер <b>%s</b> зі списку вашої квартири?', $plate->getDisplay()),
+            text: sprintf('🗑 Видалити номер <b>%s</b> з вашого списку?', $plate->getDisplay()),
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make('🗑 Так, видалити', callback_data: self::DELETE_OK_PREFIX . $plate->getId()),
