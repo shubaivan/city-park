@@ -42,10 +42,17 @@ class ResidentChatTopicsCommand extends Command
         // has somewhere else to be. Without it the chatter lands in «Заявки» and buries
         // the one answer somebody was looking for.
         self::TOPIC_SMALLTALK => ['💬 Спілкування', 0x8EEE98],
+        // Leftover tiles, two bags of cement, a heater the builders are done with
+        // (23.10.2026). Residents write here themselves; a thing like this lives a day or
+        // two, so it gets a branch of the chat rather than a board in the bot.
+        self::TOPIC_FLEA => ['🛒 Барахолка — продам / віддам / куплю', 0xFFD67E],
     ];
 
     /** Not in ResidentChatService: nothing is ever posted into it by the bot. */
     private const TOPIC_SMALLTALK = 'smalltalk';
+
+    /** Same: the bot posts nothing into it. */
+    private const TOPIC_FLEA = 'flea';
 
     private const ENV_KEYS = [
         ResidentChatService::TOPIC_COMPLAINTS => 'RESIDENT_CHAT_TOPIC_COMPLAINTS',
