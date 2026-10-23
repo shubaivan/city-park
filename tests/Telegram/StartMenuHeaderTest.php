@@ -261,4 +261,25 @@ class StartMenuHeaderTest extends TestCase
         $this->assertSame('', StartCommand::renderHeader([]));
         $this->assertSame('', StartCommand::renderHeader([$this->account('', '85')]));
     }
+
+    /**
+     * «Чи я вже підтвердив номер?» is answered on the first screen, for one object or
+     * several — and only when there is a number to have confirmed.
+     */
+    public function testAConfirmedPhoneIsSaidInTheHeader(): void
+    {
+        $line = '✅ Ваш телефон підтверджено';
+
+        $one = StartCommand::renderHeader([$this->account('230085', '85')], false, [], true);
+        $this->assertStringContainsString($line, $one);
+        $this->assertLessThan(strpos($one, $line), strpos($one, '230085'), 'under the рахунок, not above it');
+
+        $two = StartCommand::renderHeader([
+            $this->account('230085', '85'),
+            $this->account('235168', '168', Account::UNIT_STORAGE),
+        ], false, [], true);
+        $this->assertStringContainsString($line, $two);
+
+        $this->assertStringNotContainsString($line, StartCommand::renderHeader([$this->account('230085', '85')]));
+    }
 }

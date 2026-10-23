@@ -89,7 +89,24 @@ class StartCommand extends Command
             self::objects($bot, $account),
             self::debtFiguresArePublishable($bot) && self::owesForTheFlat($bot),
             self::household($bot, $account),
+            self::phoneState($bot, $account) === ApprovePhoneCommand::STATE_CONFIRMED && self::hasPhone($bot),
         );
+    }
+
+    /**
+     * Whether the reader has a number on record. Somebody the accountant linked by hand
+     * may never have shared one, and «телефон підтверджено» would then be untrue.
+     */
+    private static function hasPhone(Nutgram $bot): bool
+    {
+        try {
+            $users = $bot->getContainer()->get(TelegramUserService::class);
+            $user = $users instanceof TelegramUserService ? $users->getCurrentUser() : null;
+
+            return $user instanceof TelegramUser && trim((string)$user->getPhoneNumber()) !== '';
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -111,13 +128,21 @@ class StartCommand extends Command
      * a hardcoded "кв. %s", which was right for a flat and wrong for everything else —
      * the same mistake the debtors' board was corrected for on 03.09.2026.
      *
+     * `$phoneConfirmed` adds one green line under the особовий рахунок (23.10.2026, Иван):
+     * the first screen is where a resident looks to see whether they still have to do
+     * anything, and after the Viber question about /phone «чи я вже підтвердив номер?» is
+     * exactly what it should answer without a tap.
+     *
      * @param Account[] $objects
      */
     public static function renderHeader(
         array $objects,
         bool $withDebt = false,
         array $household = [],
+        bool $phoneConfirmed = false,
     ): string {
+        $phoneLine = $phoneConfirmed ? "✅ Ваш телефон підтверджено — усе гаразд.\n" : '';
+
         $objects = array_values(array_filter(
             $objects,
             static fn (Account $account): bool => (string)$account->getAccountNumber() !== '',
@@ -131,9 +156,10 @@ class StartCommand extends Command
             return sprintf(
                 "🏠 <b>%s</b>\n"
                 . "🧾 Ваш особовий рахунок: <code>%s</code>\n"
-                . "<i>Це ваш номер в ОСББ (не банківський) — називайте його, коли звертаєтесь до бухгалтера.</i>\n%s\n",
+                . "<i>Це ваш номер в ОСББ (не банківський) — називайте його, коли звертаєтесь до бухгалтера.</i>\n%s%s\n",
                 self::esc($objects[0]->getStreetPlaceLabel()),
                 self::esc((string)$objects[0]->getAccountNumber()),
+                $phoneLine,
                 self::householdLine($household),
             );
         }
@@ -151,6 +177,10 @@ class StartCommand extends Command
         }
 
         $lines[] = '<i>Це ваші номери в ОСББ (не банківські) — називайте той, про який питаєте бухгалтера.</i>';
+
+        if ($phoneLine !== '') {
+            $lines[] = rtrim($phoneLine, "\n");
+        }
 
         $others = self::householdLine($household);
 
