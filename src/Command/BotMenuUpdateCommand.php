@@ -26,9 +26,15 @@ class BotMenuUpdateCommand extends Command
      * it was simply not being found (Иван, 10.09.2026), and a resident who cannot get back
      * to the menu reads that as the bot having stopped working. 🔑 Оренда keeps the top of
      * the inline menu, where there is no «головне меню» to compete with it.
+     *
+     * `/phone` is second (23.10.2026): it is the one entry that opens all the others, and a
+     * newcomer told «натисніть /phone» looks for it here first — Helen G did, found
+     * nothing, and asked the Viber group for a screenshot. It answers a confirmed resident
+     * with «✅ номер підтверджено», so the line costs them nothing.
      */
     private const MENU = [
         ['start', '🏠 Головне меню'],
+        ['phone', '📱 Мій телефон / підтвердити'],
         ['rent', '🔑 Оренда та продаж'],
         ['services', '🛠 Послуги'],
         ['chat', '🏘 Чат мешканців'],

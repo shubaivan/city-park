@@ -52,7 +52,7 @@ class EventApprovePhoneCommand extends Command
         // resident sees once and judges the whole thing by — which was then deleted; on a
         // phone it still flashes, and a delete that fails leaves it standing.
         $bot->sendMessage(
-            text: $account instanceof Account ? $this->confirmedText($account) : $this->notFoundText(),
+            text: $account instanceof Account ? $this->confirmedText($account) : self::notFoundText(),
             parse_mode: ParseMode::HTML,
             reply_markup: ReplyKeyboardRemove::make(true),
         );
@@ -80,7 +80,7 @@ class EventApprovePhoneCommand extends Command
         );
     }
 
-    private function notFoundText(): string
+    public static function notFoundText(): string
     {
         return "📕 <b>Номер збережено, але в реєстрі ОСББ його немає</b>\n\n"
             . "Це не помилка з вашого боку — просто цей номер не записаний за жодною квартирою, "
