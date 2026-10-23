@@ -25,6 +25,7 @@ use App\Telegram\CarPlate\Command\CarPlateCommand;
 use App\Telegram\GuestPass\Command\GuestPassCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\ResidentChat\Command\ResidentChatCommand;
+use App\Telegram\ApprovePhone\Command\ApprovePhoneCommand;
 use SergiX44\Nutgram\Handlers\Type\Command;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
@@ -57,7 +58,7 @@ class StartCommand extends Command
         // all need it, and each lookup is a DB round-trip on every menu render.
         $account = self::currentAccount($bot);
 
-        $text = self::header($bot, $account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
+        $text = self::header($bot, $account) . self::phoneHint($bot, $account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
         $markup = self::mainMenuMarkup($bot, $account);
 
         if ($edit) {
@@ -417,6 +418,45 @@ class StartCommand extends Command
         }
     }
 
+    /**
+     * Where the reader stands with their phone number, or null when the question does not
+     * apply to them: the guard and the complaint managers are staff with no особовий
+     * рахунок by design, and «ваш номер не знайдено в реєстрі» would tell them something
+     * true and useless every time they open the bot.
+     */
+    private static function phoneState(Nutgram $bot, ?Account $account): ?string
+    {
+        if (!$account instanceof Account && (self::isGuard($bot) || self::isComplaintManager($bot))) {
+            return null;
+        }
+
+        try {
+            $users = $bot->getContainer()->get(TelegramUserService::class);
+            $user = $users instanceof TelegramUserService ? $users->getCurrentUser() : null;
+        } catch (\Throwable) {
+            $user = null;
+        }
+
+        return ApprovePhoneCommand::state($user, $account);
+    }
+
+    /**
+     * One line above the menu for somebody the bot does not know yet. Their header is
+     * empty — there is no flat to name — so without this the first screen says nothing
+     * about why half the buttons are missing or what opens them, and the only pointer to
+     * /phone was a blue word inside other messages (Helen G, Viber, 23.10.2026).
+     */
+    private static function phoneHint(Nutgram $bot, ?Account $account): string
+    {
+        return match (self::phoneState($bot, $account)) {
+            ApprovePhoneCommand::STATE_NONE => "📱 <b>Бот вас ще не впізнав.</b> Поділіться номером телефону "
+                . "(кнопка нижче) — і відкриються бронювання альтанки, заявки, чат мешканців та інше.\n\n",
+            ApprovePhoneCommand::STATE_UNKNOWN => "📕 <b>Ваш номер не знайдено в реєстрі ОСББ.</b> "
+                . "Натисніть кнопку нижче — там написано, що робити.\n\n",
+            default => '',
+        };
+    }
+
     private static function currentAccount(Nutgram $bot): ?Account
     {
         try {
@@ -510,6 +550,20 @@ class StartCommand extends Command
         // рахунок and manages the register. What each person may use is decided by the
         // rows below, every one of them already gated on what they actually have.
         $markup = InlineKeyboardMarkup::make();
+
+        // The phone, first, for somebody the bot does not know yet: it is the one button
+        // that opens the rest of this menu, and the line above the menu points at it. For a
+        // confirmed resident the same entry moves to the bottom as «✅ Телефон
+        // підтверджено» — asked for so a resident can see at a glance that they have
+        // already done it, rather than wondering whether to share again.
+        $phoneState = self::phoneState($bot, $account);
+
+        if ($phoneState !== null && $phoneState !== ApprovePhoneCommand::STATE_CONFIRMED) {
+            $markup->addRow(InlineKeyboardButton::make(
+                ApprovePhoneCommand::menuLabel($phoneState),
+                callback_data: ApprovePhoneCommand::MENU_CALLBACK,
+            ));
+        }
 
         // The guard's own copy of the board used to sit here, above everything, because his
         // version named flats and nobody else's did. There is one board now (09.09.2026),
@@ -644,6 +698,13 @@ class StartCommand extends Command
             );
         }
 
+        if ($phoneState === ApprovePhoneCommand::STATE_CONFIRMED) {
+            $markup->addRow(InlineKeyboardButton::make(
+                ApprovePhoneCommand::menuLabel($phoneState),
+                callback_data: ApprovePhoneCommand::MENU_CALLBACK,
+            ));
+        }
+
         return $markup;
     }
 
@@ -764,6 +825,21 @@ class StartCommand extends Command
             return $guard instanceof GuardService
                 && $users instanceof TelegramUserService
                 && $guard->isGuard($users->getCurrentUser());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /** Same shape and same fail-closed reading as isGuard(). */
+    private static function isComplaintManager(Nutgram $bot): bool
+    {
+        try {
+            $complaints = $bot->getContainer()->get(ComplaintService::class);
+            $users = $bot->getContainer()->get(TelegramUserService::class);
+
+            return $complaints instanceof ComplaintService
+                && $users instanceof TelegramUserService
+                && $complaints->isManager($users->getCurrentUser());
         } catch (\Throwable) {
             return false;
         }

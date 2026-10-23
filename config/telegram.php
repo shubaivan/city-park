@@ -61,6 +61,7 @@ $bot->registerCommand(\App\Telegram\ApprovePhone\Command\ApprovePhoneCommand::cl
 $bot->registerCommand(\App\Telegram\SchedulePavilion\Command\Schedule::class);
 
 $bot->onContact(\App\Telegram\ApprovePhone\Command\EventApprovePhoneCommand::class);
+$bot->onCallbackQueryData(\App\Telegram\ApprovePhone\Command\ApprovePhoneCommand::MENU_CALLBACK, \App\Telegram\ApprovePhone\Command\ApprovePhoneCommand::class);
 
 $bot->onPhoto(\App\Telegram\Photo\Command\UploadPhotoCommand::class);
 
