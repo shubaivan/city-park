@@ -41,6 +41,8 @@ final class PlateKey
     /** The stored form, or '' when this is not something a plate can be. */
     public static function of(?string $plate): string
     {
+        $plate = self::pick($plate);
+
         return self::problem($plate) === null ? self::fold($plate) : '';
     }
 
@@ -52,6 +54,7 @@ final class PlateKey
      */
     public static function problem(?string $plate): ?string
     {
+        $plate = self::pick($plate);
         $key = self::fold($plate);
 
         if ($key === '') {
@@ -92,6 +95,31 @@ final class PlateKey
         }
 
         return null;
+    }
+
+    /**
+     * The one line that is the number, when the message carries more than the number.
+     *
+     * «СА1322КН / Mazda CX5 / Буд 25, кв 25» — the car the way somebody describes it to a
+     * person (23.10.2026). Since any 4–10 letters and digits pass, «Mazda CX5» is itself a
+     * valid plate, so the message read as two cars and was refused with «надсилайте по
+     * одному» to somebody who has one. Exactly one line in the standard «AA 1234 AA» shape
+     * is unambiguous: that is the number, the rest is the model and the address. Two such
+     * lines are two cars and still go back to the person; none leaves the text as typed.
+     */
+    private static function pick(?string $plate): string
+    {
+        $parts = preg_split('/[\r\n,;]+/u', (string)$plate, -1, PREG_SPLIT_NO_EMPTY);
+
+        if (count($parts) < 2) {
+            return (string)$plate;
+        }
+        $standard = array_values(array_filter(
+            $parts,
+            static fn (string $part): bool => preg_match('/^[A-Z]{2}\d{4}[A-Z]{2}$/', self::fold($part)) === 1,
+        ));
+
+        return count($standard) === 1 ? $standard[0] : (string)$plate;
     }
 
     /** More than one line (or comma-separated part) that would each be a plate on its own. */

@@ -131,6 +131,12 @@ class CarPlateRulesTest extends TestCase
         $this->assertStringContainsString('по одному', (string)PlateKey::problem('КА 0012 ХМ КА 0717 ІК'));
         // A number written over two lines is still one number.
         $this->assertNull(PlateKey::problem("СА 1234\nАВ"));
+
+        // The number with the model and the address under it is one car, not two
+        // (23.10.2026 — «Mazda CX5» alone passes as a plate).
+        $this->assertNull(PlateKey::problem("СА1322КН  \nMazda CX5\nБуд 25 кв 25"));
+        $this->assertSame('CA1322KH', PlateKey::of("СА1322КН  \nMazda CX5\nБуд 25 кв 25"));
+        $this->assertSame('CA1441EH', PlateKey::of("CA 1441 EH\nПаркомісце 115"));
     }
 
     /** Where the car stands: optional, free text, and «немає» means none. */
