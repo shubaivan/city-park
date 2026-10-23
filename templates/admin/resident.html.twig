@@ -276,7 +276,25 @@
                             </dl>
 
                             {% if is_granted('ROLE_ADMIN') %}
-                            <form method="post" action="{{ path('app_admin_resident_account', {id: user.id}) }}" class="mt-2">
+                            {#
+                                This form edits the OBJECT, not the person: house, number, street and
+                                area belong to the особовий рахунок, so every resident linked to it
+                                moves with the address. On 23.10.2026 Аліна corrected 110045 from
+                                буд. 19 to буд. 17 on Лариса's card — right for the flat — and two other
+                                residents of what was really буд. 19, кв. 45 went to буд. 17 with it.
+                                Somebody who lives elsewhere is moved with «📦 Перенести», below; this
+                                form says so, names who else is on the object, and asks once more.
+                            #}
+                            {% set mateNames = roommates|map(m => m.displayName)|join(', ') %}
+                            <form method="post" action="{{ path('app_admin_resident_account', {id: user.id}) }}" class="mt-2 js-object-form"
+                                  {% if roommates|length %}onsubmit="return confirm({{ ('Адреса й площа зміняться для всього рахунку ' ~ account.accountNumber ~ ' — разом із цією людиною ще для ' ~ roommates|length ~ ': ' ~ mateNames ~ '.\n\nЯкщо людина живе в іншій квартирі — не міняйте адресу, а перенесіть її кнопкою «📦 Перенести».\n\nЗберегти зміни об’єкта?')|json_encode }})"{% endif %}>
+                                <div class="alert {{ roommates|length ? 'alert-warning' : 'alert-light' }} small py-2 mb-2">
+                                    ✏️ Тут змінюється <b>сама квартира</b> (рахунок {{ account.accountNumber }}), а не людина.
+                                    {% if roommates|length %}
+                                        Зміни побачать усі, хто на ній: ще <b>{{ roommates|length }}</b> — {{ mateNames }}.
+                                    {% endif %}
+                                    Якщо людина живе в іншій квартирі — <b>не правте адресу</b>, а перенесіть її кнопкою «📦 Перенести» нижче.
+                                </div>
                                 <div class="form-row">
                                     <div class="form-group col-6 col-md-3">
                                         <label class="small mb-1">Будинок</label>

@@ -274,4 +274,27 @@ class AdminResidentPageTest extends KernelTestCase
         $this->assertStringContainsString('за', $html);
         $this->assertStringContainsString('бажанням', $html);
     }
+
+    /**
+     * The object form edits the flat, not the person, and everyone on the рахунок moves with
+     * the address (23.10.2026: correcting 110045 to буд. 17 took two people of буд. 19 along).
+     * It must say so, name them, and ask before saving — and stay quiet about others when
+     * there are none.
+     */
+    public function testTheObjectFormNamesEveryoneItWillMove(): void
+    {
+        $account = $this->account();
+        $mate = $this->user(2, 'Олена', $account);
+
+        $html = $this->render($this->user(1, account: $account), $account, ['roommates' => [$mate]]);
+
+        $this->assertStringContainsString('сама квартира', $html);
+        $this->assertStringContainsString('ще <b>1</b> — Олена Шуба', $html);
+        $this->assertMatchesRegularExpression('/class="[^"]*js-object-form"\s+onsubmit="return confirm\(/', $html);
+        $this->assertStringContainsString('Перенести', $html);
+
+        $alone = $this->render($this->user(1, account: $account), $account);
+        $this->assertStringContainsString('сама квартира', $alone);
+        $this->assertDoesNotMatchRegularExpression('/js-object-form"\s+onsubmit=/', $alone);
+    }
 }
