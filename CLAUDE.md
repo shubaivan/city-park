@@ -25,6 +25,27 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 - `ScheduledSet` is one row per booked **hour** (no merging). A "session" = consecutive same-pavilion hours by one account, detected at query time.
 - Booking limits live in `src/Validator/`: ≤ 3h / day, ≤ 12h / month, no cross-pavilion overlap same hour, bookings must be contiguous (one unbroken run per pavilion/day — no scattered hours), working hours 09:00–23:00 both pavilions (no night; last slot starts 22:00), per-account debt threshold computed as `area × tariff.price_per_meter × 1.5` (`DebtPolicy::getThresholdFor`). Fallback to env `DEBT_BLOCK_THRESHOLD` (1300 UAH) when either `Account.area` or `Tariff.price_per_meter` is missing/zero. Tariff is a single-row table set via `/admin/tariff`.
 
+## Booking journal (`/admin/bookings-log`, 25.10.2026)
+
+`scheduled_set` is hard-deleted, and its id is drawn at `persist()` — *before* the validator
+runs — so a removed hour and a refused one left the same trace: a gap in the sequence. On
+25.10.2026 a resident of буд. 21, кв. 118 had booked 13:00–15:00 for the weekend and there
+was nothing in the base: four ids gone, no way to tell «видалив, коли йому показували як»
+from «бот не прийняв». `BookingLog` is one row per **created / refused / deleted** hour —
+who, which object, which hour, the refusal text without markup — with the person and the
+flat kept as labels, the `QrScan` rule. ROLE_ADMIN, GET only, like the schedule it explains.
+
+- **A journal, not a soft delete.** A `deleted_at` would have to be filtered by every reader
+  of `scheduled_set` — the limits, the guard board, the photo cron, the history — and the
+  one that forgot would count a deleted hour against a limit or show it to the guard.
+- **A refused hour is `detach()`ed before the journal flushes.** It is already persisted
+  when the validator refuses it, and the journal's flush would otherwise write the very
+  hour the rules just refused. `AdminBookingLogPageTest` pins the order.
+- **A deletion is described before the flush and saved after it** — Doctrine clears the id
+  on removal, and saving first would record a removal that might then fail.
+- **Never fatal**, and reached through `isset($this->bookingLog)` in both conversations: one
+  restored from the cache was serialised before the property existed.
+
 ## Bot menu (callback wiring in `config/telegram.php`)
 
 | Button | Callback | Slash | Handler |

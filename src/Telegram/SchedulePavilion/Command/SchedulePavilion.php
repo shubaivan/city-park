@@ -3,7 +3,10 @@
 namespace App\Telegram\SchedulePavilion\Command;
 
 use App\Service\OsbbContacts;
+use App\Entity\BookingLog;
 use App\Entity\ScheduledSet;
+use App\Entity\TelegramUser;
+use App\Service\BookingLogService;
 use App\Service\BlockReasonResolver;
 use App\Service\DebtPolicy;
 use App\Service\PhotoUploadFlow;
@@ -46,6 +49,7 @@ class SchedulePavilion extends Conversation
         private ?LoggerInterface $photoLogger = null,
         private string $pavilion1PhotoFileId = '',
         private string $pavilion2PhotoFileId = '',
+        private ?BookingLogService $bookingLog = null,
     ) {}
 
     /**
@@ -333,14 +337,20 @@ class SchedulePavilion extends Conversation
             $lists = $this->validator->validate($scheduledSet);
             if (count($lists)) {
                 $errorMsg = $lists[0]->getMessage();
+                // Out of the unit of work first: the journal flushes, and a refused hour
+                // still persisted here would be written by that flush.
+                $this->em->detach($scheduledSet);
+                $this->journal(BookingLog::ACTION_REFUSED, $scheduledSet, $currentUser, $errorMsg);
                 $this->safeEdit($bot, $errorMsg, null, ParseMode::HTML);
                 $this->end();
                 return;
             }
             try {
                 $this->em->flush();
+                $this->journal(BookingLog::ACTION_CREATED, $scheduledSet, $currentUser);
             } catch (UniqueConstraintViolationException) {
-                // Sibling worker won the race and inserted the same row first.
+                // Sibling worker won the race and inserted the same row first — and
+                // journalled it.
                 $this->em->clear();
             }
         }
@@ -411,6 +421,18 @@ class SchedulePavilion extends Conversation
     }
 
     // --- Render helpers: always edit the callback message ---
+
+    /**
+     * `isset`, because a conversation restored from the cache was serialised by the code
+     * before the journal existed and has no such property at all — reading it would throw
+     * mid-booking for whoever was half-way through across the deploy.
+     */
+    private function journal(string $action, ScheduledSet $set, ?TelegramUser $actor, ?string $reason = null): void
+    {
+        if (isset($this->bookingLog)) {
+            $this->bookingLog->save(BookingLogService::entry($action, $set, $actor, $reason));
+        }
+    }
 
     private function safeEdit(Nutgram $bot, string $text, ?InlineKeyboardMarkup $markup = null, ?ParseMode $parseMode = null): void
     {

@@ -11,6 +11,7 @@ use App\Entity\ServiceOffer;
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
+use App\Repository\BookingLogRepository;
 use App\Repository\CarPlateRepository;
 use App\Service\AvatarService;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -981,6 +982,27 @@ class AdminController extends AbstractController
     #############
     # Schedule
     #############
+
+    /** Entries drawn on /admin/bookings-log — a busy weekend is a few dozen, so roughly a month. */
+    private const BOOKING_LOG_SHOWN = 400;
+
+    /**
+     * Every hour booked, refused or removed, and by whom.
+     *
+     * `scheduled_set` is hard-deleted, so «я бронював, а броні немає» had no answer: on
+     * 25.10.2026 a resident's three weekend hours were simply not there and nothing could
+     * say whether he had removed them or the rules had refused them. ROLE_ADMIN, like the
+     * schedule it explains; GET only, because a journal that can be edited is not one.
+     */
+    #[Route('/admin/bookings-log', name: 'app_admin_booking_log', methods: [Request::METHOD_GET])]
+    public function bookingLog(BookingLogRepository $log): Response
+    {
+        return $this->render('admin/booking_log.html.twig', [
+            'entries' => $log->latest(self::BOOKING_LOG_SHOWN),
+            'total' => $log->total(),
+            'shown' => self::BOOKING_LOG_SHOWN,
+        ]);
+    }
 
     #[Route('/admin/schedule', name: 'app_admin_schedule')]
     public function schedule(): Response
