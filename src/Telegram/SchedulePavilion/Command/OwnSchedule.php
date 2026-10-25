@@ -2,7 +2,9 @@
 
 namespace App\Telegram\SchedulePavilion\Command;
 
+use App\Entity\BookingLog;
 use App\Entity\ScheduledSet;
+use App\Service\BookingLogService;
 use App\Service\PhotoUploadFlow;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
@@ -30,6 +32,7 @@ class OwnSchedule extends Conversation
         private TelegramUserService $telegramUserService,
         private PhotoUploadFlow $photoUploadFlow,
         private ?LoggerInterface $photoLogger = null,
+        private ?BookingLogService $bookingLog = null,
     ) {}
 
     /**
@@ -175,9 +178,20 @@ class OwnSchedule extends Conversation
             return;
         }
 
+        // Described before the removal (the flush clears the id), written after it.
+        // `isset`: a conversation restored from before the journal existed has no such
+        // property, and reading it would throw in the middle of a deletion.
+        $entry = isset($this->bookingLog)
+            ? BookingLogService::entry(BookingLog::ACTION_DELETED, $scheduledSet, $this->telegramUserService->getCurrentUser())
+            : null;
+
         $this->em->remove($scheduledSet);
         $this->em->flush();
         $this->id = null;
+
+        if ($entry !== null) {
+            $this->bookingLog->save($entry);
+        }
 
         // Show remaining bookings
         $this->renderOwnSchedule($bot);

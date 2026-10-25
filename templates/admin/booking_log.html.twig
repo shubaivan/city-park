@@ -1,0 +1,90 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Журнал бронювань · ОСББ City Park{% endblock %}
+
+{#
+    Every booked, refused and removed hour.
+
+    `scheduled_set` is deleted outright, so this is the only place a removed booking still
+    exists — and the only place that tells «видалив сам» from «бот не прийняв». Same shape as
+    the scan log: a table that scrolls inside its own box, nothing to click, nothing to change.
+#}
+{% block body %}
+    {{ parent() }}
+
+    <div class="container-fluid py-3 px-2 px-sm-3" style="max-width: 1100px;">
+        <p class="mb-2"><a href="{{ path('app_admin') }}">← На головну адмінки</a></p>
+
+        <h4 class="mb-1">🧾 Журнал бронювань</h4>
+        <p class="text-muted small mb-3">
+            Кожна година, яку забронювали, яку бот не прийняв (і чому) або яку видалили.
+            Видалена бронь зникає з розкладу, а тут лишається.
+        </p>
+
+        {% if entries is empty %}
+            <div class="alert alert-light py-2 px-3 small mb-0">
+                Поки що жодного запису.
+            </div>
+        {% else %}
+            <div class="card">
+                <div class="card-header py-2 px-3">
+                    <b>Події</b>
+                    <span class="text-muted small">— показано {{ entries|length }} з {{ total }}</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 small">
+                        <thead>
+                        <tr>
+                            <th>Коли</th>
+                            <th>Що сталося</th>
+                            <th>Альтанка, година</th>
+                            <th>Об'єкт</th>
+                            <th>Хто</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for entry in entries %}
+                            <tr>
+                                <td class="text-nowrap">{{ entry.createdAt|date('d.m H:i') }}</td>
+                                {#
+                                    Every action is named explicitly, with a neutral fallback —
+                                    an unguarded `else` is how /admin/links drew one kind as
+                                    another for a week.
+                                #}
+                                <td>
+                                    {% if entry.action == 'created' %}
+                                        <span class="text-success">✅ заброньовано</span>
+                                    {% elseif entry.action == 'refused' %}
+                                        <span class="text-warning">⛔ відмова</span>
+                                        {% if entry.reason %}<div class="text-muted" style="white-space: pre-line;">{{ entry.reason }}</div>{% endif %}
+                                    {% elseif entry.action == 'deleted' %}
+                                        <span class="text-danger">🗑 видалено</span>
+                                    {% else %}
+                                        <span class="text-muted">{{ entry.action }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-nowrap">
+                                    {{ entry.pavilion == 1 ? 'Перша' : 'Друга' }} · {{ entry.scheduledAt|date('d.m H:i') }}
+                                </td>
+                                <td>
+                                    {% if entry.account and entry.account.id %}
+                                        <a href="{{ path('app_admin_object', {id: entry.account.id}) }}" class="text-decoration-none">{{ entry.placeLabel }}</a>
+                                    {% else %}
+                                        {{ entry.placeLabel }}
+                                    {% endif %}
+                                </td>
+                                <td>{{ entry.actorLabel }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <p class="text-muted small mt-2 mb-0">
+                Показано останні {{ shown }} записів. Журнал не редагується — це навмисно.
+                Записи ведуться з 25.10.2026; що було раніше, не збереглося.
+            </p>
+        {% endif %}
+    </div>
+{% endblock %}
