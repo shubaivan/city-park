@@ -78,7 +78,12 @@ class ParkingClaimRulesTest extends TestCase
 
         $groups = $this->createMock(OwnerGroupService::class);
         $groups->method('siblings')->willReturn([]);
-        $groups->expects($this->once())->method('link')->with($flat, $space)->willReturn(null);
+        $groups->expects($this->once())->method('link')->with($flat, $space)->willReturnCallback(static function () use ($flat, $space): ?string {
+            $flat->setOwnerGroupId(1);
+            $space->setOwnerGroupId(1);
+
+            return null;
+        });
 
         $plate = $this->plate($flat, '212 власне');
         [$result] = $this->service([$flat, $space], $groups)->claim($plate, $flat, $space);
@@ -143,5 +148,41 @@ class ParkingClaimRulesTest extends TestCase
         $flat = $this->account(1, '210024', '24', '19');
 
         $this->assertSame([], $this->service([$flat, $this->account(2, '227142', '142', '19')])->candidates($this->plate($flat, 'біля ліфта')));
+    }
+
+    /** Already the family's at claim time — nothing to check, and the panel must not say so. */
+    public function testASpaceAlreadyInTheHouseholdReadsAsJoined(): void
+    {
+        $flat = $this->account(1, '420100', '100', '23');
+        $space = $this->account(2, '427170', '170', '23');
+        $flat->setOwnerGroupId(1);
+        $space->setOwnerGroupId(1);
+
+        $groups = $this->createMock(OwnerGroupService::class);
+        $groups->method('siblings')->willReturnCallback(static fn (Account $a): array => $a === $flat ? [$space] : [$flat]);
+        $groups->expects($this->never())->method('link');
+
+        $plate = $this->plate($flat, '170');
+        [$result] = $this->service([$flat, $space], $groups)->claim($plate, $flat, $space);
+
+        $this->assertSame(ParkingClaimService::ALREADY, $result);
+        $this->assertTrue($plate->isParkingLinked());
+    }
+
+    /** A claim left for a human and then joined on the object card reads as joined; undone, it does not. */
+    public function testTheMarkFollowsTheOwnerGroupNotTheFlag(): void
+    {
+        $flat = $this->account(1, '120058', '58', '17');
+        $space = $this->account(2, '127152', '152', '17');
+        $plate = $this->plate($flat, '152')->setSpotOwned(true)->setParkingAccount($space)->setParkingLinked(false);
+
+        $this->assertFalse($plate->isParkingLinked());
+
+        $flat->setOwnerGroupId(1);
+        $space->setOwnerGroupId(1);
+        $this->assertTrue($plate->isParkingLinked());
+
+        $space->setOwnerGroupId(7);
+        $this->assertFalse($plate->isParkingLinked(), 'another household\'s group is not ours');
     }
 }

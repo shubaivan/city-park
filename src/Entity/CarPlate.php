@@ -174,9 +174,26 @@ class CarPlate
         return $this;
     }
 
+    /**
+     * The claimed space is one of the household's objects now — read from the owner group,
+     * not from the flag. The flag only says the bot made the join itself, so a space already
+     * in the family's group at claim time, or joined by hand on the object card afterwards,
+     * kept «потребує перевірки» on 13 of 14 claims (27.10.2026) with nothing left to check.
+     */
     public function isParkingLinked(): bool
     {
-        return $this->parking_linked;
+        $flat = $this->account;
+        $space = $this->parkingAccount;
+
+        if ($flat === null || $space === null) {
+            return false;
+        }
+
+        if ($flat === $space) {
+            return true;
+        }
+
+        return $space->getOwnerGroupId() !== null && $space->getOwnerGroupId() === $flat->getOwnerGroupId();
     }
 
     public function setParkingLinked(bool $linked): static
