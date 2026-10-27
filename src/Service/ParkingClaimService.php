@@ -77,6 +77,7 @@ class ParkingClaimService
         $ours = array_map(static fn (Account $a): int => (int)$a->getId(), [$household, ...$this->ownerGroups->siblings($household)]);
 
         if (in_array((int)$parking->getId(), $ours, true)) {
+            $plate->setParkingLinked(true);
             $this->em->flush();
 
             return [self::ALREADY, null];

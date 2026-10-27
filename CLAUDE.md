@@ -1235,7 +1235,11 @@ Otherwise nothing is joined, the claim is kept (`parking_account_id`, `parking_l
 building and flat, never a phone — so the two can sort it out in the chat. A rented space is
 recorded and never joined: it is somebody else's object, and joining it would put their
 arrears in this family's header and block this family's booking. A join is undone on the
-object card like any owner group. `ParkingClaimRulesTest`.
+object card like any owner group. **The panel's «🔗 приєднано» / «⚠️ потребує перевірки» reads the
+owner group, not `parking_linked`** (`CarPlate::isParkingLinked()`, 27.10.2026): the flag only
+says the bot made the join, so a space already in the family's group, or joined by hand
+afterwards, sat at «потребує перевірки» — 13 of the first 14 claims, with nothing to check.
+`ParkingClaimRulesTest`.
 
 **The chat hears who joined the list, never what they wrote** (`CarPlateAnnouncer`, topic
 «🚗 Авто мешканців», `RESIDENT_CHAT_TOPIC_CARS`): «Буд. 19, кв. 85 — внесли своє авто…
