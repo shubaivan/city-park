@@ -14,13 +14,13 @@ use App\Repository\AccountRepository;
  * the complete list. Apartment numbers only: no names, no phone numbers, nothing that is
  * not already written on a door in the під'їзд.
  *
- * **The house's total is not among them.** It was the headline of every render until
- * 09.09.2026, when the head of the ОСББ asked for it out: a flat's own arrears are that
- * household's business and its neighbours' pressure, while the sum of all of them is the
- * ОСББ's financial position, and management reads that as theirs to publish or not. What
- * each flat owes stays, the count of flats stays, and so does the month-on-month movement
- * — a delta is not the figure that was withdrawn, and it is the one line that tells the
- * house whether anything is happening at all.
+ * **The house's total is in the chat post and nowhere else.** It was the headline of every
+ * render until 09.09.2026, when the head of the ОСББ asked for it out: the sum of all the
+ * flats is the ОСББ's financial position, and management reads that as theirs to publish
+ * or not. On 26.10.2026 she published it herself, in the Viber group, under the debt
+ * screenshots — so it is theirs to publish and they have, and the post that follows each
+ * debt import carries it again. The menu block and the report stay without it: nobody
+ * asked for those back, and the post is the one place it reads as the ОСББ's own figure.
  *
  * Three rules make it defensible, and each of them is load-bearing:
  *
@@ -299,8 +299,9 @@ class DebtBoardService
      *
      * Unlike the menu board this is *push*: it lands in every member's notifications and
      * is forwardable in one tap, so it leads with the figures the whole house needs — how
-     * many flats owe and whether that moved since last month — and only then names the
-     * largest. The house's total is deliberately absent; see the class docblock. The date is in the header for the same reason it is on the
+     * many flats owe, what they owe between them and whether that moved since last month —
+     * and only then names the largest. The total is back here since 27.10.2026, and only
+     * here; see the class docblock. The date is in the header for the same reason it is on the
      * board: a list of debtors without one is an accusation nobody can check.
      *
      * $previous is the snapshot before this import, or null on the very first one.
@@ -311,6 +312,7 @@ class DebtBoardService
             '📊 <b>Стан розрахунків з ОСББ</b>',
             sprintf('<i>станом на %s</i>', $this->asOfLabel()),
             '',
+            sprintf('💸 Борг мешканців: <b>%s грн</b>', $this->money($current->getTotal())),
             sprintf('🏠 Квартир з боргом: <b>%d</b>', $current->getDebtors()),
         ];
 

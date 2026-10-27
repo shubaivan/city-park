@@ -1354,17 +1354,17 @@ every page, because "am I on this list?" is the first question anyone opens it w
 for by the head of the ОСББ as social pressure towards paying, in the joke register of a
 podium (🥇🥈🥉4️⃣5️⃣👑, `TOP_SIZE` = 5) — that framing is deliberate, not decoration to be tidied away.
 
-**The house's total is not published — anywhere a resident reads.** It was the headline
-of the menu block, the report's footer and the chat post until 09.09.2026, when the head of
-the ОСББ asked for it out through the accountant: what one flat owes is that household's
-business and its neighbours' pressure, while the sum of all of them is the ОСББ's own
-financial position, and management reads that as theirs to publish or not. **Everything
-else stands** — each flat's figure, the podium, the full paged list, the viewer's own line,
-the count of flats, and the month-on-month movement in грн (a delta is not the figure that
-was withdrawn, and it is the one line saying whether anything is happening). `/admin/debt`
-keeps the total: that is the accountant's own screen, where the import is checked.
-`DebtBoardRulesTest::testTheHouseTotalIsNeverPublished` pins it across all three renders,
-because a total at the top of a board is the most natural thing anybody could add back.
+**The house's total is in the chat post after each import, and nowhere else a resident
+reads.** It was the headline of the menu block, the report's footer and the chat post until
+09.09.2026, when the head of the ОСББ asked for it out through the accountant: the sum of all
+the flats is the ОСББ's own financial position, theirs to publish or not. On 26.10.2026 she
+published it herself in the Viber group, under the debt screenshots, so from 27.10.2026 the
+post that follows each import leads with it again («💸 Борг мешканців: N грн»). Posts already
+in the chat were left as they were. **The menu block and the report stay without it** —
+nobody asked for those back. Everything else stands as before: each flat's figure, the
+podium, the full paged list, the viewer's own line, the count of flats and the
+month-on-month movement in грн. `/admin/debt` keeps the total too.
+`DebtBoardRulesTest::testTheHouseTotalIsPublishedInTheChatPostOnly` pins both halves.
 
 All the judgement is in `DebtBoardService`; `StartCommand::debtBlock()` and
 `DebtBoardCommand` are only the Telegram halves. Three rules keep it defensible:

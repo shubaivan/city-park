@@ -153,16 +153,15 @@ class DebtBoardRulesTest extends TestCase
     }
 
     /**
-     * The house's total is published nowhere a resident can read.
+     * The house's total is in the chat post and only there.
      *
-     * It led every render until 09.09.2026, when the head of the ОСББ asked for it out:
-     * what one flat owes is that household's business and its neighbours' pressure, while
-     * the sum of all of them is the ОСББ's own financial position. Each flat's figure, the
-     * count of flats and the month-on-month movement all stay — this pins only the number
-     * that was withdrawn, because putting a total back at the top of a board is the most
+     * It was taken out of every render on 09.09.2026 at the head of the ОСББ's request, and
+     * came back into the post after each debt import on 27.10.2026, once she had published
+     * the figure herself in the Viber group. The menu block and the report were not asked
+     * back, so this pins both halves: a total at the top of the menu board is still the most
      * natural "improvement" anybody could make to it.
      */
-    public function testTheHouseTotalIsNeverPublished(): void
+    public function testTheHouseTotalIsPublishedInTheChatPostOnly(): void
     {
         $viewer = $this->account(9, '5', '0');
         $board = $this->freshBoard();
@@ -171,10 +170,14 @@ class DebtBoardRulesTest extends TestCase
         foreach ([
             'menu' => $board->menuBlock($viewer),
             'report' => $board->report($viewer),
-            'chat' => $board->chatAnnouncement($this->snapshot(31_339, 6, '-1 day'), null),
         ] as $where => $text) {
-            $this->assertStringNotContainsString('31 339', $text, $where . ': the house total is not ours to publish');
+            $this->assertStringNotContainsString('31 339', $text, $where . ': the total is only in the chat post');
         }
+
+        $this->assertStringContainsString(
+            'Борг мешканців: <b>31 339 грн</b>',
+            $board->chatAnnouncement($this->snapshot(31_339, 6, '-1 day'), null),
+        );
     }
 
     public function testBoardIsAlwaysDated(): void
@@ -348,10 +351,9 @@ class DebtBoardRulesTest extends TestCase
             $this->snapshot(15_540, 28, '-31 days'),
         );
 
-        // The house's total is not in the post — withdrawn 09.09.2026 at the head of the
-        // ОСББ's request. The movement between two of them still is: a delta is not the
-        // figure that was taken out, and it is the only line saying whether anything moved.
-        $this->assertStringNotContainsString('11 340', $post);
+        // The house's total leads the post again since 27.10.2026, then the count and the
+        // movement since the last import.
+        $this->assertStringContainsString('Борг мешканців: <b>11 340 грн</b>', $post);
         $this->assertStringContainsString('Квартир з боргом: <b>25</b>', $post);
         $this->assertStringContainsString('зменшився на 4 200 грн', $post);
 
