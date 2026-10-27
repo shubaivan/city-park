@@ -1365,6 +1365,10 @@ nobody asked for those back. Everything else stands as before: each flat's figur
 podium, the full paged list, the viewer's own line, the count of flats and the
 month-on-month movement in грн. `/admin/debt` keeps the total too.
 `DebtBoardRulesTest::testTheHouseTotalIsPublishedInTheChatPostOnly` pins both halves.
+Under it the post splits the total **by building, largest first** — «буд. 21 — 344 679 грн
+· 113 боржників» (Иван, 27.10.2026). Computed from the same published debtors the named list
+reads, so the lines add up to the total; parking and storage count in their building.
+`testChatPostRanksTheBuildings`.
 
 All the judgement is in `DebtBoardService`; `StartCommand::debtBlock()` and
 `DebtBoardCommand` are only the Telegram halves. Three rules keep it defensible:

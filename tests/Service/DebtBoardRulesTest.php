@@ -180,6 +180,35 @@ class DebtBoardRulesTest extends TestCase
         );
     }
 
+    /**
+     * The chat post splits the total by building, largest first, and the lines add up to
+     * the total above them — every object counts, a паркомісце included.
+     */
+    public function testChatPostRanksTheBuildings(): void
+    {
+        $parking = $this->account(4, '138', '500.00', '19');
+        $parking->setAccountNumber('297138');
+
+        $board = $this->service([
+            $this->account(1, '10', '1000.00', '19'),
+            $this->account(2, '11', '4000.00', '21'),
+            $this->account(3, '12', '1500.00', '19'),
+            $parking,
+        ], new \DateTimeImmutable('-1 day'));
+
+        $post = $board->chatAnnouncement($this->snapshot(7_000, 4, '-1 day'), null);
+
+        $this->assertStringContainsString('🏢 <b>По будинках</b>', $post);
+        $this->assertStringContainsString('буд. 19 — <b>3 000 грн</b> · 3 боржники', $post);
+        $this->assertStringContainsString('буд. 21 — <b>4 000 грн</b> · 1 боржник', $post);
+        $this->assertLessThan(strpos($post, 'буд. 19 —'), strpos($post, 'буд. 21 —'), 'largest first');
+        $this->assertLessThan(
+            strpos($post, '🏆'),
+            strpos($post, 'По будинках'),
+            'the buildings come before the named list',
+        );
+    }
+
     public function testBoardIsAlwaysDated(): void
     {
         $asOf = (new \DateTimeImmutable('-2 days'))

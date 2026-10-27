@@ -320,6 +320,14 @@ class DebtBoardService
             $lines[] = $this->trendLine($current, $previous);
         }
 
+        $buildings = $this->buildingLines();
+
+        if ($buildings !== []) {
+            $lines[] = '';
+            $lines[] = '🏢 <b>По будинках</b>';
+            $lines = array_merge($lines, $buildings);
+        }
+
         $top = $this->accountRepository->findDebtors(self::ANNOUNCE_SIZE);
         $ranked = [];
         $spent = 0;
@@ -363,6 +371,58 @@ class DebtBoardService
         $lines[] = '<i>Свій борг і повний список — у боті, кнопка 💸 Звіт боржників.</i>';
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * The total split by building, largest first — «буд. 21 — 344 679 грн · 113 боржників».
+     *
+     * Asked for by Иван on 27.10.2026, the day the total came back into the post: one sum
+     * for five buildings says how much is owed and not where. Computed from the same
+     * published debtors the list below names, so the six lines always add up to the total
+     * above them. Every object counts — a паркомісце or a комірчина belongs to its building
+     * as much as a flat does, the same way they count in «Квартир з боргом».
+     *
+     * @return string[]
+     */
+    private function buildingLines(): array
+    {
+        $byHouse = [];
+
+        foreach ($this->accountRepository->findDebtors() as $account) {
+            $house = trim((string)$account->getHouseNumber());
+            $byHouse[$house] ??= ['debt' => 0.0, 'debtors' => 0];
+            $byHouse[$house]['debt'] += (float)$account->getDebt();
+            $byHouse[$house]['debtors']++;
+        }
+
+        uasort($byHouse, static fn (array $a, array $b): int => $b['debt'] <=> $a['debt']);
+
+        $lines = [];
+
+        foreach ($byHouse as $house => $row) {
+            $lines[] = sprintf(
+                '%s — <b>%s грн</b> · %d %s',
+                $house === '' ? 'без будинку' : 'буд. ' . $this->esc((string)$house),
+                $this->money($row['debt']),
+                $row['debtors'],
+                self::debtorsWord($row['debtors']),
+            );
+        }
+
+        return $lines;
+    }
+
+    private static function debtorsWord(int $n): string
+    {
+        $mod100 = $n % 100;
+        $mod10 = $n % 10;
+
+        return match (true) {
+            $mod100 >= 11 && $mod100 <= 14 => 'боржників',
+            $mod10 === 1 => 'боржник',
+            $mod10 >= 2 && $mod10 <= 4 => 'боржники',
+            default => 'боржників',
+        };
     }
 
     /**
