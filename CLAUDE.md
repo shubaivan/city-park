@@ -173,7 +173,9 @@ flat that asked it — «👤 Запропонували: буд. 21, кв. 29»
 ballots before the chat saw it, and the first resident to ask anything saw nothing in the
 group and posted the question there by hand. What still waits is the DM to every voter:
 `openQuestion()`'s `$broadcast` decides the DMs only, and `broadcast()` later edits the
-same post rather than adding a second. `VoteQuestionInChatTest`.
+same post rather than adding a second. The same line rides in the bot — the list entry,
+the card and the DM notice — since a vote opened there could not otherwise be told from
+the ОСББ's own. `VoteQuestionInChatTest`.
 
 **A vote is final, and it is on the record.** `BlockVoteBallot` stores who cast it
 (`voter_user`, SET NULL) and when, and `/admin/block-votes` lists every ballot under its
