@@ -334,8 +334,9 @@ class VotingMenuCommand
 
         return sprintf(
             "%s
-<i>🗓 розміщено %s · голосування до %s</i>%s",
+%s<i>🗓 розміщено %s · голосування до %s</i>%s",
             $title,
+            $this->voteService->askedByLine($campaign),
             $campaign->getCreatedAt()?->format('d.m') ?? '—',
             $campaign->getDeadlineAt()->format('d.m.Y'),
             $voted ? "
@@ -451,9 +452,10 @@ class VotingMenuCommand
             $details = $campaign->getDetails();
 
             $lines[] = sprintf(
-                "❓ <b>%s</b>%s\nЗа: <b>%d</b> · Проти: <b>%d</b>\n🗓 %s — <b>%s</b>%s",
+                "❓ <b>%s</b>%s\n%sЗа: <b>%d</b> · Проти: <b>%d</b>\n🗓 %s — <b>%s</b>%s",
                 self::esc((string)$campaign->getQuestion()),
                 $details !== null ? "\n<i>" . self::esc($details) . '</i>' : '',
+                $this->voteService->askedByLine($campaign),
                 $tally['yes'],
                 $tally['no'],
                 // Started and ends: «до 15.09» alone leaves a reader unable to tell a vote

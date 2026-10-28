@@ -895,7 +895,7 @@ class BlockVoteService
             $details = $campaign->getDetails();
 
             return sprintf(
-                "<b>%s</b>\n%s\n📊 Зараз: «За» <b>%d</b> · «Проти» <b>%d</b> (мешканців з правом голосу: %d)\n"
+                "<b>%s</b>\n%s\n%s📊 Зараз: «За» <b>%d</b> · «Проти» <b>%d</b> (мешканців з правом голосу: %d)\n"
                 . "🗓 До: <b>%s</b>\n\n"
                 . "Один акаунт — один голос. <b>Голос остаточний</b>: змінити його не можна.\n"
                 . "<i>Це опитування: рішення ухвалює ОСББ, а результат голосування — те, на що воно спиратиметься.</i>\n"
@@ -904,6 +904,7 @@ class BlockVoteService
                 $details !== null
                     ? '<i>' . htmlspecialchars($details, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</i>\n\n"
                     : "\n",
+                $this->askedByLine($campaign),
                 $tally['yes'],
                 $tally['no'],
                 $campaign->getEligibleCount(),

@@ -71,4 +71,18 @@ class VoteQuestionInChatTest extends KernelTestCase
 
         $this->assertStringContainsString('$this->askedByLine($campaign),', $source);
     }
+
+    /**
+     * The bot names the asker too — in the list, on the card and in the DM. Until
+     * 28.10.2026 only the chat post did, and a resident who opened the vote in the bot
+     * could not tell a neighbour's question from the ОСББ's.
+     */
+    public function testTheBotShowsTheAuthorWhereverTheQuestionIsRead(): void
+    {
+        $menu = (string)file_get_contents(__DIR__ . '/../../src/Telegram/Voting/Command/VotingMenuCommand.php');
+        $service = (string)file_get_contents(__DIR__ . '/../../src/Service/BlockVoteService.php');
+
+        $this->assertSame(2, substr_count($menu, '$this->voteService->askedByLine($campaign)'), 'list entry and card');
+        $this->assertSame(2, substr_count($service, '$this->askedByLine($campaign),'), 'chat post and DM notice');
+    }
 }
