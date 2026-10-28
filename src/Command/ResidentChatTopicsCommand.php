@@ -47,6 +47,9 @@ class ResidentChatTopicsCommand extends Command
         // (23.10.2026). Residents write here themselves; a thing like this lives a day or
         // two, so it gets a branch of the chat rather than a board in the bot.
         self::TOPIC_FLEA => ['🛒 Барахолка — продам / віддам / куплю', 0xFFD67E],
+        // What a new owner needs to find without scrolling three months of chat: contacts,
+        // rules, the gas and water notices (Сергій, 28.10.2026). Admins only — see CLOSED.
+        self::TOPIC_ANNOUNCEMENTS => ['📌 Важливі оголошення', 0xFB6F5F],
     ];
 
     /** Not in ResidentChatService: nothing is ever posted into it by the bot. */
@@ -54,6 +57,16 @@ class ResidentChatTopicsCommand extends Command
 
     /** Same: the bot posts nothing into it. */
     private const TOPIC_FLEA = 'flea';
+
+    /** Written by the group's admins by hand; the bot posts nothing into it. */
+    private const TOPIC_ANNOUNCEMENTS = 'announcements';
+
+    /**
+     * Branches closed straight after they are made. Telegram has no per-topic write
+     * permission; a *closed* topic is its way of saying «admins only» — members read it and
+     * cannot post, admins still can. That is the whole of «пишуть тільки адміни».
+     */
+    private const CLOSED = [self::TOPIC_ANNOUNCEMENTS];
 
     private const ENV_KEYS = [
         ResidentChatService::TOPIC_COMPLAINTS => 'RESIDENT_CHAT_TOPIC_COMPLAINTS',
@@ -162,6 +175,15 @@ class ResidentChatTopicsCommand extends Command
             }
 
             $io->success(sprintf('%s → message_thread_id %d', $name, $topic->message_thread_id));
+
+            if (in_array($kind, self::CLOSED, true)) {
+                try {
+                    $this->bot->closeForumTopic($chatId, $topic->message_thread_id);
+                    $io->writeln('  закрито: писати можуть лише адміністратори групи');
+                } catch (\Throwable $e) {
+                    $io->warning(sprintf('«%s» створено, але не закрито: %s. Закрийте вручну.', $name, $e->getMessage()));
+                }
+            }
 
             if (isset(self::ENV_KEYS[$kind])) {
                 $lines[] = sprintf('%s=%d', self::ENV_KEYS[$kind], $topic->message_thread_id);
