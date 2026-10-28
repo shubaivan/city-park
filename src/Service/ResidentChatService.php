@@ -68,6 +68,13 @@ class ResidentChatService
      */
     public const TOPIC_CARS = 'cars';
 
+    /**
+     * «💡 Світло» — the day's outage schedule for our buildings, from Черкасиобленерго.
+     * No General fallback: a picture a day, twice when the plan changes, is noise in the
+     * chat's main thread.
+     */
+    public const TOPIC_POWER = 'power';
+
     public function __construct(
         private TelegramUserRepository $telegramUserRepository,
         private TelegramUserService $telegramUserService,
@@ -81,6 +88,7 @@ class ResidentChatService
         private string $topicServices = '',
         private string $topicVotes = '',
         private string $topicCars = '',
+        private string $topicPower = '',
     ) {}
 
     /**
@@ -101,6 +109,7 @@ class ResidentChatService
             self::TOPIC_SERVICES => $this->topicServices,
             self::TOPIC_VOTES => $this->topicVotes,
             self::TOPIC_CARS => $this->topicCars,
+            self::TOPIC_POWER => $this->topicPower,
             default => '',
         };
 
