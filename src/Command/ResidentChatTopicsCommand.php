@@ -49,7 +49,7 @@ class ResidentChatTopicsCommand extends Command
         self::TOPIC_FLEA => ['🛒 Барахолка — продам / віддам / куплю', 0xFFD67E],
         // What a new owner needs to find without scrolling three months of chat: contacts,
         // rules, the gas and water notices (Сергій, 28.10.2026). Admins only — see CLOSED.
-        self::TOPIC_ANNOUNCEMENTS => ['📌 Важливі оголошення', 0xFB6F5F],
+        self::TOPIC_ANNOUNCEMENTS => ['📌 Важливі оголошення ОСББ ЖК Сіті Парк', 0xFB6F5F],
     ];
 
     /** Not in ResidentChatService: nothing is ever posted into it by the bot. */
