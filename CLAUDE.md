@@ -1871,6 +1871,53 @@ Global middleware is attached in `Nutgram::preflight()`, which runs from `run()`
 from `processUpdate()`. Tests that fire handlers directly must invoke `preflight()` first
 or they silently exercise a bot with no middleware.
 
+## «💡 Світло» — the outage schedule in the residents' chat (28.10.2026)
+
+The day's hourly-outage schedule for our buildings, as a picture (a 24-hour strip, dark
+where there is no light) plus «🔴 12:00 — вимкнуть / 🟢 14:00 — увімкнуть», in its own topic
+(`RESIDENT_CHAT_TOPIC_POWER`). Иван's idea, after the «Черкасиобленерго черга 3.1» bots.
+
+**Two sources, because neither answers both questions.**
+
+- *When* — Черкасиобленерго's channel, read from its public web view
+  `t.me/s/pat_cherkasyoblenergo` (`PowerChannelParser`). One post lists all twelve
+  sub-queues («3.1 12:00 - 14:00, 17:00 - 19:00»); the company re-posts «Оновлення графіка
+  … на 28 жовтня» when Укренерго shifts the plan. Every «черга N» bot in the region is a
+  parser of this post — `github.com/YevhenOksenchuk/GVSTelegramBot` is an open one.
+- *Which queue we are in* — the cabinet API behind cherkasyoblenergo.com/off,
+  `cabinet.cherkasyoblenergo.com/api_new/disconn.php` (`PowerQueueResolver`): street →
+  house → the company's household accounts at that address → «3 черга 1 підчерга» for
+  one of them. There is no house → queue call; any account of the building answers,
+  and several are tried, because the first one at Козацька 19 came back empty. On
+  28.10.2026: 17, 19, 21, 23, 27 → **3.1**; 25 has no accounts there. The same API also
+  lists outage windows by address, but our street is absent from all 31 000 October
+  rows — so it is never the source of the hours.
+
+**One post per day, always the current one.** A changed plan is posted anew with
+«🔄 Графік оновлено о HH:MM» — an edit would be silent, and whoever read the morning version
+is exactly who needs to know — and the old post is deleted (Telegram allows 48 h; a
+schedule is never further ahead than tomorrow), or struck through where that is refused.
+`PowerSchedulePost.signature` is what was drawn for *our* queues, so a channel update that
+moves only somebody else's hours changes nothing here. Quiet 22:00–08:00: tomorrow's
+plan usually lands at 23:00.
+
+**A building that changes queue is said out loud** in the topic, once
+(`PowerQueue.changed_at`), and the next schedule is drawn for the new queue. An empty
+answer from the API keeps what we knew — the company not naming a queue today is not the
+building having none. Buildings in different queues each get their own strip.
+
+- The cabinet server sends its certificate **without the intermediate**; PHP/curl refuse
+  it. The intermediate is in `resources/certs`, appended to the system bundle into
+  `var/power-ca-bundle.pem`. Never turn verification off: this decides what 450 people are
+  told about their own electricity.
+- The font is shipped in `resources/fonts` (DejaVu), not read from the server.
+- No «↗️ Відкрити в боті» on these posts, the one exception to that rule: there is no card
+  in the bot to open. The button goes to the company's address lookup instead.
+- `power:schedule:check [--dry-run]` (every 2 min) and `power:queue:check [--dry-run]`
+  (daily) — **two new cron lines**; the topic is created with
+  `resident-chat:topics --only=power`. `PowerScheduleRulesTest` pins the parser on the
+  company's real post, the hourly-vs-emergency queue, grouping and the caption.
+
 ## Crons (prod `crontab -l`, **must run as `www-data`**)
 
 ```
@@ -1885,6 +1932,8 @@ or they silently exercise a bot with no middleware.
 30 4 * * * sudo -u www-data php …/city-park/bin/console service:expire --env=prod
 0 5 * * 1 cd …/city-park && sudo -u www-data php bin/console telegram:avatars:sync --env=prod
 0 2 * * * cd …/city-park && sudo -u www-data php bin/console db:backup --env=prod >> var/log/backup.log 2>&1
+*/2 * * * * cd …/city-park && sudo -u www-data php bin/console power:schedule:check --env=prod >> var/log/power.log 2>&1
+20 7 * * * cd …/city-park && sudo -u www-data php bin/console power:queue:check --env=prod >> var/log/power.log 2>&1
 ```
 
 **Every line `cd`s into the project first** (or the `db:backup` one does, at minimum).
