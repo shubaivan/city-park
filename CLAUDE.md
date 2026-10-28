@@ -167,6 +167,14 @@ house can see happening and carries the result to everyone afterwards, including
 with nobody in the bot who cannot vote but live here. Silent when
 `RESIDENT_CHAT_TOPIC_VOTES` is unset, and never fatal.
 
+**A resident's question is posted the moment it is asked** (28.10.2026), signed with the
+flat that asked it — «👤 Запропонували: буд. 21, кв. 29», never a name
+(`BlockVoteService::askedByLine()`). It used to wait for an admin's approval or fifteen
+ballots before the chat saw it, and the first resident to ask anything saw nothing in the
+group and posted the question there by hand. What still waits is the DM to every voter:
+`openQuestion()`'s `$broadcast` decides the DMs only, and `broadcast()` later edits the
+same post rather than adding a second. `VoteQuestionInChatTest`.
+
 **A vote is final, and it is on the record.** `BlockVoteBallot` stores who cast it
 (`voter_user`, SET NULL) and when, and `/admin/block-votes` lists every ballot under its
 campaign — flat, name, @username, time. Changing a vote used to be allowed until the
