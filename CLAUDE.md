@@ -1889,7 +1889,9 @@ where there is no light) plus «🔴 12:00 — вимкнуть / 🟢 14:00 —
   house → the company's household accounts at that address → «3 черга 1 підчерга» for
   one of them. There is no house → queue call; any account of the building answers,
   and several are tried, because the first one at Козацька 19 came back empty. On
-  28.10.2026: 17, 19, 21, 23, 27 → **3.1**; 25 has no accounts there. The same API also
+  28.10.2026: 17, 19, 21, 23, 27 → **3.1**. **25 has no answer**: the company lists the
+  house but no household account under it, although our register holds 42 flats there —
+  so буд. 25 is left out of the posts rather than given a queue nobody confirmed. The same API also
   lists outage windows by address, but our street is absent from all 31 000 October
   rows — so it is never the source of the hours.
 
@@ -1914,7 +1916,7 @@ building having none. Buildings in different queues each get their own strip.
 - No «↗️ Відкрити в боті» on these posts, the one exception to that rule: there is no card
   in the bot to open. The button goes to the company's address lookup instead.
 - `power:schedule:check [--dry-run]` (every 2 min) and `power:queue:check [--dry-run]`
-  (daily) — **two new cron lines**; the topic is created with
+  (07:20, 13:20, 19:20) — **two new cron lines**; the topic is created with
   `resident-chat:topics --only=power`. `PowerScheduleRulesTest` pins the parser on the
   company's real post, the hourly-vs-emergency queue, grouping and the caption.
 
@@ -1933,7 +1935,7 @@ building having none. Buildings in different queues each get their own strip.
 0 5 * * 1 cd …/city-park && sudo -u www-data php bin/console telegram:avatars:sync --env=prod
 0 2 * * * cd …/city-park && sudo -u www-data php bin/console db:backup --env=prod >> var/log/backup.log 2>&1
 */2 * * * * cd …/city-park && sudo -u www-data php bin/console power:schedule:check --env=prod >> var/log/power.log 2>&1
-20 7 * * * cd …/city-park && sudo -u www-data php bin/console power:queue:check --env=prod >> var/log/power.log 2>&1
+20 7,13,19 * * * cd …/city-park && sudo -u www-data php bin/console power:queue:check --env=prod >> var/log/power.log 2>&1
 ```
 
 **Every line `cd`s into the project first** (or the `db:backup` one does, at minimum).
