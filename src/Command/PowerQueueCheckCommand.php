@@ -11,7 +11,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Ask Черкасиобленерго which hourly-outage queue each building is in. Cron, daily.
+ * Ask Черкасиобленерго which hourly-outage queue each building is in. Cron, three times a day.
  *
  * The schedule post names queues, not addresses; this is what ties «3.1» to Козацька 19,
  * and what notices the day the company moves a building to another queue — in which case
