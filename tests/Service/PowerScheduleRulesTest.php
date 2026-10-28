@@ -200,4 +200,62 @@ class PowerScheduleRulesTest extends TestCase
         $size = getimagesizefromstring($png);
         $this->assertSame(1200, $size[0]);
     }
+
+    /** @return array<string, list<array{queue: string, houses: list<string>, outages: list<array{int, int}>}>> */
+    private static function days(array $today, ?array $tomorrow = null): array
+    {
+        $days = ['2026-10-28' => [['queue' => '3.1', 'houses' => ['17', '19'], 'outages' => $today]]];
+
+        if ($tomorrow !== null) {
+            $days['2026-10-29'] = [['queue' => '3.1', 'houses' => ['17', '19'], 'outages' => $tomorrow]];
+        }
+
+        return $days;
+    }
+
+    /** Ten minutes before, and not once the light has already gone. */
+    public function testTheWarningIsDueInTheTenMinutesBeforeAnOutage(): void
+    {
+        $days = self::days([[720, 840], [1020, 1140]]);
+
+        $this->assertSame([], PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 11:49')));
+
+        $due = PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 11:50'));
+        $this->assertCount(1, $due);
+        $this->assertSame('off@3.1@720', $due[0]['key']);
+        $this->assertStringStartsWith('⚠️ Через 10 хвилин вимкнуть світло — о 12:00, до 14:00.', $due[0]['text']);
+
+        $this->assertCount(1, PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 11:58')));
+        $this->assertSame([], PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 12:00')));
+    }
+
+    /** When it comes back, with what is next — later today, tomorrow, or nothing. */
+    public function testTheReturnNamesTheNextOutage(): void
+    {
+        $due = PowerScheduleAnnouncer::dueReminders(self::days([[720, 840], [1020, 1140]]), self::now('2026-10-28 14:02'));
+        $this->assertSame('on@3.1@840', $due[0]['key'] ?? null);
+        $this->assertStringContainsString("🟢 14:00 — за графіком мають увімкнути світло.\nНаступне відключення — о 17:00.", $due[0]['text']);
+
+        $due = PowerScheduleAnnouncer::dueReminders(self::days([[720, 840], [1020, 1140]], [[360, 480]]), self::now('2026-10-28 19:00'));
+        $this->assertStringContainsString('Наступне відключення — завтра о 06:00.', $due[0]['text'] ?? '');
+
+        $due = PowerScheduleAnnouncer::dueReminders(self::days([[1020, 1140]]), self::now('2026-10-28 19:05'));
+        $this->assertStringContainsString('Сьогодні відключень більше не заплановано.', $due[0]['text'] ?? '');
+
+        $this->assertSame([], PowerScheduleAnnouncer::dueReminders(self::days([[1020, 1140]]), self::now('2026-10-28 19:10')));
+    }
+
+    /** An outage that starts at midnight is warned about the evening before. */
+    public function testMidnightIsHandledFromBothSides(): void
+    {
+        $due = PowerScheduleAnnouncer::dueReminders(self::days([[1200, 1260]], [[0, 120]]), self::now('2026-10-28 23:55'));
+        $this->assertSame('off@3.1@0', $due[0]['key'] ?? null);
+        $this->assertSame('2026-10-29', $due[0]['date']);
+
+        // 22:00–24:00 followed by 00:00–02:00 is one outage: no «увімкнуть» at midnight.
+        $this->assertSame([], PowerScheduleAnnouncer::dueReminders(
+            self::days([[1320, 1440]], [[0, 120]]),
+            self::now('2026-10-29 00:02'),
+        ));
+    }
 }

@@ -34,6 +34,13 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * Silent at night (22:00–08:00 Kyiv): tomorrow's plan routinely arrives at 23:00, and a
  * buzz for 450 people at that hour is worse than reading it with the morning coffee.
  *
+ * **Reminders go into the same topic, never to anybody's DMs** (Иван, 28.10.2026): ten
+ * minutes before an outage («⚠️ Через 10 хвилин вимкнуть світло»), and at the moment the
+ * schedule says it comes back, with the next one. Each new reminder deletes the previous,
+ * so the topic reads as the day's schedule plus one current line — not forty of them.
+ * They ring by day: a warning nobody notices warns nobody, and a reader who does not want
+ * it mutes the topic, which Telegram lets them do topic by topic.
+ *
  * Silent when `RESIDENT_CHAT_TOPIC_POWER` is unset — no General fallback, the services
  * board's call — and never fatal.
  */
@@ -74,6 +81,10 @@ class PowerScheduleAnnouncer
             return ['RESIDENT_CHAT_TOPIC_POWER не налаштовано — нічого не надсилаю.'];
         }
 
+        // Before the channel is read, so a channel that does not answer cannot cost the
+        // house its «через 10 хвилин».
+        $done = $this->remind(new \DateTimeImmutable('now', new \DateTimeZone(self::TZ)), $topic, $dryRun);
+
         $houses = $this->queues->known();
 
         if ($houses === []) {
@@ -84,7 +95,7 @@ class PowerScheduleAnnouncer
         }
 
         if ($houses === []) {
-            return ['Черкасиобленерго не назвало черги для жодного будинку — не публікую.'];
+            return [...$done, 'Черкасиобленерго не назвало черги для жодного будинку — не публікую.'];
         }
 
         $html = $this->httpClient->request('GET', PowerChannelParser::CHANNEL_URL, [
@@ -100,8 +111,6 @@ class PowerScheduleAnnouncer
         foreach (PowerChannelParser::parsePage($html, $now) as $schedule) {
             $byDay[$schedule['date']] = $schedule;
         }
-
-        $done = [];
 
         foreach ($byDay as $date => $schedule) {
             if ($date < $today) {
@@ -161,6 +170,162 @@ class PowerScheduleAnnouncer
         }
 
         return $done;
+    }
+
+    /**
+     * Post whatever reminder is due now, and retire the one before it.
+     *
+     * @return list<string>
+     */
+    private function remind(\DateTimeImmutable $now, ?int $topic, bool $dryRun): array
+    {
+        $rows = $this->posts->around($now);
+        $days = [];
+
+        foreach ($rows as $date => $row) {
+            $days[$date] = json_decode($row->getSignature(), true) ?: [];
+        }
+
+        $done = [];
+
+        foreach (self::dueReminders($days, $now) as $due) {
+            $row = $rows[$due['date']];
+
+            if ($row->wasReminded($due['key'])) {
+                continue;
+            }
+
+            if ($dryRun || $topic === null) {
+                $done[] = sprintf("[DRY] нагадування %s %s\n%s", $due['date'], $due['key'], $due['text']);
+                continue;
+            }
+
+            $hour = (int)$now->format('G');
+
+            try {
+                $message = $this->bot->sendMessage(
+                    text: $due['text'],
+                    chat_id: (int)$this->residentChat->chatId(),
+                    message_thread_id: $topic,
+                    parse_mode: ParseMode::HTML,
+                    disable_notification: $hour >= self::QUIET_FROM || $hour < self::QUIET_UNTIL,
+                );
+            } catch (\Throwable $e) {
+                $this->logger->error('power: reminder failed', ['key' => $due['key'], 'error' => $e->getMessage()]);
+                continue;
+            }
+
+            foreach ($rows as $other) {
+                $old = $other->getReminderMessageId();
+
+                if ($old !== null) {
+                    try {
+                        $this->bot->deleteMessage((int)$this->residentChat->chatId(), $old);
+                    } catch (\Throwable $e) {
+                        $this->logger->info('power: old reminder not deleted', ['error' => $e->getMessage()]);
+                    }
+                    $other->forgetReminderMessage();
+                }
+            }
+
+            $row->markReminded($due['key'], $message?->message_id);
+            $this->em->flush();
+            $done[] = sprintf('нагадування %s %s', $due['date'], $due['key']);
+        }
+
+        return $done;
+    }
+
+    /**
+     * The reminders whose moment is now, from the schedules drawn for yesterday, today
+     * and tomorrow.
+     *
+     * «Off» is due from ten minutes before the outage until it starts — a warning after
+     * the light has gone is no warning. «On» is due for ten minutes from the moment the
+     * schedule says it returns, and is skipped where the next day's outage simply
+     * continues the same one past midnight.
+     *
+     * @param array<string, list<array{queue: string, houses: list<string>, outages: list<array{int, int}>}>> $days
+     * @return list<array{date: string, key: string, text: string}>
+     */
+    public static function dueReminders(array $days, \DateTimeImmutable $now): array
+    {
+        $tz = new \DateTimeZone(self::TZ);
+        $due = [];
+
+        foreach ($days as $date => $groups) {
+            $midnight = new \DateTimeImmutable($date . ' 00:00', $tz);
+            $next = (new \DateTimeImmutable($date, $tz))->modify('+1 day')->format('Y-m-d');
+            $several = count($groups) > 1;
+
+            foreach ($groups as $group) {
+                $label = $several
+                    ? sprintf("\n<i>Черга %s · %s</i>", $group['queue'], self::housesLabel($group['houses']))
+                    : sprintf("\n<i>Черга %s</i>", $group['queue']);
+                $tomorrow = self::queueOn($days[$next] ?? null, $group['queue']);
+
+                foreach ($group['outages'] as $i => [$from, $to]) {
+                    $start = $midnight->modify(sprintf('+%d minutes', $from));
+                    $end = $midnight->modify(sprintf('+%d minutes', $to));
+
+                    if ($now >= $start->modify('-10 minutes') && $now < $start) {
+                        $due[] = [
+                            'date' => $date,
+                            'key' => sprintf('off@%s@%d', $group['queue'], $from),
+                            'text' => sprintf(
+                                '⚠️ Через 10 хвилин вимкнуть світло — о %s, до %s.%s',
+                                PowerScheduleImage::clock($from),
+                                PowerScheduleImage::clock($to),
+                                $label,
+                            ),
+                        ];
+                    }
+
+                    $continues = $to === 1440 && ($tomorrow[0][0] ?? null) === 0;
+
+                    if (!$continues && $now >= $end && $now < $end->modify('+10 minutes')) {
+                        $later = $group['outages'][$i + 1] ?? null;
+                        $then = match (true) {
+                            $later !== null => sprintf('Наступне відключення — о %s.', PowerScheduleImage::clock($later[0])),
+                            $tomorrow !== null && $tomorrow !== [] => sprintf('Наступне відключення — завтра о %s.', PowerScheduleImage::clock($tomorrow[0][0])),
+                            $tomorrow === [] => 'Ні сьогодні, ні завтра відключень більше не заплановано.',
+                            $to === 1440 => 'Графіка на сьогодні ще немає — щойно обленерго його опублікує, він буде тут.',
+                            default => 'Сьогодні відключень більше не заплановано.',
+                        };
+
+                        $due[] = [
+                            'date' => $date,
+                            'key' => sprintf('on@%s@%d', $group['queue'], $to),
+                            'text' => sprintf(
+                                "🟢 %s — за графіком мають увімкнути світло.\n%s%s",
+                                PowerScheduleImage::clock($to),
+                                $then,
+                                $label,
+                            ),
+                        ];
+                    }
+                }
+            }
+        }
+
+        return $due;
+    }
+
+    /**
+     * That queue's windows on a day, or null when that day's schedule is not known yet.
+     *
+     * @param list<array{queue: string, houses: list<string>, outages: list<array{int, int}>}>|null $groups
+     * @return list<array{int, int}>|null
+     */
+    private static function queueOn(?array $groups, string $queue): ?array
+    {
+        foreach ($groups ?? [] as $group) {
+            if ($group['queue'] === $queue) {
+                return $group['outages'];
+            }
+        }
+
+        return null;
     }
 
     /**

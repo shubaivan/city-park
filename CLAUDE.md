@@ -1903,6 +1903,15 @@ schedule is never further ahead than tomorrow), or struck through where that is 
 moves only somebody else's hours changes nothing here. Quiet 22:00–08:00: tomorrow's
 plan usually lands at 23:00.
 
+**Reminders go into the topic, never into anybody's DMs** (Иван, 28.10.2026): «⚠️ Через 10
+хвилин вимкнуть світло — о 12:00, до 14:00» in the ten minutes before an outage, and «🟢 14:00
+— за графіком мають увімкнути світло. Наступне відключення — о 17:00» when it is due back.
+Each deletes the one before it, so the topic is the day's picture plus one current line.
+They ring by day (a warning nobody hears warns nobody; a reader mutes the topic if they
+want); quiet hours apply. 22:00–24:00 followed by 00:00–02:00 is one outage — no
+«увімкнуть» at midnight. Sent keys live on `PowerSchedulePost.reminders_sent`, by time, so
+a changed schedule gets its own. Not a copy of the round-clock channel: Иван kept the strip.
+
 **A building that changes queue is said out loud** in the topic, once
 (`PowerQueue.changed_at`), and the next schedule is drawn for the new queue. An empty
 answer from the API keeps what we knew — the company not naming a queue today is not the

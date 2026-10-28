@@ -44,6 +44,20 @@ class PowerSchedulePost
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?\DateTimeImmutable $updated_at = null;
 
+    /**
+     * Reminders already said for this day, by key («off@720», «on@840») — the cron runs
+     * every two minutes and a reminder is due for several of them. Keyed by the time
+     * rather than by position, so a changed schedule gets its own new reminders.
+     *
+     * @var list<string>
+     */
+    #[ORM\Column(type: 'json', options: ['default' => '[]'])]
+    private array $reminders_sent = [];
+
+    /** The last reminder posted for this day, deleted when the next one goes out. */
+    #[ORM\Column(nullable: true)]
+    private ?int $reminder_message_id = null;
+
     public function __construct(\DateTimeImmutable $day, string $signature, int $sourcePost)
     {
         $this->day = $day;
@@ -107,6 +121,31 @@ class PowerSchedulePost
     public function seen(int $sourcePost): static
     {
         $this->source_post = max($this->source_post, $sourcePost);
+
+        return $this;
+    }
+
+    public function wasReminded(string $key): bool
+    {
+        return in_array($key, $this->reminders_sent, true);
+    }
+
+    public function markReminded(string $key, ?int $messageId): static
+    {
+        $this->reminders_sent[] = $key;
+        $this->reminder_message_id = $messageId;
+
+        return $this;
+    }
+
+    public function getReminderMessageId(): ?int
+    {
+        return $this->reminder_message_id;
+    }
+
+    public function forgetReminderMessage(): static
+    {
+        $this->reminder_message_id = null;
 
         return $this;
     }
