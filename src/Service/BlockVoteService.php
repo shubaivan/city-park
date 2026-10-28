@@ -207,8 +207,15 @@ class BlockVoteService
         $campaign->setAuthor($author);
         $this->em->flush();
 
+        // The chat hears about every question, whoever asked it. $broadcast decides the
+        // DMs — the part that rings every phone in the house — and nothing else: a
+        // resident's question used to wait in the list for an approval or fifteen ballots
+        // before the chat saw it, so the one place the house discusses a vote did not know
+        // there was one (28.10.2026). broadcast() later edits this same post, never a second.
         if ($broadcast) {
             $this->broadcast($campaign);
+        } else {
+            $this->announce($campaign);
         }
 
         return $campaign;
@@ -547,12 +554,13 @@ class BlockVoteService
             $details = $campaign->getDetails();
 
             return sprintf(
-                "🗳 <b>%s</b>\n%s\n%s\n🗓 Голосування до <b>%s</b>\n\n<i>%s</i>",
+                "🗳 <b>%s</b>\n%s\n%s\n%s🗓 Голосування до <b>%s</b>\n\n<i>%s</i>",
                 $campaign->isQuestion() ? 'Питання до мешканців' : 'Голосування за блокування',
                 $subject,
                 $details !== null
                     ? '<i>' . htmlspecialchars($details, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</i>'
                     : '',
+                $this->askedByLine($campaign),
                 $campaign->getDeadlineAt()->format('d.m.Y'),
                 $campaign->isQuestion()
                     ? 'Рішення ухвалює ОСББ — результат покаже, чого хочуть мешканці.'
@@ -732,6 +740,25 @@ class BlockVoteService
      * says the same thing about the same campaign; the block half already had this problem
      * solved and the question half would otherwise grow its own copy.
      */
+    /**
+     * «👤 Запропонували: буд. 21, кв. 29» under a resident's question, with its newline.
+     *
+     * The flat and never a name — the services board's «👤 Розмістив» rule: the flat is who
+     * vouches for the question, and a name would put a person in front of a vote the house
+     * may well answer «ні». Empty for a question the ОСББ itself put from the panel.
+     */
+    public function askedByLine(BlockVoteCampaign $campaign): string
+    {
+        $account = $campaign->isQuestion() ? $campaign->getAuthor()?->getAccount() : null;
+
+        if (!$account instanceof Account) {
+            return '';
+        }
+
+        return '👤 Запропонували: '
+            . htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n";
+    }
+
     public function subjectLabel(BlockVoteCampaign $campaign): string
     {
         return $campaign->isQuestion()

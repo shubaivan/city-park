@@ -20,9 +20,10 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
  * "➕ Запропонувати питання": a resident asks the house something.
  *
  * **Anybody may ask, and it is live the moment they finish.** No approval to be granted, no
- * queue to sit in — the question appears in «🗳 Голосування» and neighbours can answer it.
- * What waits is only the *broadcast*: a DM to every voter and a post in the chat is the part
- * that rings 171 phones, and that needs somebody accountable, so an admin approves it — or
+ * queue to sit in — the question appears in «🗳 Голосування», in the bot and as a post in
+ * the chat's topic of the same name, and neighbours can answer it. What waits is only the
+ * *broadcast*: a DM to every voter is the part that rings 171 phones, and that needs
+ * somebody accountable, so an admin approves it — or
  * the question earns it by collecting {@see BlockVoteService::AUTO_BROADCAST_VOTES} ballots
  * on its own. That second path is the point: a question people actually care about cannot be
  * buried by nobody approving it.
@@ -117,9 +118,9 @@ class VoteAsk extends Conversation
                 . "Напишіть питання, на яке можна відповісти «так» або «ні».\n\n"
                 . '<i>Наприклад: Чи ставимо лавку біля другого під’їзду? · '
                 . "Чи закриваємо проїзд на ніч?</i>\n\n"
-                . 'Воно одразу з’явиться в розділі «🗳 Голосування», і сусіди зможуть '
-                . "відповісти.\n"
-                . '<i>Розсилку всім мешканцям вмикає правління — або ваше питання зробить це '
+                . 'Воно одразу з’явиться в розділі «🗳 Голосування» в боті й у групі '
+                . "мешканців, і сусіди зможуть відповісти.\n"
+                . '<i>Особисту розсилку всім мешканцям вмикає правління — або ваше питання зробить це '
                 . 'саме, коли на нього дадуть ' . BlockVoteService::AUTO_BROADCAST_VOTES
                 . ' відповідей.</i>',
             parse_mode: ParseMode::HTML,
@@ -212,16 +213,17 @@ class VoteAsk extends Conversation
             $details,
             null,
             $user,
-            // Quiet: live in the list, no phones rung. See the class comment.
+            // In the list and in the chat, no phones rung. See the class comment.
             broadcast: false,
         );
 
         $bot->sendMessage(
             text: "✅ <b>Питання опубліковано</b>\n\n"
                 . '<b>' . self::esc((string)$campaign->getQuestion()) . "</b>\n\n"
-                . 'Воно вже в розділі «🗳 Голосування» — сусіди можуть відповідати. '
+                . 'Воно вже в розділі «🗳 Голосування» в боті й у групі мешканців — сусіди '
+                . 'можуть відповідати. '
                 . 'Голосування триває до <b>' . $campaign->getDeadlineAt()->format('d.m.Y') . "</b>.\n\n"
-                . '<i>Розсилку всім мешканцям вмикає правління. Якщо на питання дадуть '
+                . '<i>Особисту розсилку всім мешканцям вмикає правління. Якщо на питання дадуть '
                 . BlockVoteService::AUTO_BROADCAST_VOTES . ' відповідей — бот розішле його сам.</i>',
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()
