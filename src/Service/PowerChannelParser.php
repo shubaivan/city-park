@@ -38,7 +38,11 @@ class PowerChannelParser
     /**
      * Every schedule post on the page, oldest first.
      *
-     * @return list<array{post: int, date: string, queues: array<string, list<array{int, int}>>}>
+     * `at` is when the post was published (null if the page did not say): an update in
+     * the middle of the day lists only what is still ahead, so it can only be read
+     * against the moment it was written — see {@see merge()}.
+     *
+     * @return list<array{post: int, at: ?\DateTimeImmutable, date: string, queues: array<string, list<array{int, int}>>}>
      */
     public static function parsePage(string $html, \DateTimeImmutable $now): array
     {
@@ -64,7 +68,8 @@ class PowerChannelParser
             $schedule = self::parsePost($text, $now);
 
             if ($schedule !== null) {
-                $found[] = ['post' => (int)$post[1]] + $schedule;
+                $at = preg_match('/<time datetime="([^"]+)"/', $chunk, $time) ? new \DateTimeImmutable($time[1]) : null;
+                $found[] = ['post' => (int)$post[1], 'at' => $at] + $schedule;
             }
         }
 
@@ -140,6 +145,52 @@ class PowerChannelParser
 
             $merged[] = [$from, $to];
         }
+
+        return $merged;
+    }
+
+    /**
+     * A later post for the same day laid over what was known before it.
+     *
+     * **An «Оновлення» posted during the day lists only what is still ahead of it.** On
+     * 28.10.2026 at 20:44 the company re-posted the day with eight queues out of twelve:
+     * the four whose last window had already passed — 3.1 among them — were simply not
+     * there, and the queues it did list had lost their morning windows. So a queue the
+     * update leaves out has nothing more today, and that is also how an evening outage is
+     * *cancelled*: by omission. Reading the omission as «no news» would leave the house
+     * warned «через 10 хвилин вимкнуть» about an outage the company had already called off.
+     *
+     * What had already happened by $cutoff (minutes from the day's midnight, the moment
+     * the update was posted) is kept, clipped at that moment; everything after it is the
+     * update's. A post published before the day began has a cutoff of 0 and replaces
+     * everything. A queue neither side mentions stays absent.
+     *
+     * @param array<string, list<array{int, int}>> $base
+     * @param array<string, list<array{int, int}>> $update
+     * @return array<string, list<array{int, int}>>
+     */
+    public static function merge(array $base, array $update, int $cutoff): array
+    {
+        $cutoff = max(0, min(1440, $cutoff));
+        $merged = [];
+
+        foreach (array_keys($base + $update) as $queue) {
+            $windows = [];
+
+            foreach ($base[$queue] ?? [] as [$from, $to]) {
+                if ($from < $cutoff) {
+                    $windows[] = sprintf('%s - %s', PowerScheduleImage::clock($from), PowerScheduleImage::clock(min($to, $cutoff)));
+                }
+            }
+
+            foreach ($update[$queue] ?? [] as [$from, $to]) {
+                $windows[] = sprintf('%s - %s', PowerScheduleImage::clock($from), PowerScheduleImage::clock($to));
+            }
+
+            $merged[(string)$queue] = self::intervals(implode(', ', $windows));
+        }
+
+        ksort($merged, SORT_NATURAL);
 
         return $merged;
     }

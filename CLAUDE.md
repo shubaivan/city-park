@@ -1895,6 +1895,12 @@ where there is no light) plus «🔴 12:00 — вимкнуть / 🟢 14:00 —
   lists outage windows by address, but our street is absent from all 31 000 October
   rows — so it is never the source of the hours.
 
+**An «Оновлення» posted during the day lists only what is still ahead** — the 20:44 one on
+28.10.2026 left out the four queues, 3.1 among them, whose day was over. So every post for a
+day is laid over the one before (`PowerChannelParser::merge()`, from the post's publish time):
+what had happened by then stays, the rest is the update's, and a queue it leaves out has
+nothing more that day. That is also how an evening outage gets cancelled — by omission.
+
 **One post per day, always the current one.** A changed plan is posted anew with
 «🔄 Графік оновлено о HH:MM» — an edit would be silent, and whoever read the morning version
 is exactly who needs to know — and the old post is deleted (Telegram allows 48 h; a
@@ -1903,9 +1909,11 @@ schedule is never further ahead than tomorrow), or struck through where that is 
 moves only somebody else's hours changes nothing here. Quiet 22:00–08:00: tomorrow's
 plan usually lands at 23:00.
 
-**Reminders go into the topic, never into anybody's DMs** (Иван, 28.10.2026): «⚠️ Через 10
-хвилин вимкнуть світло — о 12:00, до 14:00» in the ten minutes before an outage, and «🟢 14:00
-— за графіком мають увімкнути світло. Наступне відключення — о 17:00» when it is due back.
+**Reminders go into the topic, never into anybody's DMs** (Иван, 28.10.2026): «⚠️ Через 15
+хвилин вимкнуть світло — о 12:00, до 14:00» in the fifteen minutes before an outage (ten
+until 29.10.2026; the window opens at 16 so the even-minute cron hits :44), and «🟢 Через 15 хвилин, о
+14:00, за графіком мають увімкнути світло. Наступне відключення — о 17:00» fifteen minutes
+before it is due back.
 Each deletes the one before it, so the topic is the day's picture plus one current line.
 They ring by day (a warning nobody hears warns nobody; a reader mutes the topic if they
 want); quiet hours apply. 22:00–24:00 followed by 00:00–02:00 is one outage — no
