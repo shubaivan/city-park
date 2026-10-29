@@ -36,12 +36,23 @@
                         <tr id="listing-{{ listing.id }}">
                             <td>{{ listing.id }}</td>
                             <td>
-                                {{ listing.dealIcon }} {{ listing.account.unitLabel }}<br>
-                                <small class="text-muted">{{ listing.dealLabel }}</small><br>
-                                <small class="text-muted">
-                                    {{ listing.account.street }} {{ listing.account.houseNumber }} ·
-                                    р/н {{ listing.account.accountNumber }}
-                                </small>
+                                {% if listing.hasTypedObject %}
+                                    {# Typed by the author, unchecked; the line under it is who posted it. #}
+                                    {{ listing.dealIcon }} буд. {{ listing.objectHouse }},
+                                    {{ {storage: 'комірчина', parking: 'паркомісце'}[listing.objectType] ?? 'кв.' }} {{ listing.objectNumber }}<br>
+                                    <small class="text-muted">{{ listing.dealLabel }}</small><br>
+                                    <small class="text-muted">
+                                        👤 розмістив: буд. {{ listing.account.houseNumber }}, {{ listing.account.unitLabel }} ·
+                                        р/н {{ listing.account.accountNumber }}
+                                    </small>
+                                {% else %}
+                                    {{ listing.dealIcon }} {{ listing.account.unitLabel }}<br>
+                                    <small class="text-muted">{{ listing.dealLabel }}</small><br>
+                                    <small class="text-muted">
+                                        {{ listing.account.street }} {{ listing.account.houseNumber }} ·
+                                        р/н {{ listing.account.accountNumber }}
+                                    </small>
+                                {% endif %}
                             </td>
                             <td>
                                 {{ listing.roomsLabel ?? '—' }}<br>

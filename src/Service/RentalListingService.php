@@ -77,12 +77,19 @@ class RentalListingService
         $mine = [];
 
         foreach ($this->objectsFor($account) as $object) {
-            if ($listing = $this->activeForAccount($object)) {
+            foreach ($this->listingRepository->findAllActiveForAccount($object, self::now()) as $listing) {
                 $mine[$listing->getId()] = $listing;
             }
         }
 
         return $mine;
+    }
+
+    /** Whether this account may add one more listing — see RentalListing::MAX_PER_ACCOUNT. */
+    public function mayPublishMore(Account $account): bool
+    {
+        return count($this->listingRepository->findAllActiveForAccount($account, self::now()))
+            < RentalListing::MAX_PER_ACCOUNT;
     }
 
     /** Whether $object is one of the objects $account may act for. */
@@ -128,10 +135,25 @@ class RentalListingService
         ?string $description,
         bool $showPhone = false,
         string $deal = RentalListing::DEAL_RENT,
+        ?string $objectType = null,
+        ?string $objectHouse = null,
+        ?string $objectNumber = null,
+        ?int $entrance = null,
+        ?int $floor = null,
     ): RentalListing {
         $now = self::now();
 
-        $existing = $this->listingRepository->findActiveForAccount($account, $now);
+        // A republish of the same object is its edit path and replaces it; a different
+        // object (the flat, then the комора) is a second listing beside the first. A
+        // listing from before objects were typed has none, and is replaced as it always was.
+        $existing = null;
+        foreach ($this->listingRepository->findAllActiveForAccount($account, $now) as $live) {
+            if (!$live->hasTypedObject() || $live->isSameObject($objectType, $objectHouse, $objectNumber)) {
+                $existing = $live;
+                break;
+            }
+        }
+
         if ($existing) {
             $existing->setStatus(RentalListing::STATUS_REMOVED);
             $existing->setClosedAt($now);
@@ -147,6 +169,7 @@ class RentalListingService
             ->setPrice($price)
             ->setDescription($description)
             ->setDeal($deal)
+            ->setObject($objectType, $objectHouse, $objectNumber, $entrance, $floor)
             ->setShowPhone($phone !== null)
             ->setContactPhone($phone)
             ->setExpiresAt((clone $now)->modify('+' . RentalListing::LIFETIME_DAYS . ' days'));
@@ -208,16 +231,8 @@ class RentalListingService
      */
     public function describe(RentalListing $listing): string
     {
-        $account = $listing->getAccount();
-
-        $head = array_filter([
-            self::place($account),
-            $listing->roomsLabel(),
-            $account->getArea() ? rtrim(rtrim(number_format((float)$account->getArea(), 1, ',', ' '), '0'), ',') . ' м²' : null,
-        ]);
-
         $lines = [
-            $listing->dealIcon() . ' <b>' . implode(' · ', $head) . '</b>',
+            $listing->dealIcon() . ' <b>' . self::esc(implode(' · ', self::head($listing))) . '</b>',
             '<i>' . $listing->dealVerb() . '</i>',
             '💰 ' . self::esc($listing->priceLabel()),
         ];
@@ -228,6 +243,10 @@ class RentalListingService
 
         if ($phone = $listing->publicPhone()) {
             $lines[] = '📞 ' . self::esc($phone);
+        }
+
+        if ($by = self::postedBy($listing)) {
+            $lines[] = self::esc($by);
         }
 
         $lines[] = '<i>Опубліковано ' . $listing->getCreatedAt()->format('d.m.Y')
@@ -243,7 +262,7 @@ class RentalListingService
     public function buttonLabel(RentalListing $listing, bool $own = false): string
     {
         $parts = array_filter([
-            self::placePlain($listing->getAccount(), true),
+            self::objectPlain($listing, true),
             $listing->roomsLabel(),
             $listing->priceLabel(),
         ]);
@@ -270,13 +289,13 @@ class RentalListingService
 
         if ($username) {
             return InlineKeyboardButton::make(
-                '✍️ Написати (' . self::placePlain($listing->getAccount(), true) . ')',
+                '✍️ Написати (' . self::objectPlain($listing, true) . ')',
                 url: 'https://t.me/' . $username,
             );
         }
 
         return InlineKeyboardButton::make(
-            '✍️ Хочу орендувати (' . self::placePlain($listing->getAccount(), true) . ')',
+            '✍️ Хочу орендувати (' . self::objectPlain($listing, true) . ')',
             callback_data: 'rent:contact:' . $listing->getId(),
         );
     }
@@ -449,7 +468,7 @@ class RentalListingService
                 try {
                     $this->bot->sendMessage(
                         text: $listing->dealIcon() . ' Ваше оголошення ('
-                            . self::place($listing->getAccount())
+                            . self::esc(self::objectPlain($listing))
                             . ") знято зі списку через " . RentalListing::LIFETIME_DAYS . " днів.\n"
                             . 'Якщо воно ще актуальне — опублікуйте його знову: /rent',
                         chat_id: $chatId,
@@ -653,18 +672,14 @@ class RentalListingService
      */
     public function chatPost(RentalListing $listing): string
     {
-        $account = $listing->getAccount();
-
-        $head = array_filter([
-            self::place($account),
-            $listing->roomsLabel(),
-            $account->getArea() ? rtrim(rtrim(number_format((float)$account->getArea(), 1, ',', ' '), '0'), ',') . ' м²' : null,
-        ]);
-
         $lines = [
-            sprintf('%s <b>%s</b> · %s', $listing->dealIcon(), $listing->dealVerb(), implode(' · ', $head)),
+            sprintf('%s <b>%s</b> · %s', $listing->dealIcon(), $listing->dealVerb(), self::esc(implode(' · ', self::head($listing)))),
             '💰 ' . self::esc($listing->priceLabel()),
         ];
+
+        if ($by = self::postedBy($listing)) {
+            $lines[] = self::esc($by);
+        }
 
         if ($description = $listing->getDescription()) {
             $lines[] = self::esc(mb_strimwidth($description, 0, 220, '…'));
@@ -700,16 +715,8 @@ class RentalListingService
      */
     public function shareText(RentalListing $listing): string
     {
-        $account = $listing->getAccount();
-
-        $head = array_filter([
-            self::placePlain($account),
-            $listing->roomsLabel(),
-            $account->getArea() ? rtrim(rtrim(number_format((float)$account->getArea(), 1, ',', ' '), '0'), ',') . ' м²' : null,
-        ]);
-
         $lines = [
-            $listing->dealIcon() . ' ' . $listing->dealVerb() . ' · ' . implode(' · ', $head),
+            $listing->dealIcon() . ' ' . $listing->dealVerb() . ' · ' . implode(' · ', self::head($listing)),
             '💰 ' . $listing->priceLabel(),
         ];
 
@@ -743,6 +750,59 @@ class RentalListingService
      *
      * The short form is for inline buttons, whose captions Telegram truncates.
      */
+    /**
+     * What is on offer, plain text: «буд. 21, комірчина 168» as the author typed it, or
+     * — on a listing from before that — the author's own object.
+     */
+    public static function objectPlain(RentalListing $listing, bool $short = false): string
+    {
+        if (!$listing->hasTypedObject()) {
+            return self::placePlain($listing->getAccount(), $short);
+        }
+
+        $unit = match ($listing->getObjectType()) {
+            Account::UNIT_STORAGE => 'комірчина ',
+            Account::UNIT_PARKING => 'паркомісце ',
+            default => 'кв. ',
+        } . $listing->getObjectNumber();
+
+        $house = $listing->getObjectHouse();
+
+        return $house ? ($short ? 'б. ' : 'буд. ') . $house . ', ' . $unit : $unit;
+    }
+
+    /** @return string[] the facts of the headline: object, entrance, floor, rooms, area */
+    public static function head(RentalListing $listing): array
+    {
+        $account = $listing->getAccount();
+
+        return array_values(array_filter([
+            self::objectPlain($listing),
+            $listing->getEntrance() ? "під'їзд " . $listing->getEntrance() : null,
+            $listing->getFloor() !== null ? $listing->getFloor() . ' поверх' : null,
+            $listing->roomsLabel(),
+            // The area is the Account's — only true while the Account is the object.
+            !$listing->hasTypedObject() && $account->getArea()
+                ? rtrim(rtrim(number_format((float)$account->getArea(), 1, ',', ' '), '0'), ',') . ' м²'
+                : null,
+        ]));
+    }
+
+    /**
+     * «👤 Розмістив: буд. 21, кв. 90» — who vouches for a typed object, the services
+     * board's line. Silent when the object *is* the author's flat: saying so twice is noise.
+     */
+    public static function postedBy(RentalListing $listing): ?string
+    {
+        if (!$listing->hasTypedObject()) {
+            return null;
+        }
+
+        $by = self::placePlain($listing->getAccount());
+
+        return $by === self::objectPlain($listing) || $by === '' ? null : '👤 Розмістив: ' . $by;
+    }
+
     public static function place(?Account $account, bool $short = false): string
     {
         return self::esc(self::placePlain($account, $short));

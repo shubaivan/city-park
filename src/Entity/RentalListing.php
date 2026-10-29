@@ -48,6 +48,13 @@ class RentalListing
 
     public const LIFETIME_DAYS = 30;
 
+    /**
+     * Live listings per особовий рахунок: a flat, its комора and a паркомісце is the
+     * ordinary case, and past three it stops being «my things» and becomes one household
+     * holding the first page. Same number as the services board.
+     */
+    public const MAX_PER_ACCOUNT = 3;
+
     /** Days before expiry the "ще актуально?" prompt is sent. */
     public const RENEW_PROMPT_BEFORE_DAYS = 3;
 
@@ -82,6 +89,28 @@ class RentalListing
 
     #[ORM\Column(type: 'string', length: 16, nullable: false, options: ['default' => self::STATUS_ACTIVE])]
     private string $status = self::STATUS_ACTIVE;
+
+    /**
+     * The object, as the author typed it (29.10.2026). Until then it was read from the
+     * author's own Account, which made a комора billed to a wife, or a паркомісце on a
+     * separate рахунок, impossible to advertise. Nobody checks these: the author is a
+     * confirmed resident and the card says so («👤 Розмістив»), the services board's rule.
+     * NULL on the listings published before — those still read their Account.
+     */
+    #[ORM\Column(type: 'string', length: 16, nullable: true)]
+    private ?string $object_type = null;
+
+    #[ORM\Column(type: 'string', length: 8, nullable: true)]
+    private ?string $object_house = null;
+
+    #[ORM\Column(type: 'string', length: 16, nullable: true)]
+    private ?string $object_number = null;
+
+    #[ORM\Column(type: 'smallint', nullable: true)]
+    private ?int $entrance = null;
+
+    #[ORM\Column(type: 'smallint', nullable: true)]
+    private ?int $floor = null;
 
     /** Rooms, 1..4 (4 means "4 і більше"). */
     #[ORM\Column(type: 'smallint', nullable: true)]
@@ -442,5 +471,56 @@ class RentalListing
         $this->chat_message_id = $id;
 
         return $this;
+    }
+
+    public function getObjectType(): ?string
+    {
+        return $this->object_type;
+    }
+
+    public function getObjectHouse(): ?string
+    {
+        return $this->object_house;
+    }
+
+    public function getObjectNumber(): ?string
+    {
+        return $this->object_number;
+    }
+
+    public function getEntrance(): ?int
+    {
+        return $this->entrance;
+    }
+
+    public function getFloor(): ?int
+    {
+        return $this->floor;
+    }
+
+    public function setObject(?string $type, ?string $house, ?string $number, ?int $entrance = null, ?int $floor = null): static
+    {
+        $this->object_type = $type;
+        $this->object_house = $house;
+        $this->object_number = $number;
+        $this->entrance = $entrance;
+        $this->floor = $floor;
+
+        return $this;
+    }
+
+    /** Typed by the author rather than read from their Account. */
+    public function hasTypedObject(): bool
+    {
+        return $this->object_number !== null && $this->object_number !== '';
+    }
+
+    /** Same object as another listing — what a republish replaces rather than adds to. */
+    public function isSameObject(?string $type, ?string $house, ?string $number): bool
+    {
+        return $this->hasTypedObject()
+            && $this->object_type === $type
+            && $this->object_house === $house
+            && mb_strtolower($this->object_number) === mb_strtolower((string)$number);
     }
 }
