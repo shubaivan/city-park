@@ -13,7 +13,7 @@ use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 
 /**
- * Publishing and lifecycle of "здається квартира" listings.
+ * Publishing and lifecycle of rent/sale listings — flats, комори and паркомісця.
  *
  * Kept out of the Nutgram handlers because three entry points share it: the bot
  * conversation that publishes, the rental:expire cron that prompts/closes, and the
@@ -29,6 +29,7 @@ class RentalListingService
         private RentalPhotoService $photoService,
         private ResidentChatService $residentChat,
         private DeepLink $links,
+        private OwnerGroupService $ownerGroups,
     ) {}
 
     public static function now(): \DateTime
@@ -37,12 +38,13 @@ class RentalListingService
     }
 
     /**
-     * Who may offer an apartment for rent.
+     * Who may offer an object for rent or sale: every kind of it.
      *
-     * Apartments only in this version: parking places and storage units are rented out
-     * too, but their listing line ("кв. 45 · 2-кімн. · 58 м²") makes no sense for them
-     * and the residents asked for flats. Storage is excluded by canBookPavilion() logic
-     * anyway; parking is left out deliberately.
+     * Flats only until 29.10.2026, on the reasoning that «кв. 45 · 2-кімн.» makes no sense
+     * for a комора. The labels had learnt to say «комірчина 168» / «паркомісце 12» long
+     * before, and on that day a resident put his комора up in the chat's 🔑 Оренда topic
+     * by hand because the bot had no way to — комори and паркомісця change hands here
+     * as often as flats. A non-flat simply skips the rooms question.
      *
      * Deliberately does NOT check is_active: a debt or a missed pavilion photo blocks
      * booking, not the right to rent out your own property. Mixing the two would turn a
@@ -50,7 +52,53 @@ class RentalListingService
      */
     public function canPublish(Account $account): bool
     {
-        return !$account->isStorage() && !$account->isParking();
+        return true;
+    }
+
+    /**
+     * The objects this resident may advertise: the one they are linked to and the rest of
+     * their household (`owner_group_id`). A person points at one Account, so without this
+     * the owner of a flat could never advertise the комора that is billed separately.
+     *
+     * @return Account[]
+     */
+    public function objectsFor(Account $account): array
+    {
+        return [$account, ...$this->ownerGroups->siblings($account)];
+    }
+
+    /**
+     * Live listings of the whole household, keyed by listing id.
+     *
+     * @return array<int, RentalListing>
+     */
+    public function activeForHousehold(Account $account): array
+    {
+        $mine = [];
+
+        foreach ($this->objectsFor($account) as $object) {
+            if ($listing = $this->activeForAccount($object)) {
+                $mine[$listing->getId()] = $listing;
+            }
+        }
+
+        return $mine;
+    }
+
+    /** Whether $object is one of the objects $account may act for. */
+    public function isOwnObject(?Account $account, Account $object): bool
+    {
+        if (!$account instanceof Account) {
+            return false;
+        }
+
+        foreach ($this->objectsFor($account) as $candidate) {
+            if ($candidate->getId() === $object->getId()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function activeForAccount(Account $account): ?RentalListing
@@ -400,10 +448,10 @@ class RentalListingService
             foreach ($this->recipients($listing) as $chatId) {
                 try {
                     $this->bot->sendMessage(
-                        text: "🔑 Ваше оголошення про оренду ("
+                        text: $listing->dealIcon() . ' Ваше оголошення ('
                             . self::place($listing->getAccount())
                             . ") знято зі списку через " . RentalListing::LIFETIME_DAYS . " днів.\n"
-                            . 'Якщо квартира ще здається — опублікуйте його знову: /rent',
+                            . 'Якщо воно ще актуальне — опублікуйте його знову: /rent',
                         chat_id: $chatId,
                         parse_mode: ParseMode::HTML,
                     );

@@ -8,7 +8,7 @@ use App\Service\RentalListingService;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
- * Who may advertise an apartment for rent, and how a listing renders.
+ * Who may advertise an object for rent or sale, and how a listing renders.
  *
  * The publishing rule is the load-bearing one: a debt or a missed pavilion photo flips
  * Account::is_active and blocks booking, but it must NOT stop an owner from offering
@@ -50,13 +50,35 @@ class RentalListingRulesTest extends KernelTestCase
         );
     }
 
-    public function testParkingAndStorageMayNotPublish(): void
+    /** Комори and паркомісця change hands here as often as flats (29.10.2026). */
+    public function testParkingAndStorageMayPublish(): void
     {
         self::bootKernel();
         $service = self::getContainer()->get(RentalListingService::class);
 
-        $this->assertFalse($service->canPublish($this->account('1-1-7-012', 'паркінг 12')));
-        $this->assertFalse($service->canPublish($this->account('1-1-5-003', 'кладова 3')));
+        $this->assertTrue($service->canPublish($this->account('117012', '12')));
+        $this->assertTrue($service->canPublish($this->account('115003', '3')));
+    }
+
+    /** A комора's listing names it as one, and carries no «кімн.» — that is a flat's question. */
+    public function testAStorageListingIsLabelledAsStorage(): void
+    {
+        self::bootKernel();
+        $service = self::getContainer()->get(RentalListingService::class);
+
+        $storage = $this->account('115003', '3');
+        $this->assertFalse($storage->isApartment());
+
+        $listing = (new RentalListing())
+            ->setAccount($storage)
+            ->setRooms(null)
+            ->setPrice(2000)
+            ->setExpiresAt(new \DateTime('+30 days'));
+
+        $label = $service->buttonLabel($listing);
+        $this->assertStringContainsString('комірчина 3', $label);
+        $this->assertStringNotContainsString('кв.', $label);
+        $this->assertStringNotContainsString('кімн', $label);
     }
 
     /**

@@ -31,7 +31,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  *   rent:extend:<id>      — owner confirms the listing is still current (+30 days)
  *   rent:remove:<id>      — owner takes their listing down
  *
- * Publishing itself lives in the RentalPublish conversation (button "➕ Здаю квартиру").
+ * Publishing itself lives in the RentalPublish conversation (buttons «🔑 Здаю» / «🏡 Продаю»).
  */
 class RentalMenuCommand
 {
@@ -148,7 +148,9 @@ class RentalMenuCommand
         $account = $this->currentAccount($bot);
 
         $all = $this->rentalService->activeListings();
-        $mine = $account ? $this->rentalService->activeForAccount($account) : null;
+        // The household's, not the one object the reader is linked to: a flat and its
+        // комора are two listings and both are «ваше».
+        $mine = $account ? $this->rentalService->activeForHousehold($account) : [];
 
         $rentCount = count(array_filter($all, static fn (RentalListing $l): bool => !$l->isSale()));
         $saleCount = count($all) - $rentCount;
@@ -170,7 +172,7 @@ class RentalMenuCommand
             $lines[] = $notice;
             $lines[] = '';
         }
-        $lines[] = '🔑 <b>Оренда та продаж квартир</b>';
+        $lines[] = '🔑 <b>Оренда та продаж</b> · квартири, комори, паркомісця';
         $lines[] = '';
 
         $markup = InlineKeyboardMarkup::make();
@@ -180,7 +182,7 @@ class RentalMenuCommand
 
             if ($account) {
                 $lines[] = '';
-                $lines[] = '<i>Якщо ви здаєте або продаєте свою квартиру — розкажіть про це сусідам тут, '
+                $lines[] = '<i>Якщо ви здаєте або продаєте квартиру, комору чи паркомісце — розкажіть про це сусідам тут, '
                     . 'замість того щоб шукати охочих у чаті.</i>';
             }
         } else {
@@ -189,8 +191,8 @@ class RentalMenuCommand
             $shown = array_slice($listings, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE);
 
             $lines[] = $tabbed
-                ? 'Оберіть квартиру, щоб побачити деталі та контакт.'
-                : 'Оберіть квартиру, щоб побачити деталі та контакт. 🔑 — здається, 🏡 — продається.';
+                ? 'Оберіть оголошення, щоб побачити деталі та контакт.'
+                : 'Оберіть оголошення, щоб побачити деталі та контакт. 🔑 — здається, 🏡 — продається.';
 
             if ($tabbed) {
                 $markup->addRow(
@@ -212,7 +214,7 @@ class RentalMenuCommand
             $anyPhotos = false;
 
             foreach ($shown as $listing) {
-                $own = $mine && $listing->getId() === $mine->getId();
+                $own = isset($mine[$listing->getId()]);
                 $anyPhotos = $anyPhotos || $listing->hasPhotos();
 
                 $markup->addRow(InlineKeyboardButton::make(
@@ -259,11 +261,13 @@ class RentalMenuCommand
             }
         }
 
-        if (!$mine && $account && $this->rentalService->canPublish($account)) {
+        // Shown while any object of the household is still free to advertise: the owner of
+        // a flat that is already listed may still have a комора to offer.
+        if ($account && count($mine) < count($this->rentalService->objectsFor($account))) {
             // Two buttons rather than one that asks: the owner already knows which of the
             // two they came to do, and the question would be a step to abandon on.
             $markup->addRow(
-                InlineKeyboardButton::make('🔑 Здаю квартиру', callback_data: RentalPublish::START_CALLBACK),
+                InlineKeyboardButton::make('🔑 Здаю', callback_data: RentalPublish::START_CALLBACK),
                 InlineKeyboardButton::make('🏡 Продаю', callback_data: RentalPublish::START_SALE_CALLBACK),
             );
         }
@@ -591,7 +595,7 @@ class RentalMenuCommand
         $this->respond(
             $bot,
             edit: true,
-            text: "📷 <b>Фото квартири</b>\n\n"
+            text: "📷 <b>Фото до оголошення</b>\n\n"
                 . 'Відкрийте сторінку і виберіть до ' . RentalListing::PHOTOS_MAX
                 . " фото з галереї телефону — вони одразу з'являться в оголошенні.\n\n"
                 . '<i>Посилання діє ' . RentalListing::PHOTO_TOKEN_TTL_HOURS . ' години і лише для вашого оголошення. '
@@ -625,7 +629,7 @@ class RentalMenuCommand
             return;
         }
 
-        if ($user->getAccount() && $listing->getAccount()->getId() === $user->getAccount()->getId()) {
+        if ($this->rentalService->isOwnObject($this->currentAccount($bot), $listing->getAccount())) {
             $this->renderMenu($bot, edit: true, notice: 'ℹ️ Це ваше власне оголошення.');
             return;
         }
@@ -726,14 +730,12 @@ class RentalMenuCommand
     }
 
     /**
-     * Any member of the account may manage its listing — same rule as bookings and
-     * ballots, where the account (not the individual) is the unit.
+     * Any member of the household may manage its listings — the account is the unit, as
+     * for bookings and ballots, and a комора billed separately is still the household's.
      */
     private function ownsListing(Nutgram $bot, RentalListing $listing): bool
     {
-        $account = $this->currentAccount($bot);
-
-        return $account !== null && $account->getId() === $listing->getAccount()->getId();
+        return $this->rentalService->isOwnObject($this->currentAccount($bot), $listing->getAccount());
     }
 
     /**
