@@ -54,10 +54,6 @@ class RentalListing
     /** Free-text description cap, enforced on input so one listing can't flood the list. */
     public const DESCRIPTION_MAX = 400;
 
-    /** Price sanity bounds, UAH per month. Guards against typos like 12 or 1200000. */
-    public const PRICE_MIN = 500;
-    public const PRICE_MAX = 200000;
-
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]

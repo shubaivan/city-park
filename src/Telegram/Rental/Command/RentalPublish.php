@@ -2,6 +2,7 @@
 
 namespace App\Telegram\Rental\Command;
 
+use App\Entity\Account;
 use App\Service\OsbbContacts;
 use App\Entity\RentalListing;
 use App\Service\PhotoUploadFlow;
@@ -16,8 +17,8 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 /**
- * "➕ Здаю квартиру": five short steps — rooms, price, description, contact, confirm —
- * then the listing goes live in the 🔑 Оренда list for RentalListing::LIFETIME_DAYS days.
+ * "🔑 Здаю" / "🏡 Продаю": which object (only when the household has several), rooms
+ * (flats only), price, description, contact, confirm — then the listing goes live in the 🔑 Оренда list for RentalListing::LIFETIME_DAYS days.
  *
  * No photo step on purpose. A photo here would collide with the pavilion-photo
  * obligation: an active conversation swallows every photo the user sends, and telling
@@ -39,6 +40,13 @@ class RentalPublish extends Conversation
     protected ?string $step = 'askRooms';
 
     public string $deal = RentalListing::DEAL_RENT;
+
+    /**
+     * The object being advertised — one of the household's (flat, комора, паркомісце).
+     * Null on a conversation started before this existed: those fall back to the
+     * resident's own account, which is what they were publishing then.
+     */
+    public ?int $accountId = null;
     public ?int $rooms = null;
     public ?int $price = null;
     public ?string $description = null;
@@ -91,6 +99,25 @@ class RentalPublish extends Conversation
         $user = $this->telegramUserService->getCurrentUser();
         $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
 
+        if ($account && $bot->isCallbackQuery()) {
+            $data = $bot->callbackQuery()->data ?? '';
+
+            if ($data === 'cancel') {
+                $this->cancel($bot);
+                return;
+            }
+
+            if (str_starts_with($data, 'obj:')) {
+                $picked = (int)substr($data, strlen('obj:'));
+
+                foreach ($this->rentalService->objectsFor($account) as $object) {
+                    if ($object->getId() === $picked) {
+                        $this->accountId = $picked;
+                    }
+                }
+            }
+        }
+
         if (!$account) {
             $bot->sendMessage(
                 text: "Ваш акаунт не підтверджений ОСББ — опублікувати оголошення не вийде.\n"
@@ -101,12 +128,48 @@ class RentalPublish extends Conversation
             return;
         }
 
-        if (!$this->rentalService->canPublish($account)) {
+        $sale = $this->deal === RentalListing::DEAL_SALE;
+        $title = $sale ? "🏡 <b>Оголошення про продаж</b>\n\n" : "🔑 <b>Оголошення про оренду</b>\n\n";
+        $objects = $this->rentalService->objectsFor($account);
+
+        // A household with a flat and a комора has to say which one it is about; one
+        // object needs no question.
+        if ($this->accountId === null && count($objects) > 1) {
+            $markup = InlineKeyboardMarkup::make();
+
+            foreach ($objects as $object) {
+                $markup->addRow(InlineKeyboardButton::make(
+                    RentalListingService::placePlain($object),
+                    callback_data: 'obj:' . $object->getId(),
+                ));
+            }
+
+            $markup->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel'));
+
             $bot->sendMessage(
-                text: 'Оголошення доступні лише для квартир.',
+                text: $title . 'Що саме ' . ($sale ? 'продаєте' : 'здаєте') . '?',
                 parse_mode: ParseMode::HTML,
+                reply_markup: $markup,
             );
-            $this->end();
+
+            $this->next('askRooms');
+            return;
+        }
+
+        $object = $this->object() ?? $account;
+
+        // Rooms are a question about a flat; a комора or a паркомісце goes straight to
+        // the price.
+        if (!$object->isApartment()) {
+            $this->rooms = null;
+            $bot->sendMessage(
+                text: $title . '<b>' . RentalListingService::place($object) . "</b> — адресу та площу "
+                    . "візьмемо з особового рахунку.\n\n" . $this->pricePrompt(),
+                parse_mode: ParseMode::HTML,
+                reply_markup: $this->priceMarkup(),
+            );
+
+            $this->next('askDescription');
             return;
         }
 
@@ -120,13 +183,18 @@ class RentalPublish extends Conversation
             ->addRow(InlineKeyboardButton::make('Не вказувати', callback_data: 'rooms:0'))
             ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel'));
 
-        $sale = $this->deal === RentalListing::DEAL_SALE;
-
         $bot->sendMessage(
-            text: ($sale ? "🏡 <b>Оголошення про продаж</b>\n\n" : "🔑 <b>Оголошення про оренду</b>\n\n")
-                . 'Квартиру, адресу та площу візьмемо з вашого особового рахунку — '
-                . "їх вводити не треба.\n\n"
-                . 'Скільки кімнат?',
+            text: $title
+                . '<b>' . RentalListingService::place($object) . '</b> — адресу та площу візьмемо '
+                . "з особового рахунку, їх вводити не треба.\n\n"
+                . 'Скільки кімнат?'
+                // The one place somebody notices their комора is missing: it is a separate
+                // особовий рахунок, and only the accountant can join it to the household.
+                . (count($objects) === 1
+                    ? "\n\n<i>Хочете " . ($sale ? 'продати' : 'здати') . ' комору чи паркомісце, а тут лише квартира? '
+                        . "Попросіть бухгалтера ОСББ додати їх до вашого рахунку в боті:</i>\n"
+                        . OsbbContacts::ACCOUNTANT_LINE
+                    : ''),
             parse_mode: ParseMode::HTML,
             reply_markup: $markup,
         );
@@ -152,16 +220,57 @@ class RentalPublish extends Conversation
         $this->rooms = $rooms > 0 ? min($rooms, 4) : null;
 
         $bot->editMessageText(
-            text: $this->deal === RentalListing::DEAL_SALE
-                ? "💰 Яка ціна, грн?\n\n<i>Надішліть число, наприклад 1850000.</i>"
-                : "💰 Яка ціна, грн на місяць?\n\n<i>Надішліть число, наприклад 12000.</i>",
+            text: $this->pricePrompt(),
             parse_mode: ParseMode::HTML,
-            reply_markup: InlineKeyboardMarkup::make()
-                ->addRow(InlineKeyboardButton::make('Договірна', callback_data: 'price:none'))
-                ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel')),
+            reply_markup: $this->priceMarkup(),
         );
 
         $this->next('askDescription');
+    }
+
+    private function pricePrompt(): string
+    {
+        if ($this->deal === RentalListing::DEAL_SALE) {
+            return "💰 Яка ціна, грн?\n\n<i>Надішліть число, наприклад 1850000.</i>";
+        }
+
+        $example = $this->object()?->isApartment() === false ? '2000' : '12000';
+
+        return "💰 Яка ціна, грн на місяць?\n\n<i>Надішліть число, наприклад {$example}.</i>";
+    }
+
+    private function priceMarkup(): InlineKeyboardMarkup
+    {
+        return InlineKeyboardMarkup::make()
+            ->addRow(InlineKeyboardButton::make('Договірна', callback_data: 'price:none'))
+            ->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel'));
+    }
+
+    /**
+     * The object picked at the start, re-checked against the household every time it is
+     * read: a conversation outlives the keyboard it began on, and somebody unlinked from
+     * the комора in between must not publish it.
+     */
+    private function object(): ?Account
+    {
+        $user = $this->telegramUserService->getCurrentUser();
+        $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
+
+        if (!$account) {
+            return null;
+        }
+
+        if ($this->accountId === null) {
+            return $account;
+        }
+
+        foreach ($this->rentalService->objectsFor($account) as $object) {
+            if ($object->getId() === $this->accountId) {
+                return $object;
+            }
+        }
+
+        return null;
     }
 
     public function askDescription(Nutgram $bot): void
@@ -192,15 +301,15 @@ class RentalPublish extends Conversation
                 return;
             }
 
-            $price = (int)$digits;
+            // No bounds: what to ask is the owner's call, for a flat and a комора, rent or
+            // sale alike (Иван, 29.10.2026). The one check left is technical — the column is
+            // an integer, so a number it cannot hold is read as not understood.
+            $price = strlen($digits) <= 9 ? (int)$digits : 0;
 
-            if ($price < RentalListing::PRICE_MIN || $price > RentalListing::PRICE_MAX) {
+            if ($price <= 0) {
                 $bot->sendMessage(
-                    text: sprintf(
-                        '⚠️ Ціна виглядає помилковою. Вкажіть суму від %d до %d грн на місяць.',
-                        RentalListing::PRICE_MIN,
-                        RentalListing::PRICE_MAX,
-                    ),
+                    text: '⚠️ Не зрозумів ціну. Надішліть число, наприклад <b>12000</b>, '
+                        . 'або натисніть «Договірна».',
                     parse_mode: ParseMode::HTML,
                 );
                 return;
@@ -210,7 +319,9 @@ class RentalPublish extends Conversation
         }
 
         $bot->sendMessage(
-            text: "📝 Додайте короткий опис — меблі, техніка, з ким можна (до "
+            text: ($this->object()?->isApartment() === false
+                    ? "📝 Додайте короткий опис — під'їзд, поверх, доступ, що там можна тримати (до "
+                    : "📝 Додайте короткий опис — під'їзд, поверх, меблі, техніка, з ким можна (до ")
                 . RentalListing::DESCRIPTION_MAX . " символів).\n\n"
                 . '<i>Номер телефону сюди писати не треба — про нього спитаємо окремо '
                 . 'на наступному кроці.</i>',
@@ -327,7 +438,7 @@ class RentalPublish extends Conversation
     private function publish(Nutgram $bot): void
     {
         $user = $this->telegramUserService->getCurrentUser();
-        $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
+        $account = $this->object();
 
         if (!$account) {
             $bot->sendMessage(text: '⚠️ Не вдалося визначити ваш акаунт. Спробуйте пізніше.');
@@ -375,8 +486,7 @@ class RentalPublish extends Conversation
     /** What the listing will look like, before anything is written to the database. */
     private function preview(): string
     {
-        $user = $this->telegramUserService->getCurrentUser();
-        $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
+        $account = $this->object();
 
         $head = array_filter([
             $account ? RentalListingService::place($account) : null,
@@ -384,10 +494,10 @@ class RentalPublish extends Conversation
         ]);
 
         $lines = [
-            '🏠 <b>' . implode(' · ', $head) . '</b>',
+            ($this->deal === RentalListing::DEAL_SALE ? '🏡' : '🔑') . ' <b>' . implode(' · ', $head) . '</b>',
             '💰 ' . ($this->price === null
                 ? 'ціна договірна'
-                : number_format($this->price, 0, ',', ' ') . ' грн/міс'),
+                : number_format($this->price, 0, ',', ' ') . ($this->deal === RentalListing::DEAL_SALE ? ' грн' : ' грн/міс')),
         ];
 
         if ($this->description) {
