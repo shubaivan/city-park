@@ -54,7 +54,7 @@ class BotBroadcastCommand extends Command
         $this
             ->addArgument('name', InputArgument::REQUIRED, 'Journal name, e.g. cars-2026-10-20')
             ->addArgument('file', InputArgument::REQUIRED, 'HTML text of the message')
-            ->addOption('button', null, InputOption::VALUE_REQUIRED, 'Inline button as «label|callback_data»')
+            ->addOption('button', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Inline button as «label|callback_data» or «label|https://…», one row each, repeatable')
             ->addOption('only', null, InputOption::VALUE_REQUIRED, 'Send to this telegram id only (a test)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Count who would get it and stop');
     }
@@ -80,9 +80,14 @@ class BotBroadcastCommand extends Command
 
         $markup = null;
 
-        if ($input->getOption('button') !== null) {
-            [$label, $callback] = array_pad(explode('|', (string)$input->getOption('button'), 2), 2, '');
-            $markup = InlineKeyboardMarkup::make()->addRow(InlineKeyboardButton::make($label, callback_data: $callback));
+        foreach ((array)$input->getOption('button') as $spec) {
+            [$label, $target] = array_pad(explode('|', (string)$spec, 2), 2, '');
+            $markup ??= InlineKeyboardMarkup::make();
+            // A link to a topic of the residents' chat opens only for its members, so it
+            // rides next to a callback that lets everybody else in through the bot.
+            $markup->addRow(str_starts_with($target, 'https://')
+                ? InlineKeyboardButton::make($label, url: $target)
+                : InlineKeyboardButton::make($label, callback_data: $target));
         }
 
         $only = $input->getOption('only');
