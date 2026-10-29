@@ -34,10 +34,12 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * Silent at night (22:00–08:00 Kyiv): tomorrow's plan routinely arrives at 23:00, and a
  * buzz for 450 people at that hour is worse than reading it with the morning coffee.
  *
- * **Reminders go into the same topic, never to anybody's DMs** (Иван, 28.10.2026): ten
- * minutes before an outage («⚠️ Через 15 хвилин вимкнуть світло»), and at the moment the
- * schedule says it comes back, with the next one. Each new reminder deletes the previous,
- * so the topic reads as the day's schedule plus one current line — not forty of them.
+ * **Reminders go into the same topic, never to anybody's DMs** (Иван, 28.10.2026): fifteen
+ * minutes before an outage («⚠️ Через 15 хвилин вимкнуть світло»), and fifteen minutes
+ * before the schedule says it comes back, with the next one. **They stay, one after
+ * another** (Иван, 29.10.2026): they were deleted by the next one for a day, and a topic
+ * that rewrites itself reads as the bot losing messages — the day's run of warnings is
+ * what somebody scrolls back through.
  * They ring by day: a warning nobody notices warns nobody, and a reader who does not want
  * it mutes the topic, which Telegram lets them do topic by topic.
  *
@@ -210,7 +212,7 @@ class PowerScheduleAnnouncer
     }
 
     /**
-     * Post whatever reminder is due now, and retire the one before it.
+     * Post whatever reminder is due now. The earlier ones stay in the topic.
      *
      * @return list<string>
      */
@@ -250,19 +252,6 @@ class PowerScheduleAnnouncer
             } catch (\Throwable $e) {
                 $this->logger->error('power: reminder failed', ['key' => $due['key'], 'error' => $e->getMessage()]);
                 continue;
-            }
-
-            foreach ($rows as $other) {
-                $old = $other->getReminderMessageId();
-
-                if ($old !== null) {
-                    try {
-                        $this->bot->deleteMessage((int)$this->residentChat->chatId(), $old);
-                    } catch (\Throwable $e) {
-                        $this->logger->info('power: old reminder not deleted', ['error' => $e->getMessage()]);
-                    }
-                    $other->forgetReminderMessage();
-                }
             }
 
             $row->markReminded($due['key'], $message?->message_id);

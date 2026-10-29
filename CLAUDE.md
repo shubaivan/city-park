@@ -1914,7 +1914,8 @@ plan usually lands at 23:00.
 until 29.10.2026; the window opens at 16 so the even-minute cron hits :44), and «🟢 Через 15 хвилин, о
 14:00, за графіком мають увімкнути світло. Наступне відключення — о 17:00» fifteen minutes
 before it is due back.
-Each deletes the one before it, so the topic is the day's picture plus one current line.
+They stay, one after another — never deleted by the next one (Иван, 29.10.2026: a topic
+that rewrites itself reads as the bot losing messages).
 They ring by day (a warning nobody hears warns nobody; a reader mutes the topic if they
 want); quiet hours apply. 22:00–24:00 followed by 00:00–02:00 is one outage — no
 «увімкнуть» at midnight. Sent keys live on `PowerSchedulePost.reminders_sent`, by time, so
