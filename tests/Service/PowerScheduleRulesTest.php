@@ -328,4 +328,15 @@ class PowerScheduleRulesTest extends TestCase
             self::now('2026-10-28 23:50'),
         ));
     }
+
+    /** Reminders stay one after another: the next one never deletes the last (Иван, 29.10.2026). */
+    public function testARemindLeavesEarlierRemindersInTheTopic(): void
+    {
+        $method = new \ReflectionMethod(\App\Service\PowerScheduleAnnouncer::class, 'remind');
+        $lines = file($method->getFileName());
+        $body = implode('', array_slice($lines, $method->getStartLine() - 1, $method->getEndLine() - $method->getStartLine() + 1));
+
+        $this->assertStringNotContainsString('deleteMessage', $body);
+        $this->assertStringNotContainsString('forgetReminderMessage', $body);
+    }
 }
