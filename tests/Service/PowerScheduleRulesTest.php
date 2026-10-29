@@ -207,6 +207,23 @@ class PowerScheduleRulesTest extends TestCase
     }
 
     /** Buildings in one queue are one line; buildings moved apart get one each. */
+    public function testHouse25FollowsTheQueueTheOthersShare(): void
+    {
+        $answers = ['17' => '3.1', '19' => '3.1', '21' => '3.1', '23' => '3.1', '25' => null, '27' => '3.1'];
+        $this->assertSame('3.1', PowerQueueResolver::fillFollowers($answers)['25']);
+
+        // A silent building among the rest does not stop it.
+        $answers['19'] = null;
+        $this->assertSame('3.1', PowerQueueResolver::fillFollowers($answers)['25']);
+
+        // Its own answer, once the company has one, wins.
+        $this->assertSame('2.2', PowerQueueResolver::fillFollowers(['17' => '3.1', '25' => '2.2'])['25']);
+
+        // The rest split, or nobody answered: no guess.
+        $this->assertNull(PowerQueueResolver::fillFollowers(['17' => '3.1', '19' => '3.2', '25' => null])['25']);
+        $this->assertNull(PowerQueueResolver::fillFollowers(['17' => null, '25' => null])['25']);
+    }
+
     public function testBuildingsAreGroupedByTheirQueue(): void
     {
         $queues = PowerChannelParser::parsePost(self::POST, self::now())['queues'];

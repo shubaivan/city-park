@@ -1892,8 +1892,12 @@ where there is no light) plus «🔴 12:00 — вимкнуть / 🟢 14:00 —
   one of them. There is no house → queue call; any account of the building answers,
   and several are tried, because the first one at Козацька 19 came back empty. On
   28.10.2026: 17, 19, 21, 23, 27 → **3.1**. **25 has no answer**: the company lists the
-  house but no household account under it, although our register holds 42 flats there —
-  so буд. 25 is left out of the posts rather than given a queue nobody confirmed. The same API also
+  house but no household account under it, although our register holds 42 flats there:
+  it is not on the company's balance yet. Аліна confirmed on 29.10.2026 that it is fed
+  with the others and sits in their queue, so `PowerQueueResolver::FOLLOWS_THE_REST`
+  gives it the queue the answering buildings share — **only while they all agree on
+  one**; if they split it keeps what it had, and once the company lists it its own
+  answer wins. The same API also
   lists outage windows by address, but our street is absent from all 31 000 October
   rows — so it is never the source of the hours.
 

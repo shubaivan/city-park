@@ -40,6 +40,18 @@ class PowerQueueResolver
     /** The five buildings of the ЖК on Козацька, plus 25, which the ОСББ's register numbers 6. */
     public const HOUSES = ['17', '19', '21', '23', '25', '27'];
 
+    /**
+     * Buildings the company does not list yet, which follow the queue of the rest.
+     *
+     * Буд. 25 is not on Черкасиобленерго's balance: the cabinet knows the address and no
+     * household account under it, so it can never answer for itself. Аліна confirmed on
+     * 29.10.2026 that it is fed with the others and sits in the same queue. It is given
+     * that queue only while every building that *did* answer agrees on one — if they ever
+     * split, which of them 25 belongs to is a question for a person, and it keeps what it
+     * had. The day the company lists it, its own answer wins.
+     */
+    public const FOLLOWS_THE_REST = ['25'];
+
     /** Accounts asked per building before it is reported as unknown. */
     private const ACCOUNTS_TRIED = 5;
 
@@ -108,6 +120,32 @@ class PowerQueueResolver
                     $result[$house] = $queue;
                     break;
                 }
+            }
+        }
+
+        return self::fillFollowers($result);
+    }
+
+    /**
+     * Give each of FOLLOWS_THE_REST the queue the answered buildings share, if they share one.
+     *
+     * @param array<string, ?string> $result
+     * @return array<string, ?string>
+     */
+    public static function fillFollowers(array $result): array
+    {
+        $answered = array_unique(array_filter(
+            array_diff_key($result, array_flip(self::FOLLOWS_THE_REST)),
+            static fn (?string $q) => $q !== null,
+        ));
+
+        if (count($answered) !== 1) {
+            return $result;
+        }
+
+        foreach (self::FOLLOWS_THE_REST as $house) {
+            if (array_key_exists($house, $result) && $result[$house] === null) {
+                $result[$house] = reset($answered);
             }
         }
 
