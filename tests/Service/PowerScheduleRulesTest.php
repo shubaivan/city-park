@@ -224,6 +224,20 @@ class PowerScheduleRulesTest extends TestCase
         $this->assertNull(PowerQueueResolver::fillFollowers(['17' => null, '25' => null])['25']);
     }
 
+    public function testABuildingJoiningAQueueDoesNotRepostTheDay(): void
+    {
+        $outages = [[600, 720], [840, 960]];
+        $shown = json_encode([['queue' => '3.1', 'houses' => ['17', '19', '21', '23', '27'], 'outages' => $outages]]);
+
+        $this->assertTrue(PowerScheduleAnnouncer::sameHours($shown, [
+            ['queue' => '3.1', 'houses' => ['17', '19', '21', '23', '25', '27'], 'outages' => $outages],
+        ]));
+        $this->assertFalse(PowerScheduleAnnouncer::sameHours($shown, [
+            ['queue' => '3.1', 'houses' => ['17', '19', '21', '23', '25', '27'], 'outages' => [[600, 720]]],
+        ]));
+        $this->assertFalse(PowerScheduleAnnouncer::sameHours('', []));
+    }
+
     public function testBuildingsAreGroupedByTheirQueue(): void
     {
         $queues = PowerChannelParser::parsePost(self::POST, self::now())['queues'];

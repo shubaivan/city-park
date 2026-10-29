@@ -146,7 +146,11 @@ class PowerScheduleAnnouncer
 
             $signature = json_encode($groups, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
-            if ($existing !== null && $existing->getSignature() === $signature) {
+            // Same hours, different list of buildings (буд. 25 joining its queue): the post
+            // already standing is still true for everybody it names, so it is left alone
+            // and the next day's post carries the new list — a «Графік оновлено» over hours
+            // that did not move would only tell 450 people to look again at nothing.
+            if ($existing !== null && ($existing->getSignature() === $signature || self::sameHours($existing->getSignature(), $groups))) {
                 if (!$dryRun) {
                     $existing->seen($schedule['post']);
                     $this->em->flush();
@@ -436,6 +440,28 @@ class PowerScheduleAnnouncer
         }
 
         return $groups;
+    }
+
+    /**
+     * Whether a stored signature and these groups give every queue the same outages.
+     *
+     * @param list<array{queue: string, houses: list<string>, outages: list<array{int, int}>}> $groups
+     */
+    public static function sameHours(string $signature, array $groups): bool
+    {
+        $hours = static function (array $groups): array {
+            $map = [];
+            foreach ($groups as $g) {
+                $map[(string)($g['queue'] ?? '')] = $g['outages'] ?? null;
+            }
+            ksort($map, SORT_NATURAL);
+
+            return $map;
+        };
+
+        $stored = json_decode($signature, true);
+
+        return is_array($stored) && $hours($stored) === $hours($groups);
     }
 
     /**

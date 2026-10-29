@@ -1897,7 +1897,9 @@ where there is no light) plus «🔴 12:00 — вимкнуть / 🟢 14:00 —
   with the others and sits in their queue, so `PowerQueueResolver::FOLLOWS_THE_REST`
   gives it the queue the answering buildings share — **only while they all agree on
   one**; if they split it keeps what it had, and once the company lists it its own
-  answer wins. The same API also
+  answer wins. A building joining a queue whose hours did not move does **not** repost the
+  day (`PowerScheduleAnnouncer::sameHours()`): the standing post stays, the next day's
+  carries the new list (Иван, 29.10.2026). The same API also
   lists outage windows by address, but our street is absent from all 31 000 October
   rows — so it is never the source of the hours.
 
