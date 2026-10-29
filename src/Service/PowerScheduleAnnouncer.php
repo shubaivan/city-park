@@ -35,7 +35,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * buzz for 450 people at that hour is worse than reading it with the morning coffee.
  *
  * **Reminders go into the same topic, never to anybody's DMs** (Иван, 28.10.2026): ten
- * minutes before an outage («⚠️ Через 10 хвилин вимкнуть світло»), and at the moment the
+ * minutes before an outage («⚠️ Через 15 хвилин вимкнуть світло»), and at the moment the
  * schedule says it comes back, with the next one. Each new reminder deletes the previous,
  * so the topic reads as the day's schedule plus one current line — not forty of them.
  * They ring by day: a warning nobody notices warns nobody, and a reader who does not want
@@ -50,6 +50,16 @@ class PowerScheduleAnnouncer
 
     private const QUIET_FROM = 22;
     private const QUIET_UNTIL = 8;
+
+    /**
+     * How long before the light goes, and before it is due back, the reminder is posted
+     * (Иван, 29.10.2026: 15, and before both — it used to be 10 before the outage and the
+     * «увімкнули» line at the moment itself). The
+     * window opens a minute earlier than that, because the cron runs on even minutes
+     * and an outage on the hour would otherwise be warned about at :46 — fourteen
+     * minutes before, under a text that says fifteen.
+     */
+    public const WARN_BEFORE_MIN = 15;
 
     private const SITE_URL = 'https://www.cherkasyoblenergo.com/off';
 
@@ -82,7 +92,7 @@ class PowerScheduleAnnouncer
         }
 
         // Before the channel is read, so a channel that does not answer cannot cost the
-        // house its «через 10 хвилин».
+        // house its «через 15 хвилин».
         $done = $this->remind(new \DateTimeImmutable('now', new \DateTimeZone(self::TZ)), $topic, $dryRun);
 
         $houses = $this->queues->known();
@@ -106,16 +116,21 @@ class PowerScheduleAnnouncer
         $now = new \DateTimeImmutable('now', new \DateTimeZone(self::TZ));
         $today = $now->format('Y-m-d');
 
-        // The latest post for each day wins: «Оновлення графіка … на 28 жовтня».
+        // Every post for a day, oldest first: «Оновлення графіка … на 28 жовтня» is laid
+        // over what came before it, not taken on its own (see PowerChannelParser::merge).
         $byDay = [];
         foreach (PowerChannelParser::parsePage($html, $now) as $schedule) {
-            $byDay[$schedule['date']] = $schedule;
+            $byDay[$schedule['date']][] = $schedule;
         }
 
-        foreach ($byDay as $date => $schedule) {
+        foreach ($byDay as $date => $dayPosts) {
             if ($date < $today) {
                 continue;
             }
+
+            $day = new \DateTimeImmutable($date, new \DateTimeZone(self::TZ));
+            $existing = $this->posts->forDay($day);
+            $schedule = ['post' => end($dayPosts)['post'], 'queues' => self::layer($day, $dayPosts, $existing)];
 
             $groups = self::groups($houses, $schedule['queues']);
 
@@ -127,9 +142,7 @@ class PowerScheduleAnnouncer
                 continue;
             }
 
-            $day = new \DateTimeImmutable($date, new \DateTimeZone(self::TZ));
             $signature = json_encode($groups, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-            $existing = $this->posts->forDay($day);
 
             if ($existing !== null && $existing->getSignature() === $signature) {
                 if (!$dryRun) {
@@ -170,6 +183,30 @@ class PowerScheduleAnnouncer
         }
 
         return $done;
+    }
+
+    /**
+     * A day's queues from all its posts on the page, oldest first, each laid over the
+     * one before. What the topic already shows is the starting point, since the post an
+     * update corrects may have scrolled off the channel's page by then.
+     *
+     * @param list<array{post: int, at: ?\DateTimeImmutable, queues: array<string, list<array{int, int}>>}> $dayPosts
+     * @return array<string, list<array{int, int}>>
+     */
+    public static function layer(\DateTimeImmutable $day, array $dayPosts, ?PowerSchedulePost $shown): array
+    {
+        $queues = [];
+
+        foreach (json_decode($shown?->getSignature() ?? '[]', true) ?: [] as $group) {
+            $queues[(string)$group['queue']] = $group['outages'];
+        }
+
+        foreach ($dayPosts as $post) {
+            $cutoff = $post['at'] === null ? 0 : intdiv($post['at']->getTimestamp() - $day->getTimestamp(), 60);
+            $queues = PowerChannelParser::merge($queues, $post['queues'], $cutoff);
+        }
+
+        return $queues;
     }
 
     /**
@@ -240,8 +277,8 @@ class PowerScheduleAnnouncer
      * The reminders whose moment is now, from the schedules drawn for yesterday, today
      * and tomorrow.
      *
-     * «Off» is due from ten minutes before the outage until it starts — a warning after
-     * the light has gone is no warning. «On» is due for ten minutes from the moment the
+     * «Off» is due from fifteen minutes before the outage until it starts — a warning after
+     * the light has gone is no warning. «On» is due in the same fifteen minutes before the moment the
      * schedule says it returns, and is skipped where the next day's outage simply
      * continues the same one past midnight.
      *
@@ -256,6 +293,7 @@ class PowerScheduleAnnouncer
         foreach ($days as $date => $groups) {
             $midnight = new \DateTimeImmutable($date . ' 00:00', $tz);
             $next = (new \DateTimeImmutable($date, $tz))->modify('+1 day')->format('Y-m-d');
+            $prev = (new \DateTimeImmutable($date, $tz))->modify('-1 day')->format('Y-m-d');
             $several = count($groups) > 1;
 
             foreach ($groups as $group) {
@@ -263,17 +301,22 @@ class PowerScheduleAnnouncer
                     ? sprintf("\n<i>Черга %s · %s</i>", $group['queue'], self::housesLabel($group['houses']))
                     : sprintf("\n<i>Черга %s</i>", $group['queue']);
                 $tomorrow = self::queueOn($days[$next] ?? null, $group['queue']);
+                $yesterday = self::queueOn($days[$prev] ?? null, $group['queue']);
 
                 foreach ($group['outages'] as $i => [$from, $to]) {
                     $start = $midnight->modify(sprintf('+%d minutes', $from));
                     $end = $midnight->modify(sprintf('+%d minutes', $to));
 
-                    if ($now >= $start->modify('-10 minutes') && $now < $start) {
+                    // 00:00 straight after a 22:00–24:00 is the same outage: it is already dark.
+                    $alreadyOff = $from === 0 && ($yesterday !== null && $yesterday !== [] && end($yesterday)[1] === 1440);
+
+                    if (!$alreadyOff && $now >= $start->modify(sprintf('-%d minutes', self::WARN_BEFORE_MIN + 1)) && $now < $start) {
                         $due[] = [
                             'date' => $date,
                             'key' => sprintf('off@%s@%d', $group['queue'], $from),
                             'text' => sprintf(
-                                '⚠️ Через 10 хвилин вимкнуть світло — о %s, до %s.%s',
+                                '⚠️ Через %d хвилин вимкнуть світло — о %s, до %s.%s',
+                                self::WARN_BEFORE_MIN,
                                 PowerScheduleImage::clock($from),
                                 PowerScheduleImage::clock($to),
                                 $label,
@@ -283,7 +326,7 @@ class PowerScheduleAnnouncer
 
                     $continues = $to === 1440 && ($tomorrow[0][0] ?? null) === 0;
 
-                    if (!$continues && $now >= $end && $now < $end->modify('+10 minutes')) {
+                    if (!$continues && $now >= $end->modify(sprintf('-%d minutes', self::WARN_BEFORE_MIN + 1)) && $now < $end) {
                         $later = $group['outages'][$i + 1] ?? null;
                         $then = match (true) {
                             $later !== null => sprintf('Наступне відключення — о %s.', PowerScheduleImage::clock($later[0])),
@@ -297,7 +340,8 @@ class PowerScheduleAnnouncer
                             'date' => $date,
                             'key' => sprintf('on@%s@%d', $group['queue'], $to),
                             'text' => sprintf(
-                                "🟢 %s — за графіком мають увімкнути світло.\n%s%s",
+                                "🟢 Через %d хвилин, о %s, за графіком мають увімкнути світло.\n%s%s",
+                                self::WARN_BEFORE_MIN,
                                 PowerScheduleImage::clock($to),
                                 $then,
                                 $label,

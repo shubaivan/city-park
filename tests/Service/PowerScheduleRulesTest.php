@@ -122,6 +122,76 @@ class PowerScheduleRulesTest extends TestCase
         $this->assertSame([[840, 960]], $found[0]['queues']['3.1']);
     }
 
+    public function testThePageSaysWhenEachPostWasPublished(): void
+    {
+        $html = '<div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message" data-post="pat_cherkasyoblenergo/1914">'
+            . '<div class="tgme_widget_message_text js-message_text" dir="auto">' . nl2br(htmlspecialchars(self::POST)) . '</div>'
+            . '<a class="tgme_widget_message_date" href="https://t.me/pat_cherkasyoblenergo/1914"><time datetime="2026-10-28T09:50:46+00:00" class="time">09:50</time></a></div></div>';
+
+        $found = PowerChannelParser::parsePage($html, self::now());
+
+        $this->assertSame('2026-10-28 11:50', $found[0]['at']?->setTimezone(new \DateTimeZone('Europe/Kyiv'))->format('Y-m-d H:i'));
+    }
+
+    /**
+     * The company's own 20:44 update of 28.10.2026 listed eight queues: 3.1 had nothing
+     * left that day and was not there. The day it already had must stand.
+     */
+    public function testAnUpdateThatLeavesOurQueueOutKeepsWhatAlreadyHappened(): void
+    {
+        $update = PowerChannelParser::parsePost(<<<'TXT'
+            Оновлення графіка погодинних відключень (ГПВ) на 28 жовтня
+
+            1.1 22:00 - 24:00
+            1.2 22:00 - 24:00
+            2.1 20:00 - 22:00
+            2.2 20:00 - 22:00
+            4.2 22:00 - 24:00
+            5.1 20:00 - 22:00
+            5.2 20:00 - 22:00
+            6.2 19:00 - 22:00
+            TXT, self::now());
+
+        $morning = PowerChannelParser::parsePost(self::POST, self::now())['queues'];
+        $merged = PowerChannelParser::merge($morning, $update['queues'], 20 * 60 + 44);
+
+        $this->assertSame([[720, 840], [1020, 1140]], $merged['3.1']);
+        // A window still running at the update is the update's to describe: 19–21 became 19–22.
+        $this->assertSame([[540, 660], [840, 960], [1140, 1320]], $merged['6.2']);
+    }
+
+    /** Leaving a queue out after the fact is how an evening outage is called off. */
+    public function testAnOutageLeftOutOfAnUpdateIsCancelled(): void
+    {
+        $base = ['3.1' => [[600, 720], [1200, 1320]]];
+
+        $this->assertSame(['1.1' => [], '3.1' => [[600, 720]]], PowerChannelParser::merge($base, ['1.1' => []], 18 * 60));
+        // Called off while it is already dark: dark until the update, light after it.
+        $this->assertSame(['3.1' => [[600, 660]]], PowerChannelParser::merge($base, [], 11 * 60));
+    }
+
+    /** Tomorrow's plan published tonight replaces whatever was known about tomorrow. */
+    public function testAPostFromBeforeTheDayReplacesEverything(): void
+    {
+        $this->assertSame(
+            ['3.1' => [[840, 960]]],
+            PowerChannelParser::merge(['3.1' => [[600, 720]]], ['3.1' => [[840, 960]]], -90),
+        );
+    }
+
+    public function testTheDayIsLaidUpFromAllItsPostsInOrder(): void
+    {
+        $day = self::now('2026-10-29 00:00');
+        $kyiv = new \DateTimeZone('Europe/Kyiv');
+
+        $queues = PowerScheduleAnnouncer::layer($day, [
+            ['post' => 1916, 'at' => new \DateTimeImmutable('2026-10-28 20:36', $kyiv), 'queues' => ['3.1' => [[600, 720], [840, 960], [1200, 1320]], '1.1' => [[540, 600]]]],
+            ['post' => 1920, 'at' => new \DateTimeImmutable('2026-10-29 17:00', $kyiv), 'queues' => ['1.1' => [[1080, 1200]]]],
+        ], null);
+
+        $this->assertSame([[600, 720], [840, 960]], $queues['3.1']);
+    }
+
     /** The hourly queue, never the emergency one the same answer also names. */
     public function testTheQueueIsTheHourlyOneNotTheEmergencyOne(): void
     {
@@ -213,17 +283,17 @@ class PowerScheduleRulesTest extends TestCase
         return $days;
     }
 
-    /** Ten minutes before, and not once the light has already gone. */
-    public function testTheWarningIsDueInTheTenMinutesBeforeAnOutage(): void
+    /** Fifteen minutes before, and not once the light has already gone. */
+    public function testTheWarningIsDueInTheFifteenMinutesBeforeAnOutage(): void
     {
         $days = self::days([[720, 840], [1020, 1140]]);
 
-        $this->assertSame([], PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 11:49')));
+        $this->assertSame([], PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 11:43')));
 
-        $due = PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 11:50'));
+        $due = PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 11:44'));
         $this->assertCount(1, $due);
         $this->assertSame('off@3.1@720', $due[0]['key']);
-        $this->assertStringStartsWith('⚠️ Через 10 хвилин вимкнуть світло — о 12:00, до 14:00.', $due[0]['text']);
+        $this->assertStringStartsWith('⚠️ Через 15 хвилин вимкнуть світло — о 12:00, до 14:00.', $due[0]['text']);
 
         $this->assertCount(1, PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 11:58')));
         $this->assertSame([], PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 12:00')));
@@ -232,17 +302,17 @@ class PowerScheduleRulesTest extends TestCase
     /** When it comes back, with what is next — later today, tomorrow, or nothing. */
     public function testTheReturnNamesTheNextOutage(): void
     {
-        $due = PowerScheduleAnnouncer::dueReminders(self::days([[720, 840], [1020, 1140]]), self::now('2026-10-28 14:02'));
+        $due = PowerScheduleAnnouncer::dueReminders(self::days([[720, 840], [1020, 1140]]), self::now('2026-10-28 13:45'));
         $this->assertSame('on@3.1@840', $due[0]['key'] ?? null);
-        $this->assertStringContainsString("🟢 14:00 — за графіком мають увімкнути світло.\nНаступне відключення — о 17:00.", $due[0]['text']);
+        $this->assertStringContainsString("🟢 Через 15 хвилин, о 14:00, за графіком мають увімкнути світло.\nНаступне відключення — о 17:00.", $due[0]['text']);
 
-        $due = PowerScheduleAnnouncer::dueReminders(self::days([[720, 840], [1020, 1140]], [[360, 480]]), self::now('2026-10-28 19:00'));
+        $due = PowerScheduleAnnouncer::dueReminders(self::days([[720, 840], [1020, 1140]], [[360, 480]]), self::now('2026-10-28 18:45'));
         $this->assertStringContainsString('Наступне відключення — завтра о 06:00.', $due[0]['text'] ?? '');
 
-        $due = PowerScheduleAnnouncer::dueReminders(self::days([[1020, 1140]]), self::now('2026-10-28 19:05'));
+        $due = PowerScheduleAnnouncer::dueReminders(self::days([[1020, 1140]]), self::now('2026-10-28 18:50'));
         $this->assertStringContainsString('Сьогодні відключень більше не заплановано.', $due[0]['text'] ?? '');
 
-        $this->assertSame([], PowerScheduleAnnouncer::dueReminders(self::days([[1020, 1140]]), self::now('2026-10-28 19:10')));
+        $this->assertSame([], PowerScheduleAnnouncer::dueReminders(self::days([[1020, 1140]]), self::now('2026-10-28 19:00')));
     }
 
     /** An outage that starts at midnight is warned about the evening before. */
@@ -255,7 +325,7 @@ class PowerScheduleRulesTest extends TestCase
         // 22:00–24:00 followed by 00:00–02:00 is one outage: no «увімкнуть» at midnight.
         $this->assertSame([], PowerScheduleAnnouncer::dueReminders(
             self::days([[1320, 1440]], [[0, 120]]),
-            self::now('2026-10-29 00:02'),
+            self::now('2026-10-28 23:50'),
         ));
     }
 }
