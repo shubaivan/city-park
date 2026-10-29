@@ -51,8 +51,23 @@ class RentalListingRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /** @return RentalListing[] every live listing of the account, newest first */
+    public function findAllActiveForAccount(Account $account, \DateTime $now): array
+    {
+        return $this->createQueryBuilder('l')
+            ->andWhere('l.account = :acc')
+            ->andWhere('l.status = :active')
+            ->andWhere('l.expires_at > :now')
+            ->setParameter('acc', $account)
+            ->setParameter('active', RentalListing::STATUS_ACTIVE)
+            ->setParameter('now', $now)
+            ->orderBy('l.id', 'DESC')
+            ->getQuery()
+            ->getResult();
+    }
+
     /**
-     * The account's own live listing, if any. One active listing per account is the
+     * The account's newest live listing, if any. One active listing per account is the
      * invariant the publish flow enforces; findOneBy-style access keeps it readable.
      */
     public function findActiveForAccount(Account $account, \DateTime $now): ?RentalListing

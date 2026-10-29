@@ -261,9 +261,9 @@ class RentalMenuCommand
             }
         }
 
-        // Shown while any object of the household is still free to advertise: the owner of
-        // a flat that is already listed may still have a комора to offer.
-        if ($account && count($mine) < count($this->rentalService->objectsFor($account))) {
+        // Shown until the рахунок has RentalListing::MAX_PER_ACCOUNT live listings: the
+        // owner of a flat that is already listed may still have a комора to offer.
+        if ($account && $this->rentalService->mayPublishMore($account)) {
             // Two buttons rather than one that asks: the owner already knows which of the
             // two they came to do, and the question would be a step to abandon on.
             $markup->addRow(
