@@ -87,7 +87,11 @@ $bot->onCallbackQueryData('^info-topic:.+$', \App\Telegram\Info\Command\InfoComm
 $bot->onCommand('info', \App\Telegram\Info\Command\InfoCommand::class);
 
 $bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalMenuCommand::MENU_CALLBACK, \App\Telegram\Rental\Command\RentalMenuCommand::class);
-$bot->onCallbackQueryData('^rent:(?:(?:view|page|photos|contact|phone|extend|remove|share):\d+|pic:\d+:\d+|deal:(?:all|rent|sale):\d+|noop)$', \App\Telegram\Rental\Command\RentalMenuCommand::class);
+$bot->onCallbackQueryData('^rent:(?:(?:view|page|photos|contact|phone|extend|remove|share|vdel|vdelok):\d+|pic:\d+:\d+|deal:(?:all|rent|sale):\d+|noop)$', \App\Telegram\Rental\Command\RentalMenuCommand::class);
+$bot->onCallbackQueryData('^rent:video:\d+$', \App\Telegram\Rental\Command\RentalVideo::class);
+$bot->onMessageType(\SergiX44\Nutgram\Telegram\Properties\MessageType::VIDEO, \App\Telegram\Rental\Command\RentalVideoHint::class);
+$bot->onMessageType(\SergiX44\Nutgram\Telegram\Properties\MessageType::VIDEO_NOTE, \App\Telegram\Rental\Command\RentalVideoHint::class);
+$bot->onMessageType(\SergiX44\Nutgram\Telegram\Properties\MessageType::DOCUMENT, \App\Telegram\Rental\Command\RentalVideoHint::class);
 $bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalPublish::START_CALLBACK, \App\Telegram\Rental\Command\RentalPublish::class);
 $bot->onCallbackQueryData(\App\Telegram\Rental\Command\RentalPublish::START_SALE_CALLBACK, \App\Telegram\Rental\Command\RentalPublish::class);
 $bot->onCommand('rent', \App\Telegram\Rental\Command\RentalMenuCommand::class);

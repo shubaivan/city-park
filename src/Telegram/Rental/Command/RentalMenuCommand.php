@@ -16,6 +16,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 use SergiX44\Nutgram\Telegram\Types\Message\LinkPreviewOptions;
 use SergiX44\Nutgram\Telegram\Types\Input\InputMediaPhoto;
+use SergiX44\Nutgram\Telegram\Types\Input\InputMediaVideo;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\WebApp\WebAppInfo;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -27,7 +28,10 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  *   rent:contact:<id>     — relay the caller's contact to an owner without a @username
  *   rent:phone:<id>       — same, with the caller's own number attached (they consented)
  *   rent:photos:<id>      — hand the owner a one-shot link to the photo upload page
- *   rent:pic:<id>:<n>     — swap the card's picture for photo #n (the ⬅️/➡️ arrows)
+ *   rent:pic:<id>:<n>     — swap the card's media for slide #n (the ⬅️/➡️ arrows)
+ *   rent:video:<id>       — owner adds or replaces the video (the RentalVideo conversation)
+ *   rent:vdel:<id>        — owner asked to delete the video: the card asks to confirm
+ *   rent:vdelok:<id>      — owner confirmed, the video goes
  *   rent:extend:<id>      — owner confirms the listing is still current (+30 days)
  *   rent:remove:<id>      — owner takes their listing down
  *
@@ -75,6 +79,16 @@ class RentalMenuCommand
         if (str_starts_with($data, 'rent:pic:')) {
             [$id, $index] = array_pad(explode(':', substr($data, strlen('rent:pic:'))), 2, '0');
             $this->showPhoto($bot, (int)$id, (int)$index);
+            return;
+        }
+
+        if (str_starts_with($data, 'rent:vdelok:')) {
+            $this->deleteVideo($bot, (int)substr($data, strlen('rent:vdelok:')));
+            return;
+        }
+
+        if (str_starts_with($data, 'rent:vdel:')) {
+            $this->confirmDeleteVideo($bot, (int)substr($data, strlen('rent:vdel:')));
             return;
         }
 
@@ -312,20 +326,104 @@ class RentalMenuCommand
         }
 
         $index = $this->normaliseIndex($listing, $index);
+        [$text, $markup] = $this->card($bot, $listing, $index);
 
-        $lines = [$this->rentalService->describe($listing)];
-        $markup = InlineKeyboardMarkup::make();
+        if ($listing->isVideoSlide($index)) {
+            if ($this->sendVideoCard($bot, $listing, $text, $markup, $edit)) {
+                return;
+            }
 
-        $this->addPhotoNav($markup, $listing, $index);
-        $this->addCardControls($bot, $markup, $listing, $lines);
+            // The video would not send: the photos, or the text, still sell the flat.
+            $index = 1;
+            [$text, $markup] = $this->card($bot, $listing, $index);
+        }
 
-        $text = implode("\n", $lines);
-
-        if ($listing->hasPhotos() && $this->sendPhotoCard($bot, $listing, $index, $text, $markup, $edit)) {
+        if ($listing->hasPhotos() && $this->sendPhotoCard($bot, $listing, $listing->photoIndexOfSlide($index), $text, $markup, $edit)) {
             return;
         }
 
         $this->respond($bot, edit: $edit, text: $text, markup: $markup);
+    }
+
+    /** @return array{string, InlineKeyboardMarkup} the caption and the keyboard of a slide */
+    private function card(Nutgram $bot, RentalListing $listing, int $slide): array
+    {
+        $lines = [$this->rentalService->describe($listing)];
+        $markup = InlineKeyboardMarkup::make();
+
+        $this->addPhotoNav($markup, $listing, $slide);
+        $this->addCardControls($bot, $markup, $listing, $lines);
+
+        return [implode("\n", $lines), $markup];
+    }
+
+    /** The same swap of one message for another as sendPhotoCard(), with the file on Telegram. */
+    private function sendVideoCard(
+        Nutgram $bot,
+        RentalListing $listing,
+        string $caption,
+        InlineKeyboardMarkup $markup,
+        bool $replacing,
+    ): bool {
+        try {
+            $bot->sendVideo(
+                video: (string)$listing->getVideoFileId(),
+                caption: $caption,
+                parse_mode: ParseMode::HTML,
+                supports_streaming: true,
+                reply_markup: $markup,
+            );
+        } catch (\Throwable $e) {
+            $this->logger->error('rental video card failed, falling back', [
+                'listing_id' => $listing->getId(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+
+        if ($replacing) {
+            try {
+                $bot->deleteMessage($bot->chatId(), $bot->messageId());
+            } catch (\Throwable) {
+                // A message older than 48h cannot be deleted; leaving it is harmless.
+            }
+        }
+
+        return true;
+    }
+
+    /** Asks on the card itself: the keyboard is swapped, the message stays. */
+    private function confirmDeleteVideo(Nutgram $bot, int $listingId): void
+    {
+        $listing = $this->liveListing($listingId);
+
+        if (!$listing || !$this->ownsListing($bot, $listing)) {
+            $this->renderMenu($bot, edit: true, notice: '⚠️ Оголошення не знайдено.');
+            return;
+        }
+
+        $bot->answerCallbackQuery(text: 'Видалити це відео?');
+        $bot->editMessageReplyMarkup(
+            reply_markup: InlineKeyboardMarkup::make()->addRow(
+                InlineKeyboardButton::make('🗑 Так, видалити', callback_data: 'rent:vdelok:' . $listing->getId()),
+                InlineKeyboardButton::make('⬅️ Ні', callback_data: 'rent:view:' . $listing->getId()),
+            ),
+        );
+    }
+
+    private function deleteVideo(Nutgram $bot, int $listingId): void
+    {
+        $listing = $this->liveListing($listingId);
+
+        if (!$listing || !$this->ownsListing($bot, $listing)) {
+            $this->renderMenu($bot, edit: true, notice: '⚠️ Оголошення не знайдено.');
+            return;
+        }
+
+        $this->rentalService->removeVideo($listing);
+        $bot->answerCallbackQuery(text: '🗑 Відео видалено.');
+        $this->renderCard($bot, $listingId);
     }
 
     /**
@@ -354,6 +452,15 @@ class RentalMenuCommand
                     : sprintf('📷 Керувати фото (%d/%d)', $photoCount, RentalListing::PHOTOS_MAX),
                 callback_data: 'rent:photos:' . $listing->getId(),
             ));
+            if ($listing->hasVideo()) {
+                $markup->addRow(
+                    InlineKeyboardButton::make('🎬 Замінити відео', callback_data: 'rent:video:' . $listing->getId()),
+                    InlineKeyboardButton::make('🗑 Видалити відео', callback_data: 'rent:vdel:' . $listing->getId()),
+                );
+            } else {
+                $markup->addRow(InlineKeyboardButton::make('🎬 Додати відео', callback_data: 'rent:video:' . $listing->getId()));
+            }
+
             $markup->addRow(
                 InlineKeyboardButton::make('✏️ Змінити', callback_data: RentalPublish::START_CALLBACK),
                 InlineKeyboardButton::make('🚫 Зняти', callback_data: 'rent:remove:' . $listing->getId()),
@@ -473,7 +580,7 @@ class RentalMenuCommand
      */
     private function addPhotoNav(InlineKeyboardMarkup $markup, RentalListing $listing, int $index): void
     {
-        $total = count($listing->getPhotos());
+        $total = $listing->slideCount();
 
         if ($total < 2) {
             return;
@@ -487,7 +594,7 @@ class RentalMenuCommand
         $markup->addRow(
             InlineKeyboardButton::make('⬅️', callback_data: sprintf('rent:pic:%d:%d', $listing->getId(), $prev)),
             InlineKeyboardButton::make(
-                sprintf('🖼 %d/%d', $index + 1, $total),
+                sprintf('%s %d/%d', $listing->isVideoSlide($index) ? '🎬' : '🖼', $index + 1, $total),
                 callback_data: self::NOOP_CALLBACK,
             ),
             InlineKeyboardButton::make('➡️', callback_data: sprintf('rent:pic:%d:%d', $listing->getId(), $next)),
@@ -511,32 +618,39 @@ class RentalMenuCommand
         }
 
         $index = $this->normaliseIndex($listing, $index);
-        $abs = $this->photoPath($listing, $index);
-        $stream = $abs ? @fopen($abs, 'rb') : false;
+        [$caption, $markup] = $this->card($bot, $listing, $index);
 
-        if ($stream === false) {
-            // The file is gone but the card is fine: re-render rather than leave the
-            // resident tapping an arrow that does nothing.
-            $bot->answerCallbackQuery(text: '⚠️ Це фото більше недоступне.');
-            $this->renderCard($bot, $listingId);
-            return;
+        if ($listing->isVideoSlide($index)) {
+            $media = InputMediaVideo::make(
+                media: (string)$listing->getVideoFileId(),
+                caption: $caption,
+                parse_mode: ParseMode::HTML,
+                supports_streaming: true,
+            );
+        } else {
+            $abs = $this->photoPath($listing, $listing->photoIndexOfSlide($index));
+            $stream = $abs ? @fopen($abs, 'rb') : false;
+
+            if ($stream === false) {
+                // The file is gone but the card is fine: re-render rather than leave the
+                // resident tapping an arrow that does nothing.
+                $bot->answerCallbackQuery(text: '⚠️ Це фото більше недоступне.');
+                $this->renderCard($bot, $listingId);
+                return;
+            }
+
+            $media = InputMediaPhoto::make(
+                media: InputFile::make($stream, basename((string)$abs)),
+                caption: $caption,
+                parse_mode: ParseMode::HTML,
+            );
         }
-
-        $lines = [$this->rentalService->describe($listing)];
-        $markup = InlineKeyboardMarkup::make();
-
-        $this->addPhotoNav($markup, $listing, $index);
-        $this->addCardControls($bot, $markup, $listing, $lines);
 
         $bot->answerCallbackQuery();
 
         try {
             $bot->editMessageMedia(
-                media: InputMediaPhoto::make(
-                    media: InputFile::make($stream, basename((string)$abs)),
-                    caption: implode("\n", $lines),
-                    parse_mode: ParseMode::HTML,
-                ),
+                media: $media,
                 reply_markup: $markup,
             );
         } catch (\Throwable $e) {
@@ -550,10 +664,10 @@ class RentalMenuCommand
         }
     }
 
-    /** Photo index, wrapped into range — a listing can lose a photo while a card is open. */
+    /** Slide index, wrapped into range — a listing can lose a photo while a card is open. */
     private function normaliseIndex(RentalListing $listing, int $index): int
     {
-        $total = count($listing->getPhotos());
+        $total = $listing->slideCount();
 
         if ($total < 1) {
             return 0;

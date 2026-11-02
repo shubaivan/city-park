@@ -168,6 +168,9 @@ class RentalPhotoService
         $listing->setPhotos([]);
         $listing->setPhotoToken(null);
         $listing->setPhotoTokenExpiresAt(null);
+
+        // The video goes with them. An admin take-down skips this, so it stays watchable.
+        $listing->clearVideo();
     }
 
     /** Absolute path of a stored photo, or null when it points outside our upload dir. */

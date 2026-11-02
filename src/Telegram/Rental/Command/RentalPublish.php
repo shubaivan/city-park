@@ -8,6 +8,7 @@ use App\Entity\RentalListing;
 use App\Service\PhotoUploadFlow;
 use App\Service\PowerQueueResolver;
 use App\Service\RentalListingService;
+use App\Service\RentalVideoHintText;
 use App\Service\TelegramUserService;
 use App\Telegram\Start\Command\StartCommand;
 use Psr\Log\LoggerInterface;
@@ -93,6 +94,20 @@ class RentalPublish extends Conversation
                     'error' => $e->getMessage(),
                 ]);
             }
+
+            return null;
+        }
+
+        // A video here used to get no answer at all at the description step. The step does
+        // not move: the question above is still the one being asked.
+        $videoKind = RentalVideo::incomingKind($bot);
+
+        if ($videoKind !== null) {
+            $bot->sendMessage(text: match ($videoKind) {
+                RentalVideo::KIND_NOTE => RentalVideo::NOTE_REFUSED,
+                RentalVideo::KIND_FILE => RentalVideo::FILE_REFUSED,
+                default => RentalVideoHintText::WHILE_PUBLISHING,
+            });
 
             return null;
         }
@@ -605,9 +620,11 @@ class RentalPublish extends Conversation
                 . $this->rentalService->describe($listing) . "\n\n"
                 . 'Його бачать усі мешканці в розділі «🔑 Оренда». '
                 . 'За ' . RentalListing::RENEW_PROMPT_BEFORE_DAYS . ' дні до кінця строку '
-                . 'запитаємо, чи ще актуально.',
+                . "запитаємо, чи ще актуально.\n\n"
+                . 'Фото і відео можна додати на картці оголошення.',
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()
+                ->addRow(InlineKeyboardButton::make('🔑 Моє оголошення', callback_data: 'rent:view:' . $listing->getId()))
                 ->addRow(InlineKeyboardButton::make('🔑 До списку', callback_data: RentalMenuCommand::MENU_CALLBACK))
                 ->addRow(StartCommand::homeButton()),
         );

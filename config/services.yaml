@@ -31,6 +31,8 @@ services:
             $topicPower: '%env(string:RESIDENT_CHAT_TOPIC_POWER)%'
             # Another chat that gets the outage schedule, without topics (PowerTargets).
             $powerZakhidnaChatId: '%env(string:POWER_ZAKHIDNA_CHAT_ID)%'
+            # Panel login → Telegram chat, «login:id,login:id» (AdminTelegramChats).
+            $adminTelegramChats: '%env(string:ADMIN_TELEGRAM_CHATS)%'
             # Telegram ids allowed to move a complaint's status — the head of the ОСББ.
             # One or two people who change about never, so this is config, not a column.
             $managerIds: '%env(string:COMPLAINT_MANAGER_TELEGRAM_IDS)%'
@@ -138,6 +140,16 @@ services:
     # main menu says the house is deciding something.
     App\Service\BlockVoteService:
         public: true
+
+    # Its own HTTP client, with no logger: the framework's `http_client` logs every url, and
+    # Telegram's file urls contain the bot token.
+    app.telegram_file_http_client:
+        class: Symfony\Contracts\HttpClient\HttpClientInterface
+        factory: ['Symfony\Component\HttpClient\HttpClient', 'create']
+
+    App\Service\TelegramFileProxy:
+        arguments:
+            $httpClient: '@app.telegram_file_http_client'
 
     # Nutgram handlers
     App\Telegram\:

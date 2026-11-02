@@ -355,6 +355,34 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
   the regexes in `config/telegram.php`: an unrouted one does not error, it just spins.
   The sale glyph is 🏡 and not 🏷 — the latter rendered as an empty box in Telegram
   Desktop.
+- **One video per listing, kept as Telegram's `file_id`** (Иван, 02.11.2026). «🎬 Додати
+  відео» on the owner's card starts `RentalVideo`; up to `VIDEO_MAX_SECONDS` (3 minutes), and
+  a listing may have a video and no photos. It does come through the chat, unlike photos: a
+  video is never pavilion evidence (`PhotoUploadFlow::isIncomingPhoto()` looks at
+  `message.photo` alone). No file on this server, so it is not in the backups. In the card it
+  is the first slide of the same carousel, swapped with `editMessageMedia`; if it will not
+  send, the card falls back to the photos, then to text. It goes when the listing closes
+  (`RentalPhotoService::purge()`), except on an admin take-down, like the photos. Being added
+  after publication, its «🎬 Є відео» reaches the chat post by editing it.
+  A video note or a video sent as a file is refused with a reason, and so is one with no
+  duration or over `VIDEO_MAX_BYTES`. A video anywhere else gets an answer (`RentalVideoHint`,
+  and the guard in `RentalPublish::__invoke`). **An album counts as one video:** the first is
+  taken and the rest of that `media_group_id` get no reply, because Telegram delivers an album
+  as separate messages. Deleting a video asks first (`rent:vdel` → `rent:vdelok`).
+  **The admin page:** `getFile` stops at 20 MB, so up to that it plays in `/admin/rentals`
+  through `TelegramFileProxy`, which passes `Range` on and keeps the download url (it contains
+  the bot token) from the browser and from error texts. It has its **own logger-free HTTP
+  client** in services.yaml, because the framework's `http_client` logs every url at INFO and
+  fingers_crossed flushes that on any error. Above 20 MB there is the
+  thumbnail and «Надіслати мені у бот», resending by `file_id`, which has no limit. Panel
+  logins know nothing of Telegram and nothing in the data ties one to a `telegram_user`, so
+  the link is env `ADMIN_TELEGRAM_CHATS=login:id,login:id`; a login not listed is told so.
+  **Retention:** all six `video_*` columns are cleared on withdrawal, replacement and expiry
+  (`purge()`), and after an admin take-down when the listing's own `expires_at` passes
+  (`closeExpired()`, the daily `rental:expire`). The server holds no copy, the proxy included
+  (`buffer: false`, `no-store`). **The file itself stays on Telegram's servers and we cannot
+  delete it there**, nor the copies already delivered to people's chats; only our reference
+  goes. Nightly backups keep the reference until they rotate.
 - **Every listing is also posted to the residents' chat**, into the `🔑 Оренда` topic
   (`RESIDENT_CHAT_TOPIC_RENTALS`), silently, and the post is **deleted when the listing
   closes** — withdrawn, replaced, taken down or expired (`RentalListing.chat_message_id`).

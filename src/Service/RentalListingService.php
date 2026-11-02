@@ -271,6 +271,7 @@ class RentalListingService
         // before the price, and a button caption is all Telegram gives us.
         return $listing->dealIcon() . ' '
             . ($own ? '📌 ' : '')
+            . ($listing->hasVideo() ? '🎬 ' : '')
             . ($listing->hasPhotos() ? '📷 ' : '')
             . implode(' · ', $parts);
     }
@@ -483,6 +484,12 @@ class RentalListingService
             }
         }
 
+        // An admin take-down keeps the video so a complaint can still be checked, but only
+        // until the term the listing already had runs out. Nothing is kept for good.
+        foreach ($this->listingRepository->findBlockedWithVideoPastTerm($now) as $blocked) {
+            $blocked->clearVideo();
+        }
+
         $this->em->flush();
 
         return $closed;
@@ -642,6 +649,63 @@ class RentalListingService
         }
     }
 
+    public function findLive(int $id): ?RentalListing
+    {
+        $listing = $id > 0 ? $this->listingRepository->find($id) : null;
+
+        return $listing?->isActive() ? $listing : null;
+    }
+
+    public function attachVideo(
+        RentalListing $listing,
+        string $fileId,
+        string $uniqueId,
+        ?string $thumbFileId,
+        ?int $size,
+        ?int $duration,
+        ?string $mime,
+    ): void {
+        $listing->setVideo($fileId, $uniqueId, $thumbFileId, $size, $duration, $mime);
+        $this->em->flush();
+        $this->refreshAnnouncement($listing);
+    }
+
+    public function removeVideo(RentalListing $listing): void
+    {
+        $listing->clearVideo();
+        $this->em->flush();
+        $this->refreshAnnouncement($listing);
+    }
+
+    /**
+     * Rewrite the chat post after it was published: a video is added from the card, so the
+     * post is already standing when its «🎬» becomes true. Silent, and never fatal: a post
+     * that cannot be edited is still a correct advert.
+     */
+    private function refreshAnnouncement(RentalListing $listing): void
+    {
+        $messageId = $listing->getChatMessageId();
+
+        if ($messageId === null || !$this->residentChat->isConfigured()) {
+            return;
+        }
+
+        try {
+            $this->bot->editMessageText(
+                text: $this->chatPost($listing),
+                chat_id: (int)$this->residentChat->chatId(),
+                message_id: $messageId,
+                parse_mode: ParseMode::HTML,
+                reply_markup: $this->links->button(DeepLink::KIND_RENTAL, $listing->getId()),
+            );
+        } catch (\Throwable $e) {
+            $this->logger->info('rental chat post not updated', [
+                'listing_id' => $listing->getId(),
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     /** Take the post down with the listing — see RentalListing::$chat_message_id. */
     public function unannounce(RentalListing $listing): void
     {
@@ -698,6 +762,10 @@ class RentalListingService
         // and an owner who kept it private keeps it private everywhere.
         if ($phone = $listing->publicPhone()) {
             $lines[] = '📞 ' . self::esc($phone);
+        }
+
+        if ($listing->hasVideo()) {
+            $lines[] = '🎬 Є відео';
         }
 
         $lines[] = '';
