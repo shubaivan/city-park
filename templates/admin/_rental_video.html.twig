@@ -1,0 +1,25 @@
+{# The listing's video. Up to Telegram's 20 MB a bot may download it plays here; above that the button is how to watch it. #}
+{% if listing.hasVideo %}
+    {% set sizeMb = listing.videoSize is null ? null : (listing.videoSize / 1048576)|number_format(1, ',', ' ') %}
+    <div class="mt-2" data-rental-video="{{ listing.id }}">
+        {% if listing.fitsAdminPlayer %}
+            <video controls preload="none" style="max-width:300px;max-height:220px;border-radius:4px;"
+                   src="{{ path('app_admin_rental_video', {id: listing.id}) }}"
+                   {% if listing.videoThumbFileId %}poster="{{ path('app_admin_rental_video_thumb', {id: listing.id}) }}"{% endif %}></video>
+        {% else %}
+            {% if listing.videoThumbFileId %}
+                <img src="{{ path('app_admin_rental_video_thumb', {id: listing.id}) }}" alt=""
+                     style="max-width:300px;max-height:220px;border-radius:4px;display:block;">
+            {% endif %}
+            <small class="text-muted d-block">
+                Завелике для перегляду тут: Telegram віддає боту файли до 20 МБ. Натисніть кнопку, і воно прийде вам у бот.
+            </small>
+        {% endif %}
+        <small class="text-muted d-block">
+            🎬{% if listing.videoDuration %} {{ (listing.videoDuration / 60)|round(0, 'floor') }}:{{ '%02d'|format(listing.videoDuration % 60) }}{% endif %}{% if sizeMb %} · {{ sizeMb }} МБ{% endif %}
+        </small>
+        <form method="post" action="{{ path('app_admin_rental_video_send', {id: listing.id}) }}" class="mt-1">
+            <button class="btn btn-sm btn-outline-primary" type="submit">Надіслати мені у бот</button>
+        </form>
+    </div>
+{% endif %}

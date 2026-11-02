@@ -140,6 +140,12 @@ class RentalListing
     /** Max photos per listing — enough to show a flat, few enough to keep the card fast. */
     public const PHOTOS_MAX = 3;
 
+    /** The one video a listing may carry, at most this long (Иван, 02.11.2026). */
+    public const VIDEO_MAX_SECONDS = 180;
+
+    /** Telegram's `getFile` stops at 20 MB, so nothing above it can play in the panel. */
+    public const VIDEO_ADMIN_PLAYER_MAX_BYTES = 20_000_000;
+
     /** How long an upload link stays valid. */
     public const PHOTO_TOKEN_TTL_HOURS = 24;
 
@@ -191,9 +197,116 @@ class RentalListing
     #[ORM\Column(type: 'string', length: 32, nullable: true)]
     private ?string $contact_phone = null;
 
+    /**
+     * One video, as Telegram's `file_id` — no copy on this server. The other columns are
+     * what the admin page needs to know without asking Telegram: whether it can play here
+     * at all (size) and what to show before it does (thumbnail).
+     */
+    #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    private ?string $video_file_id = null;
+
+    #[ORM\Column(type: 'string', length: 64, nullable: true)]
+    private ?string $video_file_unique_id = null;
+
+    #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    private ?string $video_thumb_file_id = null;
+
+    #[ORM\Column(type: Types::BIGINT, nullable: true)]
+    private ?string $video_size = null;
+
+    #[ORM\Column(type: Types::INTEGER, nullable: true)]
+    private ?int $video_duration = null;
+
+    #[ORM\Column(type: 'string', length: 64, nullable: true)]
+    private ?string $video_mime = null;
+
     public function getId(): ?int
     {
         return $this->id;
+    }
+
+    public function setVideo(string $fileId, string $uniqueId, ?string $thumbFileId, ?int $size, ?int $duration, ?string $mime): static
+    {
+        $this->video_file_id = $fileId;
+        $this->video_file_unique_id = $uniqueId;
+        $this->video_thumb_file_id = $thumbFileId;
+        $this->video_size = $size === null ? null : (string)$size;
+        $this->video_duration = $duration;
+        $this->video_mime = $mime === null ? null : mb_substr($mime, 0, 64);
+
+        return $this;
+    }
+
+    public function clearVideo(): static
+    {
+        $this->video_file_id = null;
+        $this->video_file_unique_id = null;
+        $this->video_thumb_file_id = null;
+        $this->video_size = null;
+        $this->video_duration = null;
+        $this->video_mime = null;
+
+        return $this;
+    }
+
+    public function hasVideo(): bool
+    {
+        return $this->video_file_id !== null;
+    }
+
+    public function getVideoFileId(): ?string
+    {
+        return $this->video_file_id;
+    }
+
+    public function getVideoFileUniqueId(): ?string
+    {
+        return $this->video_file_unique_id;
+    }
+
+    public function getVideoThumbFileId(): ?string
+    {
+        return $this->video_thumb_file_id;
+    }
+
+    public function getVideoSize(): ?int
+    {
+        return $this->video_size === null ? null : (int)$this->video_size;
+    }
+
+    public function getVideoDuration(): ?int
+    {
+        return $this->video_duration;
+    }
+
+    public function getVideoMime(): ?string
+    {
+        return $this->video_mime;
+    }
+
+    /** Known to be small enough for a bot to download. An unknown size is not. */
+    public function fitsAdminPlayer(): bool
+    {
+        return $this->hasVideo()
+            && $this->getVideoSize() !== null
+            && $this->getVideoSize() <= self::VIDEO_ADMIN_PLAYER_MAX_BYTES;
+    }
+
+    /** The card's carousel: the video first when there is one, then the photos. */
+    public function slideCount(): int
+    {
+        return ($this->hasVideo() ? 1 : 0) + count($this->getPhotos());
+    }
+
+    public function isVideoSlide(int $slide): bool
+    {
+        return $this->hasVideo() && $slide === 0;
+    }
+
+    /** Index into getPhotos() of a slide that is a photo. */
+    public function photoIndexOfSlide(int $slide): int
+    {
+        return $slide - ($this->hasVideo() ? 1 : 0);
     }
 
     /** @return string[] */
