@@ -484,6 +484,12 @@ class RentalListingService
             }
         }
 
+        // An admin take-down keeps the video so a complaint can still be checked, but only
+        // until the term the listing already had runs out. Nothing is kept for good.
+        foreach ($this->listingRepository->findBlockedWithVideoPastTerm($now) as $blocked) {
+            $blocked->clearVideo();
+        }
+
         $this->em->flush();
 
         return $closed;

@@ -133,6 +133,110 @@ class RentalVideoRulesTest extends TestCase
         $this->service($bot, chatConfigured: true)->attachVideo($listing, 'file', 'unique', null, 10, 5, 'video/mp4');
     }
 
+    private function assertNoVideoFields(RentalListing $listing): void
+    {
+        $this->assertFalse($listing->hasVideo());
+        $this->assertNull($listing->getVideoFileId());
+        $this->assertNull($listing->getVideoFileUniqueId());
+        $this->assertNull($listing->getVideoThumbFileId());
+        $this->assertNull($listing->getVideoSize());
+        $this->assertNull($listing->getVideoDuration());
+        $this->assertNull($listing->getVideoMime());
+    }
+
+    /** A service whose purge is the real one, with the repository answers given. */
+    private function retentionService(RentalListingRepository $repository): RentalListingService
+    {
+        $chat = $this->createMock(ResidentChatService::class);
+        $em = $this->createMock(EntityManagerInterface::class);
+
+        return new RentalListingService(
+            $repository,
+            $em,
+            $this->createMock(Nutgram::class),
+            new NullLogger(),
+            new RentalPhotoService($repository, $em, new NullLogger(), sys_get_temp_dir()),
+            $chat,
+            $this->createMock(DeepLink::class),
+            $this->createMock(OwnerGroupService::class),
+        );
+    }
+
+    public function testWithdrawingClearsEveryVideoField(): void
+    {
+        $listing = $this->listing()->setAccount($this->account());
+
+        $this->retentionService($this->createMock(RentalListingRepository::class))->withdraw($listing);
+
+        $this->assertNoVideoFields($listing);
+    }
+
+    public function testExpiryClearsEveryVideoField(): void
+    {
+        $listing = $this->listing()->setAccount($this->account());
+
+        $repository = $this->createMock(RentalListingRepository::class);
+        $repository->method('findExpired')->willReturn([$listing]);
+        $repository->method('findBlockedWithVideoPastTerm')->willReturn([]);
+
+        $this->assertSame(1, $this->retentionService($repository)->closeExpired());
+        $this->assertSame(RentalListing::STATUS_EXPIRED, $listing->getStatus());
+        $this->assertNoVideoFields($listing);
+    }
+
+    public function testReplacingClearsEveryVideoFieldOfTheOldListing(): void
+    {
+        $account = $this->account();
+        $old = $this->listing()->setAccount($account);
+
+        $repository = $this->createMock(RentalListingRepository::class);
+        $repository->method('findAllActiveForAccount')->willReturn([$old]);
+
+        $new = $this->retentionService($repository)->publish($account, null, 1, 1000, null, false);
+
+        $this->assertSame(RentalListing::STATUS_REMOVED, $old->getStatus());
+        $this->assertNoVideoFields($old);
+        $this->assertFalse($new->hasVideo());
+    }
+
+    public function testAnAdminTakeDownKeepsTheVideoUntilTheTermRunsOut(): void
+    {
+        $listing = $this->listing()->setAccount($this->account());
+        $repository = $this->createMock(RentalListingRepository::class);
+
+        $service = $this->retentionService($repository);
+        $service->block($listing, 'alina');
+
+        $this->assertTrue($listing->hasVideo(), 'a complaint can still be checked');
+
+        $repository->method('findExpired')->willReturn([]);
+        $repository->method('findBlockedWithVideoPastTerm')->willReturn([$listing]);
+
+        $this->assertSame(0, $service->closeExpired(), 'it was already closed');
+        $this->assertSame(RentalListing::STATUS_BLOCKED, $listing->getStatus());
+        $this->assertNoVideoFields($listing);
+    }
+
+    /** The server keeps no copy: not in the client's temp stream, not in any cache. */
+    public function testTheProxyKeepsNothing(): void
+    {
+        $buffer = 'unset';
+        $client = new MockHttpClient(function (string $method, string $url, array $options) use (&$buffer) {
+            $buffer = $options['buffer'];
+
+            return new MockResponse('x');
+        });
+
+        $response = $this->proxy($client)->stream('file', 'video/mp4');
+
+        $this->assertFalse($buffer);
+        $this->assertStringContainsString('no-store', (string)$response->headers->get('Cache-Control'));
+        $this->assertSame('no', $response->headers->get('X-Accel-Buffering'));
+
+        $source = (string)file_get_contents((new \ReflectionClass(TelegramFileProxy::class))->getFileName());
+        $this->assertDoesNotMatchRegularExpression('/file_put_contents|fopen|tempnam|tmpfile|downloadFile|CacheInterface/', $source);
+    }
+
     public function testAdminChatsAreReadFromTheLinkList(): void
     {
         $chats = new AdminTelegramChats('main_admin:471, alina:-100200');

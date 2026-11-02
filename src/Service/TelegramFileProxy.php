@@ -18,6 +18,11 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * `Range` is passed on and the partial answer passed back, which is what lets the player
  * seek and what Safari insists on. Only the headers named below are forwarded.
  *
+ * **Nothing is kept here.** `buffer: false` stops the HTTP client spooling the body to a
+ * temp stream, each chunk goes straight out, `no-store` keeps it out of the browser's cache
+ * and `X-Accel-Buffering: no` out of nginx's temp files. A listing's video going away means
+ * this server has nothing of it left.
+ *
  * Telegram refuses `getFile` above 20 MB; the caller decides by the stored size, and a file
  * that fails anyway answers 502 like any other failure here.
  */
@@ -68,7 +73,7 @@ class TelegramFileProxy
             'Content-Length' => $headers['content-length'][0] ?? null,
             'Content-Range' => $headers['content-range'][0] ?? null,
             'Accept-Ranges' => $headers['accept-ranges'][0] ?? null,
-            'Cache-Control' => 'private, max-age=600',
+            'Cache-Control' => 'private, no-store',
             'X-Content-Type-Options' => 'nosniff',
             'X-Accel-Buffering' => 'no',
         ]);

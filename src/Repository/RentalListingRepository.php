@@ -122,6 +122,23 @@ class RentalListingRepository extends ServiceEntityRepository
     }
 
     /**
+     * Listings an admin took down whose own term is over and which still hold a video.
+     *
+     * @return RentalListing[]
+     */
+    public function findBlockedWithVideoPastTerm(\DateTime $now): array
+    {
+        return $this->createQueryBuilder('l')
+            ->andWhere('l.status = :blocked')
+            ->andWhere('l.video_file_id IS NOT NULL')
+            ->andWhere('l.expires_at <= :now')
+            ->setParameter('blocked', RentalListing::STATUS_BLOCKED)
+            ->setParameter('now', $now)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
      * Most recent listings of any status, for the admin table.
      *
      * @return RentalListing[]

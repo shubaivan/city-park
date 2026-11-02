@@ -370,7 +370,14 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
   through `TelegramFileProxy`, which passes `Range` on and never lets the download url (it
   contains the bot token) reach the browser, an error text or the log. Above it there is the
   thumbnail and «Надіслати мені у бот», resending by `file_id`, which has no limit. Panel
-  logins know nothing of Telegram: the link is env `ADMIN_TELEGRAM_CHATS=login:id,login:id`.
+  logins know nothing of Telegram and nothing in the data ties one to a `telegram_user`, so
+  the link is env `ADMIN_TELEGRAM_CHATS=login:id,login:id`; a login not listed is told so.
+  **Retention:** all six `video_*` columns are cleared on withdrawal, replacement and expiry
+  (`purge()`), and after an admin take-down when the listing's own `expires_at` passes
+  (`closeExpired()`, the daily `rental:expire`). The server holds no copy, the proxy included
+  (`buffer: false`, `no-store`). **The file itself stays on Telegram's servers and we cannot
+  delete it there**, nor the copies already delivered to people's chats; only our reference
+  goes. Nightly backups keep the reference until they rotate.
 - **Every listing is also posted to the residents' chat**, into the `🔑 Оренда` topic
   (`RESIDENT_CHAT_TOPIC_RENTALS`), silently, and the post is **deleted when the listing
   closes** — withdrawn, replaced, taken down or expired (`RentalListing.chat_message_id`).
