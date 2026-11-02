@@ -35,7 +35,7 @@ class PowerQueueResolver
 
     private const CITY = 'м. Черкаси';
 
-    private const STREET = 'вул. Козацька';
+    public const STREET = 'вул. Козацька';
 
     /** The five buildings of the ЖК on Козацька, plus 25, which the ОСББ's register numbers 6. */
     public const HOUSES = ['17', '19', '21', '23', '25', '27'];
@@ -78,24 +78,25 @@ class PowerQueueResolver
      * changed, not a building being quiet, and the caller must not read it as «nothing
      * moved».
      *
+     * @param list<string> $houses
      * @return array<string, ?string>
      */
-    public function resolve(): array
+    public function resolve(string $streetName = self::STREET, array $houses = self::HOUSES): array
     {
         $city = $this->findId($this->call(['op' => 'city_list', 'dept_id' => self::DEPARTMENT_ID]), self::CITY);
         $street = $city === null ? null : $this->findId(
             $this->call(['op' => 'street_list', 'city_id' => $city, 'search_name' => '']),
-            self::STREET,
+            $streetName,
         );
 
         if ($street === null) {
-            throw new \RuntimeException(sprintf('Черкасиобленерго: не знайдено «%s, %s»', self::CITY, self::STREET));
+            throw new \RuntimeException(sprintf('Черкасиобленерго: не знайдено «%s, %s»', self::CITY, $streetName));
         }
 
         $today = (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Kyiv')))->format('d.m.Y');
         $result = [];
 
-        foreach (self::HOUSES as $house) {
+        foreach ($houses as $house) {
             $result[$house] = null;
             $accounts = $this->call(['op' => 'ls_list_by_addr', 'street_id' => $street, 'house' => $house]);
 

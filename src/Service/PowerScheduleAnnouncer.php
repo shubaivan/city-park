@@ -45,6 +45,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *
  * Silent when `RESIDENT_CHAT_TOPIC_POWER` is unset — no General fallback, the services
  * board's call — and never fatal.
+ *
+ * The same post goes to every chat in {@see PowerTargets}, each with its own queue,
+ * its own post per day and its own reminders. One chat's failure does not reach another.
  */
 class PowerScheduleAnnouncer
 {
@@ -68,6 +71,7 @@ class PowerScheduleAnnouncer
     public function __construct(
         private Nutgram $bot,
         private ResidentChatService $residentChat,
+        private PowerTargets $targets,
         private HttpClientInterface $httpClient,
         private PowerQueueRepository $queues,
         private PowerSchedulePostRepository $posts,
@@ -87,27 +91,67 @@ class PowerScheduleAnnouncer
      */
     public function run(bool $dryRun = false): array
     {
-        $topic = $this->residentChat->topic(ResidentChatService::TOPIC_POWER);
+        $residents = $this->targets->residents();
+        $others = $this->targets->others();
+        $residentsLive = $dryRun || $this->isLive($residents);
 
-        if (!$dryRun && (!$this->residentChat->isConfigured() || $topic === null)) {
+        if (!$residentsLive && $others === []) {
             return ['RESIDENT_CHAT_TOPIC_POWER не налаштовано — нічого не надсилаю.'];
         }
 
+        $done = [];
+
         // Before the channel is read, so a channel that does not answer cannot cost the
         // house its «через 15 хвилин».
-        $done = $this->remind(new \DateTimeImmutable('now', new \DateTimeZone(self::TZ)), $topic, $dryRun);
+        $now = new \DateTimeImmutable('now', new \DateTimeZone(self::TZ));
 
-        $houses = $this->queues->known();
-
-        if ($houses === []) {
-            // First run, before the daily queue check ever has: ask now rather than post
-            // nothing — or, worse, a queue somebody assumed.
-            $this->refreshQueues($dryRun);
-            $houses = $this->queues->known();
+        if ($residentsLive) {
+            $done = $this->remind($now, $residents, $dryRun);
         }
 
-        if ($houses === []) {
-            return [...$done, 'Черкасиобленерго не назвало черги для жодного будинку — не публікую.'];
+        $ready = [];
+
+        if ($residentsLive) {
+            $houses = $this->queues->known();
+
+            if ($houses === []) {
+                // First run, before the daily queue check ever has: ask now rather than post
+                // nothing — or, worse, a queue somebody assumed.
+                $this->refreshTarget($residents, $dryRun);
+                $houses = $this->queues->known();
+            }
+
+            if ($houses === []) {
+                $done[] = 'Черкасиобленерго не назвало черги для жодного будинку — не публікую.';
+            } else {
+                $ready[] = [$residents, $houses];
+            }
+        }
+
+        foreach ($others as $target) {
+            try {
+                array_push($done, ...$this->remind($now, $target, $dryRun));
+
+                $houses = $this->queues->known($target->key);
+
+                if ($houses === []) {
+                    $this->refreshTarget($target, $dryRun);
+                    $houses = $this->queues->known($target->key);
+                }
+
+                if ($houses === []) {
+                    $done[] = sprintf('[%s] Черкасиобленерго не назвало чергу — не публікую.', $target->key);
+                    continue;
+                }
+
+                $ready[] = [$target, $houses];
+            } catch (\Throwable $e) {
+                $this->failed($target, $e, $done);
+            }
+        }
+
+        if ($ready === []) {
+            return $done;
         }
 
         $html = $this->httpClient->request('GET', PowerChannelParser::CHANNEL_URL, [
@@ -116,7 +160,6 @@ class PowerScheduleAnnouncer
         ])->getContent();
 
         $now = new \DateTimeImmutable('now', new \DateTimeZone(self::TZ));
-        $today = $now->format('Y-m-d');
 
         // Every post for a day, oldest first: «Оновлення графіка … на 28 жовтня» is laid
         // over what came before it, not taken on its own (see PowerChannelParser::merge).
@@ -125,13 +168,43 @@ class PowerScheduleAnnouncer
             $byDay[$schedule['date']][] = $schedule;
         }
 
+        foreach ($ready as [$target, $houses]) {
+            if ($target->isResidents()) {
+                array_push($done, ...$this->publish($target, $houses, $byDay, $now, $dryRun));
+                continue;
+            }
+
+            // Another chat's trouble is its own: the residents' post has already gone.
+            try {
+                array_push($done, ...$this->publish($target, $houses, $byDay, $now, $dryRun));
+            } catch (\Throwable $e) {
+                $this->failed($target, $e, $done);
+            }
+        }
+
+        return $done;
+    }
+
+    /**
+     * Bring one chat up to date with the days on the channel's page.
+     *
+     * @param array<string, string> $houses
+     * @param array<string, list<array{post: int, at: ?\DateTimeImmutable, queues: array<string, list<array{int, int}>>}>> $byDay
+     * @return list<string>
+     */
+    private function publish(PowerTarget $target, array $houses, array $byDay, \DateTimeImmutable $now, bool $dryRun): array
+    {
+        $done = [];
+        $today = $now->format('Y-m-d');
+        $tag = $target->isResidents() ? '' : sprintf('[%s] ', $target->key);
+
         foreach ($byDay as $date => $dayPosts) {
             if ($date < $today) {
                 continue;
             }
 
             $day = new \DateTimeImmutable($date, new \DateTimeZone(self::TZ));
-            $existing = $this->posts->forDay($day);
+            $existing = $this->posts->forDay($day, $target->key);
             $schedule = ['post' => end($dayPosts)['post'], 'queues' => self::layer($day, $dayPosts, $existing)];
 
             $groups = self::groups($houses, $schedule['queues']);
@@ -140,6 +213,7 @@ class PowerScheduleAnnouncer
                 $this->logger->warning('power: our queues are missing from the channel post', [
                     'post' => $schedule['post'],
                     'queues' => array_values(array_unique($houses)),
+                    'target' => $target->key,
                 ]);
                 continue;
             }
@@ -159,36 +233,53 @@ class PowerScheduleAnnouncer
             }
 
             $updated = $existing !== null;
-            $caption = self::caption($day, $groups, $updated, $now);
-            $png = $this->image->render(self::title($day), self::rows($groups), 'Черкасиобленерго · t.me/pat_cherkasyoblenergo');
+            $caption = self::caption($day, $groups, $updated, $now, $target->place);
+            $png = $this->image->render(self::title($day), self::rows($groups, $target->place), 'Черкасиобленерго · t.me/pat_cherkasyoblenergo');
 
             if ($dryRun) {
-                $file = sprintf('%s/var/power-preview-%s.png', $this->projectDir, $date);
+                $file = $target->isResidents()
+                    ? sprintf('%s/var/power-preview-%s.png', $this->projectDir, $date)
+                    : sprintf('%s/var/power-preview-%s-%s.png', $this->projectDir, $target->key, $date);
                 file_put_contents($file, $png);
-                $done[] = sprintf("[DRY] %s → %s\n%s", $date, $file, $caption);
+                $done[] = sprintf("%s[DRY] %s → %s\n%s", $tag, $date, $file, $caption);
                 continue;
             }
 
-            $messageId = $this->send($topic, $png, $caption, $now);
+            $messageId = $this->send($target, $png, $caption, $now);
 
             if ($messageId === null) {
-                $done[] = sprintf('%s: не вдалося надіслати', $date);
+                $done[] = sprintf('%s%s: не вдалося надіслати', $tag, $date);
                 continue;
             }
 
             if ($existing !== null) {
-                $this->retire($existing);
+                $this->retire($target, $existing);
                 $existing->replace($signature, $schedule['post'])->setMessageId($messageId);
             } else {
-                $existing = (new PowerSchedulePost($day, $signature, $schedule['post']))->setMessageId($messageId);
+                $existing = (new PowerSchedulePost($day, $signature, $schedule['post'], $target->key))->setMessageId($messageId);
                 $this->em->persist($existing);
             }
 
             $this->em->flush();
-            $done[] = sprintf('%s: %s (повідомлення %d)', $date, $updated ? 'оновлено' : 'опубліковано', $messageId);
+            $done[] = sprintf('%s%s: %s (повідомлення %d)', $tag, $date, $updated ? 'оновлено' : 'опубліковано', $messageId);
         }
 
         return $done;
+    }
+
+    /** @param list<string> $done */
+    private function failed(PowerTarget $target, \Throwable $e, array &$done): void
+    {
+        $this->logger->error('power: a target chat failed', ['target' => $target->key, 'error' => $e->getMessage()]);
+        $done[] = sprintf('[%s] помилка: %s', $target->key, $e->getMessage());
+    }
+
+    /** Whether posts for this chat can go out at all. */
+    private function isLive(PowerTarget $target): bool
+    {
+        return $target->isResidents()
+            ? $this->residentChat->isConfigured() && $target->topic !== null
+            : $target->chatId !== '';
     }
 
     /**
@@ -220,9 +311,10 @@ class PowerScheduleAnnouncer
      *
      * @return list<string>
      */
-    private function remind(\DateTimeImmutable $now, ?int $topic, bool $dryRun): array
+    private function remind(\DateTimeImmutable $now, PowerTarget $target, bool $dryRun): array
     {
-        $rows = $this->posts->around($now);
+        $rows = $this->posts->around($now, $target->key);
+        $tag = $target->isResidents() ? '' : sprintf('[%s] ', $target->key);
         $days = [];
 
         foreach ($rows as $date => $row) {
@@ -238,8 +330,8 @@ class PowerScheduleAnnouncer
                 continue;
             }
 
-            if ($dryRun || $topic === null) {
-                $done[] = sprintf("[DRY] нагадування %s %s\n%s", $due['date'], $due['key'], $due['text']);
+            if ($dryRun) {
+                $done[] = sprintf("%s[DRY] нагадування %s %s\n%s", $tag, $due['date'], $due['key'], $due['text']);
                 continue;
             }
 
@@ -248,19 +340,19 @@ class PowerScheduleAnnouncer
             try {
                 $message = $this->bot->sendMessage(
                     text: $due['text'],
-                    chat_id: (int)$this->residentChat->chatId(),
-                    message_thread_id: $topic,
+                    chat_id: (int)$target->chatId,
+                    message_thread_id: $target->topic,
                     parse_mode: ParseMode::HTML,
                     disable_notification: $hour >= self::QUIET_FROM || $hour < self::QUIET_UNTIL,
                 );
             } catch (\Throwable $e) {
-                $this->logger->error('power: reminder failed', ['key' => $due['key'], 'error' => $e->getMessage()]);
+                $this->logger->error('power: reminder failed', ['key' => $due['key'], 'target' => $target->key, 'error' => $e->getMessage()]);
                 continue;
             }
 
             $row->markReminded($due['key'], $message?->message_id);
             $this->em->flush();
-            $done[] = sprintf('нагадування %s %s', $due['date'], $due['key']);
+            $done[] = sprintf('%sнагадування %s %s', $tag, $due['date'], $due['key']);
         }
 
         return $done;
@@ -373,15 +465,33 @@ class PowerScheduleAnnouncer
      */
     public function refreshQueues(bool $dryRun = false): array
     {
-        $answers = $this->resolver->resolve();
-        $rows = $this->queues->byHouse();
+        $report = $this->refreshTarget($this->targets->residents(), $dryRun);
+
+        foreach ($this->targets->others() as $target) {
+            try {
+                $report += $this->refreshTarget($target, $dryRun);
+            } catch (\Throwable $e) {
+                $this->logger->error('power: queue check failed', ['target' => $target->key, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return $report;
+    }
+
+    /**
+     * @return array<string, array{was: ?string, now: ?string}>
+     */
+    private function refreshTarget(PowerTarget $target, bool $dryRun): array
+    {
+        $answers = $this->resolver->resolve($target->street, $target->houses);
+        $rows = $this->queues->byHouse($target->key);
         $report = [];
         $moved = [];
 
         foreach ($answers as $house => $queue) {
             $row = $rows[$house] ?? null;
             $was = $row?->getQueue();
-            $report[$house] = ['was' => $was, 'now' => $queue];
+            $report[$target->reportKey((string)$house)] = ['was' => $was, 'now' => $queue];
 
             // An empty answer keeps what we knew: the company not naming a queue today is
             // not the company saying the building has none.
@@ -390,7 +500,7 @@ class PowerScheduleAnnouncer
             }
 
             if ($row === null) {
-                $row = new PowerQueue($house);
+                $row = new PowerQueue((string)$house, $target->key);
                 $this->em->persist($row);
             }
 
@@ -404,8 +514,8 @@ class PowerScheduleAnnouncer
         }
 
         if ($moved !== []) {
-            $this->logger->warning('power: a building changed its outage queue', ['moved' => $moved]);
-            $this->announceMove($moved);
+            $this->logger->warning('power: a building changed its outage queue', ['moved' => $moved, 'target' => $target->key]);
+            $this->announceMove($target, $moved);
         }
 
         return $report;
@@ -471,7 +581,7 @@ class PowerScheduleAnnouncer
      *
      * @param list<array{queue: string, houses: list<string>, outages: list<array{int, int}>}> $groups
      */
-    public static function caption(\DateTimeImmutable $day, array $groups, bool $updated, \DateTimeImmutable $now): string
+    public static function caption(\DateTimeImmutable $day, array $groups, bool $updated, \DateTimeImmutable $now, ?string $place = null): string
     {
         $lines = [];
 
@@ -483,7 +593,7 @@ class PowerScheduleAnnouncer
 
         foreach ($groups as $group) {
             $lines[] = '';
-            $lines[] = sprintf('Черга <b>%s</b> · %s', $group['queue'], self::housesLabel($group['houses']));
+            $lines[] = sprintf('Черга <b>%s</b> · %s', $group['queue'], $place ?? self::housesLabel($group['houses']));
 
             if ($group['outages'] === []) {
                 $lines[] = '✅ Відключень не заплановано.';
@@ -540,15 +650,15 @@ class PowerScheduleAnnouncer
      * @param list<array{queue: string, houses: list<string>, outages: list<array{int, int}>}> $groups
      * @return list<array{label: string, outages: list<array{int, int}>}>
      */
-    private static function rows(array $groups): array
+    private static function rows(array $groups, ?string $place = null): array
     {
         return array_map(static fn (array $g) => [
-            'label' => sprintf('Черга %s · %s', $g['queue'], self::housesLabel($g['houses'])),
+            'label' => sprintf('Черга %s · %s', $g['queue'], $place ?? self::housesLabel($g['houses'])),
             'outages' => $g['outages'],
         ], $groups);
     }
 
-    private function send(int $topic, string $png, string $caption, \DateTimeImmutable $now): ?int
+    private function send(PowerTarget $target, string $png, string $caption, \DateTimeImmutable $now): ?int
     {
         $hour = (int)$now->format('G');
         $stream = fopen('php://temp', 'w+b');
@@ -558,8 +668,8 @@ class PowerScheduleAnnouncer
         try {
             $message = $this->bot->sendPhoto(
                 photo: InputFile::make($stream, 'svitlo.png'),
-                chat_id: (int)$this->residentChat->chatId(),
-                message_thread_id: $topic,
+                chat_id: (int)$target->chatId,
+                message_thread_id: $target->topic,
                 caption: $caption,
                 parse_mode: ParseMode::HTML,
                 disable_notification: $hour >= self::QUIET_FROM || $hour < self::QUIET_UNTIL,
@@ -570,14 +680,14 @@ class PowerScheduleAnnouncer
 
             return $message?->message_id;
         } catch (\Throwable $e) {
-            $this->logger->error('power: schedule post failed', ['error' => $e->getMessage()]);
+            $this->logger->error('power: schedule post failed', ['target' => $target->key, 'error' => $e->getMessage()]);
 
             return null;
         }
     }
 
     /** The superseded post goes; where Telegram refuses, it is marked as old instead. */
-    private function retire(PowerSchedulePost $old): void
+    private function retire(PowerTarget $target, PowerSchedulePost $old): void
     {
         $messageId = $old->getMessageId();
 
@@ -585,7 +695,7 @@ class PowerScheduleAnnouncer
             return;
         }
 
-        $chatId = (int)$this->residentChat->chatId();
+        $chatId = (int)$target->chatId;
 
         try {
             $this->bot->deleteMessage($chatId, $messageId);
@@ -608,17 +718,15 @@ class PowerScheduleAnnouncer
     }
 
     /** @param array<string, array{string, string}> $moved */
-    private function announceMove(array $moved): void
+    private function announceMove(PowerTarget $target, array $moved): void
     {
-        $topic = $this->residentChat->topic(ResidentChatService::TOPIC_POWER);
-
-        if (!$this->residentChat->isConfigured() || $topic === null) {
+        if (!$this->isLive($target)) {
             return;
         }
 
         $lines = ['⚠️ <b>Черкасиобленерго змінило чергу відключень</b>', ''];
         foreach ($moved as $house => [$was, $now]) {
-            $lines[] = sprintf('буд. %s: було %s → тепер <b>%s</b>', $house, $was, $now);
+            $lines[] = sprintf('%s: було %s → тепер <b>%s</b>', $target->place ?? 'буд. ' . $house, $was, $now);
         }
         $lines[] = '';
         $lines[] = 'Графіки тут далі йтимуть уже за новою чергою.';
@@ -626,8 +734,8 @@ class PowerScheduleAnnouncer
         try {
             $this->bot->sendMessage(
                 text: implode("\n", $lines),
-                chat_id: (int)$this->residentChat->chatId(),
-                message_thread_id: $topic,
+                chat_id: (int)$target->chatId,
+                message_thread_id: $target->topic,
                 parse_mode: ParseMode::HTML,
                 reply_markup: InlineKeyboardMarkup::make()->addRow(
                     InlineKeyboardButton::make('🔎 Перевірити на сайті обленерго', url: self::SITE_URL),

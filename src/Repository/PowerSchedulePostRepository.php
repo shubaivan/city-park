@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Entity\PowerSchedulePost;
+use App\Service\PowerTarget;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -16,9 +17,9 @@ class PowerSchedulePostRepository extends ServiceEntityRepository
         parent::__construct($registry, PowerSchedulePost::class);
     }
 
-    public function forDay(\DateTimeImmutable $day): ?PowerSchedulePost
+    public function forDay(\DateTimeImmutable $day, string $target = PowerTarget::RESIDENTS): ?PowerSchedulePost
     {
-        return $this->findOneBy(['day' => $day->setTime(0, 0)]);
+        return $this->findOneBy(['day' => $day->setTime(0, 0), 'target' => $target]);
     }
 
     /**
@@ -28,11 +29,13 @@ class PowerSchedulePostRepository extends ServiceEntityRepository
      *
      * @return array<string, PowerSchedulePost>
      */
-    public function around(\DateTimeImmutable $now): array
+    public function around(\DateTimeImmutable $now, string $target = PowerTarget::RESIDENTS): array
     {
         $today = $now->setTime(0, 0);
         $rows = $this->createQueryBuilder('p')
             ->andWhere('p.day BETWEEN :from AND :to')
+            ->andWhere('p.target = :target')
+            ->setParameter('target', $target)
             ->setParameter('from', $today->modify('-1 day'))
             ->setParameter('to', $today->modify('+1 day'))
             ->orderBy('p.day', 'ASC')

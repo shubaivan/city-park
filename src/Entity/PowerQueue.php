@@ -3,6 +3,7 @@
 namespace App\Entity;
 
 use App\Repository\PowerQueueRepository;
+use App\Service\PowerTarget;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
@@ -15,13 +16,17 @@ use Doctrine\ORM\Mapping as ORM;
  * once, on the day it happened, rather than discovered when the lights go out off-plan.
  */
 #[ORM\Entity(repositoryClass: PowerQueueRepository::class)]
-#[ORM\UniqueConstraint(name: 'power_queue_house_uniq', columns: ['house'])]
+#[ORM\UniqueConstraint(name: 'power_queue_target_house_uniq', columns: ['target', 'house'])]
 class PowerQueue
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
     private ?int $id = null;
+
+    /** Which chat's address this is: house 6 of one street is not house 6 of another. */
+    #[ORM\Column(length: 16, options: ['default' => PowerTarget::RESIDENTS])]
+    private string $target;
 
     #[ORM\Column(length: 8)]
     private string $house;
@@ -37,9 +42,10 @@ class PowerQueue
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?\DateTimeImmutable $changed_at = null;
 
-    public function __construct(string $house)
+    public function __construct(string $house, string $target = PowerTarget::RESIDENTS)
     {
         $this->house = $house;
+        $this->target = $target;
         $this->checked_at = new \DateTimeImmutable();
     }
 
