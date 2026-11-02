@@ -1990,6 +1990,23 @@ The group was a basic group until the bot was made an admin: Telegram upgraded i
 supergroup and its id changed. The value in env is the supergroup's. As an admin the bot
 receives the group's messages too; `config/telegram.php` drops them like the residents' chat.
 
+## Webhook secret on `/hook` (02.11.2026)
+
+Telegram sends `X-Telegram-Bot-Api-Secret-Token` once `setWebhook` was given a `secret_token`;
+env `WEBHOOK_SECRET` holds the same value, and empty means not checked.
+
+- **`RequestSubscriber` refuses a wrong one with 403, before reading the body.** Nutgram's own
+  safe mode (also on, via `nutgram.yaml`) answers 200 and runs too late: the subscriber's
+  `initUser()` had already rewritten a chat_id from the forged update, and a 200 tells Telegram
+  the update was delivered, where a 403 gets it retried.
+- `config/telegram.php` used to call `setRunningMode(Webhook::class)`, which silently replaced
+  the factory's safe mode. It must not come back.
+- `initUser()` now runs for `/hook` only; a body sent to any other url names nobody.
+- **Changing it:** Telegram first, server second, so nothing is refused in between: `setWebhook`
+  with the new secret, then the env line. Taking it off is the reverse: env line out, then
+  `setWebhook` without it. Use `bot:webhook:update`, which passes the secret; a `setWebhook`
+  without it makes Telegram drop the header and `/hook` refuse everything.
+
 ## Crons (prod `crontab -l`, **must run as `www-data`**)
 
 ```

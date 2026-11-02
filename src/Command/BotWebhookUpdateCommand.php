@@ -38,7 +38,7 @@ class BotWebhookUpdateCommand extends Command
         'my_chat_member',
     ];
 
-    public function __construct(private Nutgram $bot)
+    public function __construct(private Nutgram $bot, private string $webhookSecret = '')
     {
         parent::__construct();
     }
@@ -70,7 +70,12 @@ class BotWebhookUpdateCommand extends Command
         }
 
         try {
-            $ok = $this->bot->setWebhook($url, allowed_updates: self::ALLOWED_UPDATES);
+            // Without the secret Telegram would stop sending it, and /hook would refuse everything.
+            $ok = $this->bot->setWebhook(
+                $url,
+                allowed_updates: self::ALLOWED_UPDATES,
+                secret_token: $this->webhookSecret !== '' ? $this->webhookSecret : null,
+            );
         } catch (\Throwable $t) {
             $io->error('setWebhook failed: ' . $t->getMessage());
 

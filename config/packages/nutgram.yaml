@@ -2,8 +2,9 @@ nutgram:
   # The Telegram bot token
   token: '%env(string:TELEGRAM_TOKEN)%'
 
-  # Optional shared secret to verify incoming webhook calls (use with $bot->setWebhook(secret: ...))
-  #webhook_secret: '%env(string:WEBHOOK_SECRET)%'
+  # Shared secret on incoming webhook calls. Empty = not checked. Must match what Telegram was
+  # given by setWebhook(secret_token), which `bot:webhook:update` passes from the same env.
+  webhook_secret: '%env(string:WEBHOOK_SECRET)%'
 
   # If the nutgram bundle should automatically load the routes from config/telegram.php
   routes: true

@@ -5,13 +5,18 @@ namespace App\EventSubscriber;
 use App\Service\TelegramUserService;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
 
 class RequestSubscriber implements EventSubscriberInterface
 {
+    private const WEBHOOK_ROUTE = 'app_webhook';
+
     public function __construct(
         private LoggerInterface $graylogLogger,
-        private TelegramUserService $telegramUserService
+        private TelegramUserService $telegramUserService,
+        private string $webhookSecret = '',
     ) {}
 
     public static function getSubscribedEvents(): array
@@ -31,6 +36,16 @@ class RequestSubscriber implements EventSubscriberInterface
         }
 
         $request = $event->getRequest();
+
+        // Before anything reads the body: initUser() below rewrites a person's chat_id, the
+        // address of all their mail, from whatever the update claims. 403 and not Nutgram's
+        // silent 200, because Telegram retries a refused update and forgets an accepted one.
+        if (!$this->mayCallWebhook($request)) {
+            $event->setResponse(new Response('', Response::HTTP_FORBIDDEN));
+
+            return;
+        }
+
         if ('' === $content = $request->getContent()) {
             return;
         }
@@ -45,12 +60,26 @@ class RequestSubscriber implements EventSubscriberInterface
             return;
         }
 
-        $from = self::privateChatSender($content);
+        // Only an update from Telegram names a person. Any other url takes no identity from
+        // its body: the check above guards /hook and nothing else.
+        $from = $request->attributes->get('_route') === self::WEBHOOK_ROUTE
+            ? self::privateChatSender($content)
+            : null;
 
         if ($from) {
             $this->telegramUserService->initUser($from);
         }
         $this->graylogLogger->info('Pure request', ['request' => $content]);
+    }
+
+    /** Telegram's `secret_token` on /hook. No secret configured means no check. */
+    private function mayCallWebhook(Request $request): bool
+    {
+        if ($this->webhookSecret === '' || $request->attributes->get('_route') !== self::WEBHOOK_ROUTE) {
+            return true;
+        }
+
+        return hash_equals($this->webhookSecret, (string)$request->headers->get('X-Telegram-Bot-Api-Secret-Token'));
     }
 
     /**

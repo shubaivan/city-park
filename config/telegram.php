@@ -3,14 +3,14 @@
 
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
-use SergiX44\Nutgram\RunningMode\Webhook;
 use SergiX44\Nutgram\Telegram\Properties\ChatType;
 use SergiX44\Nutgram\Telegram\Properties\UpdateType;
 use \App\Telegram\Start\Command\StartCommand;
 
 Conversation::refreshOnDeserialize();
 
-$bot->setRunningMode(Webhook::class);
+// The running mode is set by the bundle's NutgramFactory. Setting it again here replaced the
+// mode that checks `webhook_secret` with one that does not.
 
 /**
  * Everything below this line was written for a one-to-one chat with the bot.
