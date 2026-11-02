@@ -6,6 +6,7 @@ use App\Service\PowerChannelParser;
 use App\Service\PowerQueueResolver;
 use App\Service\PowerScheduleAnnouncer;
 use App\Service\PowerScheduleImage;
+use App\Service\PowerTargets;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -358,6 +359,52 @@ class PowerScheduleRulesTest extends TestCase
             self::days([[1320, 1440]], [[0, 120]]),
             self::now('2026-10-28 23:50'),
         ));
+    }
+
+    /** A chat with its own place line names the place, in the caption and on the picture's row. */
+    public function testAnotherChatNamesItsPlaceInsteadOfHouses(): void
+    {
+        $tz = new \DateTimeZone('Europe/Kyiv');
+        $groups = PowerScheduleAnnouncer::groups(['6' => '3.1'], ['3.1' => [[720, 840]]]);
+        $caption = PowerScheduleAnnouncer::caption(new \DateTimeImmutable('2026-11-02', $tz), $groups, false, new \DateTimeImmutable('2026-11-02 09:00', $tz), 'пров. Західний');
+
+        $this->assertStringContainsString('Черга <b>3.1</b> · пров. Західний', $caption);
+        $this->assertStringNotContainsString('буд.', $caption);
+
+        $rows = new \ReflectionMethod(PowerScheduleAnnouncer::class, 'rows');
+        $this->assertSame('Черга 3.1 · пров. Західний', $rows->invoke(null, $groups, 'пров. Західний')[0]['label']);
+    }
+
+    /** Without a place the residents' caption reads exactly as it did. */
+    public function testTheResidentsCaptionIsUnchanged(): void
+    {
+        $tz = new \DateTimeZone('Europe/Kyiv');
+        $groups = PowerScheduleAnnouncer::groups(['17' => '3.1', '19' => '3.1'], ['3.1' => [[720, 840]]]);
+        $caption = PowerScheduleAnnouncer::caption(new \DateTimeImmutable('2026-11-02', $tz), $groups, false, new \DateTimeImmutable('2026-11-02 09:00', $tz));
+
+        $this->assertStringContainsString('Черга <b>3.1</b> · буд. 17, 19', $caption);
+    }
+
+    public function testTheGroupIsATargetOnlyOnceItsChatIsConfigured(): void
+    {
+        $chat = $this->createMock(\App\Service\ResidentChatService::class);
+
+        $this->assertSame([], (new PowerTargets($chat, ''))->others());
+
+        [$target] = (new PowerTargets($chat, '-1001234567890'))->others();
+        $this->assertSame(PowerTargets::ZAKHIDNA, $target->key);
+        $this->assertSame('-1001234567890', $target->chatId);
+        $this->assertNull($target->topic, 'the group has no topics: the post goes straight in');
+        $this->assertSame('прв. Західний', $target->street, 'the name as the company spells it');
+        $this->assertSame(['6'], $target->houses);
+        $this->assertFalse($target->isResidents());
+    }
+
+    /** A number on another street must never be read as one of our buildings. */
+    public function testAChatsQueueAndPostsAreKeptApart(): void
+    {
+        $this->assertSame('residents', (new \ReflectionClass(\App\Entity\PowerQueue::class))->getConstructor()->getParameters()[1]->getDefaultValue());
+        $this->assertSame('residents', (new \ReflectionClass(\App\Entity\PowerSchedulePost::class))->getConstructor()->getParameters()[3]->getDefaultValue());
     }
 
     /** Reminders stay one after another: the next one never deletes the last (Иван, 29.10.2026). */

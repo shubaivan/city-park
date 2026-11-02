@@ -1946,6 +1946,21 @@ building having none. Buildings in different queues each get their own strip.
   `resident-chat:topics --only=power`. `PowerScheduleRulesTest` pins the parser on the
   company's real post, the hourly-vs-emergency queue, grouping and the caption.
 
+**The same schedule also goes to another chat (02.11.2026): «Зahidna», the group of провулок
+Західний**, where Иван is the street elder. `PowerTargets` lists the chats; `PowerTarget` says
+where a post goes and whose queue it shows. `power_queue` and `power_schedule_post` carry a
+`target`, so each chat has its own queue, its own post per day and its own reminders, and
+every existing row stays `residents`. The group has no topics: `message_thread_id` is null
+and the post goes straight in. Its queue is asked for `прв. Західний` 6 (the company's
+spelling) and its caption says «Черга 3.1 · пров. Західний» — no house numbers, because on
+02.11.2026 houses 17, 19 and 21 of the lane answered «в чергу не включено» while the others
+said 3.1. Env `POWER_ZAKHIDNA_CHAT_ID` (public repo, so not in code); empty means not sent.
+A failure in this chat is logged and never touches the residents' post.
+
+The group was a basic group until the bot was made an admin: Telegram upgraded it to a
+supergroup and its id changed. The value in env is the supergroup's. As an admin the bot
+receives the group's messages too; `config/telegram.php` drops them like the residents' chat.
+
 ## Crons (prod `crontab -l`, **must run as `www-data`**)
 
 ```

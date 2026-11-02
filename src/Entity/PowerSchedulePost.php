@@ -3,6 +3,7 @@
 namespace App\Entity;
 
 use App\Repository\PowerSchedulePostRepository;
+use App\Service\PowerTarget;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
@@ -17,13 +18,17 @@ use Doctrine\ORM\Mapping as ORM;
  * channel post that changes some other queue's hours does not touch ours.
  */
 #[ORM\Entity(repositoryClass: PowerSchedulePostRepository::class)]
-#[ORM\UniqueConstraint(name: 'power_schedule_post_day_uniq', columns: ['day'])]
+#[ORM\UniqueConstraint(name: 'power_schedule_post_target_day_uniq', columns: ['target', 'day'])]
 class PowerSchedulePost
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
     private ?int $id = null;
+
+    /** The chat this post stands in: one post per day per chat. */
+    #[ORM\Column(length: 16, options: ['default' => PowerTarget::RESIDENTS])]
+    private string $target;
 
     #[ORM\Column(type: 'date_immutable')]
     private \DateTimeImmutable $day;
@@ -58,8 +63,9 @@ class PowerSchedulePost
     #[ORM\Column(nullable: true)]
     private ?int $reminder_message_id = null;
 
-    public function __construct(\DateTimeImmutable $day, string $signature, int $sourcePost)
+    public function __construct(\DateTimeImmutable $day, string $signature, int $sourcePost, string $target = PowerTarget::RESIDENTS)
     {
+        $this->target = $target;
         $this->day = $day;
         $this->signature = $signature;
         $this->source_post = $sourcePost;

@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Entity\PowerQueue;
+use App\Service\PowerTarget;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -17,11 +18,11 @@ class PowerQueueRepository extends ServiceEntityRepository
     }
 
     /** @return array<string, PowerQueue> keyed by building */
-    public function byHouse(): array
+    public function byHouse(string $target = PowerTarget::RESIDENTS): array
     {
         $rows = [];
 
-        foreach ($this->findAll() as $row) {
+        foreach ($this->findBy(['target' => $target]) as $row) {
             $rows[$row->getHouse()] = $row;
         }
 
@@ -33,11 +34,11 @@ class PowerQueueRepository extends ServiceEntityRepository
      *
      * @return array<string, string>
      */
-    public function known(): array
+    public function known(string $target = PowerTarget::RESIDENTS): array
     {
         $map = [];
 
-        foreach ($this->byHouse() as $house => $row) {
+        foreach ($this->byHouse($target) as $house => $row) {
             if ($row->getQueue() !== null) {
                 $map[$house] = $row->getQueue();
             }
