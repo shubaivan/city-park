@@ -73,6 +73,17 @@ class ResidentChatTopicsTest extends TestCase
         ];
     }
 
+    /** A closed topic is Telegram's «admins only»: both of these are written by admins alone. */
+    public function testTheAdminOnlyTopicsAreClosedStraightAway(): void
+    {
+        $class = new \ReflectionClass(\App\Command\ResidentChatTopicsCommand::class);
+        $topics = $class->getConstant('TOPICS');
+        $closed = $class->getConstant('CLOSED');
+
+        $this->assertSame(['announcements', 'documents'], $closed);
+        $this->assertStringContainsString('Важливі документи ОСББ', $topics['documents'][0]);
+    }
+
     public function testAnUnknownKindNeverGuesses(): void
     {
         $this->assertNull($this->service('12', '34')->topic('announcements'));
