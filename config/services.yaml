@@ -33,6 +33,7 @@ services:
             $powerZakhidnaChatId: '%env(string:POWER_ZAKHIDNA_CHAT_ID)%'
             # Panel login → Telegram chat, «login:id,login:id» (AdminTelegramChats).
             $adminTelegramChats: '%env(string:ADMIN_TELEGRAM_CHATS)%'
+            $webhookSecret: '%env(string:WEBHOOK_SECRET)%'
             # Telegram ids allowed to move a complaint's status — the head of the ОСББ.
             # One or two people who change about never, so this is config, not a column.
             $managerIds: '%env(string:COMPLAINT_MANAGER_TELEGRAM_IDS)%'
