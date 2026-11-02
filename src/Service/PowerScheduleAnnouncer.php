@@ -47,7 +47,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * board's call — and never fatal.
  *
  * The same post goes to every chat in {@see PowerTargets}, each with its own queue,
- * its own post per day and its own reminders. One chat's failure does not reach another.
+ * its own post per day and, where it wants them, its own reminders. One chat's failure does not reach another.
  */
 class PowerScheduleAnnouncer
 {
@@ -313,6 +313,10 @@ class PowerScheduleAnnouncer
      */
     private function remind(\DateTimeImmutable $now, PowerTarget $target, bool $dryRun): array
     {
+        if (!$target->reminders) {
+            return [];
+        }
+
         $rows = $this->posts->around($now, $target->key);
         $tag = $target->isResidents() ? '' : sprintf('[%s] ', $target->key);
         $days = [];

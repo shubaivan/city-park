@@ -6,7 +6,8 @@ namespace App\Service;
  * Every chat the outage schedule goes to.
  *
  * Besides the residents' topic: «Зahidna», the group of провулок Західний, where Иван is
- * the street elder (02.11.2026). Same picture, same reminders, its own queue, no topic.
+ * the street elder (02.11.2026). Same picture and updates, its own queue, no topic, and no
+ * «через 15 хвилин» (Иван, 02.11.2026): the daily post is what this group wants.
  * Its queue is read from пров. Західний 6, the address he gave; the lane has few accounts
  * in the company's cabinet, and on 02.11.2026 houses 17, 19 and 21 answered «в чергу не
  * включено» while the rest said 3.1 — so the caption names the lane and the queue, and
@@ -53,6 +54,7 @@ class PowerTargets
             self::ZAKHIDNA_STREET,
             self::ZAKHIDNA_HOUSES,
             self::ZAKHIDNA_PLACE,
+            reminders: false,
         )];
     }
 }

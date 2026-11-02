@@ -1949,8 +1949,9 @@ building having none. Buildings in different queues each get their own strip.
 **The same schedule also goes to another chat (02.11.2026): «Зahidna», the group of провулок
 Західний**, where Иван is the street elder. `PowerTargets` lists the chats; `PowerTarget` says
 where a post goes and whose queue it shows. `power_queue` and `power_schedule_post` carry a
-`target`, so each chat has its own queue, its own post per day and its own reminders, and
-every existing row stays `residents`. The group has no topics: `message_thread_id` is null
+`target`, so each chat has its own queue and its own post per day, and every existing row
+stays `residents`. **This group gets no «через 15 хвилин» reminders** (Иван, 02.11.2026):
+`PowerTarget::$reminders` is false for it; the daily post and «Графік оновлено» still go. The group has no topics: `message_thread_id` is null
 and the post goes straight in. Its queue is asked for `прв. Західний` 6 (the company's
 spelling) and its caption says «Черга 3.1 · пров. Західний» — no house numbers, because on
 02.11.2026 houses 17, 19 and 21 of the lane answered «в чергу не включено» while the others
