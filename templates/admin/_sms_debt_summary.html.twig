@@ -1,0 +1,41 @@
+{# Who a debt SMS run reaches and what it costs: the card on /admin/sms and the confirmation. #}
+{% set n = preview.recipients|length %}
+{% set short = preview.balance is not null and preview.balance < preview.cost %}
+<table class="table table-sm mb-2" style="max-width: 460px;">
+    <tr><td>Боржників понад {{ min_debt|number_format(0, '.', ' ') }} грн</td><td class="text-right"><b>{{ preview.debtors }}</b></td></tr>
+    <tr><td>Отримають SMS</td><td class="text-right"><b>{{ n }}</b></td></tr>
+    {% if preview.noPhone > 0 %}
+        <tr class="text-muted"><td>Без номера (SMS не піде)</td><td class="text-right">{{ preview.noPhone }}</td></tr>
+    {% endif %}
+    {% if preview.invalidPhone|length > 0 %}
+        <tr class="text-muted"><td>Номер не український (SMS не піде)</td><td class="text-right">{{ preview.invalidPhone|length }}</td></tr>
+    {% endif %}
+    {% if preview.alreadySent|length > 0 %}
+        <tr class="text-muted"><td>Вже надіслано сьогодні або результат невідомий</td><td class="text-right">{{ preview.alreadySent|length }}</td></tr>
+    {% endif %}
+    {% if preview.samePhone|length > 0 %}
+        <tr class="text-muted"><td>Той самий номер, що в іншої адреси</td><td class="text-right">{{ preview.samePhone|length }}</td></tr>
+    {% endif %}
+    {% if preview.tooLong|length > 0 %}
+        <tr class="text-muted"><td>Адреса не влазить в одну SMS</td><td class="text-right">{{ preview.tooLong|length }}</td></tr>
+    {% endif %}
+    {% if n > 0 %}
+        <tr><td>Частин на одне повідомлення</td><td class="text-right"><b>{{ preview.partsPerMessage }}</b></td></tr>
+    {% endif %}
+    <tr><td>Вартість: {{ preview.parts }} SMS × {{ price|number_format(2, '.', ' ') }} грн</td><td class="text-right"><b>{{ preview.cost|number_format(2, '.', ' ') }} грн</b></td></tr>
+    <tr class="{{ short ? 'table-warning' }}"><td>На рахунку TurboSMS</td><td class="text-right"><b>{{ preview.balance is null ? 'невідомо' : preview.balance|number_format(2, '.', ' ') ~ ' грн' }}</b></td></tr>
+</table>
+
+{% if n > 0 %}
+    <details class="mb-2 small" {{ open_list|default(false) ? 'open' }}>
+        <summary>Кому саме ({{ n }})</summary>
+        <ul class="list-unstyled mb-0 mt-1">
+            {% for r in preview.recipients %}
+                <li class="py-1 border-bottom">
+                    {{ r.account.placeLabel }} · <b>{{ r.account.debt|number_format(2, '.', ' ') }} грн</b>
+                    <div class="text-muted">{{ r.phone }}</div>
+                </li>
+            {% endfor %}
+        </ul>
+    </details>
+{% endif %}

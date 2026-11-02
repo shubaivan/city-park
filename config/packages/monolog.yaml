@@ -3,6 +3,7 @@ monolog:
         - deprecation # Deprecations are logged in the dedicated "deprecation" channel when it exists
         - photo # Pavilion photo-upload + reminder audit trail (see var/log/photo-upload.log)
         - chat  # Residents' group gate: who knocked and why they were let in or not (see var/log/resident-chat.log)
+        - sms   # Who pressed «Відправити СМС», what the run would cost and how it ended (see var/log/sms.log)
 
 when@dev:
     monolog:
@@ -58,7 +59,7 @@ when@prod:
                 handler: nested
                 excluded_http_codes: [404, 405]
                 buffer_size: 50 # How many messages should be saved? Prevent memory leaks
-                channels: ["!photo", "!chat"] # these audit trails must NOT be buffered by fingers_crossed (would be dropped unless an error follows)
+                channels: ["!photo", "!chat", "!sms"] # these audit trails must NOT be buffered by fingers_crossed (would be dropped unless an error follows)
             nested:
                 type: stream
                 path: php://stderr
@@ -103,6 +104,13 @@ when@prod:
                 path: "%kernel.logs_dir%/resident-chat.log"
                 level: info
                 channels: ["chat"]
+            # Same reasoning again: spending the ОСББ's money has to leave a line whether or
+            # not an error follows. Each SMS also has its own row in sms_log.
+            sms_audit:
+                type: stream
+                path: "%kernel.logs_dir%/sms.log"
+                level: info
+                channels: ["sms"]
             console:
                 type: console
                 process_psr_3_messages: false

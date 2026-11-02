@@ -136,15 +136,7 @@ class AdminController extends AbstractController
         // what sending costs, what is on the account — and the button. Computing it sends
         // nothing and writes nothing. Only for whoever may press the button; the journal
         // and the balance stay readable by everybody.
-        $preview = null;
-        if ($this->isGranted('ROLE_ADMIN')) {
-            $preview = $campaign->plan();
-            $preview['cost'] = count($preview['recipients']) * SmsSender::PRICE_PER_PART;
-            $preview['balance'] = $balance;
-            $preview['configured'] = $sender->isConfigured();
-            $preview['debtors'] = count($preview['recipients']) + $preview['noPhone']
-                + count($preview['tooLong']) + $preview['skippedTelegram'];
-        }
+        $preview = $this->isGranted('ROLE_ADMIN') ? $campaign->estimate($balance) : null;
 
         return $this->render('admin/sms.html.twig', [
             'entries' => $sms->recent(self::SMS_SHOWN),
@@ -159,68 +151,57 @@ class AdminController extends AbstractController
     }
 
     /**
-     * The «відправити» button under the summary — Людмила's button (07.10.2026).
+     * The step between «Відправити СМС» and the money: who exactly, and how much.
      *
-     * The list is computed again here rather than trusted from the form, and if it no
-     * longer has as many people as the screen she tapped on said, nothing is sent: a debt
-     * file uploaded in between would otherwise turn «3 SMS» into thirty. ROLE_ADMIN only,
-     * by the `^/admin` rule — Сергій reads the journal and does not spend the ОСББ's money.
+     * A page of its own rather than a browser confirm(), so the list is read before the
+     * send and a phone's dialog cannot be tapped through. A GET: it spends nothing.
+     * ROLE_ADMIN only, by the `^/admin` rule.
+     */
+    #[Route('/admin/sms/debt/confirm', name: 'app_admin_sms_debt_confirm', methods: [Request::METHOD_GET])]
+    public function smsDebtConfirm(DebtSmsCampaign $campaign, SmsSender $sender): Response
+    {
+        $estimate = $campaign->estimate($sender->balance());
+
+        if ($estimate['blocked'] !== null) {
+            $this->addFlash('warning', 'Нічого не надіслано. ' . $estimate['blocked']);
+
+            return $this->redirectToRoute('app_admin_sms', ['_fragment' => 'debt-sms']);
+        }
+
+        return $this->render('admin/sms_confirm.html.twig', [
+            'preview' => $estimate,
+            'price' => SmsSender::PRICE_PER_PART,
+            'min_debt' => DebtSmsCampaign::DEFAULT_MIN_DEBT,
+        ]);
+    }
+
+    /**
+     * The send itself. Everything that can refuse lives in DebtSmsCampaign::sendConfirmed(),
+     * so that the list, the balance and the lock are all checked at the moment of the tap.
+     * ROLE_ADMIN only, by the `^/admin` rule — Сергій reads the journal and does not spend
+     * the ОСББ's money.
      */
     #[Route('/admin/sms/debt', name: 'app_admin_sms_debt', methods: [Request::METHOD_POST])]
-    public function smsDebt(Request $request, DebtSmsCampaign $campaign, SmsSender $sender): Response
+    public function smsDebt(Request $request, DebtSmsCampaign $campaign): Response
     {
         if (!$this->isCsrfTokenValid('sms-debt', (string)$request->request->get('_token'))) {
-            $this->addFlash('error', 'Сторінка застаріла — оновіть її і натисніть ще раз.');
+            $this->addFlash('error', 'Сторінка застаріла — оновіть її і натисніть ще раз. Нічого не надіслано.');
 
             return $this->redirectToRoute('app_admin_sms');
         }
 
-        $plan = $campaign->plan();
-        $count = count($plan['recipients']);
+        // A closed tab or a slow provider must not cut a run in half.
+        ignore_user_abort(true);
+        set_time_limit(0);
 
-        if ($count !== $request->request->getInt('expected', -1)) {
-            $this->addFlash('warning', sprintf(
-                'Список змінився: тепер %d адрес. Нічого не надіслано — перевірте і натисніть ще раз.',
-                $count,
-            ));
+        $result = $campaign->sendConfirmed(
+            (string)$request->request->get('fingerprint'),
+            'панель: ' . $this->getUser()?->getUserIdentifier(),
+        );
 
-            return $this->redirectToRoute('app_admin_sms', ['_fragment' => 'debt-sms']);
-        }
+        $this->addFlash($result['flash'], $result['message']);
 
-        // Asked again at the moment of the tap, not trusted from the summary: the screen
-        // may have been open for an hour. Unknown is refused as well as short — TurboSMS
-        // not answering about the balance is no reason to believe it will answer a send,
-        // and fifty failed rows teach nobody anything one sentence would not.
-        $cost = $count * SmsSender::PRICE_PER_PART;
-        $balance = $sender->balance();
-        if ($balance === null) {
-            $this->addFlash('error', 'TurboSMS зараз не відповідає — не вдалося перевірити баланс. Нічого не надіслано, спробуйте пізніше.');
-
-            return $this->redirectToRoute('app_admin_sms', ['_fragment' => 'debt-sms']);
-        }
-        if ($balance < $cost) {
-            $this->addFlash('error', sprintf(
-                'На балансі TurboSMS %s грн, а розсилка коштує %s грн. Нічого не надіслано — поповніть рахунок.',
-                number_format($balance, 2, '.', ' '),
-                number_format($cost, 2, '.', ' '),
-            ));
-
-            return $this->redirectToRoute('app_admin_sms', ['_fragment' => 'debt-sms']);
-        }
-
-        $run = $campaign->send($plan, 'панель: ' . $this->getUser()?->getUserIdentifier());
-
-        $this->addFlash($run['failed'] > 0 ? 'warning' : 'success', sprintf(
-            'Надіслано %d з %d SMS · %s грн.%s',
-            $run['sent'],
-            $count,
-            number_format($run['parts'] * SmsSender::PRICE_PER_PART, 2, '.', ' '),
-            $run['outOfMoney']
-                ? sprintf(' На TurboSMS закінчились кошти — %d не надіслано. Поповніть рахунок і натисніть ще раз: кому вже пішло, сьогодні повторно не піде.', $run['failed'])
-                : ($run['failed'] > 0 ? sprintf(' Не пішло: %d — причина в журналі нижче.', $run['failed']) : ''),
-        ));
-
-        return $this->redirectToRoute('app_admin_sms');
+        return $this->redirectToRoute('app_admin_sms', ['_fragment' => 'debt-sms']);
     }
 
     /** Scans drawn on /admin/scans. A few a day at most; a fortnight fits easily. */

@@ -91,31 +91,75 @@ class AdminSmsPageTest extends KernelTestCase
     }
 
     /**
-     * On arrival: debtors, how many have a number, what it costs, what is on the account,
-     * and the button saying how many and for how much.
+     * On arrival: debtors, who gets it, what it costs, what is on the account — and the one
+     * button, with the price beside it. It leads to a confirmation, not to a send.
      */
     public function testTheSummaryAndTheButtonAreThereOnArrival(): void
     {
-        $preview = $this->preview(3, balance: 100.0);
+        $html = $this->render([], $this->preview(3, balance: 100.0));
+
+        $this->assertMatchesRegularExpression('/Боржників понад 5 000 грн<\/td><td[^>]*><b>8<\/b>/u', $html);
+        $this->assertMatchesRegularExpression('/Отримають SMS<\/td><td[^>]*><b>3<\/b>/u', $html);
+        $this->assertMatchesRegularExpression('/Частин на одне повідомлення<\/td><td[^>]*><b>1<\/b>/u', $html);
+        $this->assertStringContainsString('<b>3.87 грн</b>', $html);
+        $this->assertStringContainsString('<b>100.00 грн</b>', $html);
+        $this->assertStringContainsString('буд. 27, кв. 63', $html);
+        $this->assertMatchesRegularExpression('#<a href="/admin/sms/debt/confirm"[^>]*>📨 Відправити СМС</a>#u', $html);
+        $this->assertStringNotContainsString('<form method="post"', $html);
+    }
+
+    /**
+     * Blocked, the button is still there, greyed, with the reason. Hiding it is what made
+     * Иван and Людмила report that the page has no button at all.
+     */
+    public function testABlockedRunShowsTheButtonGreyedWithTheReason(): void
+    {
+        $preview = $this->preview(8, balance: 9.13);
+        $preview['blocked'] = 'бракує 1.19 грн';
 
         $html = $this->render([], $preview);
 
-        $this->assertMatchesRegularExpression('/Боржників понад 5 000 грн<\/td><td[^>]*><b>8<\/b>/u', $html);
-        $this->assertMatchesRegularExpression('/З них відомий номер<\/td><td[^>]*><b>3<\/b>/u', $html);
-        $this->assertStringContainsString('<b>3.87 грн</b>', $html);
-        $this->assertStringContainsString('<b>100.00 грн</b>', $html);
-        $this->assertStringContainsString('Надіслати 3 SMS · 3.87 грн', $html);
-        $this->assertStringContainsString('name="expected" value="3"', $html);
-        $this->assertStringContainsString('буд. 27, кв. 63', $html);
+        $this->assertMatchesRegularExpression('#<button type="button"[^>]*disabled>📨 Відправити СМС</button>#u', $html);
+        $this->assertStringNotContainsString('/admin/sms/debt', $html);
+        $this->assertStringContainsString('бракує 1.19 грн', $html);
+        $this->assertStringContainsString('10.32 грн', $html);
     }
 
-    /** Not enough money on TurboSMS: say so instead of offering a send that half-fails. */
-    public function testALowBalanceHidesTheSendButton(): void
+    /** Why a household is not in the count is on the card, not a gap in the arithmetic. */
+    public function testItNamesWhoIsLeftOut(): void
     {
-        $html = $this->render([], $this->preview(3, balance: 1.0));
+        $preview = $this->preview(1, balance: 100.0);
+        $preview['invalidPhone'] = [['phone' => '48796496316']];
+        $preview['alreadySent'] = [['phone' => '380671111111'], ['phone' => '380672222222']];
+        $preview['samePhone'] = [['phone' => '380673333333']];
 
-        $this->assertStringNotContainsString('/admin/sms/debt', $html);
-        $this->assertStringContainsString('Бракує 2.87 грн', $html);
+        $html = $this->render([], $preview);
+
+        $this->assertMatchesRegularExpression('/Без номера \(SMS не піде\)<\/td><td[^>]*>5</u', $html);
+        $this->assertMatchesRegularExpression('/Номер не український \(SMS не піде\)<\/td><td[^>]*>1</u', $html);
+        $this->assertMatchesRegularExpression('/Вже надіслано сьогодні або результат невідомий<\/td><td[^>]*>2</u', $html);
+        $this->assertMatchesRegularExpression('/Той самий номер, що в іншої адреси<\/td><td[^>]*>1</u', $html);
+    }
+
+    /** The confirmation: who, how much, the real text, and a form bound to exactly this list. */
+    public function testTheConfirmationShowsRecipientsAndCostAndCarriesTheFingerprint(): void
+    {
+        $this->render([]);
+        $preview = $this->preview(3, balance: 100.0);
+
+        $html = self::getContainer()->get(Environment::class)->render('admin/sms_confirm.html.twig', [
+            'preview' => $preview,
+            'price' => 1.29,
+            'min_debt' => 5000.0,
+        ]);
+
+        $this->assertStringContainsString('Так, відправити 3 SMS · 3.87 грн', $html);
+        $this->assertStringContainsString('name="fingerprint" value="abc123"', $html);
+        $this->assertStringContainsString('name="_token"', $html);
+        $this->assertStringContainsString('action="/admin/sms/debt"', $html);
+        $this->assertStringContainsString('<details class="mb-2 small" open', $html);
+        $this->assertSame(3, substr_count($html, '380671234567'));
+        $this->assertStringContainsString('b.disabled = true', $html, 'a double tap is stopped in the browser too');
     }
 
     /** What is left on TurboSMS is on the page for everybody, and «unknown» is never «0». */
@@ -167,10 +211,17 @@ class AdminSmsPageTest extends KernelTestCase
             'tooLong' => [],
             'noPhone' => 5,
             'skippedTelegram' => 0,
-            'cost' => $n * 1.29,
+            'invalidPhone' => [],
+            'alreadySent' => [],
+            'samePhone' => [],
+            'parts' => $n,
+            'partsPerMessage' => 1,
+            'cost' => round($n * 1.29, 2),
             'balance' => $balance,
             'configured' => true,
             'debtors' => $n + 5,
+            'fingerprint' => 'abc123',
+            'blocked' => null,
         ];
     }
 }

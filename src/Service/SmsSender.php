@@ -34,6 +34,16 @@ class SmsSender
      */
     public const ACCOUNT_ID = '8980641';
 
+    /** The same-day guard's refusal; DebtSmsCampaign counts it as skipped, not as failed. */
+    public const ALREADY_SENT = 'сьогодні вже надсилали на цей номер';
+
+    /**
+     * Journal prefix for a send whose outcome we never learned: a timeout can follow a
+     * message TurboSMS accepted and billed. The same-day guard treats it like a sent one,
+     * because a resident missing a reminder until tomorrow is cheaper than a paid duplicate.
+     */
+    public const OUTCOME_UNKNOWN = 'невідомо, чи пішло: ';
+
     private const SEND_URL = 'https://api.turbosms.ua/message/send.json';
     private const BALANCE_URL = 'https://api.turbosms.ua/user/balance.json';
 
@@ -100,6 +110,14 @@ class SmsSender
     public static function cost(string $text, float $pricePerPart): float
     {
         return round(self::parts($text) * $pricePerPart, 2);
+    }
+
+    /** Would the same-day guard in send() stop this number? Lets a plan price it out up front. */
+    public function alreadySentToday(string $phone, string $purpose): bool
+    {
+        $key = PhoneKey::of($phone);
+
+        return $key !== '' && $this->logs->alreadySentToday($key, $purpose);
     }
 
     /**
@@ -171,7 +189,7 @@ class SmsSender
         // same right number written to twice because a cron ran again or an import was
         // re-uploaded after a correction.
         if ($this->logs->alreadySentToday($key, $purpose)) {
-            return $this->persist($log->markFailed('сьогодні вже надсилали на цей номер'));
+            return $this->persist($log->markFailed(self::ALREADY_SENT));
         }
 
         try {
@@ -191,7 +209,7 @@ class SmsSender
         } catch (\Throwable $e) {
             $this->logger->error('sms send failed', ['phone_key' => $key, 'error' => $e->getMessage()]);
 
-            return $this->persist($log->markFailed($e->getMessage()));
+            return $this->persist($log->markFailed(self::OUTCOME_UNKNOWN . $e->getMessage()));
         }
 
         $code = (int)($body['response_code'] ?? -1);
