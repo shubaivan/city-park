@@ -6,7 +6,7 @@ Symfony 7 + Nutgram Telegram bot for ОСББ pavilion booking. Prod bot `@che_c
 
 - Prod path: `/var/www/html/city-park/` on the production server (host + SSH key live in per-machine memory, not in this file)
 - Admin login at `/login`, password = env `MAIN_ADMIN_PASSWORD`
-- Logs: `var/log/{prod,remind,photo-check,photo-cleanup,debt-notify,warm-weather,resident-chat}.log`
+- Logs: `var/log/{prod,remind,photo-check,photo-cleanup,debt-notify,warm-weather,resident-chat,sms}.log`
 
 ## Core domain
 
@@ -1572,17 +1572,36 @@ through TurboSMS, **1.29 грн a part** (30.09.2026; 1.28 from a 10 000 грн 
 
 **The panel has the button** (`/admin/sms`, ROLE_ADMIN; Людмила, 07.10.2026 — «кнопка, щоб
 з телефона відправити всім, у кого борг понад 5 тис.»). The page opens on the whole picture
-— debtors above the threshold, how many have a number, the cost, the TurboSMS balance — and
-one «📨 Надіслати N SMS · X грн» that sends exactly that list after a confirm (Иван's shape:
-«админ зашёл — ему показало … и кнопка»); drawing it sends and writes nothing. The POST re-plans and refuses if the count moved since the screen was
-drawn (a debt file uploaded in between turns «3 SMS» into thirty). Both the button and
-`debt:notify-sms` go through `DebtSmsCampaign` — one definition of «a debtor with a number».
-**Money:** the TurboSMS balance is printed on the page for everyone; the send button is not
-drawn when the balance is short **or unknown**, the POST checks again at the tap, and a run
-that hits an empty balance mid-way stops and journals the rest as «закінчились кошти»
-(`DebtSmsCampaign::OUT_OF_MONEY`) rather than firing fifty refusals. Pressing again after a
-top-up is safe — the same-day guard skips everyone already reached. Journal rows from the
-button read «панель: <login>».
+— debtors above the threshold, who will get it, parts per message, the cost, the TurboSMS
+balance — and one «📨 Відправити СМС» with the price beside it (Иван's shape: «админ зашёл —
+ему показало … и кнопка»); drawing it sends and writes nothing. **The button is always
+drawn.** It used to vanish when the balance was short, and on 02.11.2026 Иван and Людмила
+reported, reasonably, that the page has no button: balance 9.13 грн, run 10.32 грн. Now it
+is greyed out with the reason beneath it. Enabled, it opens `/admin/sms/debt/confirm` (a GET,
+spends nothing): the list, the cost, the real text. Only the form there sends. Both the
+button and `debt:notify-sms` go through `DebtSmsCampaign` — one definition of «a debtor with
+a number», and `estimate()` prices only those who will really go out: no number, a foreign
+number, already sent today and a second object on the same number are listed apart.
+
+**A double send has four separate stops, from the outside in.** The browser disables the
+button on submit. The POST answers with a redirect, so a refresh repeats nothing.
+`DebtSmsCampaign::sendConfirmed()` holds an flock on `var/debt-sms.lock` for the whole run,
+shared with the console command, so a second run at the same time is refused; the kernel
+drops it if the process dies, so a crash cannot leave the button locked. Inside the lock it
+plans again and compares a fingerprint of phones and texts with the one the confirmation page
+carried: whoever a run reached has left the list, so the same form sent again no longer
+matches, and neither does a form from before a debt upload. Underneath it all,
+`SmsLogRepository::alreadySentToday`, which also counts a send that ended with no answer
+(`SmsSender::OUTCOME_UNKNOWN`): a timeout can follow a message TurboSMS billed, so that
+resident waits until tomorrow rather than risk paying twice.
+**Money:** the POST asks for the balance again at the tap; short **or unknown** sends nothing
+at all, never a partial run. A run that hits an empty balance mid-way stops and journals the
+rest as «закінчились кошти» (`DebtSmsCampaign::OUT_OF_MONEY`) rather than firing fifty
+refusals. **Night:** nothing goes out 22:00–08:00 Kyiv, the window
+`PowerScheduleAnnouncer` already keeps; an SMS has no silent mode, so here it means not
+sending, from the panel and the console alike. **Who pressed it:** each journal row reads
+«панель: <login>», and `var/log/sms.log` has a line for every run started, finished or refused.
+The result flash says sent, failed and skipped, with what the skipped were.
 
 **The real blocker is not any of this: it is the register of owners' phones**, which only
 the ОСББ has. Until it arrives, `debt:notify-sms` reports how many objects with a debt

@@ -1,0 +1,31 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Підтвердження SMS · ОСББ City Park{% endblock %}
+
+{#
+    The last stop before money is spent. The form carries the fingerprint of this exact list,
+    so the send refuses if the list moved, and a second submit finds it already changed.
+#}
+{% block body %}
+    {{ parent() }}
+
+    {% set n = preview.recipients|length %}
+    <div class="container-fluid py-3" style="max-width: 700px;">
+        <p class="mb-2"><a href="{{ path('app_admin_sms') }}">← Назад до SMS, нічого не надсилати</a></p>
+
+        <h4 class="mb-2">📨 Підтвердіть надсилання</h4>
+
+        {% include 'admin/_sms_debt_summary.html.twig' with {open_list: true} %}
+
+        <p class="small">
+            Це справжні SMS справжнім людям, скасувати їх неможливо. Текст: «{{ preview.recipients[0].text }}»
+        </p>
+
+        <form method="post" action="{{ path('app_admin_sms_debt') }}"
+              onsubmit="var b = this.querySelector('button'); if (b.disabled) return false; b.disabled = true; b.textContent = 'Надсилаю…';">
+            <input type="hidden" name="_token" value="{{ csrf_token('sms-debt') }}">
+            <input type="hidden" name="fingerprint" value="{{ preview.fingerprint }}">
+            <button type="submit" class="btn btn-danger btn-block">Так, відправити {{ n }} SMS · {{ preview.cost|number_format(2, '.', ' ') }} грн</button>
+        </form>
+    </div>
+{% endblock %}

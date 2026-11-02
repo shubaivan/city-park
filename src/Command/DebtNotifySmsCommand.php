@@ -78,13 +78,36 @@ class DebtNotifySmsCommand extends Command
             $dryRun ? ' · DRY RUN' : '',
         ));
 
+        // The same two rules as the panel's button: not at night, and never two runs at once.
+        // A dry run spends nothing, so neither applies to it.
+        $lock = null;
+        if (!$dryRun) {
+            $quiet = $this->campaign->quietHoursReason();
+            if ($quiet !== null) {
+                $io->error($quiet);
+
+                return Command::FAILURE;
+            }
+
+            $lock = $this->campaign->acquireLock();
+            if ($lock === null) {
+                $io->error('Розсилка вже йде (або файл блокування недоступний) — нічого не надіслано.');
+
+                return Command::FAILURE;
+            }
+        }
+
         $plan = $this->campaign->plan($min, $audience);
 
         foreach ($plan['tooLong'] as $account) {
             $io->writeln(sprintf('  <fg=red>✗</> %s — адреса задовга для однієї SMS', $account->getPlaceLabel()));
         }
 
-        $run = $this->campaign->send($plan, 'debt:notify-sms', $dryRun);
+        try {
+            $run = $this->campaign->send($plan, 'debt:notify-sms', $dryRun);
+        } finally {
+            $this->campaign->releaseLock($lock);
+        }
 
         foreach ($run['logs'] as $log) {
             $account = $log->getAccount();
@@ -104,18 +127,17 @@ class DebtNotifySmsCommand extends Command
 
         $sent = $run['sent'];
         $parts = $run['parts'];
-        $failed = $run['failed'] + count($plan['tooLong']);
-        $skippedTelegram = $plan['skippedTelegram'];
+        $failed = $run['failed'];
         $noPhone = $plan['noPhone'];
 
         $io->newLine();
         $io->writeln(sprintf(
-            '%s: %d · пропущено (є в Telegram): %d · без номера: %d · помилок: %d',
+            '%s: %d · помилок: %d · пропущено: %d%s',
             $dryRun ? 'Надіслали б' : 'Надіслано',
             $sent,
-            $skippedTelegram,
-            $noPhone,
             $failed,
+            $run['skipped'],
+            $run['skipped'] > 0 ? ' (' . DebtSmsCampaign::skippedBreakdown($plan) . ')' : '',
         ));
         $io->writeln(sprintf(
             'Частин SMS: %d · орієнтовна вартість: %s грн',

@@ -105,6 +105,7 @@ class ComplaintsRoleTest extends WebTestCase
             // He reads the SMS journal; sending costs the ОСББ money and is Людмила's and
             // the accountant's call (07.10.2026).
             'sending the debt SMS' => ['POST', '/admin/sms/debt'],
+            'its confirmation page' => ['GET', '/admin/sms/debt/confirm'],
             // Taking a number off a flat settles a dispute between two households.
             'removing a car number' => ['POST', '/admin/cars/remove'],
         ];
@@ -134,5 +135,27 @@ class ComplaintsRoleTest extends WebTestCase
         $client->request('GET', '/admin/debt');
 
         $this->assertNotSame(403, $client->getResponse()->getStatusCode());
+    }
+
+    /**
+     * A POST without the page's token is turned back before the list is even looked at:
+     * that would need a database, and this environment answers 500 if it tries.
+     */
+    public function testTheDebtSmsNeedsTheFormsToken(): void
+    {
+        $client = $this->loginAs('alina');
+        $client->request('POST', '/admin/sms/debt', ['fingerprint' => 'x', '_token' => 'wrong']);
+
+        $this->assertSame(302, $client->getResponse()->getStatusCode());
+        $this->assertStringEndsWith('/admin/sms', (string)$client->getResponse()->headers->get('Location'));
+    }
+
+    /** Sending has no GET: a link, a prefetch or a refresh can only ever reach the confirmation. */
+    public function testTheDebtSmsCannotBeSentByAGet(): void
+    {
+        $client = $this->loginAs('alina');
+        $client->request('GET', '/admin/sms/debt');
+
+        $this->assertSame(405, $client->getResponse()->getStatusCode());
     }
 }

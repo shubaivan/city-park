@@ -53,8 +53,8 @@ class PowerScheduleAnnouncer
 {
     private const TZ = 'Europe/Kyiv';
 
-    private const QUIET_FROM = 22;
-    private const QUIET_UNTIL = 8;
+    public const QUIET_FROM = 22;
+    public const QUIET_UNTIL = 8;
 
     /**
      * How long before the light goes, and before it is due back, the reminder is posted
