@@ -364,11 +364,16 @@ Deliberate rules, each of which someone will be tempted to "fix" later:
   send, the card falls back to the photos, then to text. It goes when the listing closes
   (`RentalPhotoService::purge()`), except on an admin take-down, like the photos. Being added
   after publication, its «🎬 Є відео» reaches the chat post by editing it.
-  A video note or a video sent as a file is refused with a reason, and a video anywhere else
-  gets an answer (`RentalVideoHint`, and the guard in `RentalPublish::__invoke`).
+  A video note or a video sent as a file is refused with a reason, and so is one with no
+  duration or over `VIDEO_MAX_BYTES`. A video anywhere else gets an answer (`RentalVideoHint`,
+  and the guard in `RentalPublish::__invoke`). **An album counts as one video:** the first is
+  taken and the rest of that `media_group_id` get no reply, because Telegram delivers an album
+  as separate messages. Deleting a video asks first (`rent:vdel` → `rent:vdelok`).
   **The admin page:** `getFile` stops at 20 MB, so up to that it plays in `/admin/rentals`
-  through `TelegramFileProxy`, which passes `Range` on and never lets the download url (it
-  contains the bot token) reach the browser, an error text or the log. Above it there is the
+  through `TelegramFileProxy`, which passes `Range` on and keeps the download url (it contains
+  the bot token) from the browser and from error texts. It has its **own logger-free HTTP
+  client** in services.yaml, because the framework's `http_client` logs every url at INFO and
+  fingers_crossed flushes that on any error. Above 20 MB there is the
   thumbnail and «Надіслати мені у бот», resending by `file_id`, which has no limit. Panel
   logins know nothing of Telegram and nothing in the data ties one to a `telegram_user`, so
   the link is env `ADMIN_TELEGRAM_CHATS=login:id,login:id`; a login not listed is told so.

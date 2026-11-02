@@ -141,6 +141,16 @@ services:
     App\Service\BlockVoteService:
         public: true
 
+    # Its own HTTP client, with no logger: the framework's `http_client` logs every url, and
+    # Telegram's file urls contain the bot token.
+    app.telegram_file_http_client:
+        class: Symfony\Contracts\HttpClient\HttpClientInterface
+        factory: ['Symfony\Component\HttpClient\HttpClient', 'create']
+
+    App\Service\TelegramFileProxy:
+        arguments:
+            $httpClient: '@app.telegram_file_http_client'
+
     # Nutgram handlers
     App\Telegram\:
         public: true

@@ -8,7 +8,7 @@
                    {% if listing.videoThumbFileId %}poster="{{ path('app_admin_rental_video_thumb', {id: listing.id}) }}"{% endif %}></video>
         {% else %}
             {% if listing.videoThumbFileId %}
-                <img src="{{ path('app_admin_rental_video_thumb', {id: listing.id}) }}" alt=""
+                <img src="{{ path('app_admin_rental_video_thumb', {id: listing.id}) }}" alt="" loading="lazy"
                      style="max-width:300px;max-height:220px;border-radius:4px;display:block;">
             {% endif %}
             <small class="text-muted d-block">

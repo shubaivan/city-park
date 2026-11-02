@@ -23,7 +23,7 @@ class RentalVideoHint
             default => null,
         };
 
-        if ($text === null) {
+        if ($text === null || RentalVideo::isRestOfAlbum($bot)) {
             return;
         }
 

@@ -15,6 +15,12 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * browser: not in a redirect, not in a header, not in an error. An exception from the HTTP
  * client quotes that url, which is why its message is neither shown nor logged here.
  *
+ * **This class needs the logger-free client wired in services.yaml.** The framework's
+ * `http_client` writes every request's full url to the `http_client` log channel at INFO,
+ * and fingers_crossed flushes that buffer on any error, so with it the token ended up in
+ * the logs on the first failure. `getFile` goes through Nutgram, whose own failures quote
+ * the bot url in their exception; those are not caught-and-logged by this class either.
+ *
  * `Range` is passed on and the partial answer passed back, which is what lets the player
  * seek and what Safari insists on. Only the headers named below are forwarded.
  *
@@ -28,6 +34,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  */
 class TelegramFileProxy
 {
+    /** A stream holds a PHP-FPM worker; 20 MB on any working connection is far less than this. */
+    private const MAX_SECONDS = 600;
+
     public function __construct(
         private Nutgram $bot,
         private HttpClientInterface $httpClient,
@@ -45,9 +54,14 @@ class TelegramFileProxy
             }
 
             $upstream = $this->httpClient->request('GET', $url, [
-                'headers' => $range !== null && preg_match('/^bytes=\d*-\d*$/', $range) === 1 ? ['Range' => $range] : [],
+                'headers' => array_filter([
+                    // Byte offsets in `Range` only mean anything on the unencoded file.
+                    'Accept-Encoding' => 'identity',
+                    'Range' => $range !== null && preg_match('/^bytes=\d*-\d*$/', $range) === 1 ? $range : null,
+                ]),
                 'buffer' => false,
                 'timeout' => 60,
+                'max_duration' => self::MAX_SECONDS,
             ]);
 
             $status = $upstream->getStatusCode();

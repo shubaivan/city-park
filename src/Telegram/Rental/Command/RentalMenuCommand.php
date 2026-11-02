@@ -30,7 +30,8 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  *   rent:photos:<id>      — hand the owner a one-shot link to the photo upload page
  *   rent:pic:<id>:<n>     — swap the card's media for slide #n (the ⬅️/➡️ arrows)
  *   rent:video:<id>       — owner adds or replaces the video (the RentalVideo conversation)
- *   rent:vdel:<id>        — owner deletes the video
+ *   rent:vdel:<id>        — owner asked to delete the video: the card asks to confirm
+ *   rent:vdelok:<id>      — owner confirmed, the video goes
  *   rent:extend:<id>      — owner confirms the listing is still current (+30 days)
  *   rent:remove:<id>      — owner takes their listing down
  *
@@ -81,8 +82,13 @@ class RentalMenuCommand
             return;
         }
 
+        if (str_starts_with($data, 'rent:vdelok:')) {
+            $this->deleteVideo($bot, (int)substr($data, strlen('rent:vdelok:')));
+            return;
+        }
+
         if (str_starts_with($data, 'rent:vdel:')) {
-            $this->deleteVideo($bot, (int)substr($data, strlen('rent:vdel:')));
+            $this->confirmDeleteVideo($bot, (int)substr($data, strlen('rent:vdel:')));
             return;
         }
 
@@ -385,6 +391,25 @@ class RentalMenuCommand
         }
 
         return true;
+    }
+
+    /** Asks on the card itself: the keyboard is swapped, the message stays. */
+    private function confirmDeleteVideo(Nutgram $bot, int $listingId): void
+    {
+        $listing = $this->liveListing($listingId);
+
+        if (!$listing || !$this->ownsListing($bot, $listing)) {
+            $this->renderMenu($bot, edit: true, notice: '⚠️ Оголошення не знайдено.');
+            return;
+        }
+
+        $bot->answerCallbackQuery(text: 'Видалити це відео?');
+        $bot->editMessageReplyMarkup(
+            reply_markup: InlineKeyboardMarkup::make()->addRow(
+                InlineKeyboardButton::make('🗑 Так, видалити', callback_data: 'rent:vdelok:' . $listing->getId()),
+                InlineKeyboardButton::make('⬅️ Ні', callback_data: 'rent:view:' . $listing->getId()),
+            ),
+        );
     }
 
     private function deleteVideo(Nutgram $bot, int $listingId): void

@@ -5,6 +5,7 @@ namespace App\Telegram\Rental\Command;
 use App\Entity\RentalListing;
 use App\Service\PhotoUploadFlow;
 use App\Service\RentalListingService;
+use App\Service\RentalVideoHintText;
 use App\Service\TelegramUserService;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Conversations\Conversation;
@@ -35,6 +36,9 @@ class RentalVideo extends Conversation
 
     public const NOTE_REFUSED = '🎬 Відеоповідомлення («кружечок») до оголошення додати не можна. Надішліть звичайне відео.';
     public const FILE_REFUSED = '🎬 Це відео надіслано як файл. Надішліть його як звичайне відео, без «надіслати як файл».';
+
+    private const ALBUM_KEY = 'rental_video_album';
+    private const ALBUM_TTL_SECONDS = 300;
 
     protected ?string $step = 'start';
 
@@ -90,6 +94,27 @@ class RentalVideo extends Conversation
             str_starts_with((string)$message?->document?->mime_type, 'video/') => self::KIND_FILE,
             default => null,
         };
+    }
+
+    /**
+     * Telegram delivers an album as separate messages. Returns true for every one after the
+     * first of its `media_group_id`, so one album gets one answer.
+     */
+    public static function isRestOfAlbum(Nutgram $bot): bool
+    {
+        $group = $bot->message()?->media_group_id;
+
+        if ($group === null) {
+            return false;
+        }
+
+        if ($bot->getUserData(self::ALBUM_KEY) === $group) {
+            return true;
+        }
+
+        $bot->setUserData(self::ALBUM_KEY, $group, ttl: self::ALBUM_TTL_SECONDS);
+
+        return false;
     }
 
     public function start(Nutgram $bot): void
@@ -149,6 +174,12 @@ class RentalVideo extends Conversation
 
         $video = $bot->message()->video;
 
+        if ($video->duration <= 0) {
+            $bot->sendMessage(text: '🎬 Не вдалося визначити тривалість цього відео. Надішліть, будь ласка, інше.');
+
+            return;
+        }
+
         if ($video->duration > RentalListing::VIDEO_MAX_SECONDS) {
             $bot->sendMessage(text: sprintf(
                 '🎬 Це відео довше за %d хвилини. Надішліть коротше.',
@@ -158,7 +189,18 @@ class RentalVideo extends Conversation
             return;
         }
 
+        if ($video->file_size !== null && $video->file_size > RentalListing::VIDEO_MAX_BYTES) {
+            $bot->sendMessage(text: '🎬 Це відео завелике, більше ніж 1 ГБ. Надішліть стиснене, без «надіслати як файл» чи найвищої якості.');
+
+            return;
+        }
+
         $replaced = $listing->hasVideo();
+        $fromAlbum = $bot->message()->media_group_id !== null;
+
+        if ($fromAlbum) {
+            self::isRestOfAlbum($bot);
+        }
 
         $this->rentalService->attachVideo(
             $listing,
@@ -171,7 +213,11 @@ class RentalVideo extends Conversation
         );
 
         $bot->sendMessage(
-            text: $replaced ? '✅ Відео замінено.' : '✅ Відео додано. Його бачать усі, хто відкриє оголошення.',
+            text: match (true) {
+                $fromAlbum => RentalVideoHintText::ALBUM_ONE_TAKEN,
+                $replaced => '✅ Відео замінено.',
+                default => '✅ Відео додано. Його бачать усі, хто відкриє оголошення.',
+            },
             reply_markup: InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make('🔑 Моє оголошення', callback_data: 'rent:view:' . $listing->getId()),
             ),

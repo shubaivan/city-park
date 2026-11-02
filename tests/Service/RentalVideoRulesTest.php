@@ -14,9 +14,11 @@ use App\Service\ResidentChatService;
 use App\Service\TelegramFileProxy;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Media\File;
+use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -306,6 +308,57 @@ class RentalVideoRulesTest extends TestCase
 
         $this->assertSame(502, $response->getStatusCode());
         $this->assertSame('', $response->getContent());
+    }
+
+    /** The framework's `http_client` logs the url, and this url has the bot token in it. */
+    public function testTheProxyRunsOnAClientWithNoLogger(): void
+    {
+        $services = (string)file_get_contents(__DIR__ . '/../../config/services.yaml');
+        $this->assertMatchesRegularExpression('/TelegramFileProxy:\s+arguments:\s+\$httpClient: \'@app\.telegram_file_http_client\'/', $services);
+
+        $client = HttpClient::create();
+        $property = new \ReflectionProperty($client, 'logger');
+        $this->assertNull($property->getValue($client), 'the factory wired in services.yaml logs nothing');
+    }
+
+    public function testNoFailureWritesTheUrlToTheLog(): void
+    {
+        $lines = [];
+        $logger = $this->createMock(LoggerInterface::class);
+        foreach (['error', 'warning', 'info'] as $level) {
+            $logger->method($level)->willReturnCallback(function (string $message, array $context = []) use (&$lines) {
+                $lines[] = $message . json_encode($context);
+            });
+        }
+
+        $file = (new \ReflectionClass(File::class))->newInstanceWithoutConstructor();
+        $bot = $this->createMock(Nutgram::class);
+        $bot->method('getFile')->willReturn($file);
+        $bot->method('downloadUrl')->willReturn(self::SECRET_URL);
+
+        $status = (new TelegramFileProxy($bot, new MockHttpClient(new MockResponse('', ['error' => 'failed for ' . self::SECRET_URL])), $logger))
+            ->stream('file', 'video/mp4')->getStatusCode();
+        $this->assertSame(502, $status);
+
+        (new TelegramFileProxy($bot, new MockHttpClient(new MockResponse('no', ['http_code' => 500])), $logger))->stream('file', 'video/mp4');
+
+        $this->assertNotSame([], $lines);
+        $this->assertStringNotContainsString('SECRET', implode("\n", $lines));
+    }
+
+    public function testTheRequestAsksForTheRawBytesAndIsBoundedInTime(): void
+    {
+        $seen = [];
+        $client = new MockHttpClient(function (string $method, string $url, array $options) use (&$seen) {
+            $seen = $options;
+
+            return new MockResponse('x');
+        });
+
+        $this->proxy($client)->stream('file', 'video/mp4');
+
+        $this->assertSame('Accept-Encoding: identity', $seen['normalized_headers']['accept-encoding'][0] ?? null);
+        $this->assertGreaterThan(0, $seen['max_duration']);
     }
 
     private function proxy(MockHttpClient $client): TelegramFileProxy

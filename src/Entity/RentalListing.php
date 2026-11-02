@@ -143,6 +143,12 @@ class RentalListing
     /** The one video a listing may carry, at most this long (Иван, 02.11.2026). */
     public const VIDEO_MAX_SECONDS = 180;
 
+    /**
+     * A sanity ceiling, not a technical limit: 3 minutes of phone video that Telegram has
+     * compressed is far below this; Telegram itself would take up to 2 GB.
+     */
+    public const VIDEO_MAX_BYTES = 1024 * 1024 * 1024;
+
     /** Telegram's `getFile` stops at 20 MB, so nothing above it can play in the panel. */
     public const VIDEO_ADMIN_PLAYER_MAX_BYTES = 20_000_000;
 
