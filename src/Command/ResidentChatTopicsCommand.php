@@ -50,6 +50,8 @@ class ResidentChatTopicsCommand extends Command
         // What a new owner needs to find without scrolling three months of chat: contacts,
         // rules, the gas and water notices (Сергій, 28.10.2026). Admins only — see CLOSED.
         self::TOPIC_ANNOUNCEMENTS => ['📌 Важливі оголошення ОСББ ЖК Сіті Парк', 0xFB6F5F],
+        // Where the head of the ОСББ posts documents (Людмила, 02.11.2026). Admins only.
+        self::TOPIC_DOCUMENTS => ['📁 Важливі документи ОСББ', 0x6FB9F0],
     ];
 
     /** Not in ResidentChatService: nothing is ever posted into it by the bot. */
@@ -61,12 +63,15 @@ class ResidentChatTopicsCommand extends Command
     /** Written by the group's admins by hand; the bot posts nothing into it. */
     private const TOPIC_ANNOUNCEMENTS = 'announcements';
 
+    /** Same: written by the group's admins by hand. */
+    private const TOPIC_DOCUMENTS = 'documents';
+
     /**
      * Branches closed straight after they are made. Telegram has no per-topic write
      * permission; a *closed* topic is its way of saying «admins only» — members read it and
      * cannot post, admins still can. That is the whole of «пишуть тільки адміни».
      */
-    private const CLOSED = [self::TOPIC_ANNOUNCEMENTS];
+    private const CLOSED = [self::TOPIC_ANNOUNCEMENTS, self::TOPIC_DOCUMENTS];
 
     private const ENV_KEYS = [
         ResidentChatService::TOPIC_COMPLAINTS => 'RESIDENT_CHAT_TOPIC_COMPLAINTS',
