@@ -67,6 +67,45 @@ class PowerTargetDeliveryTest extends TestCase
         $this->assertSame((int)self::RESIDENTS_CHAT, $this->photos[0]['chat_id']);
     }
 
+    /** The group gets the daily post and its updates, but no «через 15 хвилин». */
+    public function testRemindersGoToTheResidentsOnly(): void
+    {
+        $tz = new \DateTimeZone('Europe/Kyiv');
+        $now = new \DateTimeImmutable('2026-11-02 11:50', $tz);
+        $signature = json_encode([['queue' => '3.1', 'houses' => ['17'], 'outages' => [[720, 840]]]]);
+
+        $chat = $this->createMock(ResidentChatService::class);
+        $chat->method('isConfigured')->willReturn(true);
+        $chat->method('chatId')->willReturn(self::RESIDENTS_CHAT);
+        $chat->method('topic')->willReturn(self::TOPIC);
+        $targets = new PowerTargets($chat, self::GROUP_CHAT);
+
+        $bot = $this->createMock(Nutgram::class);
+        $bot->expects($this->once())->method('sendMessage');
+
+        $posts = $this->createMock(PowerSchedulePostRepository::class);
+        $posts->method('around')->willReturn(['2026-11-02' => new PowerSchedulePost(new \DateTimeImmutable('2026-11-02', $tz), $signature, 1)]);
+
+        $announcer = new PowerScheduleAnnouncer(
+            $bot,
+            $chat,
+            $targets,
+            new MockHttpClient(),
+            $this->createMock(PowerQueueRepository::class),
+            $posts,
+            $this->createMock(PowerQueueResolver::class),
+            new PowerScheduleImage(dirname(__DIR__, 2)),
+            $this->createMock(EntityManagerInterface::class),
+            new NullLogger(),
+            sys_get_temp_dir(),
+        );
+
+        $remind = new \ReflectionMethod(PowerScheduleAnnouncer::class, 'remind');
+
+        $this->assertSame([], $remind->invoke($announcer, $now, $targets->others()[0], false));
+        $this->assertCount(1, $remind->invoke($announcer, $now, $targets->residents(), false));
+    }
+
     private function announcer(string $groupChat, bool $failGroup = false): PowerScheduleAnnouncer
     {
         $chat = $this->createMock(ResidentChatService::class);
