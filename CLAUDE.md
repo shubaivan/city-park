@@ -1623,7 +1623,9 @@ the reason, in which case it cannot be picked. Search is by building and flat (�
 typed must begin a different word of the address, so not кв. 127), and from four digits by phone.
 The first number is the building and the second the unit, so the top hit for «27 17» is буд. 27,
 кв. 17; a flat goes above a storeroom or parking space of the same number and the debt only breaks
-ties. When the best match cannot be written to, nothing is highlighted, so Enter cannot take another address.
+ties. «буд» and «кв» are honoured: «кв 27 буд 17» is only that. Enter takes a result only if it is
+unmistakable, an exact building and flat or a whole phone number; otherwise nothing is highlighted
+and it takes an arrow key or the mouse, because an SMS to the wrong flat cannot be taken back.
 The select has no `name`: picking makes a ticked row in the table (or ticks the one there), so
 there is one checkbox per address and one way into `ids[]`. On the server there is one plan:
 `estimate()` plans for everyone and cuts the threshold's list out of it (`aboveThreshold()`), so

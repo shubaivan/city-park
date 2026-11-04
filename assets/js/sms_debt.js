@@ -26,34 +26,51 @@ document.addEventListener('DOMContentLoaded', function () {
         return text.toLowerCase().split(/[^0-9a-zа-щьюяґєії]+/).filter(Boolean);
     }
 
-    /**
-     * Every word typed has to begin a different word of the address, so «27 63» finds буд. 27,
-     * кв. 63 and never кв. 127, and «27 2» goes on narrowing as the flat is typed. Tried every
-     * way round: «1 19» is буд. 19, кв. 1 although «1» also begins «19». Four digits or more may
-     * also be anywhere in the phone number: a shorter run would match half the house.
-     */
-    function matches(typed, option) {
-        var phone = option.dataset.phone;
+    /** What was typed: buildings and units named as such, and everything else in order. */
+    function parse(term) {
+        var tokens = [];
 
-        function place(left, address) {
-            if (!left.length) {
-                return true;
+        words(term).forEach(function (word) {
+            var glued = word.match(/^(буд|кв)(\d.*)$/);
+
+            if (glued) {
+                tokens.push(glued[1], glued[2]);
+            } else {
+                tokens.push(word);
             }
+        });
 
-            var word = left[0];
-            var rest = left.slice(1);
+        var parsed = { house: null, unit: null, flatOnly: false, free: [] };
 
-            if (/^\d{4,}$/.test(word) && phone.indexOf(word) >= 0 && place(rest, address)) {
-                return true;
+        tokens.forEach(function (word, at) {
+            var next = tokens[at + 1];
+
+            if (parsed.skip === at) {
+                return;
             }
+            if (/^буд/.test(word) && next && /^\d/.test(next)) {
+                parsed.house = next;
+                parsed.skip = at + 1;
+            } else if (/^кв/.test(word) && next && /^\d/.test(next)) {
+                parsed.unit = next;
+                parsed.flatOnly = true;
+                parsed.skip = at + 1;
+            } else {
+                parsed.free.push(word);
+            }
+        });
 
-            return address.some(function (candidate, at) {
-                return candidate.indexOf(word) === 0
-                    && place(rest, address.slice(0, at).concat(address.slice(at + 1)));
-            });
-        }
+        parsed.named = parsed.house !== null || parsed.unit !== null;
+        parsed.numbers = parsed.free.filter(function (word) { return /\d/.test(word); });
 
-        return place(typed, words(option.dataset.place));
+        // Numbers nobody named: the first is the building, the next the unit, as a person says them.
+        var unnamed = parsed.numbers.slice();
+        parsed.houseWord = parsed.house !== null ? parsed.house : (unnamed.shift() || null);
+        parsed.unitWord = parsed.unit !== null ? parsed.unit : (unnamed.shift() || null);
+        parsed.extra = unnamed.length > 0;
+        parsed.empty = !parsed.named && !parsed.free.length;
+
+        return parsed;
     }
 
     function hasWord(list, word, whole) {
@@ -62,36 +79,112 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    /**
-     * How well the numbers typed name this address, lower is better: the first is the building,
-     * the second the unit, as a person says them. So «27 17» is буд. 27, кв. 17 and not буд. 17,
-     * кв. 27, whatever each owes. A single number is a building before it is a flat.
-     */
-    function closeness(typed, option) {
-        var numbers = typed.filter(function (word) { return /\d/.test(word); });
-        var house = words(option.dataset.house);
-        var unit = words(option.dataset.unit);
-        var first = numbers[0];
-        var second = numbers[1];
+    /** The whole number, in any of the shapes it is written in: the last nine digits are the person. */
+    function isFullPhone(word, phone) {
+        return /^\d{9,}$/.test(word) && phone.slice(-9) === word.slice(-9);
+    }
 
-        if (first === undefined) {
-            return 0;
+    /**
+     * Every word typed has to begin a different word of the address, so «27 63» finds буд. 27,
+     * кв. 63 and never кв. 127, and «27 2» goes on narrowing as the flat is typed. Tried every
+     * way round: «1 19» is буд. 19, кв. 1 although «1» also begins «19». A building or a flat
+     * named as such is only that: «кв 27 буд 17» is not буд. 27, кв. 17. Four digits or more
+     * may also be anywhere in the phone number: a shorter run would match half the house.
+     */
+    function matches(parsed, option) {
+        var phone = option.dataset.phone;
+        var address = words(option.dataset.place);
+
+        function take(word) {
+            var at = address.findIndex(function (candidate) { return candidate.indexOf(word) === 0; });
+
+            if (at >= 0) {
+                address.splice(at, 1);
+            }
         }
 
-        if (second === undefined) {
-            if (hasWord(house, first, true)) { return 0; }
-            if (hasWord(unit, first, true)) { return 1; }
+        if (parsed.house !== null) {
+            if (!hasWord(words(option.dataset.house), parsed.house, false)) {
+                return false;
+            }
+            take(parsed.house);
+        }
+        if (parsed.unit !== null) {
+            if (option.dataset.kind !== 'apartment' || !hasWord(words(option.dataset.unit), parsed.unit, false)) {
+                return false;
+            }
+            take(parsed.unit);
+        }
 
-            return 2;
+        function place(left, rest) {
+            if (!left.length) {
+                return true;
+            }
+
+            var word = left[0];
+            var others = left.slice(1);
+            var inPhone = /^\d{4,}$/.test(word) && (phone.indexOf(word) >= 0 || isFullPhone(word, phone));
+
+            if (inPhone && place(others, rest)) {
+                return true;
+            }
+
+            return rest.some(function (candidate, at) {
+                return candidate.indexOf(word) === 0
+                    && place(others, rest.slice(0, at).concat(rest.slice(at + 1)));
+            });
+        }
+
+        return place(parsed.free, address);
+    }
+
+    /**
+     * How well the numbers typed name this address, lower is better. So «27 17» is буд. 27, кв. 17
+     * and not буд. 17, кв. 27, whatever each owes. A single number is a building before it is a flat.
+     */
+    function closeness(parsed, option) {
+        var house = words(option.dataset.house);
+        var unit = words(option.dataset.unit);
+        var first = parsed.houseWord;
+        var second = parsed.unitWord;
+
+        if (first === null && second === null) {
+            return 0;
+        }
+        if (first === null) {
+            return hasWord(unit, second, true) ? 0 : 2;
+        }
+        if (second === null) {
+            if (hasWord(house, first, true)) { return 0; }
+
+            return !parsed.named && hasWord(unit, first, true) ? 1 : 2;
         }
 
         if (hasWord(house, first, true) && hasWord(unit, second, true)) { return 0; }
         if (hasWord(house, first, true) && hasWord(unit, second, false)) { return 1; }
         // Both exact the other way round beats two beginnings: «1 19» is буд. 19, кв. 1.
-        if (hasWord(house, second, true) && hasWord(unit, first, true)) { return 2; }
+        if (!parsed.named && hasWord(house, second, true) && hasWord(unit, first, true)) { return 2; }
         if (hasWord(house, first, false) && hasWord(unit, second, false)) { return 3; }
 
         return 4;
+    }
+
+    /**
+     * May Enter take this result? Only when what was typed can mean nothing else: a building and
+     * a flat, both whole, or a whole phone number. Anything less is a list to choose from, and
+     * an SMS to the wrong flat cannot be taken back.
+     */
+    function isClearHit(parsed, option) {
+        if (option.disabled) {
+            return false;
+        }
+
+        if (!parsed.named && parsed.free.length === 1 && isFullPhone(parsed.free[0], option.dataset.phone)) {
+            return true;
+        }
+
+        return parsed.houseWord !== null && parsed.unitWord !== null && !parsed.extra
+            && option.dataset.kind === 'apartment' && closeness(parsed, option) === 0;
     }
 
     function cell(content, className) {
@@ -133,7 +226,8 @@ document.addEventListener('DOMContentLoaded', function () {
         return box;
     }
 
-    var typed = [];
+    var parsed = parse('');
+    var clearHit = false;
 
     $select.select2({
         width: '100%',
@@ -142,45 +236,52 @@ document.addEventListener('DOMContentLoaded', function () {
             noResults: function () { return 'Нікого не знайдено'; },
         },
         matcher: function (params, data) {
-            typed = words(params.term || '');
+            if (parsed.term !== (params.term || '')) {
+                parsed = parse(params.term || '');
+                parsed.term = params.term || '';
+            }
 
-            if (!typed.length) {
+            if (parsed.empty) {
                 return data;
             }
 
-            return data.element && data.element.value && matches(typed, data.element) ? data : null;
+            return data.element && data.element.value && matches(parsed, data.element) ? data : null;
         },
         // How close the address is, then a flat before a parking space or a storeroom. The debt
         // only breaks a tie: the options arrive largest first and this sort keeps their order.
         sorter: function (results) {
-            if (!typed.length) {
+            clearHit = false;
+
+            if (parsed.empty) {
                 return results;
             }
 
-            return results.map(function (result) {
+            var ranked = results.map(function (result) {
                 return {
                     result: result,
-                    close: closeness(typed, result.element),
+                    close: closeness(parsed, result.element),
                     flat: result.element.dataset.kind === 'apartment' ? 0 : 1,
                 };
             }).sort(function (a, b) {
                 return a.close - b.close || a.flat - b.flat;
-            }).map(function (ranked) {
-                return ranked.result;
+            }).map(function (entry) {
+                return entry.result;
             });
+
+            clearHit = ranked.length > 0 && ranked[0].element && isClearHit(parsed, ranked[0].element);
+
+            return ranked;
         },
     });
 
     /*
-        Select2 highlights the first result that can be picked, and Enter takes the highlighted.
-        When the best match has no number, that would be some other address: nothing is
-        highlighted then, and picking it takes the mouse or an arrow key, on purpose.
+        Select2 highlights the first result that can be picked, and Enter takes the highlighted,
+        which on an empty search is the largest debtor. Unless the top result is unmistakable,
+        nothing is highlighted: an arrow key or the mouse says which one.
     */
     $select.data('select2').on('results:all', function () {
-        var $options = $('.select2-container--open .select2-results__option');
-
-        if ($options.first().attr('aria-disabled') === 'true') {
-            $options.removeClass('select2-results__option--highlighted');
+        if (!clearHit) {
+            $('.select2-results__option--highlighted').removeClass('select2-results__option--highlighted');
         }
     });
 
