@@ -146,6 +146,53 @@ class AdminSmsPageTest extends KernelTestCase
         );
     }
 
+    /**
+     * The search: every debtor with the debt beside them, and who cannot be written to says
+     * so and cannot be picked. It posts nothing itself: what is picked becomes a checkbox.
+     */
+    public function testTheSearchListsEveryDebtorWithTheDebtAndWhyNot(): void
+    {
+        $preview = $this->preview(1, balance: 100.0);
+        $preview['searchable'] = [
+            $this->searchRow(500, '27', '63', '320.50', '380671234567', 1, null),
+            $this->searchRow(501, '19', '7', '150.00', null, 0, 'немає номера'),
+        ];
+
+        $html = $this->render([], $preview);
+
+        $this->assertMatchesRegularExpression('/<select id="debt-sms-search"(?![^>]*\bname=)[^>]*>/u', $html);
+        $this->assertStringContainsString('усі боржники, 2, з номером 1', $html);
+        $this->assertMatchesRegularExpression('/<option value="500"\s+data-place="буд. 27, кв. 63" data-debt="320.50" data-phone="380671234567" data-parts="1">буд. 27, кв. 63 · 320.50 грн · 380671234567<\/option>/u', $html);
+        $this->assertMatchesRegularExpression('/<option value="501" disabled\s+[^>]*>буд. 19, кв. 7 · 150.00 грн · ⛔ немає номера<\/option>/u', $html);
+        $this->assertStringNotContainsString(' selected', $html, 'nobody is written to unless somebody picks them');
+    }
+
+    /** Сергій reads the journal: neither the search nor the phones in it are his. */
+    public function testTheComplaintsRoleDoesNotGetTheSearch(): void
+    {
+        $html = $this->render([], null, 'ROLE_COMPLAINTS');
+
+        $this->assertStringNotContainsString('debt-sms-search', $html);
+        // Not the bare entry name: the shared chunks of `app` carry it in their file names.
+        $this->assertStringNotContainsString('/index/js/sms_debt.min.js', $html);
+    }
+
+    /** Whoever came from the search is counted on the way to the money. */
+    public function testTheConfirmationSaysHowManyCameFromTheSearch(): void
+    {
+        $this->render([]);
+        $preview = $this->preview(2, balance: 100.0);
+        $preview['fromSearch'] = 1;
+
+        $html = self::getContainer()->get(Environment::class)->render('admin/sms_confirm.html.twig', [
+            'preview' => $preview,
+            'price' => 1.29,
+            'min_debt' => 5000.0,
+        ]);
+
+        $this->assertMatchesRegularExpression('/З них додано з пошуку \(борг до 5 000 грн\)<\/td><td[^>]*><b>1</u', $html);
+    }
+
     /** The confirmation: who, how much, the real text, and a form bound to exactly this list. */
     public function testTheConfirmationShowsRecipientsAndCostAndCarriesTheFingerprint(): void
     {
@@ -207,6 +254,14 @@ class AdminSmsPageTest extends KernelTestCase
         $html = $this->render([], null, 'ROLE_COMPLAINTS');
 
         $this->assertStringNotContainsString('debt-sms', $html);
+    }
+
+    private function searchRow(int $id, string $house, string $flat, string $debt, ?string $phone, int $parts, ?string $reason): array
+    {
+        $account = (new \App\Entity\Account())->setDebt($debt)->setHouseNumber($house)->setApartmentNumber($flat)->setAccountNumber('5200' . $flat);
+        (new \ReflectionProperty(\App\Entity\Account::class, 'id'))->setValue($account, $id);
+
+        return ['account' => $account, 'phone' => $phone, 'parts' => $parts, 'reason' => $reason];
     }
 
     private function preview(int $n, ?float $balance): array

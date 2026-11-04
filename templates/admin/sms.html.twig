@@ -2,6 +2,14 @@
 
 {% block title %}SMS · ОСББ City Park{% endblock %}
 
+{% block stylesheets %}
+    {{ parent() }}
+    {% if preview is not null %}
+        {# select2's own stylesheet, split out of the entry at the end of the page. #}
+        {{ encore_entry_link_tags('index/js/sms_debt.min') }}
+    {% endif %}
+{% endblock %}
+
 {#
     The SMS journal: one row per attempt, sent or not. Failures stay on the page on
     purpose — «чому їй не прийшло» is answered by the row that says why.
@@ -102,6 +110,30 @@
 
                     <form id="debt-sms-form" method="get"{% if preview.unavailable is null %} action="{{ path('app_admin_sms_debt_confirm') }}"{% endif %}
                           data-price="{{ price }}" data-balance="{{ preview.balance }}" data-available="{{ preview.unavailable is null ? '1' : '0' }}">
+                        {#
+                            Every debtor, not only those above the threshold (Иван, 04.11.2026). No
+                            name on the select: what is picked becomes a row with a checkbox, so
+                            there is one way into `ids[]` and nobody can be in it twice. The option
+                            says who cannot be written to and why, and cannot be picked.
+                        #}
+                        {% set searchable = preview.searchable|default([]) %}
+                        {% if searchable is not empty %}
+                            <div class="form-group mb-2">
+                                <label for="debt-sms-search" class="small mb-1">
+                                    ➕ <b>Додати боржника</b>: усі боржники, {{ searchable|length }}, з номером {{ searchable|filter(r => r.reason is null)|length }}.
+                                    Шукайте за будинком і квартирою («27 63») або номером телефону.
+                                </label>
+                                <select id="debt-sms-search" class="form-control form-control-sm" autocomplete="off" data-placeholder="Будинок, квартира…">
+                                    <option value=""></option>
+                                    {% for r in searchable %}
+                                        {% set debt = r.account.debt|number_format(2, '.', ' ') %}
+                                        <option value="{{ r.account.id }}"{{ r.reason is not null ? ' disabled' }}
+                                                data-place="{{ r.account.placeLabel }}" data-debt="{{ debt }}" data-phone="{{ r.phone }}" data-parts="{{ r.parts }}">{{ r.account.placeLabel }} · {{ debt }} грн · {{ r.reason is null ? r.phone : '⛔ ' ~ r.reason }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        {% endif %}
+
                         <div class="table-responsive">
                             <table class="table table-sm small mb-2">
                                 <thead>
@@ -109,12 +141,12 @@
                                         <th style="width: 1%;">
                                             <input type="checkbox" id="debt-sms-all" autocomplete="off" aria-label="Вибрати всіх"{{ selectable is empty ? ' disabled' }}>
                                         </th>
-                                        <th><label for="debt-sms-all" class="mb-0">Вибрати всіх ({{ selectable|length }})</label></th>
+                                        <th><label for="debt-sms-all" id="debt-sms-all-label" class="mb-0">Вибрати всіх ({{ selectable|length }})</label></th>
                                         <th class="text-right">Борг</th>
                                         <th>Номер</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="debt-sms-rows">
                                     {% for r in selectable %}
                                         <tr>
                                             <td><input type="checkbox" class="debt-sms-pick" autocomplete="off" id="debt-sms-{{ r.account.id }}" name="ids[]" value="{{ r.account.id }}" data-parts="{{ r.parts }}"></td>
@@ -174,7 +206,7 @@
                     var send = document.getElementById('debt-sms-send');
                     var short = document.getElementById('debt-sms-short');
                     var left = document.getElementById('debt-sms-left');
-                    var picks = Array.prototype.slice.call(form.querySelectorAll('.debt-sms-pick'));
+                    var allLabel = document.getElementById('debt-sms-all-label');
                     var price = parseFloat(form.dataset.price);
                     var balance = form.dataset.balance === '' ? null : parseFloat(form.dataset.balance);
                     var available = form.dataset.available === '1';
@@ -182,7 +214,13 @@
                         return n.toFixed(2).replace(/\B(?=(\d{3})+\.)/g, ' ');
                     };
 
+                    // Read anew each time: the search adds rows (assets/js/sms_debt.js).
+                    function pickBoxes() {
+                        return Array.prototype.slice.call(form.querySelectorAll('.debt-sms-pick'));
+                    }
+
                     function refresh() {
+                        var picks = pickBoxes();
                         var ticked = picks.filter(function (p) { return p.checked; });
                         var parts = ticked.reduce(function (sum, p) { return sum + parseInt(p.dataset.parts, 10); }, 0);
                         var cost = Math.round(parts * price * 100) / 100;
@@ -194,6 +232,8 @@
                             left.textContent = money(Math.max(balance - cost, 0));
                         }
 
+                        allLabel.textContent = 'Вибрати всіх (' + picks.length + ')';
+                        all.disabled = picks.length === 0;
                         all.checked = picks.length > 0 && ticked.length === picks.length;
                         all.indeterminate = ticked.length > 0 && ticked.length < picks.length;
 
@@ -209,15 +249,20 @@
                     }
 
                     all.addEventListener('change', function () {
-                        picks.forEach(function (p) { p.checked = all.checked; });
+                        pickBoxes().forEach(function (p) { p.checked = all.checked; });
                         refresh();
                     });
-                    picks.forEach(function (p) { p.addEventListener('change', refresh); });
+                    form.addEventListener('change', function (event) {
+                        if (event.target.classList.contains('debt-sms-pick')) {
+                            refresh();
+                        }
+                    });
                     // Back from the confirmation: the browser restores the ticks after the script ran.
                     window.addEventListener('pageshow', refresh);
                     refresh();
                 })();
             </script>
+            {{ encore_entry_script_tags('index/js/sms_debt.min') }}
         {% endif %}
 
         {% if entries is empty %}

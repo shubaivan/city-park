@@ -71,4 +71,27 @@ class ExpectedResidentRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    /**
+     * Every phone on file, by account, in `forAccount()`'s order: one query for a whole list.
+     *
+     * @return array<int, list<string>>
+     */
+    public function phonesByAccount(): array
+    {
+        $rows = $this->createQueryBuilder('e')
+            ->select('IDENTITY(e.account) AS account', 'e.phone AS phone')
+            ->andWhere('e.account IS NOT NULL')
+            ->andWhere("e.phone <> ''")
+            ->orderBy('e.id', 'DESC')
+            ->getQuery()
+            ->getScalarResult();
+
+        $phones = [];
+        foreach ($rows as $row) {
+            $phones[(int)$row['account']][] = $row['phone'];
+        }
+
+        return $phones;
+    }
 }

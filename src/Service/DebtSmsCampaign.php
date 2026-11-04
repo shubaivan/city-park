@@ -23,6 +23,10 @@ use Psr\Log\LoggerInterface;
  *
  * In the panel a run goes only to the addresses ticked (Иван, 04.11.2026). What the browser
  * sends is a wish, not a list: `narrow()` holds it against a fresh `plan()` at every step.
+ *
+ * The table on the card is the debtors above the threshold; the search above it reaches every
+ * debtor (Иван, 04.11.2026). `estimate()` plans for all of them once, and the threshold's list
+ * is cut out of that, so the two cannot disagree about who a number belongs to.
  */
 class DebtSmsCampaign
 {
@@ -84,7 +88,9 @@ class DebtSmsCampaign
         };
 
         $debtors = array_filter(
-            $this->accounts->findAll(),
+            // With the owners and, below, the phones in one query each: the search lists about
+            // 900 debtors on every view of the page, and this was two queries for each of them.
+            $this->accounts->findAllWithOwners(),
             static fn ($account) => $account instanceof Account && (float)($account->getDebt() ?? 0) >= $min,
         );
         // Largest debt first: it is the order anybody reading the list wants it in, and when
@@ -93,6 +99,7 @@ class DebtSmsCampaign
 
         $plan['debtors'] = count($debtors);
         $seen = [];
+        $expectedPhones = $this->expected->phonesByAccount();
 
         foreach ($debtors as $account) {
             if ($audience === self::AUDIENCE_UNREACHABLE && $this->reachableInTelegram($account)) {
@@ -101,7 +108,7 @@ class DebtSmsCampaign
                 continue;
             }
 
-            $phone = $this->phoneFor($account);
+            $phone = $this->phoneFor($account, $expectedPhones[$account->getId()] ?? []);
             if ($phone === null) {
                 $plan['noPhone']++;
                 $row($account, null, null, self::REASON_NO_PHONE);
@@ -148,17 +155,25 @@ class DebtSmsCampaign
      * cost, the balance check. `unavailable` is the reason nobody can be sent to right now
      * whatever gets ticked, which is what greys out the button on the card.
      *
+     * The figures and the rows are the threshold's, as on the console. `searchable` is every
+     * debtor, and an id from there may be selected like one from the table: it passes the
+     * same checks, against the same plan.
+     *
      * @param list<mixed>|null $selectedIds account ids as they came from the browser
      *
-     * @return array<string, mixed> plan() plus parts, partsPerMessage, cost, balance, configured, fingerprint, blocked, unavailable, rejected, notChosen, skippedSummary
+     * @return array<string, mixed> plan() plus searchable, parts, partsPerMessage, cost, balance, configured, fingerprint, blocked, unavailable, rejected, notChosen, fromSearch, skippedSummary
      */
     public function estimate(?float $balance, ?\DateTimeImmutable $now = null, ?array $selectedIds = null): array
     {
-        $plan = $this->plan();
+        $everyone = $this->plan((float)AccountRepository::MIN_PUBLISHED_DEBT);
+        $plan = self::aboveThreshold($everyone);
+        $plan['searchable'] = $everyone['rows'];
         $plan['skippedSummary'] = self::skippedBreakdown($plan);
-        $plan['unavailable'] = $this->unavailableReason($plan['recipients'] !== [], $balance, $now);
+        $plan['unavailable'] = $this->unavailableReason($everyone['recipients'] !== [], $balance, $now);
         $plan['selection'] = $selectedIds !== null;
-        $plan = $selectedIds === null ? $plan + ['rejected' => [], 'notChosen' => 0] : self::narrow($plan, $selectedIds);
+        $plan = $selectedIds === null
+            ? $plan + ['rejected' => [], 'notChosen' => 0, 'fromSearch' => 0]
+            : self::narrow($plan, $everyone['recipients'], $selectedIds);
 
         $parts = array_map(static fn (array $r) => SmsSender::parts($r['text']), $plan['recipients']);
 
@@ -418,6 +433,36 @@ class DebtSmsCampaign
     }
 
     /**
+     * The plan of every debtor cut down to the threshold's.
+     *
+     * The same as `plan()` at the threshold, not an approximation: a plan walks the largest
+     * debt first, so whatever decided a row above the threshold had been seen by then in both.
+     *
+     * @param array<string, mixed> $everyone
+     *
+     * @return array<string, mixed>
+     */
+    private static function aboveThreshold(array $everyone): array
+    {
+        $above = static fn (Account $account): bool => (float)$account->getDebt() >= self::DEFAULT_MIN_DEBT;
+        $recipient = static fn (array $r): bool => $above($r['account']);
+
+        $rows = array_values(array_filter($everyone['rows'], $recipient));
+
+        return [
+            'recipients' => array_values(array_filter($everyone['recipients'], $recipient)),
+            'tooLong' => array_values(array_filter($everyone['tooLong'], $above)),
+            'noPhone' => count(array_filter($rows, static fn (array $r): bool => $r['reason'] === self::REASON_NO_PHONE)),
+            'skippedTelegram' => count(array_filter($rows, static fn (array $r): bool => $r['reason'] === self::REASON_TELEGRAM)),
+            'invalidPhone' => array_values(array_filter($everyone['invalidPhone'], $recipient)),
+            'alreadySent' => array_values(array_filter($everyone['alreadySent'], $recipient)),
+            'samePhone' => array_values(array_filter($everyone['samePhone'], $recipient)),
+            'debtors' => count($rows),
+            'rows' => $rows,
+        ];
+    }
+
+    /**
      * The plan cut down to what was ticked, and what was ticked but may not be written to.
      *
      * Ids are compared as strings, not cast: `12abc` must not quietly become address 12.
@@ -425,28 +470,33 @@ class DebtSmsCampaign
      * and that list no longer exists. The same form sent twice lands here too: whoever the
      * first run reached is no longer a recipient.
      *
-     * @param array<string, mixed> $plan
-     * @param list<mixed>          $selectedIds
+     * @param array<string, mixed>                                               $plan
+     * @param list<array{account: Account, phone: string, text: string}>         $eligible everybody who may be written to, below the threshold included
+     * @param list<mixed>                                                        $selectedIds
      *
      * @return array<string, mixed>
      */
-    private static function narrow(array $plan, array $selectedIds): array
+    private static function narrow(array $plan, array $eligible, array $selectedIds): array
     {
         $wanted = array_values(array_unique(array_map(
             static fn (mixed $id): string => is_scalar($id) ? (string)$id : '',
             $selectedIds,
         )));
 
-        $all = $plan['recipients'];
+        $aboveThreshold = count($plan['recipients']);
         $plan['recipients'] = array_values(array_filter(
-            $all,
+            $eligible,
             static fn (array $r): bool => in_array((string)$r['account']->getId(), $wanted, true),
         ));
         $plan['rejected'] = array_values(array_diff(
             $wanted,
             array_map(static fn (array $r): string => (string)$r['account']->getId(), $plan['recipients']),
         ));
-        $plan['notChosen'] = count($all) - count($plan['recipients']);
+        $plan['fromSearch'] = count(array_filter(
+            $plan['recipients'],
+            static fn (array $r): bool => (float)$r['account']->getDebt() < self::DEFAULT_MIN_DEBT,
+        ));
+        $plan['notChosen'] = $aboveThreshold - (count($plan['recipients']) - $plan['fromSearch']);
 
         return $plan;
     }
@@ -563,21 +613,22 @@ class DebtSmsCampaign
      * A linked resident's own number first — it was confirmed by them sharing it with the
      * bot — and otherwise whatever the ОСББ wrote down against the object, which is the
      * only thing there is for the ~790 objects with nobody in the bot.
+     *
+     * Never a tenant's: the flat's arrears are not theirs (`owesForTheFlat()`, as in
+     * DebtNotifyCommand). Above the threshold no object depended on one, in the search three do.
+     *
+     * @param list<string> $expectedPhones what the ОСББ wrote down for this object
      */
-    private function phoneFor(Account $account): ?string
+    private function phoneFor(Account $account, array $expectedPhones): ?string
     {
         $phones = [];
         foreach ($account->getUsers() as $user) {
-            if ($user->getPhoneNumber()) {
+            if ($user->owesForTheFlat() && $user->getPhoneNumber()) {
                 $phones[] = $user->getPhoneNumber();
             }
         }
 
-        foreach ($this->expected->forAccount($account) as $expected) {
-            if ($expected->getPhone() !== '') {
-                $phones[] = $expected->getPhone();
-            }
-        }
+        array_push($phones, ...$expectedPhones);
 
         // A foreign number first in line must not hide a usable one behind it.
         foreach ($phones as $phone) {

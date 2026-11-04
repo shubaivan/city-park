@@ -1615,6 +1615,21 @@ sending, from the panel and the console alike. **Who pressed it:** each journal 
 «панель: <login>», and `var/log/sms.log` has a line for every run started, finished or refused.
 The result flash says sent, failed and skipped, with what the skipped were.
 
+**Any debtor can be added from a search** (Иван, 04.11.2026: «не только исключать, но и добавлять
+новых»). The table stays those above the threshold, 67 on that day, of whom 8 have a number; the
+select2 above it lists everybody owing at least `MIN_PUBLISHED_DEBT`, the board's own definition,
+900 objects, at most 213 of them with a number that can be used. Each option carries the address, the debt and the number, or ⛔ and
+the reason, in which case it cannot be picked. Search is by building and flat («27 63»: every word
+typed must begin a different word of the address, so not кв. 127), and from four digits by phone.
+The select has no `name`: picking makes a ticked row in the table (or ticks the one there), so
+there is one checkbox per address and one way into `ids[]`. On the server there is one plan:
+`estimate()` plans for everyone and cuts the threshold's list out of it (`aboveThreshold()`), so
+figures, table and console stay what they were, and `narrow()` holds a posted id against everybody
+who may be written to. No number, a foreign number, a second object on one number: refused, whole
+run, as before. A tenant's number is never used, the rule `DebtNotifyCommand` already kept. It is 900 rows on each view, so `plan()` loads owners and phones in one query each.
+**A new Encore entry: a deploy has to run `encore production`**, or `/admin/sms` is a 500 in prod,
+where `strict_mode` is on. The test env has it off, so a test does not depend on the last build.
+
 **The real blocker is not any of this: it is the register of owners' phones**, which only
 the ОСББ has. Until it arrives, `debt:notify-sms` reports how many objects with a debt
 have no number at all, which is the argument for asking again.

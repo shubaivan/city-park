@@ -40,6 +40,8 @@ framework:
 #        # Available in version 1.2
 #        cache: true
 
-#when@test:
-#    webpack_encore:
-#        strict_mode: false
+# A test must not depend on when `encore` last ran: an entry missing from an older build renders no
+# tag here. Production stays strict, so a deploy that adds an entry has to build the assets.
+when@test:
+    webpack_encore:
+        strict_mode: false
