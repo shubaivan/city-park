@@ -82,6 +82,7 @@ services:
         arguments:
             $token: '%env(string:TURBOSMS_TOKEN)%'
             $sender: '%env(string:TURBOSMS_SENDER)%'
+            $dailyLimit: '%env(int:SMS_DAILY_LIMIT)%'
 
     # StartCommand resolves this at render time via $bot->getContainer(), which
     # delegates to '@service_container' — and that only exposes PUBLIC services.

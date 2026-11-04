@@ -4,6 +4,9 @@
 <table class="table table-sm mb-2" style="max-width: 460px;">
     <tr><td>Боржників понад {{ min_debt|number_format(0, '.', ' ') }} грн</td><td class="text-right"><b>{{ preview.debtors }}</b></td></tr>
     <tr><td>Отримають SMS</td><td class="text-right"><b>{{ n }}</b></td></tr>
+    {% if preview.fromSearch|default(0) > 0 %}
+        <tr><td>З них додано з пошуку (борг до {{ min_debt|number_format(0, '.', ' ') }} грн)</td><td class="text-right"><b>{{ preview.fromSearch }}</b></td></tr>
+    {% endif %}
     {% if preview.notChosen|default(0) > 0 %}
         <tr class="text-muted"><td>Не вибрано (SMS не піде)</td><td class="text-right">{{ preview.notChosen }}</td></tr>
     {% endif %}

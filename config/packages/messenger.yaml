@@ -12,6 +12,26 @@ framework:
                 retry_strategy:
                     max_retries: 3
                     multiplier: 2
+            # Debt SMS, on their own queue and their own worker (city-park-sms.service), so a slow
+            # TurboSMS cannot hold up votes. Exactly one consumer: TurboSMS 438 can forbid parallel
+            # sends. Never retried: a failure can follow a billed message.
+            sms_send:
+                dsn: 'doctrine://default?queue_name=sms_send'
+                options:
+                    use_notify: true
+                    check_delayed_interval: 60000
+                retry_strategy:
+                    max_retries: 0
+            # Delivery status checks. Only read, so an ordinary failure retries. On the same worker,
+            # named after sms_send: Symfony goes back to the first transport after every job.
+            sms_status:
+                dsn: 'doctrine://default?queue_name=sms_status'
+                options:
+                    use_notify: true
+                    check_delayed_interval: 60000
+                retry_strategy:
+                    max_retries: 3
+                    multiplier: 2
             failed: 'doctrine://default?queue_name=failed'
             # sync: 'sync://'
 
@@ -27,3 +47,5 @@ framework:
 
             # Route your messages to the transports
             App\Message\VoteBroadcastMessage: async
+            App\Message\DebtSmsMessage: sms_send
+            App\Message\SmsDeliveryCheckMessage: sms_status

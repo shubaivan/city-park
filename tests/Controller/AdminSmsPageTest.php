@@ -13,7 +13,7 @@ use Twig\Environment;
  */
 class AdminSmsPageTest extends KernelTestCase
 {
-    private function render(array $entries, ?array $preview = null, string $role = 'ROLE_ADMIN', ?float $balance = 412.5): string
+    private function render(array $entries, ?array $preview = null, string $role = 'ROLE_ADMIN', ?float $balance = 412.5, ?array $run = null): string
     {
         self::bootKernel();
 
@@ -37,6 +37,7 @@ class AdminSmsPageTest extends KernelTestCase
             'min_debt' => 5000.0,
             'balance' => $balance,
             'turbosms_id' => '8980641',
+            'run' => $run,
         ]);
     }
 
@@ -146,6 +147,53 @@ class AdminSmsPageTest extends KernelTestCase
         );
     }
 
+    /**
+     * The search: every debtor with the debt beside them, and who cannot be written to says
+     * so and cannot be picked. It posts nothing itself: what is picked becomes a checkbox.
+     */
+    public function testTheSearchListsEveryDebtorWithTheDebtAndWhyNot(): void
+    {
+        $preview = $this->preview(1, balance: 100.0);
+        $preview['searchable'] = [
+            $this->searchRow(500, '27', '63', '320.50', '380671234567', 1, null),
+            $this->searchRow(501, '19', '7', '150.00', null, 0, 'немає номера'),
+        ];
+
+        $html = $this->render([], $preview);
+
+        $this->assertMatchesRegularExpression('/<select id="debt-sms-search"(?![^>]*\bname=)[^>]*>/u', $html);
+        $this->assertStringContainsString('усі боржники, 2, з номером 1', $html);
+        $this->assertMatchesRegularExpression('/<option value="500"\s+data-place="буд. 27, кв. 63" data-debt="320.50" data-phone="380671234567" data-parts="1"\s+data-house="27" data-unit="63" data-kind="[a-z]+">буд. 27, кв. 63 · 320.50 грн · 380671234567<\/option>/u', $html);
+        $this->assertMatchesRegularExpression('/<option value="501" disabled\s+[^>]*>буд. 19, кв. 7 · 150.00 грн · ⛔ немає номера<\/option>/u', $html);
+        $this->assertStringNotContainsString(' selected', $html, 'nobody is written to unless somebody picks them');
+    }
+
+    /** Сергій reads the journal: neither the search nor the phones in it are his. */
+    public function testTheComplaintsRoleDoesNotGetTheSearch(): void
+    {
+        $html = $this->render([], null, 'ROLE_COMPLAINTS');
+
+        $this->assertStringNotContainsString('debt-sms-search', $html);
+        // Not the bare entry name: the shared chunks of `app` carry it in their file names.
+        $this->assertStringNotContainsString('/index/js/sms_debt.min.js', $html);
+    }
+
+    /** Whoever came from the search is counted on the way to the money. */
+    public function testTheConfirmationSaysHowManyCameFromTheSearch(): void
+    {
+        $this->render([]);
+        $preview = $this->preview(2, balance: 100.0);
+        $preview['fromSearch'] = 1;
+
+        $html = self::getContainer()->get(Environment::class)->render('admin/sms_confirm.html.twig', [
+            'preview' => $preview,
+            'price' => 1.29,
+            'min_debt' => 5000.0,
+        ]);
+
+        $this->assertMatchesRegularExpression('/З них додано з пошуку \(борг до 5 000 грн\)<\/td><td[^>]*><b>1</u', $html);
+    }
+
     /** The confirmation: who, how much, the real text, and a form bound to exactly this list. */
     public function testTheConfirmationShowsRecipientsAndCostAndCarriesTheFingerprint(): void
     {
@@ -171,6 +219,21 @@ class AdminSmsPageTest extends KernelTestCase
         $this->assertSame(3, substr_count($html, 'name="ids[]"'));
         $this->assertMatchesRegularExpression('/Не вибрано \(SMS не піде\)<\/td><td[^>]*>2</u', $html);
         $this->assertMatchesRegularExpression('/Номер не український \(SMS не піде\)<\/td><td[^>]*>1</u', $html);
+    }
+
+    /**
+     * «Що, як номера немає, і чи знімуть гроші?» The page must not promise a refund: TurboSMS
+     * bills what was sent unless there is a contract, and delivery is a separate, later answer.
+     */
+    public function testItSaysWhatHappensToANumberThatDoesNotExist(): void
+    {
+        $html = $this->render([], $this->preview(1, balance: 100.0));
+
+        $this->assertStringContainsString('а не що вона дійшла', $html);
+        $this->assertStringContainsString('гроші можуть списатись', $html);
+        $this->assertStringContainsString('лише за договором з TurboSMS', $html);
+        $this->assertStringNotContainsString('не оплачуються', $html);
+        $this->assertLessThan(strpos($html, 'id="debt-sms-form"'), strpos($html, 'id="debt-sms-delivery-note"'), 'above the list, not 59 rows below it');
     }
 
     /** What is left on TurboSMS is on the page for everybody, and «unknown» is never «0». */
@@ -201,12 +264,100 @@ class AdminSmsPageTest extends KernelTestCase
         $this->assertStringContainsString('<details class="mt-2" open', $low);
     }
 
+    /** The run on the page: N of M, what failed, what is left, and why it stopped. The journal has the rest. */
+    public function testItShowsTheStatusOfTheRun(): void
+    {
+        $run = new \App\Entity\SmsRun('панель: alina', 8, new \DateTimeImmutable());
+        $status = ['run' => $run, 'total' => 8, 'sent' => 3, 'failed' => 1, 'unknown' => 1, 'sending' => 0, 'queued' => 3, 'stalled' => false];
+
+        $html = $this->render([], null, 'ROLE_COMPLAINTS', 100.0, $status);
+
+        $this->assertStringContainsString('Надіслано 3 з 8', $html);
+        $this->assertMatchesRegularExpression('#Не надіслано: <b>1</b>#u', $html);
+        $this->assertMatchesRegularExpression('#Невідомо, чи пішло: <b>1</b>#u', $html);
+        $this->assertMatchesRegularExpression('#У черзі: <b>3</b>#u', $html);
+        $this->assertStringContainsString('http-equiv="refresh"', $html, 'the count moves by itself while it goes');
+
+        $run->stop('на балансі TurboSMS закінчились кошти');
+        $stopped = $this->render([], null, 'ROLE_COMPLAINTS', 100.0, $status);
+        $this->assertStringContainsString('на балансі TurboSMS закінчились кошти', $stopped);
+        $this->assertStringNotContainsString('http-equiv="refresh"', $stopped);
+
+        $this->assertStringNotContainsString('id="sms-run"', $this->render([]));
+    }
+
+    /** A row whose outcome nobody learned is not a refusal, and it may have cost money. */
+    public function testAnUnknownRowIsLabelledAsUnknownAndCountedApart(): void
+    {
+        $unknown = (new SmsLog('380671234567', 'т', SmsLog::PURPOSE_DEBT))->markFailed(\App\Service\SmsSender::OUTCOME_UNKNOWN . 'Operation timed out');
+
+        $html = $this->render([$unknown]);
+
+        $this->assertStringContainsString('❓ <b>невідомо, чи пішло: Operation timed out</b>', $html);
+        $this->assertStringNotContainsString('⛔ не надіслано', $html);
+
+        self::bootKernel();
+        $month = self::getContainer()->get(Environment::class)->render('admin/sms.html.twig', [
+            'entries' => [], 'month' => ['sent' => 1, 'failed' => 0, 'parts' => 1, 'unknown' => 2, 'unknownParts' => 2], 'shown' => 500,
+            'price' => 1.29, 'preview' => null, 'min_debt' => 5000.0, 'balance' => 10.0, 'turbosms_id' => '1', 'run' => null,
+        ]);
+        $this->assertMatchesRegularExpression('#Невідомо, чи пішло: <b>2</b> \(якщо пішли, ще 2.58 грн#u', $month);
+    }
+
+    /** A run that stopped short of M has nothing queued: the jobs are gone, so it says so. */
+    public function testAStoppedRunDoesNotClaimAQueue(): void
+    {
+        $run = (new \App\Entity\SmsRun('a', 8, new \DateTimeImmutable()))->stop('x');
+        $html = $this->render([], null, 'ROLE_ADMIN', 100.0, ['run' => $run, 'total' => 8, 'sent' => 7, 'failed' => 0, 'unknown' => 0, 'sending' => 0, 'queued' => 1, 'stalled' => false]);
+
+        $this->assertMatchesRegularExpression('#Без рядка в журналі: <b>1</b>#u', $html);
+        $this->assertStringNotContainsString('У черзі', $html);
+    }
+
+    /** N of M stays accepted or refused; delivery is a separate line, and a row says its own. */
+    public function testDeliveryIsSeparateFromSent(): void
+    {
+        $run = new \App\Entity\SmsRun('a', 8, new \DateTimeImmutable());
+        $html = $this->render([], null, 'ROLE_ADMIN', 100.0, ['run' => $run, 'total' => 8, 'sent' => 6, 'failed' => 2, 'unknown' => 0, 'sending' => 0, 'queued' => 0, 'stalled' => false, 'delivered' => 3, 'undelivered' => 1, 'awaiting' => 1, 'unanswered' => 1]);
+
+        $this->assertStringContainsString('Надіслано 6 з 8', $html);
+        $this->assertMatchesRegularExpression('#З надісланих: доставлено <b>3</b>, не доставлено <b>1</b>, чекаємо статус <b>1</b>, статус не отримано <b>1</b>#u', $html);
+
+        $row = fn (?string $status) => (new SmsLog('380671234567', 'т', SmsLog::PURPOSE_DEBT))->markSent('id');
+        $this->assertStringContainsString('📬 доставлено', $this->render([$row(null)->markDelivery('Delivered')]));
+        $this->assertStringContainsString('📭 не доставлено: минув строк доставки', $this->render([$row(null)->markDelivery('Expired')]));
+        $this->assertStringContainsString('⏳ чекаємо статус доставки', $this->render([$row(null)->markDelivery('Queued')]));
+        $this->assertStringContainsString('❔ статус не отримано', $this->render([$row(null)->markDelivery(SmsLog::DELIVERY_NO_ANSWER)]));
+
+        $this->assertStringContainsString('Статуси доставки не оновлюються', $this->render([], null, 'ROLE_ADMIN', 100.0, ['run' => $run, 'total' => 8, 'sent' => 6, 'failed' => 2, 'unknown' => 0, 'sending' => 0, 'queued' => 0, 'stalled' => false, 'delivered' => 0, 'undelivered' => 0, 'awaiting' => 6, 'unanswered' => 0, 'checksStalled' => true]));
+
+        $old = $this->render([$row(null)]);
+        $this->assertStringNotContainsString('доставлено', preg_replace('/З надісланих.*/su', '', $old), 'a row nobody asked about claims nothing');
+    }
+
+    /** A queue nobody consumes reads as «надсилається» for ever unless the page says otherwise. */
+    public function testAStalledRunSaysSo(): void
+    {
+        $run = new \App\Entity\SmsRun('a', 8, new \DateTimeImmutable());
+        $html = $this->render([], null, 'ROLE_ADMIN', 100.0, ['run' => $run, 'total' => 8, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'sending' => 0, 'queued' => 8, 'stalled' => true]);
+
+        $this->assertStringContainsString('Черга не рухається', $html);
+    }
+
     /** Сергій reads the journal and never sees the button. */
     public function testTheComplaintsRoleDoesNotSeeTheButton(): void
     {
         $html = $this->render([], null, 'ROLE_COMPLAINTS');
 
         $this->assertStringNotContainsString('debt-sms', $html);
+    }
+
+    private function searchRow(int $id, string $house, string $flat, string $debt, ?string $phone, int $parts, ?string $reason): array
+    {
+        $account = (new \App\Entity\Account())->setDebt($debt)->setHouseNumber($house)->setApartmentNumber($flat)->setAccountNumber('5200' . $flat);
+        (new \ReflectionProperty(\App\Entity\Account::class, 'id'))->setValue($account, $id);
+
+        return ['account' => $account, 'phone' => $phone, 'parts' => $parts, 'reason' => $reason];
     }
 
     private function preview(int $n, ?float $balance): array

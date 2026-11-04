@@ -2,12 +2,25 @@
 
 {% block title %}SMS · ОСББ City Park{% endblock %}
 
+{% block stylesheets %}
+    {{ parent() }}
+    {% if preview is not null %}
+        {# select2's own stylesheet, split out of the entry at the end of the page. #}
+        {{ encore_entry_link_tags('index/js/sms_debt.min') }}
+    {% endif %}
+{% endblock %}
+
 {#
     The SMS journal: one row per attempt, sent or not. Failures stay on the page on
     purpose — «чому їй не прийшло» is answered by the row that says why.
 #}
 {% block body %}
     {{ parent() }}
+
+    {# While a run goes, the card is greyed out, so a reload loses nothing and the count moves by itself. #}
+    {% if run|default(null) and run.run.running %}
+        <meta http-equiv="refresh" content="15">
+    {% endif %}
 
     {# On a phone the two buttons are the whole width: a thumb, not a cursor. #}
     <style>
@@ -39,7 +52,10 @@
                 ({{ month.parts }} SMS до оплати × {{ price|number_format(2, '.', ' ') }} грн
                 = <b>{{ (month.parts * price)|number_format(2, '.', ' ') }} грн</b>){% if month.failed > 0 %},
                 не надіслано <b>{{ month.failed }}</b>{% endif %}.
-                <div class="text-muted">Ціна TurboSMS — {{ price|number_format(2, '.', ' ') }} грн за одну SMS; невдалі спроби не оплачуються.</div>
+                {% if month.unknown|default(0) > 0 %}
+                    Невідомо, чи пішло: <b>{{ month.unknown }}</b> (якщо пішли, ще {{ (month.unknownParts * price)|number_format(2, '.', ' ') }} грн; точно видно в кабінеті TurboSMS).
+                {% endif %}
+                <div class="text-muted">Ціна TurboSMS — {{ price|number_format(2, '.', ' ') }} грн за одну SMS.</div>
                 {#
                     How to put money on it, so the ОСББ does not need Иван for that (07.10.2026).
                     Copied from TurboSMS's own top-up page: a terminal takes the account ID with
@@ -66,6 +82,29 @@
                 </details>
             </div>
         </div>
+
+        {% if run|default(null) %}
+            <div class="card mb-3 {{ run.run.running ? 'border-primary' : (run.run.stopped ? 'border-warning' : 'border-success') }}" id="sms-run">
+                <div class="card-body py-2 px-3 small">
+                    <div style="font-size: 1rem;">
+                        📨 <b>Надіслано {{ run.sent }} з {{ run.total }}</b>{% if run.run.running %} <span class="text-muted">· йде</span>{% elseif run.run.stopped %} <span class="text-warning">· зупинено</span>{% else %} <span class="text-success">· завершено</span>{% endif %}
+                    </div>
+                    {% if run.sent > 0 %}
+                        <div>
+                            З надісланих: доставлено <b>{{ run.delivered|default(0) }}</b>{% if run.undelivered|default(0) > 0 %}, не доставлено <b>{{ run.undelivered }}</b>{% endif %}{% if run.awaiting|default(0) > 0 %}, чекаємо статус <b>{{ run.awaiting }}</b>{% endif %}{% if run.unanswered|default(0) > 0 %}, статус не отримано <b>{{ run.unanswered }}</b>{% endif %}.
+                        </div>
+                    {% endif %}
+                    {% if run.failed > 0 %}Не надіслано: <b>{{ run.failed }}</b>. {% endif %}
+                    {% if run.unknown > 0 %}Невідомо, чи пішло: <b>{{ run.unknown }}</b> (сьогодні повторно не підуть). {% endif %}
+                    {% if run.sending > 0 %}Надсилається або без відповіді: <b>{{ run.sending }}</b>. {% endif %}
+                    {% if run.queued > 0 %}{{ run.run.running ? 'У черзі' : 'Без рядка в журналі' }}: <b>{{ run.queued }}</b>. {% endif %}
+                    {% if run.run.stopReason %}<div class="text-danger">{{ run.run.stopReason }}</div>{% endif %}
+                    {% if run.checksStalled|default(false) %}<div class="alert alert-warning py-1 px-2 mt-1 mb-0">Статуси доставки не оновлюються: схоже, не працює воркер SMS. Напишіть Івану.</div>{% endif %}
+                    {% if run.stalled %}<div class="alert alert-warning py-1 px-2 mt-1 mb-0">Черга не рухається понад 5 хвилин: схоже, не працює воркер. Напишіть Івану.</div>{% endif %}
+                    <div class="text-muted">Хто саме і чому: журнал нижче.{% if run.run.running %} Сторінка оновлюється сама.{% endif %}</div>
+                </div>
+            </div>
+        {% endif %}
 
         {% if preview is not null %}
             {#
@@ -100,8 +139,46 @@
                         · не можна: {{ preview.skippedSummary }}{% endif %}.
                     </p>
 
+                    {#
+                        Людмила's first question: what if the number does not exist, and is money
+                        taken? Nothing here promises a refund. TurboSMS bills every sent SMS unless
+                        the account has a signed contract (turbosms.ua/ua/guide.html, 5.8;
+                        /ua/price.html), and «надіслано» is only the answer to the send; delivery comes
+                        later, as its own line in the journal. Above the list, because below it is 59 rows away on a phone.
+                    #}
+                    <div class="small mb-2" id="debt-sms-delivery-note">
+                        <div>«✅ надіслано» означає, що TurboSMS прийняв SMS, а не що вона дійшла: доставлено чи ні, журнал покаже окремо, згодом.</div>
+                        <div><b>Номера немає або телефон вимкнено:</b> гроші можуть списатись, бо оплачуються всі відправлені SMS. Повернення за недоставлені є лише за договором з TurboSMS.</div>
+                        <div>Рядки з ⛔ у цьому списку не надсилаються і нічого не коштують.</div>
+                    </div>
+
                     <form id="debt-sms-form" method="get"{% if preview.unavailable is null %} action="{{ path('app_admin_sms_debt_confirm') }}"{% endif %}
                           data-price="{{ price }}" data-balance="{{ preview.balance }}" data-available="{{ preview.unavailable is null ? '1' : '0' }}">
+                        {#
+                            Every debtor, not only those above the threshold (Иван, 04.11.2026). No
+                            name on the select: what is picked becomes a row with a checkbox, so
+                            there is one way into `ids[]` and nobody can be in it twice. The option
+                            says who cannot be written to and why, and cannot be picked.
+                        #}
+                        {% set searchable = preview.searchable|default([]) %}
+                        {% if searchable is not empty %}
+                            <div class="form-group mb-2">
+                                <label for="debt-sms-search" class="small mb-1">
+                                    ➕ <b>Додати боржника</b>: усі боржники, {{ searchable|length }}, з номером {{ searchable|filter(r => r.reason is null)|length }}.
+                                    Шукайте за будинком і квартирою («27 63») або номером телефону.
+                                </label>
+                                <select id="debt-sms-search" class="form-control form-control-sm" autocomplete="off" data-placeholder="Будинок, квартира…">
+                                    <option value=""></option>
+                                    {% for r in searchable %}
+                                        {% set debt = r.account.debt|number_format(2, '.', ' ') %}
+                                        <option value="{{ r.account.id }}"{{ r.reason is not null ? ' disabled' }}
+                                                data-place="{{ r.account.placeLabel }}" data-debt="{{ debt }}" data-phone="{{ r.phone }}" data-parts="{{ r.parts }}"
+                                                data-house="{{ r.account.houseNumber }}" data-unit="{{ r.account.apartmentNumber }}" data-kind="{{ r.account.unitType }}">{{ r.account.placeLabel }} · {{ debt }} грн · {{ r.reason is null ? r.phone : '⛔ ' ~ r.reason }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        {% endif %}
+
                         <div class="table-responsive">
                             <table class="table table-sm small mb-2">
                                 <thead>
@@ -109,12 +186,12 @@
                                         <th style="width: 1%;">
                                             <input type="checkbox" id="debt-sms-all" autocomplete="off" aria-label="Вибрати всіх"{{ selectable is empty ? ' disabled' }}>
                                         </th>
-                                        <th><label for="debt-sms-all" class="mb-0">Вибрати всіх ({{ selectable|length }})</label></th>
+                                        <th><label for="debt-sms-all" id="debt-sms-all-label" class="mb-0">Вибрати всіх ({{ selectable|length }})</label></th>
                                         <th class="text-right">Борг</th>
                                         <th>Номер</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="debt-sms-rows">
                                     {% for r in selectable %}
                                         <tr>
                                             <td><input type="checkbox" class="debt-sms-pick" autocomplete="off" id="debt-sms-{{ r.account.id }}" name="ids[]" value="{{ r.account.id }}" data-parts="{{ r.parts }}"></td>
@@ -159,7 +236,9 @@
                     </form>
 
                     <div class="small text-muted mt-2">
-                        Спершу покажемо, кому і за скільки, — без підтвердження нічого не піде.
+                        Спершу покажемо, кому і за скільки, — без підтвердження нічого не піде. Надсилаємо
+                        у фоні, по одній, тому вкладку можна закрити. Перед кожною SMS перевіряємо борг: хто вже
+                        сплатив, не отримає, а суму беремо ту, що на той момент.
                         Текст: «Буд.27 кв.63: борг 5430 грн. Просимо сплатити.» — одна SMS на адресу, на номер мешканця
                         з бота або записаний в «Очікуємо в боті». Той самий номер двічі за день не отримає.
                         Надіслані з'являться в журналі нижче — кому, коли і хто надіслав.
@@ -174,7 +253,7 @@
                     var send = document.getElementById('debt-sms-send');
                     var short = document.getElementById('debt-sms-short');
                     var left = document.getElementById('debt-sms-left');
-                    var picks = Array.prototype.slice.call(form.querySelectorAll('.debt-sms-pick'));
+                    var allLabel = document.getElementById('debt-sms-all-label');
                     var price = parseFloat(form.dataset.price);
                     var balance = form.dataset.balance === '' ? null : parseFloat(form.dataset.balance);
                     var available = form.dataset.available === '1';
@@ -182,7 +261,13 @@
                         return n.toFixed(2).replace(/\B(?=(\d{3})+\.)/g, ' ');
                     };
 
+                    // Read anew each time: the search adds rows (assets/js/sms_debt.js).
+                    function pickBoxes() {
+                        return Array.prototype.slice.call(form.querySelectorAll('.debt-sms-pick'));
+                    }
+
                     function refresh() {
+                        var picks = pickBoxes();
                         var ticked = picks.filter(function (p) { return p.checked; });
                         var parts = ticked.reduce(function (sum, p) { return sum + parseInt(p.dataset.parts, 10); }, 0);
                         var cost = Math.round(parts * price * 100) / 100;
@@ -194,6 +279,8 @@
                             left.textContent = money(Math.max(balance - cost, 0));
                         }
 
+                        allLabel.textContent = 'Вибрати всіх (' + picks.length + ')';
+                        all.disabled = picks.length === 0;
                         all.checked = picks.length > 0 && ticked.length === picks.length;
                         all.indeterminate = ticked.length > 0 && ticked.length < picks.length;
 
@@ -209,15 +296,20 @@
                     }
 
                     all.addEventListener('change', function () {
-                        picks.forEach(function (p) { p.checked = all.checked; });
+                        pickBoxes().forEach(function (p) { p.checked = all.checked; });
                         refresh();
                     });
-                    picks.forEach(function (p) { p.addEventListener('change', refresh); });
+                    form.addEventListener('change', function (event) {
+                        if (event.target.classList.contains('debt-sms-pick')) {
+                            refresh();
+                        }
+                    });
                     // Back from the confirmation: the browser restores the ticks after the script ran.
                     window.addEventListener('pageshow', refresh);
                     refresh();
                 })();
             </script>
+            {{ encore_entry_script_tags('index/js/sms_debt.min') }}
         {% endif %}
 
         {% if entries is empty %}
@@ -252,9 +344,12 @@
                                     <td>
                                         {% if e.status == 'sent' %}✅ надіслано
                                         {% elseif e.status == 'dry_run' %}👁 пробний запуск, не надсилалось
+                                        {% elseif e.status == 'sending' %}⏳ надсилається або без відповіді, сьогодні повторно не піде
+                                        {% elseif e.error and e.error starts with constant('App\\Service\\SmsSender::OUTCOME_UNKNOWN') %}❓ <b>{{ e.error }}</b>, сьогодні повторно не піде
                                         {% else %}⛔ не надіслано{% if e.error %}: <b>{{ e.error }}</b>{% endif %}
                                         {% endif %}
                                         <span class="text-muted">· {{ purposes[e.purpose] ?? e.purpose }}{% if e.parts > 1 %} · {{ e.parts }} SMS{% endif %}{% if e.status == 'sent' %} · {{ (e.parts * price)|number_format(2, '.', ' ') }} грн{% endif %}</span>
+                                        {% if e.status == 'sent' and e.deliveryLabel %}<div>{{ e.deliveryLabel }}</div>{% endif %}
                                         <div style="white-space: pre-wrap">{{ e.text }}</div>
                                         <div class="d-md-none text-muted">{{ e.sentBy ?? '—' }}</div>
                                     </td>

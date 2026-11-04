@@ -1595,14 +1595,87 @@ addresses only, so a balance short of the whole list no longer greys out the car
 is what no tick could change: quiet hours, no token, unknown balance). A panel run touches only
 the ticked: no journal row for anybody else. The console still sends to its whole plan.
 
-**A double send has four separate stops, from the outside in.** The browser disables the
+**The answer for the recipient decides, not the answer for the request** (`SmsSender::recordAnswer()`).
+A refused recipient comes back inside a 802 SUCCESS_MESSAGE_PARTIAL_ACCEPTED with a null `message_id`
+and its own code. An id is sent. A refusal is an allow-list, `SmsSender::REFUSALS`: only the codes the
+docs say stop the request. Everything else, a code nobody listed included, is `OUTCOME_UNKNOWN` and
+blocks the number for the day, since a billed message must not look refused and go out again. 427
+(an identical message exists from the last 90 s) is unknown too: this request created nothing, but
+that number has been written to.
+
+**A panel run goes through the queue** (Иван, 04.11.2026; the first mailing is the first user of
+it). The tap plans under the lock and queues one `App\Message\DebtSmsMessage` per number with an
+`SmsRun`, in one transaction, and returns; `city-park-sms.service` sends them (`DebtSmsDelivery`),
+from the `sms_send` transport, so a slow TurboSMS cannot hold up votes on `async`. **Exactly one
+consumer of `sms_send`:** TurboSMS 438 can forbid parallel sends. `debt:notify-sms` keeps its own loop in the terminal, on the same lock and
+guard. **Never retried:** `sms_send` has `max_retries: 0` and the handler turns every failure into
+an unrecoverable one, so a job goes to `failed`, since a failure can follow a billed message
+(`DebtSmsNoRetryTest`, on Symfony's real Worker). **At most once:** the
+row is committed as `sending` before the request leaves. A job that finds its row (the worker
+died, and Doctrine redelivers after `redeliver_timeout`, 3600 s; or `messenger:failed:retry`) never
+sends; a row still `sending` becomes `OUTCOME_UNKNOWN`. `sms_log` has a unique (run_id, phone_key).
+`sequence_id` (`cpdebt-<run>-<number>`) goes with each request as a second line: TurboSMS runs one
+id once in 30 days and answers a repeat with 507 and the first result. **Checked again per job:**
+night, balance, same-day guard, whether the run is from today, and the flat: paid (below
+`MIN_PUBLISHED_DEBT`) gets no SMS, a changed sum goes out as the new sum, a number no longer the
+flat's (a tenant, replaced) is refused. **A stop:** at 22:00, on an empty or unknown balance, on an
+account-wide refusal (`SmsSender::reasonToStopRun()`) or for a queue left from another day, the run
+is stopped and each job left writes a row with the reason and no request, so sent + the rest reach
+M. So does the first unknown outcome: a provider that hangs is minutes a job, and maybe a bill per
+number. Nothing resumes by itself the next morning: whoever was not reached can be
+picked again. **A job that falls over** (the database, usually) cannot have its row counted, so the
+handler stops the run and the job goes to `failed`; every write of a job throws rather than being
+swallowed like the console's. A run from another day still marked running is ignored by the page
+and the button, and closed at the next tap or by its own next job, since drawing the page writes
+nothing. `DebtSmsRunPostgresTest` runs all this on a real database when it can reach one with the
+schema, and skips otherwise.
+Timeout 120 s: TurboSMS asks for none, and a long wait now holds only this worker, but a connection
+hung for good must end; the unit's `TimeoutStopSec=150` lets a restart finish a send. Pause 1 s
+between requests (`PAUSE_MS`). The page shows «Надіслано N з M» and
+warns when nothing moved for 5 minutes, which is what a stopped `city-park-sms.service` looks like.
+**Deploy with `all`:** a migration and an Encore entry are needed, and `be` skips the build, `fe`
+the migration.
+
+**Delivery status** (Иван, 04.11.2026; `SmsDeliveryChecker`). After a send TurboSMS accepted with an
+id, a delayed `SmsDeliveryCheckMessage` asks `message/status` once and finishes: never a sleep or a
+loop on the worker. Not final means it queues itself again after 1, 5, 15, 60, 240, then 720 minutes,
+up to 48 h, and then the row says «статус не отримано». Final by the docs' table: Delivered, Read
+(📬), Expired, Undelivered, Rejected, Failed, Cancelled (📭); anything else may still change. **It
+never sends**, and `status` stays `sent`, so a «not delivered» does not free the number from the
+same-day guard: sending again is a person's decision. It does not touch the run either: «Надіслано
+N з M» counts accepted or refused and that is what finishes a run, delivery is a separate line under
+it. A check only reads, so its `sms_status` transport retries normally, while `sms_send` never does;
+`DebtSmsNoRetryTest` pins both. **One worker for both, sends first:** Symfony goes back to the first
+transport after every job, so a check holds a send up by one 10 s request at most, and a second
+worker would add a unit and nothing else. The card warns when a due check waits over 15 minutes. A check cannot hurt a send: `start()` swallows its own failure, and a worker that dies
+before queuing it leaves the job to be redelivered, which queues it then. `debt:notify-sms` gets
+checks too, `sms:test` does not. Older rows stay NULL: nobody asked, so nothing is shown.
+
+**«Sent» means accepted, not delivered.** `status` is only the answer to the send; whether it
+arrived is the delivery status above, which comes later. By TurboSMS's rules every sent SMS is billed, and undelivered ones come
+back only on a signed contract (turbosms.ua/ua/guide.html 5.8, /ua/price.html), so the panel must
+not say a failed or undelivered message is free. `/admin/sms` explains this beside the button.
+
+**No failure may eat the balance or bomb people** (Иван, 04.11.2026). There is no automatic re-send
+anywhere: a send job is never retried or re-requested, a check only reads, the client has no
+`retry_failed` and a send follows no redirect. **The circuit-breaker:** `SMS_DAILY_LIMIT` (250, so
+322.50 грн; prod has at most 213 usable numbers) is checked at the last gate before any request, on
+every path. It counts this Kyiv day's rows that may have cost money: sent, `sending` and unknown.
+Reached, a run stops with no request. **Logs:** `var/log/sms.log` (channel `sms`, info, kept about a
+month by logrotate) has `debt sms: job` per job with its decision and balance, `sms answer` per send,
+`sms status answer` and `sms delivery: check` per check. TurboSMS's raw answer is kept there, with
+numbers cut to the nine-digit key. Never a full phone or a text. The balance after a send is the next
+job's `balance_before`: no call is added for it.
+
+**A double send has five separate stops, from the outside in.** The browser disables the
 button on submit. The POST answers with a redirect, so a refresh repeats nothing.
-`DebtSmsCampaign::sendConfirmed()` holds an flock on `var/debt-sms.lock` for the whole run,
-shared with the console command, so a second run at the same time is refused; the kernel
-drops it if the process dies, so a crash cannot leave the button locked. Inside the lock it
-plans again and compares a fingerprint of phones and texts with the one the confirmation page
-carried: whoever a run reached has left the list, so the same form sent again no longer
-matches, and neither does a form from before a debt upload. Underneath it all,
+`DebtSmsCampaign::sendConfirmed()` holds an flock on `var/debt-sms.lock` while it queues, shared
+with the console command, whose whole run holds it, and with each job; the kernel drops it if the
+process dies, so a crash cannot leave the button locked. A run still going refuses the next tap
+(`SmsRunRepository::findActive()`). Inside the lock it plans again and compares a fingerprint of
+phones and texts with the one the confirmation page carried: whoever a run reached has left the
+list, so the same form sent again no longer matches, and neither does a form from before a debt
+upload. Underneath it all,
 `SmsLogRepository::alreadySentToday`, which also counts a send that ended with no answer
 (`SmsSender::OUTCOME_UNKNOWN`): a timeout can follow a message TurboSMS billed, so that
 resident waits until tomorrow rather than risk paying twice.
@@ -1614,6 +1687,26 @@ refusals. **Night:** nothing goes out 22:00–08:00 Kyiv, the window
 sending, from the panel and the console alike. **Who pressed it:** each journal row reads
 «панель: <login>», and `var/log/sms.log` has a line for every run started, finished or refused.
 The result flash says sent, failed and skipped, with what the skipped were.
+
+**Any debtor can be added from a search** (Иван, 04.11.2026: «не только исключать, но и добавлять
+новых»). The table stays those above the threshold, 67 on that day, of whom 8 have a number; the
+select2 above it lists everybody owing at least `MIN_PUBLISHED_DEBT`, the board's own definition,
+900 objects, at most 213 of them with a number that can be used. Each option carries the address, the debt and the number, or ⛔ and
+the reason, in which case it cannot be picked. Search is by building and flat («27 63»: every word
+typed must begin a different word of the address, so not кв. 127), and from four digits by phone.
+The first number is the building and the second the unit, so the top hit for «27 17» is буд. 27,
+кв. 17; a flat goes above a storeroom or parking space of the same number and the debt only breaks
+ties. «буд» and «кв» are honoured: «кв 27 буд 17» is only that. Enter takes a result only if it is
+unmistakable, an exact building and flat or a whole phone number; otherwise nothing is highlighted
+and it takes an arrow key or the mouse, because an SMS to the wrong flat cannot be taken back.
+The select has no `name`: picking makes a ticked row in the table (or ticks the one there), so
+there is one checkbox per address and one way into `ids[]`. On the server there is one plan:
+`estimate()` plans for everyone and cuts the threshold's list out of it (`aboveThreshold()`), so
+figures, table and console stay what they were, and `narrow()` holds a posted id against everybody
+who may be written to. No number, a foreign number, a second object on one number: refused, whole
+run, as before. A tenant's number is never used, the rule `DebtNotifyCommand` already kept, including an `ExpectedResident` row they claimed or that carries their number (the row survives the claim). A flat's number is its earliest resident's by id, and equal debts go by особовий рахунок, so neither depends on load order. It is 900 rows on each view, so `plan()` loads owners and phones in one query each.
+**A new Encore entry: a deploy has to run `encore production`**, or `/admin/sms` is a 500 in prod,
+where `strict_mode` is on. The test env has it off, so a test does not depend on the last build.
 
 **The real blocker is not any of this: it is the register of owners' phones**, which only
 the ОСББ has. Until it arrives, `debt:notify-sms` reports how many objects with a debt
@@ -2069,6 +2162,29 @@ Opening a campaign no longer broadcasts synchronously in the admin request: `ope
 
 **The worker is a long-running PHP process — it holds the code loaded at start.** After any deploy that touches a Message/handler/`BlockVoteService`, run `systemctl restart city-park-messenger.service` so it picks up new code (otherwise it runs stale code until the hourly `--time-limit=3600` exit). Harmless to restart every deploy.
 
+**SMS has its own worker, `city-park-sms.service`, with the same rule about restarting.** Without it,
+SMS queue and never send, and the panel says so after 5 minutes. One instance, never scaled up:
+`/etc/systemd/system/city-park-sms.service`, then `systemctl daemon-reload && systemctl enable city-park-sms.service`,
+without `--now`: on the old code it would crash-loop on an unknown transport, and the deploy's restart starts it:
+
+```
+[Unit]
+Description=city-park messenger consumer (debt SMS)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+TimeoutStopSec=150
+WorkingDirectory=/var/www/html/city-park
+ExecStart=/usr/bin/php8.5 /var/www/html/city-park/bin/console messenger:consume sms_send sms_status --time-limit=3600 --memory-limit=128M --env=prod
+[Install]
+WantedBy=multi-user.target
+```
+
 **Never run as root** — root-owned Symfony cache pool files break conversation state (incident 2026-05-03). After every deploy verify `ls -ld var/cache/prod/pools/app/` shows `www-data`.
 
 ## Deploy
@@ -2079,12 +2195,13 @@ cd /var/www/html/city-park
 git pull origin master
 composer install --no-dev --optimize-autoloader --no-interaction   # if composer.lock changed
 NODE_OPTIONS=--openssl-legacy-provider npx encore production       # if assets/twig changed (flag needed for prod Node 17+ vs old webpack/terser)
+sudo -u www-data php bin/console doctrine:migrations:migrate --no-interaction --env=prod   # if migration added; before the new code boots
+systemctl stop city-park-messenger.service city-park-sms.service     # they hold the old container; can take 150 s if a send hangs
 sudo -u www-data php bin/console cache:clear --env=prod       # NOT `rm -rf var/cache/prod` — see below
-php bin/console doctrine:migrations:migrate --no-interaction --env=prod   # if migration added
 sudo -u www-data php bin/console bot:menu:update --env=prod          # idempotent; safe every deploy
 mkdir -p public/uploads/pavilion-photos
 chown -R www-data:www-data var/cache var/log var/pools public/uploads
-systemctl restart city-park-messenger.service                        # long-running worker; see above
+systemctl restart city-park-messenger.service city-park-sms.service  # long-running workers; see above
 # NOTE: php-fpm is deliberately NOT restarted — see below
 ```
 

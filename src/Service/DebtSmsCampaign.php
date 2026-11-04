@@ -5,9 +5,15 @@ namespace App\Service;
 use App\Command\DebtNotifySmsCommand;
 use App\Entity\Account;
 use App\Entity\SmsLog;
+use App\Entity\SmsRun;
+use App\Entity\TelegramUser;
+use App\Message\DebtSmsMessage;
 use App\Repository\AccountRepository;
 use App\Repository\ExpectedResidentRepository;
+use App\Repository\SmsRunRepository;
+use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * Who a debt SMS run would reach, and the run itself.
@@ -18,22 +24,29 @@ use Psr\Log\LoggerInterface;
  * disagreeing about who was written to.
  *
  * `plan()` and `estimate()` decide and spend nothing; `send()` sends exactly what a plan
- * holds, so the figure shown before the tap is the figure that goes out. The button goes
- * through `sendConfirmed()`, which is where a double send is refused.
+ * holds, which is the console's path. The button goes through `sendConfirmed()`, which is where
+ * a double send is refused and which only queues: one job per number, sent by the worker
+ * (DebtSmsDelivery), so the tap returns at once and a run survives a closed tab.
  *
  * In the panel a run goes only to the addresses ticked (Иван, 04.11.2026). What the browser
  * sends is a wish, not a list: `narrow()` holds it against a fresh `plan()` at every step.
+ *
+ * The table on the card is the debtors above the threshold; the search above it reaches every
+ * debtor (Иван, 04.11.2026). `estimate()` plans for all of them once, and the threshold's list
+ * is cut out of that, so the two cannot disagree about who a number belongs to.
  */
 class DebtSmsCampaign
 {
+    use LogsWithoutThrowing;
+
     /** Иван's and the ОСББ's figure: above this a debt is worth paying to chase. */
     public const DEFAULT_MIN_DEBT = 5000.0;
 
     public const AUDIENCE_ALL = 'all';
     public const AUDIENCE_UNREACHABLE = 'unreachable';
 
-    /** What sendConfirmed() did. Anything but SENT means not one message left. */
-    public const OUTCOME_SENT = 'sent';
+    /** What sendConfirmed() did. Anything but QUEUED means not one job was queued. */
+    public const OUTCOME_QUEUED = 'queued';
     public const OUTCOME_RUNNING = 'running';
     public const OUTCOME_CHANGED = 'changed';
     public const OUTCOME_BLOCKED = 'blocked';
@@ -44,6 +57,10 @@ class DebtSmsCampaign
         private SmsSender $sms,
         private LoggerInterface $smsLogger,
         private string $projectDir,
+        private SmsRunRepository $runs,
+        private MessageBusInterface $bus,
+        private EntityManagerInterface $em,
+        private SmsDeliveryChecker $deliveryChecks,
     ) {
     }
 
@@ -84,15 +101,19 @@ class DebtSmsCampaign
         };
 
         $debtors = array_filter(
-            $this->accounts->findAll(),
+            // With the owners and, below, the phones in one query each: the search lists about
+            // 900 debtors on every view of the page, and this was two queries for each of them.
+            $this->accounts->findAllWithOwners(),
             static fn ($account) => $account instanceof Account && (float)($account->getDebt() ?? 0) >= $min,
         );
         // Largest debt first: it is the order anybody reading the list wants it in, and when
         // one number covers two objects it decides which of them the one SMS names.
-        usort($debtors, static fn (Account $a, Account $b) => (float)$b->getDebt() <=> (float)$a->getDebt());
+        // Equal debts by the unique особовий рахунок, so the choice survives how they were loaded.
+        usort($debtors, static fn (Account $a, Account $b) => [(float)$b->getDebt(), $a->getAccountNumber()] <=> [(float)$a->getDebt(), $b->getAccountNumber()]);
 
         $plan['debtors'] = count($debtors);
         $seen = [];
+        $expectedPhones = $this->expected->phonesByAccount();
 
         foreach ($debtors as $account) {
             if ($audience === self::AUDIENCE_UNREACHABLE && $this->reachableInTelegram($account)) {
@@ -101,7 +122,7 @@ class DebtSmsCampaign
                 continue;
             }
 
-            $phone = $this->phoneFor($account);
+            $phone = $this->phoneFor($account, $expectedPhones[$account->getId()] ?? []);
             if ($phone === null) {
                 $plan['noPhone']++;
                 $row($account, null, null, self::REASON_NO_PHONE);
@@ -148,17 +169,28 @@ class DebtSmsCampaign
      * cost, the balance check. `unavailable` is the reason nobody can be sent to right now
      * whatever gets ticked, which is what greys out the button on the card.
      *
+     * The figures and the rows are the threshold's, as on the console. `searchable` is every
+     * debtor, and an id from there may be selected like one from the table: it passes the
+     * same checks, against the same plan.
+     *
      * @param list<mixed>|null $selectedIds account ids as they came from the browser
      *
-     * @return array<string, mixed> plan() plus parts, partsPerMessage, cost, balance, configured, fingerprint, blocked, unavailable, rejected, notChosen, skippedSummary
+     * @return array<string, mixed> plan() plus searchable, parts, partsPerMessage, cost, balance, configured, fingerprint, blocked, unavailable, rejected, notChosen, fromSearch, skippedSummary
      */
     public function estimate(?float $balance, ?\DateTimeImmutable $now = null, ?array $selectedIds = null): array
     {
-        $plan = $this->plan();
+        $now ??= new \DateTimeImmutable();
+        $everyone = $this->plan((float)AccountRepository::MIN_PUBLISHED_DEBT);
+        $plan = self::aboveThreshold($everyone);
+        $plan['searchable'] = $everyone['rows'];
         $plan['skippedSummary'] = self::skippedBreakdown($plan);
-        $plan['unavailable'] = $this->unavailableReason($plan['recipients'] !== [], $balance, $now);
+        $running = $this->runs->findActive($now) !== null;
+        $plan['running'] = $running;
+        $plan['unavailable'] = $running ? self::RUN_IN_PROGRESS : $this->unavailableReason($everyone['recipients'] !== [], $balance, $now);
         $plan['selection'] = $selectedIds !== null;
-        $plan = $selectedIds === null ? $plan + ['rejected' => [], 'notChosen' => 0] : self::narrow($plan, $selectedIds);
+        $plan = $selectedIds === null
+            ? $plan + ['rejected' => [], 'notChosen' => 0, 'fromSearch' => 0]
+            : self::narrow($plan, $everyone['recipients'], $selectedIds);
 
         $parts = array_map(static fn (array $r) => SmsSender::parts($r['text']), $plan['recipients']);
 
@@ -223,12 +255,12 @@ class DebtSmsCampaign
      *
      * @return resource|null
      */
-    public function acquireLock()
+    public function acquireLock(bool $wait = false)
     {
         $path = $this->projectDir . '/var/debt-sms.lock';
         $handle = @fopen($path, 'c');
         if ($handle === false) {
-            $this->smsLogger->error('debt sms: cannot open the lock file', ['path' => $path]);
+            $this->logLine('error', 'debt sms: cannot open the lock file', ['path' => $path]);
 
             return null;
         }
@@ -236,7 +268,7 @@ class DebtSmsCampaign
         // The panel runs as www-data, the console may not; either must be able to open it.
         @chmod($path, 0666);
 
-        if (!flock($handle, LOCK_EX | LOCK_NB)) {
+        if (!flock($handle, $wait ? LOCK_EX : LOCK_EX | LOCK_NB)) {
             fclose($handle);
 
             return null;
@@ -255,7 +287,7 @@ class DebtSmsCampaign
     }
 
     /**
-     * The confirmed tap: take the lock, look at everything again, send or refuse whole.
+     * The confirmed tap: take the lock, look at everything again, queue or refuse whole.
      *
      * Never a partial run by choice: if the balance does not cover the ticked addresses, or
      * one of them may no longer be written to, nothing goes.
@@ -276,6 +308,7 @@ class DebtSmsCampaign
         }
 
         try {
+            $this->runs->closeStale($now ?? new \DateTimeImmutable());
             $estimate = $this->estimate($this->sms->balance(), $now, $selectedIds);
 
             if ($estimate['rejected'] !== []) {
@@ -293,24 +326,32 @@ class DebtSmsCampaign
                 ));
             }
 
-            $this->smsLogger->info('debt sms: run started', [
-                'by' => $sentBy, 'recipients' => count($estimate['recipients']),
+            $now ??= new \DateTimeImmutable();
+            $run = new SmsRun($sentBy, count($estimate['recipients']), $now);
+
+            // The jobs live in the same database: all of them and the run commit together, or none.
+            $this->em->wrapInTransaction(function () use ($run, $estimate): void {
+                $this->em->persist($run);
+                $this->em->flush();
+
+                foreach ($estimate['recipients'] as $r) {
+                    $this->bus->dispatch(new DebtSmsMessage((int)$run->getId(), (int)$r['account']->getId(), $r['phone'], $r['text']));
+                }
+            });
+
+            $this->logLine('info', 'debt sms: run queued', [
+                'run' => $run->getId(), 'by' => $sentBy, 'recipients' => $run->getTotal(),
                 'cost' => $estimate['cost'], 'balance' => $estimate['balance'],
             ]);
 
-            // Only the ticked: an address nobody chose gets neither a message nor a journal row.
-            $chosen = ['recipients' => $estimate['recipients']];
-            $run = $this->send($chosen, $sentBy);
-
-            $this->smsLogger->info('debt sms: run finished', [
-                'by' => $sentBy, 'sent' => $run['sent'], 'failed' => $run['failed'],
-                'skipped' => $run['skipped'], 'parts' => $run['parts'], 'out_of_money' => $run['outOfMoney'],
-            ]);
-
             return [
-                'outcome' => self::OUTCOME_SENT,
-                'flash' => $run['failed'] > 0 ? 'warning' : 'success',
-                'message' => self::summary($chosen, $run),
+                'outcome' => self::OUTCOME_QUEUED,
+                'flash' => 'success',
+                'message' => sprintf(
+                    'Поставлено в чергу: %d SMS · %s грн. Надсилаємо по одній, результат нижче й у журналі.',
+                    $run->getTotal(),
+                    number_format($estimate['cost'], 2, '.', ' '),
+                ),
             ];
         } finally {
             $this->releaseLock($lock);
@@ -343,15 +384,18 @@ class DebtSmsCampaign
             'logs' => [],
         ];
 
+        $limitReached = null;
+
         foreach ($plan['recipients'] as $r) {
-            if ($result['outOfMoney']) {
+            $stop = $result['outOfMoney'] ? self::OUT_OF_MONEY : $limitReached;
+            if ($stop !== null) {
                 $result['logs'][] = $this->sms->refuse(
                     $r['phone'],
                     $r['text'],
                     SmsLog::PURPOSE_DEBT,
                     $r['account'],
                     $sentBy,
-                    self::OUT_OF_MONEY,
+                    $stop,
                 );
                 $result['failed']++;
                 continue;
@@ -367,6 +411,12 @@ class DebtSmsCampaign
                 continue;
             }
 
+            if ($log->isFailed() && $log->getError() === SmsSender::DAILY_LIMIT_REACHED) {
+                $limitReached = SmsSender::DAILY_LIMIT_REACHED;
+                $result['failed']++;
+                continue;
+            }
+
             if ($log->isFailed()) {
                 $result['failed']++;
 
@@ -379,6 +429,12 @@ class DebtSmsCampaign
 
             $result['sent']++;
             $result['parts'] += $log->getParts();
+
+            // The console's sends are in the same journal, so they get the same answer. Queued
+            // for the worker; dry runs have nothing to ask about.
+            if (!$dryRun) {
+                $this->deliveryChecks->start($log);
+            }
         }
 
         // A foreign number stays a journal row with its reason, as it always was.
@@ -418,6 +474,36 @@ class DebtSmsCampaign
     }
 
     /**
+     * The plan of every debtor cut down to the threshold's.
+     *
+     * The same as `plan()` at the threshold, not an approximation: a plan walks the largest
+     * debt first, so whatever decided a row above the threshold had been seen by then in both.
+     *
+     * @param array<string, mixed> $everyone
+     *
+     * @return array<string, mixed>
+     */
+    private static function aboveThreshold(array $everyone): array
+    {
+        $above = static fn (Account $account): bool => (float)$account->getDebt() >= self::DEFAULT_MIN_DEBT;
+        $recipient = static fn (array $r): bool => $above($r['account']);
+
+        $rows = array_values(array_filter($everyone['rows'], $recipient));
+
+        return [
+            'recipients' => array_values(array_filter($everyone['recipients'], $recipient)),
+            'tooLong' => array_values(array_filter($everyone['tooLong'], $above)),
+            'noPhone' => count(array_filter($rows, static fn (array $r): bool => $r['reason'] === self::REASON_NO_PHONE)),
+            'skippedTelegram' => count(array_filter($rows, static fn (array $r): bool => $r['reason'] === self::REASON_TELEGRAM)),
+            'invalidPhone' => array_values(array_filter($everyone['invalidPhone'], $recipient)),
+            'alreadySent' => array_values(array_filter($everyone['alreadySent'], $recipient)),
+            'samePhone' => array_values(array_filter($everyone['samePhone'], $recipient)),
+            'debtors' => count($rows),
+            'rows' => $rows,
+        ];
+    }
+
+    /**
      * The plan cut down to what was ticked, and what was ticked but may not be written to.
      *
      * Ids are compared as strings, not cast: `12abc` must not quietly become address 12.
@@ -425,28 +511,33 @@ class DebtSmsCampaign
      * and that list no longer exists. The same form sent twice lands here too: whoever the
      * first run reached is no longer a recipient.
      *
-     * @param array<string, mixed> $plan
-     * @param list<mixed>          $selectedIds
+     * @param array<string, mixed>                                               $plan
+     * @param list<array{account: Account, phone: string, text: string}>         $eligible everybody who may be written to, below the threshold included
+     * @param list<mixed>                                                        $selectedIds
      *
      * @return array<string, mixed>
      */
-    private static function narrow(array $plan, array $selectedIds): array
+    private static function narrow(array $plan, array $eligible, array $selectedIds): array
     {
         $wanted = array_values(array_unique(array_map(
             static fn (mixed $id): string => is_scalar($id) ? (string)$id : '',
             $selectedIds,
         )));
 
-        $all = $plan['recipients'];
+        $aboveThreshold = count($plan['recipients']);
         $plan['recipients'] = array_values(array_filter(
-            $all,
+            $eligible,
             static fn (array $r): bool => in_array((string)$r['account']->getId(), $wanted, true),
         ));
         $plan['rejected'] = array_values(array_diff(
             $wanted,
             array_map(static fn (array $r): string => (string)$r['account']->getId(), $plan['recipients']),
         ));
-        $plan['notChosen'] = count($all) - count($plan['recipients']);
+        $plan['fromSearch'] = count(array_filter(
+            $plan['recipients'],
+            static fn (array $r): bool => (float)$r['account']->getDebt() < self::DEFAULT_MIN_DEBT,
+        ));
+        $plan['notChosen'] = $aboveThreshold - (count($plan['recipients']) - $plan['fromSearch']);
 
         return $plan;
     }
@@ -481,6 +572,9 @@ class DebtSmsCampaign
         if (!$estimate['configured']) {
             return 'TurboSMS не налаштовано на сервері — надіслати нема чим.';
         }
+        if ($estimate['running']) {
+            return self::RUN_IN_PROGRESS;
+        }
         if ($estimate['rejected'] !== []) {
             return self::rejectedReason($estimate['rejected']);
         }
@@ -505,31 +599,9 @@ class DebtSmsCampaign
     /** @return array{outcome: string, flash: string, message: string} */
     private function refused(string $outcome, string $sentBy, string $message): array
     {
-        $this->smsLogger->info('debt sms: refused', ['by' => $sentBy, 'outcome' => $outcome, 'message' => $message]);
+        $this->logLine('info', 'debt sms: refused', ['by' => $sentBy, 'outcome' => $outcome, 'message' => $message]);
 
         return ['outcome' => $outcome, 'flash' => 'warning', 'message' => $message];
-    }
-
-    private static function summary(array $plan, array $run): string
-    {
-        $text = sprintf(
-            'Надіслано %d, не надіслано %d, пропущено %d · %s грн.',
-            $run['sent'],
-            $run['failed'],
-            $run['skipped'],
-            number_format($run['parts'] * SmsSender::PRICE_PER_PART, 2, '.', ' '),
-        );
-
-        if ($run['skipped'] > 0) {
-            $breakdown = self::skippedBreakdown($plan);
-            $text .= $breakdown !== '' ? ' Пропущено: ' . $breakdown . '.' : '';
-        }
-
-        if ($run['outOfMoney']) {
-            return $text . ' На TurboSMS закінчились кошти. Поповніть рахунок і натисніть ще раз: кому вже пішло, сьогодні повторно не піде.';
-        }
-
-        return $run['failed'] > 0 ? $text . ' Причини — в журналі нижче.' : $text;
     }
 
     private const INVALID_PHONE = 'не український номер — SMS не надсилаємо';
@@ -544,6 +616,14 @@ class DebtSmsCampaign
 
     /** Why the households after the point the money ran out were not written to. */
     public const OUT_OF_MONEY = 'на балансі TurboSMS закінчились кошти — розсилку зупинено';
+
+    private const RUN_IN_PROGRESS = 'Розсилка вже йде. Дочекайтесь, поки вона закінчиться: результат на цій сторінці.';
+
+    /** The flat's number as things stand now, by the rules of phoneFor(). For a job at delivery. */
+    public function currentPhone(Account $account): ?string
+    {
+        return $this->phoneFor($account, $this->expected->phonesByAccount()[$account->getId()] ?? []);
+    }
 
     /** Somebody on this account whom the bot can write to for free. */
     private function reachableInTelegram(Account $account): bool
@@ -563,19 +643,38 @@ class DebtSmsCampaign
      * A linked resident's own number first — it was confirmed by them sharing it with the
      * bot — and otherwise whatever the ОСББ wrote down against the object, which is the
      * only thing there is for the ~790 objects with nobody in the bot.
+     *
+     * The earliest resident first, by id: a query without an order hands them back as the table
+     * happens to lie, and the same-day guard is per number, so a flat whose number changed between
+     * two runs could be written to twice.
+     *
+     * Never a tenant's: the flat's arrears are not theirs (`owesForTheFlat()`, as in
+     * DebtNotifyCommand). That goes for the ОСББ's row too, which survives being claimed: one
+     * claimed by a tenant, or carrying a linked tenant's number, is that tenant's.
+     *
+     * @param list<array{phone: string, claimedByRole: ?string}> $expected what the ОСББ wrote down for this object
      */
-    private function phoneFor(Account $account): ?string
+    private function phoneFor(Account $account, array $expected): ?string
     {
+        $users = $account->getUsers()->toArray();
+        usort($users, static fn (TelegramUser $a, TelegramUser $b): int => $a->getId() <=> $b->getId());
+
         $phones = [];
-        foreach ($account->getUsers() as $user) {
-            if ($user->getPhoneNumber()) {
+        $tenantKeys = [];
+        foreach ($users as $user) {
+            if (!$user->getPhoneNumber()) {
+                continue;
+            }
+            if ($user->owesForTheFlat()) {
                 $phones[] = $user->getPhoneNumber();
+            } else {
+                $tenantKeys[PhoneKey::of($user->getPhoneNumber())] = true;
             }
         }
 
-        foreach ($this->expected->forAccount($account) as $expected) {
-            if ($expected->getPhone() !== '') {
-                $phones[] = $expected->getPhone();
+        foreach ($expected as $row) {
+            if ($row['claimedByRole'] !== TelegramUser::ROLE_TENANT && !isset($tenantKeys[PhoneKey::of($row['phone'])])) {
+                $phones[] = $row['phone'];
             }
         }
 

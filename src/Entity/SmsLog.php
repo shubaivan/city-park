@@ -30,6 +30,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'sms_log')]
 #[ORM\Index(name: 'sms_created_idx', columns: ['created_at'])]
 #[ORM\Index(name: 'sms_phone_key_idx', columns: ['phone_key'])]
+#[ORM\UniqueConstraint(name: 'sms_run_phone_uniq', columns: ['run_id', 'phone_key'])]
 class SmsLog
 {
     /** Sent and accepted by the provider. */
@@ -38,6 +39,31 @@ class SmsLog
     public const STATUS_FAILED = 'failed';
     /** Counted and priced, deliberately not sent (`--dry-run`). */
     public const STATUS_DRY_RUN = 'dry_run';
+
+    /**
+     * Written and committed before the request leaves. Left like this, nobody knows whether it
+     * went, so the same-day guard treats it like a sent one.
+     */
+    public const STATUS_SENDING = 'sending';
+
+    /** Our own value in `delivery_status`: nobody answered in time. The rest are TurboSMS's words. */
+    public const DELIVERY_NO_ANSWER = 'NoAnswer';
+
+    /** What a delivery status comes to on the page. */
+    public const DELIVERY_DELIVERED = 'delivered';
+    public const DELIVERY_UNDELIVERED = 'undelivered';
+    public const DELIVERY_PENDING = 'pending';
+    public const DELIVERY_UNANSWERED = 'unanswered';
+
+    /** Final by the docs' table. Queued, Accepted, Sent, Unknown and anything new may still change. */
+    private const FINAL_DELIVERED = ['Delivered', 'Read'];
+    private const FINAL_UNDELIVERED = [
+        'Expired' => 'минув строк доставки',
+        'Undelivered' => 'оператор не зміг доставити',
+        'Rejected' => 'відхилено',
+        'Failed' => 'неможливо надіслати',
+        'Cancelled' => 'скасовано, кошти повернено',
+    ];
 
     /** What the message was for. Kept coarse on purpose — this is a filter, not a taxonomy. */
     public const PURPOSE_DEBT = 'debt';
@@ -111,6 +137,21 @@ class SmsLog
     #[ORM\Column(type: Types::STRING, length: 64, nullable: true)]
     private ?string $sent_by = null;
 
+    /** The panel run this belongs to, if any. One number, one row per run: the database holds that too. */
+    #[ORM\ManyToOne(targetEntity: SmsRun::class)]
+    #[ORM\JoinColumn(name: 'run_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?SmsRun $run = null;
+
+    /**
+     * The last thing TurboSMS said about delivery. `status` stays what it was: «sent» means it
+     * accepted the message, which is what the same-day guard and the money go by. NULL: never asked.
+     */
+    #[ORM\Column(type: Types::STRING, length: 16, nullable: true)]
+    private ?string $delivery_status = null;
+
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTime $delivery_checked_at = null;
+
     public function __construct(string $phone, string $text, string $purpose)
     {
         $this->created_at = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
@@ -139,6 +180,9 @@ class SmsLog
 
     public function isSent(): bool { return $this->status === self::STATUS_SENT; }
     public function isFailed(): bool { return $this->status === self::STATUS_FAILED; }
+    public function isSending(): bool { return $this->status === self::STATUS_SENDING; }
+    public function getRun(): ?SmsRun { return $this->run; }
+    public function setRun(?SmsRun $run): self { $this->run = $run; return $this; }
 
     public function setParts(int $parts): self { $this->parts = max(1, $parts); return $this; }
     public function setSentBy(?string $by): self { $this->sent_by = $by; return $this; }
@@ -174,6 +218,58 @@ class SmsLog
         $this->error = mb_substr($error, 0, 255);
 
         return $this;
+    }
+
+    public function markSending(): self
+    {
+        $this->status = self::STATUS_SENDING;
+
+        return $this;
+    }
+
+    public function markDelivery(string $status): self
+    {
+        $this->delivery_status = mb_substr($status, 0, 16);
+        $this->delivery_checked_at = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+
+        return $this;
+    }
+
+    public function getDeliveryStatus(): ?string { return $this->delivery_status; }
+    public function getDeliveryCheckedAt(): ?\DateTime { return $this->delivery_checked_at; }
+
+    public function isDeliveryFinal(): bool
+    {
+        return in_array(self::deliveryStateOf($this->delivery_status), [self::DELIVERY_DELIVERED, self::DELIVERY_UNDELIVERED, self::DELIVERY_UNANSWERED], true);
+    }
+
+    /** Null while nobody has been asked. */
+    public static function deliveryStateOf(?string $status): ?string
+    {
+        return match (true) {
+            $status === null => null,
+            $status === self::DELIVERY_NO_ANSWER => self::DELIVERY_UNANSWERED,
+            in_array($status, self::FINAL_DELIVERED, true) => self::DELIVERY_DELIVERED,
+            isset(self::FINAL_UNDELIVERED[$status]) => self::DELIVERY_UNDELIVERED,
+            default => self::DELIVERY_PENDING,
+        };
+    }
+
+    public function getDeliveryState(): ?string
+    {
+        return self::deliveryStateOf($this->delivery_status);
+    }
+
+    /** The journal's words for it. */
+    public function getDeliveryLabel(): ?string
+    {
+        return match ($this->getDeliveryState()) {
+            self::DELIVERY_DELIVERED => '📬 доставлено',
+            self::DELIVERY_UNDELIVERED => '📭 не доставлено: ' . self::FINAL_UNDELIVERED[$this->delivery_status],
+            self::DELIVERY_UNANSWERED => '❔ статус не отримано',
+            self::DELIVERY_PENDING => '⏳ чекаємо статус доставки',
+            default => null,
+        };
     }
 
     public function markDryRun(): self

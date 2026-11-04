@@ -23,6 +23,23 @@ class SmsSafetyInTestsTest extends KernelTestCase
         $this->assertFalse(self::getContainer()->get(SmsSender::class)->isConfigured());
     }
 
+    /** The setting is there, at the figure the code reasons from, and no client retries a send. */
+    public function testTheCeilingIsSetAndNothingRetriesARequest(): void
+    {
+        $this->assertStringContainsString('SMS_DAILY_LIMIT=' . SmsSender::DEFAULT_DAILY_LIMIT . "\n", (string)file_get_contents(dirname(__DIR__, 2) . '/.env'));
+
+        foreach (glob(dirname(__DIR__, 2) . '/config/packages/*.yaml') as $file) {
+            $this->assertStringNotContainsString('retry_failed', (string)file_get_contents($file), $file);
+        }
+
+        self::bootKernel();
+        $sender = self::getContainer()->get(SmsSender::class);
+        $this->assertSame(SmsSender::DEFAULT_DAILY_LIMIT, (new \ReflectionProperty(SmsSender::class, 'dailyLimit'))->getValue($sender));
+
+        // The channel prod writes to var/log/sms.log. Any other drops info lines on the floor.
+        $this->assertSame('sms', (new \ReflectionProperty(SmsSender::class, 'smsLogger'))->getValue($sender)->getName());
+    }
+
     /** A send whose answer never came must block a repeat, or the retry is a paid duplicate. */
     public function testTheSameDayGuardCountsASendWithNoAnswer(): void
     {
@@ -46,6 +63,6 @@ class SmsSafetyInTestsTest extends KernelTestCase
         } catch (\DomainException) {
         }
 
-        $this->assertStringContainsString('s.status = :sent OR (s.status = :failed AND s.error LIKE :unknown)', (string)$dql);
+        $this->assertStringContainsString('s.status = :sent OR s.status = :sending OR (s.status = :failed AND s.error LIKE :unknown)', (string)$dql);
     }
 }

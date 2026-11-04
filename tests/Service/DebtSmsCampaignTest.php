@@ -3,8 +3,9 @@
 namespace App\Tests\Service;
 
 use App\Entity\Account;
-use App\Entity\ExpectedResident;
 use App\Entity\SmsLog;
+use App\Entity\TelegramUser;
+use App\Message\DebtSmsMessage;
 use App\Repository\AccountRepository;
 use App\Repository\ExpectedResidentRepository;
 use App\Repository\SmsLogRepository;
@@ -26,6 +27,8 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  */
 class DebtSmsCampaignTest extends TestCase
 {
+    use DebtSmsRig;
+
     private const DAY = '2026-11-02 12:00 Europe/Kyiv';
 
     private string $projectDir;
@@ -70,6 +73,43 @@ class DebtSmsCampaignTest extends TestCase
         $this->assertSame(2, $run['failed']);
         $this->assertTrue($run['outOfMoney']);
         $this->assertCount(3, $run['logs'], 'every household gets a journal row, sent or not');
+    }
+
+    /** The ceiling holds on the console too: one row reached it, the rest do not ask. */
+    public function testTheConsoleLoopStopsAtTheCeiling(): void
+    {
+        $this->dailyLimit = 1;
+        $sends = 0;
+        $http = $this->turboSms(100.0, [static function () use (&$sends): array {
+            $sends++;
+
+            return ['response_code' => 0, 'response_result' => [['message_id' => 'a']]];
+        }]);
+        $journal = $this->journal();
+        $campaign = $this->realCampaign($this->debtors([['9000', ['380671111111']], ['8000', ['380672222222']], ['7000', ['380673333333']]]), $http, $journal);
+
+        $run = $campaign->send($campaign->plan(), 'debt:notify-sms');
+
+        $this->assertSame(1, $sends);
+        $this->assertSame(1, $run['sent']);
+        $this->assertSame(2, $run['failed']);
+        $this->assertSame(SmsSender::DAILY_LIMIT_REACHED, $run['logs'][1]->getError());
+    }
+
+    /** The console's accepted sends get a check like the panel's; a dry run has nothing to ask. */
+    public function testTheConsoleLoopQueuesChecksButNotForADryRun(): void
+    {
+        $http = $this->turboSms(100.0, [static fn () => ['response_code' => 0, 'response_result' => [['message_id' => 'a']]]]);
+        $debtors = $this->debtors([['9000', ['380671111111']]]);
+
+        // Fresh journals: the fake guard reads a dry-run row as written to.
+        $dry = $this->realCampaign($debtors, $http, $this->journal());
+        $dry->send($dry->plan(), 'debt:notify-sms', true);
+        $this->assertSame([], $this->bus->checks);
+
+        $real = $this->realCampaign($debtors, $http, $this->journal());
+        $real->send($real->plan(), 'debt:notify-sms');
+        $this->assertCount(1, $this->bus->checks);
     }
 
     /** A wrong number is not an empty balance: the run carries on to the next household. */
@@ -190,38 +230,53 @@ class DebtSmsCampaignTest extends TestCase
         }
     }
 
-    /** The whole path on a real SmsSender: the result, and who is written down as pressing it. */
-    public function testAConfirmedRunSendsAndReportsSentFailedSkipped(): void
+    /**
+     * The tap queues and returns: one job per number, not a request to TurboSMS beyond the
+     * balance, and who pressed it is written down. What came of them is the worker's.
+     */
+    public function testAConfirmedRunQueuesOneJobPerNumberAndSendsNothing(): void
     {
-        $http = $this->turboSms(balance: 100.0, send: [
-            static fn () => ['response_code' => 0, 'response_result' => [['message_id' => 'a']]],
-            static fn () => ['response_code' => 301, 'response_status' => 'REJECTED', 'response_result' => []],
-        ]);
+        $http = $this->turboSms(balance: 100.0, send: []);
         $logger = $this->createMock(LoggerInterface::class);
         $logged = [];
         $logger->method('info')->willReturnCallback(static function (string $m, array $c) use (&$logged): void {
             $logged[$m] = $c;
         });
 
+        $journal = $this->journal();
         $campaign = $this->realCampaign($this->debtors([
             ['9000', ['380671111111']],
             ['8000', ['380672222222']],
             ['7000', []],
-        ]), $http, $this->journal(), $logger);
+        ]), $http, $journal, $logger);
 
-        $now = new \DateTimeImmutable(self::DAY);
-        $result = $this->confirmEveryone($campaign, 'панель: luda_boss', $now);
+        $result = $this->confirmEveryone($campaign, 'панель: luda_boss', new \DateTimeImmutable(self::DAY));
 
-        $this->assertSame(DebtSmsCampaign::OUTCOME_SENT, $result['outcome']);
-        $this->assertSame('warning', $result['flash']);
-        $this->assertStringContainsString('Надіслано 1, не надіслано 1, пропущено 0', $result['message']);
-        $this->assertSame('панель: luda_boss', $logged['debt sms: run started']['by']);
-        $this->assertSame(1, $logged['debt sms: run finished']['sent']);
+        $this->assertSame(DebtSmsCampaign::OUTCOME_QUEUED, $result['outcome']);
+        $this->assertStringContainsString('Поставлено в чергу: 2 SMS · 2.58 грн', $result['message']);
+        $this->assertSame([], $journal->rows, 'no row until the worker gets to it');
+        $this->assertSame('панель: luda_boss', $logged['debt sms: run queued']['by']);
+        $this->assertSame(['380671111111', '380672222222'], array_map(static fn (DebtSmsMessage $m): string => $m->phone, $this->bus->messages));
+        $this->assertSame([100, 101], array_map(static fn (DebtSmsMessage $m): int => $m->accountId, $this->bus->messages));
+    }
+
+    /** The run and its jobs commit together, or the page says sent for a queue that is empty. */
+    public function testTheRunAndItsJobsAreOneTransaction(): void
+    {
+        $campaign = $this->realCampaign($this->debtors([['9000', ['380671111111']]]), $this->turboSms(100.0, []), $this->journal());
+        $this->bus->failWith = new \RuntimeException('database went away');
+
+        $this->expectException(\RuntimeException::class);
+        try {
+            $this->confirmEveryone($campaign, 'a', new \DateTimeImmutable(self::DAY));
+        } finally {
+            $this->assertSame(1, $this->transactions);
+        }
     }
 
     /**
-     * Back, then the same form again: same token, same fingerprint. Whoever the first run
-     * reached has left the list, so the old fingerprint no longer matches.
+     * Back, then the same form again: while the run goes the tap is refused, and afterwards
+     * whoever it reached has left the list, so the old fingerprint no longer matches.
      */
     public function testTheSameFormSentTwiceSendsOnce(): void
     {
@@ -241,13 +296,19 @@ class DebtSmsCampaignTest extends TestCase
         $fingerprint = $estimate['fingerprint'];
         $ids = $this->idsOf($estimate);
 
-        $this->assertSame(DebtSmsCampaign::OUTCOME_SENT, $campaign->sendConfirmed($fingerprint, $ids, 'a', $now)['outcome']);
+        $this->assertSame(DebtSmsCampaign::OUTCOME_QUEUED, $campaign->sendConfirmed($fingerprint, $ids, 'a', $now)['outcome']);
+
+        $during = $campaign->sendConfirmed($fingerprint, $ids, 'a', $now);
+        $this->assertSame(DebtSmsCampaign::OUTCOME_BLOCKED, $during['outcome']);
+        $this->assertStringContainsString('Нічого не надіслано', $during['message']);
+        $this->assertCount(3, $this->bus->messages, 'the second tap queues nothing');
+
+        $this->drain($now);
         $this->assertSame(3, $sends);
 
-        $second = $campaign->sendConfirmed($fingerprint, $ids, 'a', $now);
-
-        $this->assertNotSame(DebtSmsCampaign::OUTCOME_SENT, $second['outcome']);
-        $this->assertStringContainsString('Нічого не надіслано', $second['message']);
+        $after = $campaign->sendConfirmed($fingerprint, $ids, 'a', $now);
+        $this->assertSame(DebtSmsCampaign::OUTCOME_CHANGED, $after['outcome']);
+        $this->drain($now);
         $this->assertSame(3, $sends, 'the second submit must not reach TurboSMS');
     }
 
@@ -256,7 +317,7 @@ class DebtSmsCampaignTest extends TestCase
     {
         $http = $this->turboSms(balance: 100.0, send: [
             static fn () => ['response_code' => 0, 'response_result' => [['message_id' => 'a']]],
-            static fn () => ['response_code' => 301, 'response_status' => 'REJECTED', 'response_result' => []],
+            static fn () => ['response_code' => 412, 'response_status' => 'REJECTED', 'response_result' => []],
         ]);
         $campaign = $this->realCampaign(
             $this->debtors([['9000', ['380671111111']], ['8000', ['380672222222']]]),
@@ -269,6 +330,7 @@ class DebtSmsCampaignTest extends TestCase
         $fingerprint = $estimate['fingerprint'];
         $ids = $this->idsOf($estimate);
         $campaign->sendConfirmed($fingerprint, $ids, 'a', $now);
+        $this->drain($now);
 
         $this->assertSame(DebtSmsCampaign::OUTCOME_CHANGED, $campaign->sendConfirmed($fingerprint, $ids, 'a', $now)['outcome']);
     }
@@ -288,9 +350,9 @@ class DebtSmsCampaignTest extends TestCase
         $campaign = $this->realCampaign($this->debtors([['9000', ['380671111111']]]), $http, $journal);
 
         $now = new \DateTimeImmutable(self::DAY);
-        $result = $this->confirmEveryone($campaign, 'a', $now);
+        $this->confirmEveryone($campaign, 'a', $now);
+        $this->drain($now);
 
-        $this->assertStringContainsString('не надіслано 1', $result['message']);
         $this->assertStringStartsWith(SmsSender::OUTCOME_UNKNOWN, (string)$journal->rows[0]->getError());
         $this->assertSame([], $campaign->estimate(100.0, $now)['recipients']);
     }
@@ -366,6 +428,10 @@ class DebtSmsCampaignTest extends TestCase
             $sms,
             new NullLogger(),
             $this->projectDir . '/no/such/dir',
+            new InMemorySmsRuns($this->journal()),
+            new RecordingBus(),
+            $this->createMock(EntityManagerInterface::class),
+            $this->createMock(\App\Service\SmsDeliveryChecker::class),
         );
 
         $this->assertSame(DebtSmsCampaign::OUTCOME_RUNNING, $campaign->sendConfirmed('x', [100], 'a')['outcome']);
@@ -433,8 +499,9 @@ class DebtSmsCampaignTest extends TestCase
         $this->assertNull($estimate['blocked']);
 
         $result = $campaign->sendConfirmed($estimate['fingerprint'], ['101'], 'a', $now);
+        $this->drain($now);
 
-        $this->assertSame(DebtSmsCampaign::OUTCOME_SENT, $result['outcome']);
+        $this->assertSame(DebtSmsCampaign::OUTCOME_QUEUED, $result['outcome']);
         $this->assertSame(['380672222222'], $sends);
         $this->assertCount(1, $journal->rows, 'nobody unticked gets a row, the foreign number included');
     }
@@ -564,6 +631,291 @@ class DebtSmsCampaignTest extends TestCase
         return $campaign->sendConfirmed($estimate['fingerprint'], $this->idsOf($estimate), $by, $now);
     }
 
+    /**
+     * The search reaches every debtor, each with why they cannot be written to if they cannot;
+     * the table, the figures and an unticked estimate stay the threshold's.
+     */
+    public function testTheSearchListsEveryDebtorAndTheTableKeepsTheThreshold(): void
+    {
+        $estimate = $this->campaign($this->debtors([
+            ['9000', ['380671111111']],
+            ['300', ['380672222222']],
+            ['200', []],
+            ['150', ['48796496316']],
+            ['1', ['380673333333']],
+            ['0.99', ['380674444444']],
+            ['0', ['380675555555']],
+            ['-40', ['380676666666']],
+        ]), $this->configuredSms())->estimate(100.0, new \DateTimeImmutable(self::DAY));
+
+        $this->assertSame([9000.0, 300.0, 200.0, 150.0, 1.0], array_map(
+            static fn (array $r): float => (float)$r['account']->getDebt(),
+            $estimate['searchable'],
+        ), 'below one hryvnia is not a debt, as on the board');
+        $this->assertSame([null, null, 'немає номера', 'номер не український', null], array_column($estimate['searchable'], 'reason'));
+
+        $this->assertSame(1, $estimate['debtors']);
+        $this->assertCount(1, $estimate['rows']);
+        $this->assertCount(1, $estimate['recipients']);
+        $this->assertSame(0, $estimate['noPhone']);
+        $this->assertSame([], $estimate['invalidPhone']);
+    }
+
+    /** One plan cut in two must say what a plan at the threshold says, row by row. */
+    public function testTheThresholdListIsExactlyAPlanAtTheThreshold(): void
+    {
+        $sms = $this->configuredSms();
+        $sms->method('alreadySentToday')->willReturnCallback(static fn (string $phone) => $phone === '380675555555');
+
+        $campaign = $this->campaign($this->debtors([
+            ['9000', ['380671111111']],
+            ['8000', ['380671111111']],
+            ['7000', []],
+            ['6000', ['48796496316']],
+            ['5500', ['380675555555']],
+            ['5000', ['380676666666']],
+            ['4999.99', ['380676666666']],
+            ['300', ['380671111111']],
+            ['200', []],
+        ]), $sms);
+
+        $estimate = $campaign->estimate(100.0, new \DateTimeImmutable(self::DAY));
+        $plan = $campaign->plan();
+
+        foreach (['recipients', 'tooLong', 'noPhone', 'skippedTelegram', 'invalidPhone', 'alreadySent', 'samePhone', 'debtors', 'rows'] as $key) {
+            $this->assertSame($plan[$key], $estimate[$key], $key);
+        }
+    }
+
+    /** Below the threshold, picked in the search: it goes, it is priced, it is said on the way. */
+    public function testAPickFromTheSearchIsSentAndPriced(): void
+    {
+        $sends = [];
+        $journal = $this->journal();
+        $campaign = $this->realCampaign($this->debtors([
+            ['9000', ['380671111111']],
+            ['300', ['380672222222']],
+            ['200', ['380673333333']],
+        ]), $this->recordingTurboSms($sends, 100.0), $journal);
+        $now = new \DateTimeImmutable(self::DAY);
+
+        $estimate = $campaign->estimate(100.0, $now, ['101']);
+
+        $this->assertNull($estimate['blocked']);
+        $this->assertSame(1.29, $estimate['cost']);
+        $this->assertSame(1, $estimate['fromSearch']);
+        $this->assertSame(1, $estimate['notChosen'], 'of those above the threshold, not of the whole house');
+
+        $result = $campaign->sendConfirmed($estimate['fingerprint'], ['101'], 'a', $now);
+        $this->drain($now);
+
+        $this->assertSame(DebtSmsCampaign::OUTCOME_QUEUED, $result['outcome']);
+        $this->assertSame(['380672222222'], $sends);
+        $this->assertStringContainsString('борг 300 грн', $journal->rows[0]->getText());
+    }
+
+    /** From the table and from the search at once: one address, one message. */
+    public function testAnAddressChosenBothWaysGetsOneSms(): void
+    {
+        $sends = [];
+        $campaign = $this->realCampaign($this->debtors([
+            ['9000', ['380671111111']],
+            ['300', ['380672222222']],
+        ]), $this->recordingTurboSms($sends, 100.0), $this->journal());
+        $now = new \DateTimeImmutable(self::DAY);
+        $posted = ['100', '101', 100, '101'];
+
+        $estimate = $campaign->estimate(100.0, $now, $posted);
+
+        $this->assertSame(2, $estimate['parts']);
+        $this->assertSame(0, $estimate['notChosen']);
+        $this->assertSame(DebtSmsCampaign::OUTCOME_QUEUED, $campaign->sendConfirmed($estimate['fingerprint'], $posted, 'a', $now)['outcome']);
+        $this->drain($now);
+        $this->assertSame(['380671111111', '380672222222'], $sends);
+    }
+
+    /** Two objects on one number: one SMS a day, whichever way the second was reached for. */
+    public function testASecondObjectOnTheSameNumberCannotBeAddedFromTheSearch(): void
+    {
+        $sends = [];
+        $campaign = $this->realCampaign($this->debtors([
+            ['9000', ['380671111111']],
+            ['300', ['0671111111']],
+        ]), $this->recordingTurboSms($sends, 100.0), $this->journal());
+        $now = new \DateTimeImmutable(self::DAY);
+
+        $estimate = $campaign->estimate(100.0, $now, ['100', '101']);
+        $this->assertSame(['101'], $estimate['rejected']);
+        $this->assertSame('той самий номер, що в іншої адреси', $estimate['searchable'][1]['reason']);
+
+        $result = $campaign->sendConfirmed($estimate['fingerprint'], ['100', '101'], 'a', $now);
+
+        $this->assertSame(DebtSmsCampaign::OUTCOME_CHANGED, $result['outcome']);
+        $this->assertSame([], $sends);
+    }
+
+    /**
+     * The search does not widen what a hand-edited form can do: an id outside the plan's
+     * recipients refuses the whole run, whatever else came with it.
+     *
+     * @dataProvider notPickable
+     */
+    public function testAnIdTheSearchWouldNotOfferSendsNothing(string $id): void
+    {
+        $sends = [];
+        $campaign = $this->realCampaign($this->debtors([
+            ['9000', ['380671111111']],
+            ['300', []],
+            ['250', ['48796496316']],
+            ['0.5', ['380672222222']],
+            ['0', ['380673333333']],
+        ]), $this->recordingTurboSms($sends, 100.0), $this->journal());
+        $now = new \DateTimeImmutable(self::DAY);
+
+        $estimate = $campaign->estimate(100.0, $now, ['100', $id]);
+        $this->assertSame([$id], $estimate['rejected']);
+        $this->assertNotNull($estimate['blocked']);
+
+        $result = $campaign->sendConfirmed($estimate['fingerprint'], ['100', $id], 'a', $now);
+
+        $this->assertSame(DebtSmsCampaign::OUTCOME_CHANGED, $result['outcome']);
+        $this->assertSame([], $sends);
+    }
+
+    public static function notPickable(): iterable
+    {
+        yield 'no number' => ['101'];
+        yield 'foreign number' => ['102'];
+        yield 'under one hryvnia' => ['103'];
+        yield 'no debt' => ['104'];
+        yield 'nobody' => ['99999'];
+    }
+
+    /** A tenant is not told the flat owes: their number is not the flat's, the owner's is. */
+    public function testATenantsNumberIsNotUsed(): void
+    {
+        [[$onlyTenant], [$both]] = $debtors = $this->debtors([['300', []], ['200', []]]);
+
+        $tenant = static fn (string $phone) => (new TelegramUser())->setPhoneNumber($phone)->setRole(TelegramUser::ROLE_TENANT);
+        $onlyTenant->getUsers()->add($tenant('380671111111'));
+        $both->getUsers()->add($tenant('380672222222'));
+        $both->getUsers()->add((new TelegramUser())->setPhoneNumber('380673333333'));
+
+        $estimate = $this->campaign($debtors, $this->configuredSms())->estimate(100.0, new \DateTimeImmutable(self::DAY));
+
+        $this->assertSame('немає номера', $estimate['searchable'][0]['reason']);
+        $this->assertNull($estimate['searchable'][0]['phone']);
+        $this->assertSame('380673333333', $estimate['searchable'][1]['phone']);
+    }
+
+    /**
+     * The row the ОСББ wrote survives being claimed, so a person who came in on it and was then
+     * marked a tenant is still on file under the object, maybe in another shape of the number.
+     */
+    public function testATenantsNumberIsNotUsedFromTheExpectedRowEither(): void
+    {
+        [[$flat]] = $debtors = $this->debtors([['300', ['0671111111']]]);
+        $flat->getUsers()->add((new TelegramUser())->setPhoneNumber('380671111111')->setRole(TelegramUser::ROLE_TENANT));
+
+        $estimate = $this->campaign($debtors, $this->configuredSms())->estimate(100.0, new \DateTimeImmutable(self::DAY));
+
+        $this->assertSame('немає номера', $estimate['searchable'][0]['reason']);
+    }
+
+    /** Claimed by a tenant, whatever the number looks like now: theirs. By anybody else: the flat's. */
+    public function testAnExpectedRowClaimedByATenantIsNotUsed(): void
+    {
+        $debtors = $this->debtors([
+            ['300', [['phone' => '380671111111', 'claimedByRole' => TelegramUser::ROLE_TENANT]]],
+            ['200', [['phone' => '380672222222', 'claimedByRole' => TelegramUser::ROLE_OWNER]]],
+            ['100', [['phone' => '380673333333', 'claimedByRole' => TelegramUser::ROLE_TENANT], '380674444444']],
+        ]);
+
+        $rows = $this->campaign($debtors, $this->configuredSms())->estimate(100.0, new \DateTimeImmutable(self::DAY))['searchable'];
+
+        $this->assertSame([null, '380672222222', '380674444444'], array_column($rows, 'phone'));
+    }
+
+    /** The owner's number the ОСББ wrote down beside a tenant in the bot is still the flat's. */
+    public function testAnotherNumberBesideATenantIsStillUsed(): void
+    {
+        [[$flat]] = $debtors = $this->debtors([['300', ['380672222222']]]);
+        $flat->getUsers()->add((new TelegramUser())->setPhoneNumber('380671111111')->setRole(TelegramUser::ROLE_TENANT));
+
+        $rows = $this->campaign($debtors, $this->configuredSms())->estimate(100.0, new \DateTimeImmutable(self::DAY))['searchable'];
+
+        $this->assertSame('380672222222', $rows[0]['phone']);
+    }
+
+    /** A flat's number is the same one however the residents happened to be loaded. */
+    public function testTheNumberIsTheEarliestResidentsWhateverOrderTheyLoadIn(): void
+    {
+        $resident = function (int $id, string $phone): TelegramUser {
+            $user = (new TelegramUser())->setPhoneNumber($phone);
+            (new \ReflectionProperty(TelegramUser::class, 'id'))->setValue($user, $id);
+
+            return $user;
+        };
+
+        [[$flat]] = $debtors = $this->debtors([['300', []]]);
+        $flat->getUsers()->add($resident(9, '380672222222'));
+        $flat->getUsers()->add($resident(4, '380671111111'));
+
+        $estimate = $this->campaign($debtors, $this->configuredSms())->estimate(100.0, new \DateTimeImmutable(self::DAY));
+
+        $this->assertSame('380671111111', $estimate['searchable'][0]['phone']);
+    }
+
+    /** Equal debts, one number: which object the SMS names must not depend on how they loaded. */
+    public function testATieOnTheDebtDoesNotDependOnLoadOrder(): void
+    {
+        $debtors = $this->debtors([['300', ['380671111111']], ['300', ['380671111111']]]);
+        $sms = $this->configuredSms();
+
+        $forward = $this->campaign($debtors, $sms)->estimate(100.0, new \DateTimeImmutable(self::DAY));
+        $backward = $this->campaign(array_reverse($debtors), $sms)->estimate(100.0, new \DateTimeImmutable(self::DAY));
+
+        $this->assertSame(array_column($forward['searchable'], 'reason'), array_column($backward['searchable'], 'reason'));
+        $this->assertSame($forward['searchable'][0]['account'], $backward['searchable'][0]['account']);
+    }
+
+    /** The balance has to cover the picks from the search too. */
+    public function testAPickFromTheSearchCountsAgainstTheBalance(): void
+    {
+        $estimate = $this->campaign($this->debtors([
+            ['300', ['380671111111']],
+            ['200', ['380672222222']],
+        ]), $this->configuredSms())->estimate(2.0, new \DateTimeImmutable(self::DAY), ['100', '101']);
+
+        $this->assertStringContainsString('бракує 0.58 грн', (string)$estimate['blocked']);
+    }
+
+    /** Nobody above the threshold has a number, somebody below does: the card must still work. */
+    public function testTheCardWorksWhenOnlyTheSearchHasSomebodyToWriteTo(): void
+    {
+        $now = new \DateTimeImmutable(self::DAY);
+
+        $estimate = $this->campaign($this->debtors([['9000', []], ['300', ['380671111111']]]), $this->configuredSms())->estimate(100.0, $now);
+        $this->assertNull($estimate['unavailable']);
+        $this->assertSame([], $estimate['recipients']);
+
+        $nobody = $this->campaign($this->debtors([['9000', []], ['300', []]]), $this->configuredSms())->estimate(100.0, $now);
+        $this->assertSame('Нікому надсилати.', $nobody['unavailable']);
+    }
+
+    /** TurboSMS, answered from here, and the numbers it was asked to write to. */
+    private function recordingTurboSms(array &$sends, float $balance): MockHttpClient
+    {
+        return new MockHttpClient(static function (string $method, string $url, array $options) use (&$sends, $balance): MockResponse {
+            if (str_contains($url, '/user/balance.json')) {
+                return new MockResponse(json_encode(['response_result' => ['balance' => $balance]]));
+            }
+            $sends[] = json_decode($options['body'], true)['recipients'][0];
+
+            return new MockResponse(json_encode(['response_code' => 0, 'response_result' => [['message_id' => 'a']]]));
+        }, 'https://api.turbosms.ua');
+    }
+
     /** @return list<int> */
     private function idsOf(array $estimate): array
     {
@@ -576,68 +928,6 @@ class DebtSmsCampaignTest extends TestCase
         $sms->method('isConfigured')->willReturn(true);
 
         return $sms;
-    }
-
-    /** @param list<array{0: Account, 1: list<string>}> $debtors */
-    private function campaign(array $debtors, SmsSender $sms): DebtSmsCampaign
-    {
-        return new DebtSmsCampaign(...$this->parts($debtors), ...[$sms, new NullLogger(), $this->projectDir]);
-    }
-
-    /** @param list<array{0: Account, 1: list<string>}> $debtors */
-    private function realCampaign(array $debtors, MockHttpClient $http, InMemorySmsJournal $journal, ?LoggerInterface $logger = null): DebtSmsCampaign
-    {
-        $em = $this->createMock(EntityManagerInterface::class);
-        $em->method('persist')->willReturnCallback(static function (object $row) use ($journal): void {
-            $journal->rows[] = $row;
-        });
-
-        $sms = new SmsSender($http, $em, $journal, new NullLogger(), 'mock-token', 'CityPark');
-
-        return new DebtSmsCampaign(...$this->parts($debtors), ...[$sms, $logger ?? new NullLogger(), $this->projectDir]);
-    }
-
-    /** @return array{AccountRepository, ExpectedResidentRepository} */
-    private function parts(array $debtors): array
-    {
-        $accounts = $this->createMock(AccountRepository::class);
-        $accounts->method('findAll')->willReturn(array_column($debtors, 0));
-
-        $expected = $this->createMock(ExpectedResidentRepository::class);
-        $expected->method('forAccount')->willReturnCallback(function (Account $account) use ($debtors): array {
-            foreach ($debtors as [$candidate, $phones]) {
-                if ($candidate === $account) {
-                    return array_map(function (string $phone) {
-                        $row = $this->createMock(ExpectedResident::class);
-                        $row->method('getPhone')->willReturn($phone);
-
-                        return $row;
-                    }, $phones);
-                }
-            }
-
-            return [];
-        });
-
-        return [$accounts, $expected];
-    }
-
-    /**
-     * @param list<array{0: string, 1: list<string>}> $rows debt and the object's phones
-     *
-     * @return list<array{0: Account, 1: list<string>}>
-     */
-    private function debtors(array $rows): array
-    {
-        $out = [];
-        foreach ($rows as $i => [$debt, $phones]) {
-            $flat = (string)(10 + $i);
-            $account = (new Account())->setDebt($debt)->setHouseNumber('27')->setApartmentNumber($flat)->setAccountNumber('5200' . $flat);
-            (new \ReflectionProperty(Account::class, 'id'))->setValue($account, 100 + $i);
-            $out[] = [$account, $phones];
-        }
-
-        return $out;
     }
 
     /** TurboSMS, answered from here. An unexpected request fails the test rather than leaving. */
@@ -655,33 +945,5 @@ class DebtSmsCampaignTest extends TestCase
 
             return new MockResponse(json_encode($next()));
         }, 'https://api.turbosms.ua');
-    }
-
-    private function journal(): InMemorySmsJournal
-    {
-        return new InMemorySmsJournal();
-    }
-}
-
-/** The journal the same-day guard reads, kept in memory. */
-final class InMemorySmsJournal extends SmsLogRepository
-{
-    /** @var list<SmsLog> */
-    public array $rows = [];
-
-    public function __construct()
-    {
-    }
-
-    public function alreadySentToday(string $phoneKey, string $purpose): bool
-    {
-        foreach ($this->rows as $row) {
-            if ($row->getPhoneKey() === $phoneKey && $row->getPurpose() === $purpose
-                && (!$row->isFailed() || str_starts_with((string)$row->getError(), SmsSender::OUTCOME_UNKNOWN))) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }
