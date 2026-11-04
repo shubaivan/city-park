@@ -1597,10 +1597,11 @@ the ticked: no journal row for anybody else. The console still sends to its whol
 
 **The answer for the recipient decides, not the answer for the request** (`SmsSender::recordAnswer()`).
 A refused recipient comes back inside a 802 SUCCESS_MESSAGE_PARTIAL_ACCEPTED with a null `message_id`
-and its own code: journalled as refused, with the provider's status and code. An id is sent. Anything
-accepted without an id, unreadable, or a 500, 501 or 9000-9999 (the request may have run) is
-`OUTCOME_UNKNOWN`, so it blocks the number for the day: a billed message must not look refused and go
-out again.
+and its own code. An id is sent. A refusal is an allow-list, `SmsSender::REFUSALS`: only the codes the
+docs say stop the request. Everything else, a code nobody listed included, is `OUTCOME_UNKNOWN` and
+blocks the number for the day, since a billed message must not look refused and go out again. 427
+(an identical message exists from the last 90 s) is unknown too: this request created nothing, but
+that number has been written to.
 
 **A double send has four separate stops, from the outside in.** The browser disables the
 button on submit. The POST answers with a redirect, so a refresh repeats nothing.

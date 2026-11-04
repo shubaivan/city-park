@@ -84,9 +84,26 @@ class SmsSenderAnswerTest extends TestCase
         yield 'no code at all' => [['something' => 'else'], 'unknown', null, 'без коду'];
         yield 'fatal error' => [$body(9001, 'FATAL_ERROR', null), 'unknown', null, 'FATAL_ERROR (9001)'];
         yield 'result it could not encode' => [$body(500, 'FAILED_CONVERT_RESULT2JSON', null), 'unknown', null, '(500)'];
+        yield 'fatal error for the recipient' => [$body(802, 'SUCCESS_MESSAGE_PARTIAL_ACCEPTED', [$entry(null, 9001, 'FATAL_ERROR')]), 'unknown', null, 'FATAL_ERROR (9001)'];
+        yield 'unencodable for the recipient' => [$body(802, 'SUCCESS_MESSAGE_PARTIAL_ACCEPTED', [$entry(null, 500, 'FAILED_CONVERT_RESULT2JSON')]), 'unknown', null, '(500)'];
+        yield 'xml for the recipient' => [$body(802, 'SUCCESS_MESSAGE_PARTIAL_ACCEPTED', [$entry(null, 501, 'FAILED_CONVERT_RESULT2XML')]), 'unknown', null, '(501)'];
+        yield 'could not send' => [$body(503, 'FAILED_SMS_SEND', null), 'unknown', null, 'FAILED_SMS_SEND (503)'];
+        yield 'could not send, viber' => [$body(504, 'FAILED_VIBER_SEND', null), 'unknown', null, '(504)'];
+        yield 'another method\'s success' => [$body(804, 'SUCCESS_PROCESSED', null), 'unknown', null, '(804)'];
+        yield 'partial of another method' => [$body(805, 'SUCCESS_PARTIAL_PROCESSED', null), 'unknown', null, '(805)'];
+        yield 'a code the table does not have' => [$body(899, 'WHO_KNOWS', null), 'unknown', null, '(899)'];
+        yield 'pong' => [$body(1, 'PONG', null), 'unknown', null, '(1)'];
+        yield 'a code the table does not have, for the recipient' => [$body(802, 'SUCCESS_MESSAGE_PARTIAL_ACCEPTED', [$entry(null, 7777, 'WHO_KNOWS')]), 'unknown', null, '(7777)'];
+        yield 'already in this mailing' => [$body(802, 'SUCCESS_MESSAGE_PARTIAL_ACCEPTED', [$entry(null, 407, 'NOT_ALLOWED_RECIPIENT_DUPLICATE')]), 'unknown', null, '(407)'];
+        yield 'an identical message from the last 90 seconds' => [$body(427, 'NOT_ALLOWED_MESSAGE_DUPLICATE', null), 'unknown', null, 'NOT_ALLOWED_MESSAGE_DUPLICATE (427)'];
+        yield 'the same, for the recipient' => [$body(802, 'SUCCESS_MESSAGE_PARTIAL_ACCEPTED', [$entry(null, 427, 'NOT_ALLOWED_MESSAGE_DUPLICATE')]), 'unknown', null, 'вже створено'];
+        yield 'too many to this recipient' => [$body(428, 'NOT_ALLOWED_MESSAGES_NUMBER_LIMIT', null), 'refused', null, '(428)'];
+        yield 'a limit of this connection' => [$body(436, 'NOT_ALLOWED_SEND_LIMIT', null), 'refused', null, '(436)'];
+        yield 'no parallel sends' => [$body(438, 'NOT_ALLOWED_CONNECTIONS_LIMIT', null), 'refused', null, '(438)'];
+        yield 'a sender not active' => [$body(401, 'NOT_ALLOWED_MESSAGE_SENDER_NOT_ACTIVE', null), 'refused', null, '(401)'];
+        yield 'a bad number' => [$body(802, 'SUCCESS_MESSAGE_PARTIAL_ACCEPTED', [$entry(null, 305, 'INVALID_RECIPIENT')]), 'refused', null, '(305)'];
         yield 'no money' => [$body(203, 'REQUIRED_BALANCE', null), 'refused', null, 'REQUIRED_BALANCE (203)'];
         yield 'the whole request refused' => [$body(105, 'REQUIRED_AUTH', []), 'refused', null, 'REQUIRED_AUTH (105)'];
-        yield 'could not send' => [$body(503, 'FAILED_SMS_SEND', null), 'refused', null, 'FAILED_SMS_SEND (503)'];
     }
 
     /** The same-day guard reads this prefix, so an unknown cannot go out a second time. */

@@ -48,6 +48,30 @@ class SmsSender
     private const BALANCE_URL = 'https://api.turbosms.ua/user/balance.json';
 
     /**
+     * Codes from the table at turbosms.ua/api.html that mean nothing was created for this SMS:
+     * no token or an inactive user (103-106), a missing sender, text, recipient or balance
+     * (200-203), an invalid request (300-306, 315), a sender, date, stoplist, recipient count or
+     * country not allowed (400-406), content refused (411-413), the limits (428, 436-438) and a
+     * body it could not read (502). Viber-only codes cannot answer an SMS and are left out: a
+     * code not here is unknown, on purpose.
+     */
+    private const REFUSALS = [
+        103, 104, 105, 106,
+        200, 201, 202, 203,
+        300, 301, 302, 303, 304, 305, 306, 315,
+        400, 401, 403, 404, 405, 406, 411, 412, 413,
+        428, 436, 437, 438,
+        502,
+    ];
+
+    /**
+     * «Попытка создать сообщение, которое уже было создано в течение последних 90 секунд». This
+     * request created nothing, but the identical message exists and was billed, so the number
+     * has been written to and must not be written to again today.
+     */
+    private const IDENTICAL_MESSAGE_EXISTS = 427;
+
+    /**
      * A Cyrillic SMS is **70 characters**, not 160 — the alphabet does not fit GSM-7 and
      * the message goes out as UCS-2. Past that it is split, and a two-part message costs
      * twice. Every text this bot sends is written to fit one part, and `parts()` is what
@@ -223,10 +247,9 @@ class SmsSender
      * recipient's message_id null and its own code in the entry (turbosms.ua/api.html).
      *
      * Three outcomes, and the third is why this is not a yes or no. Sent: an id. Refused: the
-     * provider says so, nothing was created, and a later attempt is fine. Unknown: anything that
-     * says it was accepted without an id, or that cannot be read. A billed message must not
-     * look refused and go out again, so those take OUTCOME_UNKNOWN, which the same-day guard
-     * treats like a sent one.
+     * docs say the request stops there, listed in REFUSALS, and a later attempt is fine. Unknown:
+     * everything else, a code nobody listed included. A billed message must not look refused and
+     * go out again, so those take OUTCOME_UNKNOWN, which the same-day guard treats like a sent one.
      *
      * @param array<mixed> $body
      */
@@ -253,7 +276,7 @@ class SmsSender
             }
 
             if (!$entryAccepted) {
-                return $log->markFailed(sprintf('%s (%d)', $entryStatus, $entryCode));
+                return self::recordCode($log, $entryCode, $entryStatus);
             }
         }
 
@@ -261,12 +284,19 @@ class SmsSender
             return $log->markFailed(self::OUTCOME_UNKNOWN . sprintf('TurboSMS прийняв запит (%s, %d), але не дав id', $status, $code));
         }
 
-        // A result it could not encode, or its own fatal error: the request may well have run.
-        if ($code === 500 || $code === 501 || ($code >= 9000 && $code <= 9999)) {
-            return $log->markFailed(self::OUTCOME_UNKNOWN . sprintf('%s (%d)', $status, $code));
+        return self::recordCode($log, $code, $status);
+    }
+
+    /** Not accepted, no id: refused only if the docs say this code stops the request. */
+    private static function recordCode(SmsLog $log, int $code, string $status): SmsLog
+    {
+        if ($code === self::IDENTICAL_MESSAGE_EXISTS) {
+            return $log->markFailed(self::OUTCOME_UNKNOWN . sprintf('таке саме повідомлення вже створено за останні 90 секунд, %s (%d)', $status, $code));
         }
 
-        return $log->markFailed(sprintf('%s (%d)', $status, $code));
+        return in_array($code, self::REFUSALS, true)
+            ? $log->markFailed(sprintf('%s (%d)', $status, $code))
+            : $log->markFailed(self::OUTCOME_UNKNOWN . sprintf('%s (%d)', $status, $code));
     }
 
     /**
