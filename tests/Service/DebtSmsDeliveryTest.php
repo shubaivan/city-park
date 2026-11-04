@@ -190,7 +190,7 @@ class DebtSmsDeliveryTest extends TestCase
     }
 
     /**
-     * TurboSMS hangs: 70 s a job, on the only worker, and each maybe billed. The first one stops
+     * TurboSMS hangs: minutes a job, and each maybe billed. The first one stops
      * the run, the rest write their rows with no request.
      */
     public function testTheFirstUnknownOutcomeStopsTheRun(): void
@@ -221,7 +221,7 @@ class DebtSmsDeliveryTest extends TestCase
         $this->drain(new \DateTimeImmutable(self::DAY));
     }
 
-    /** TurboSMS asks for no timeout on a send; 60 s is ours, and a repeat is de-duplicated by id. */
+    /** TurboSMS asks for no timeout on a send; 120 s is ours, and a repeat is de-duplicated by id. */
     public function testTheRequestCarriesASequenceIdAndALongTimeout(): void
     {
         $this->queued($this->debtors([['9000', ['380671111111']]]));
@@ -230,7 +230,7 @@ class DebtSmsDeliveryTest extends TestCase
 
         $this->assertSame('cpdebt-1-671111111', $this->posts[0]['sequence_id']);
         $this->assertLessThanOrEqual(40, strlen($this->posts[0]['sequence_id']));
-        $this->assertSame(60.0, (float)$this->lastOptions['timeout']);
+        $this->assertSame(120.0, (float)$this->lastOptions['timeout']);
     }
 
     /** 22:00 with jobs left: none goes tonight, nothing goes by itself tomorrow, every row says why. */

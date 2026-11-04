@@ -35,8 +35,8 @@ class DebtSmsDelivery
     /**
      * Between two requests to TurboSMS. Its docs state no rate for message/send, only limits set
      * per connection (436, 437), no parallel sends where that is on (438) and 5 in 10 s and 10 in
-     * 60 s to one recipient (428), which a run cannot reach. One worker is sequential already; a
-     * second apart leaves room for all of it and costs 45 SMS under a minute.
+     * 60 s to one recipient (428), which a run cannot reach. One consumer is sequential already; a
+     * second apart leaves room for limits we cannot see, and on its own worker it delays nobody.
      */
     public const PAUSE_MS = 1000;
 

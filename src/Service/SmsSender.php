@@ -75,10 +75,11 @@ class SmsSender
     /**
      * TurboSMS asks for no timeout on a send: it processes the request anyway, and whoever gave
      * up then retries and pays twice. Here giving up never retries (OUTCOME_UNKNOWN blocks the
-     * number), but a hung connection must not hold the worker for ever. This is the longest wait
-     * that still lets a deploy's restart finish the send: systemd kills a worker after 90 s.
+     * number), and a long wait now holds only the SMS worker, so a slow answer gets every chance
+     * to be an answer. It stays finite for a connection that hung for good, and below the 150 s
+     * city-park-sms.service gives a job to finish on restart, so a deploy does not cut a send off.
      */
-    private const SEND_TIMEOUT = 60;
+    private const SEND_TIMEOUT = 120;
 
     public const STOPPED_ON_UNKNOWN = 'розсилку зупинено: невідомо, чи пішла попередня SMS. Перевірте кабінет TurboSMS і запустіть решту ще раз';
 
@@ -266,7 +267,7 @@ class SmsSender
     /**
      * Why this run must not go on after this answer, or null. A refusal about the account would
      * come back for every job left. An unknown outcome is the first sign of a provider that hangs:
-     * at 70 s a job that holds the only worker, and maybe a bill per number with nothing to show.
+     * minutes a job, and maybe a bill per number with nothing to show.
      * The rest then write their rows without asking.
      */
     public static function reasonToStopRun(SmsLog $log): ?string

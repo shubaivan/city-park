@@ -1605,11 +1605,12 @@ that number has been written to.
 
 **A panel run goes through the queue** (Иван, 04.11.2026; the first mailing is the first user of
 it). The tap plans under the lock and queues one `App\Message\DebtSmsMessage` per number with an
-`SmsRun`, in one transaction, and returns; `city-park-messenger.service` sends them
-(`DebtSmsDelivery`). `debt:notify-sms` keeps its own loop in the terminal, on the same lock and
-guard. **Never retried:** the handler turns every failure into an unrecoverable one, so a job goes
-to the `failed` transport instead of the `async` transport's three retries, since a failure can
-follow a billed message (`DebtSmsNoRetryTest`, on Symfony's real Worker). **At most once:** the
+`SmsRun`, in one transaction, and returns; `city-park-sms.service` sends them (`DebtSmsDelivery`),
+from the `sms_send` transport, so a slow TurboSMS cannot hold up votes on `async`. **Exactly one
+consumer of `sms_send`:** TurboSMS 438 can forbid parallel sends. `debt:notify-sms` keeps its own loop in the terminal, on the same lock and
+guard. **Never retried:** `sms_send` has `max_retries: 0` and the handler turns every failure into
+an unrecoverable one, so a job goes to `failed`, since a failure can follow a billed message
+(`DebtSmsNoRetryTest`, on Symfony's real Worker). **At most once:** the
 row is committed as `sending` before the request leaves. A job that finds its row (the worker
 died, and Doctrine redelivers after `redeliver_timeout`, 3600 s; or `messenger:failed:retry`) never
 sends; a row still `sending` becomes `OUTCOME_UNKNOWN`. `sms_log` has a unique (run_id, phone_key).
@@ -1620,18 +1621,20 @@ night, balance, same-day guard, whether the run is from today, and the flat: pai
 flat's (a tenant, replaced) is refused. **A stop:** at 22:00, on an empty or unknown balance, on an
 account-wide refusal (`SmsSender::reasonToStopRun()`) or for a queue left from another day, the run
 is stopped and each job left writes a row with the reason and no request, so sent + the rest reach
-M. So does the first unknown outcome: a provider that hangs is 70 s a job on the only worker, and
-maybe a bill per number. Nothing resumes by itself the next morning: whoever was not reached can be
+M. So does the first unknown outcome: a provider that hangs is minutes a job, and maybe a bill per
+number. Nothing resumes by itself the next morning: whoever was not reached can be
 picked again. **A job that falls over** (the database, usually) cannot have its row counted, so the
 handler stops the run and the job goes to `failed`; every write of a job throws rather than being
 swallowed like the console's. A run from another day still marked running is ignored by the page
 and the button, and closed at the next tap or by its own next job, since drawing the page writes
 nothing. `DebtSmsRunPostgresTest` runs all this on a real database when it can reach one with the
 schema, and skips otherwise.
-Timeout 60 s: TurboSMS asks for none, but a hung connection must not hold the worker, and systemd
-kills it at 90 s. Pause 1 s between requests (`PAUSE_MS`). The page shows «Надіслано N з M» and
-warns when nothing moved for 5 minutes. **Deploy with `all`:** a migration, an Encore entry and the
-worker restart are all needed, and `be` skips the build, `fe` the migration and the restart.
+Timeout 120 s: TurboSMS asks for none, and a long wait now holds only this worker, but a connection
+hung for good must end; the unit's `TimeoutStopSec=150` lets a restart finish a send. Pause 1 s
+between requests (`PAUSE_MS`). The page shows «Надіслано N з M» and
+warns when nothing moved for 5 minutes, which is what a stopped `city-park-sms.service` looks like.
+**Deploy with `all`:** a migration and an Encore entry are needed, and `be` skips the build, `fe`
+the migration.
 
 **A double send has five separate stops, from the outside in.** The browser disables the
 button on submit. The POST answers with a redirect, so a refresh repeats nothing.
@@ -2128,6 +2131,28 @@ Opening a campaign no longer broadcasts synchronously in the admin request: `ope
 
 **The worker is a long-running PHP process — it holds the code loaded at start.** After any deploy that touches a Message/handler/`BlockVoteService`, run `systemctl restart city-park-messenger.service` so it picks up new code (otherwise it runs stale code until the hourly `--time-limit=3600` exit). Harmless to restart every deploy.
 
+**SMS has its own worker, `city-park-sms.service`, with the same rule about restarting.** Without it,
+SMS queue and never send, and the panel says so after 5 minutes. One instance, never scaled up:
+`/etc/systemd/system/city-park-sms.service`, then `systemctl daemon-reload && systemctl enable --now`:
+
+```
+[Unit]
+Description=city-park messenger consumer (debt SMS)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+TimeoutStopSec=150
+WorkingDirectory=/var/www/html/city-park
+ExecStart=/usr/bin/php8.5 /var/www/html/city-park/bin/console messenger:consume sms_send --time-limit=3600 --memory-limit=128M --env=prod
+[Install]
+WantedBy=multi-user.target
+```
+
 **Never run as root** — root-owned Symfony cache pool files break conversation state (incident 2026-05-03). After every deploy verify `ls -ld var/cache/prod/pools/app/` shows `www-data`.
 
 ## Deploy
@@ -2144,6 +2169,7 @@ sudo -u www-data php bin/console bot:menu:update --env=prod          # idempoten
 mkdir -p public/uploads/pavilion-photos
 chown -R www-data:www-data var/cache var/log var/pools public/uploads
 systemctl restart city-park-messenger.service                        # long-running worker; see above
+systemctl restart city-park-sms.service                              # the SMS worker; below
 # NOTE: php-fpm is deliberately NOT restarted — see below
 ```
 

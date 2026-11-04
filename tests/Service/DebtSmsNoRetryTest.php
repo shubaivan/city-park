@@ -23,8 +23,8 @@ use Symfony\Component\Messenger\Worker;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * Proof on Symfony's real Worker and retry listener, set up like the `async` transport
- * (max_retries: 3), that a failing send is not delivered again. A failure can follow a message
+ * Proof on Symfony's real Worker and retry listener that a failing send is not delivered again,
+ * both by the handler's own doing under `async`'s max_retries: 3 and by the transport's rule. A failure can follow a message
  * TurboSMS billed, so a retry can be a second bill.
  */
 class DebtSmsNoRetryTest extends TestCase
@@ -63,15 +63,37 @@ class DebtSmsNoRetryTest extends TestCase
         $this->assertCount(1, $transport->getSent());
     }
 
-    /** On the transport the worker consumes: city-park-messenger.service runs `consume async`. */
-    public function testItIsRoutedToTheTransportTheWorkerConsumes(): void
+    /**
+     * The transport's own rule, read from the real config: even a plain failure that got past
+     * the handler is not delivered again. The same rig retried it above with max_retries 3.
+     */
+    public function testTheSmsTransportItselfDoesNotRetry(): void
     {
-        $config = Yaml::parseFile(dirname(__DIR__, 2) . '/config/packages/messenger.yaml');
+        $transports = Yaml::parseFile(dirname(__DIR__, 2) . '/config/packages/messenger.yaml')['framework']['messenger']['transports'];
 
-        $this->assertSame('async', $config['framework']['messenger']['routing'][DebtSmsMessage::class]);
+        $transport = $this->runOnce(
+            new DebtSmsMessage(1, 1, '380671111111', 't'),
+            static function (): void {
+                throw new \RuntimeException('boom');
+            },
+            $transports['sms_send']['retry_strategy']['max_retries'],
+        );
+
+        $this->assertCount(1, $transport->getSent());
+        $this->assertCount(1, $transport->getRejected());
     }
 
-    private function runOnce(object $job, callable $handler): InMemoryTransport
+    /** Its own queue, and votes stay where they were. */
+    public function testSmsHasItsOwnTransportAndVotesDoNotShareIt(): void
+    {
+        $messenger = Yaml::parseFile(dirname(__DIR__, 2) . '/config/packages/messenger.yaml')['framework']['messenger'];
+
+        $this->assertSame('sms_send', $messenger['routing'][DebtSmsMessage::class]);
+        $this->assertSame('async', $messenger['routing'][\App\Message\VoteBroadcastMessage::class]);
+        $this->assertStringContainsString('queue_name=sms_send', $messenger['transports']['sms_send']['dsn']);
+    }
+
+    private function runOnce(object $job, callable $handler, int $maxRetries = 3): InMemoryTransport
     {
         $transport = new InMemoryTransport();
         $transport->send(new Envelope($job));
@@ -81,7 +103,7 @@ class DebtSmsNoRetryTest extends TestCase
             new HandleMessageMiddleware(new HandlersLocator([DebtSmsMessage::class => [new HandlerDescriptor($handler)]])),
         ]);
 
-        $locator = new class($transport, new MultiplierRetryStrategy(3, 0, 1, 0)) implements ContainerInterface {
+        $locator = new class($transport, new MultiplierRetryStrategy($maxRetries, 0, 1, 0)) implements ContainerInterface {
             public function __construct(private object $transport, private object $strategy) {}
             public function get(string $id): object { return $id === 'retry' ? $this->strategy : $this->transport; }
             public function has(string $id): bool { return true; }
