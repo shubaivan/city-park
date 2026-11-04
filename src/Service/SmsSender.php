@@ -5,6 +5,7 @@ namespace App\Service;
 use App\Entity\Account;
 use App\Entity\ExpectedResident;
 use App\Entity\SmsLog;
+use App\Entity\SmsRun;
 use App\Entity\TelegramUser;
 use App\Repository\SmsLogRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -70,6 +71,18 @@ class SmsSender
      * has been written to and must not be written to again today.
      */
     private const IDENTICAL_MESSAGE_EXISTS = 427;
+
+    /**
+     * TurboSMS asks for no timeout on a send: it processes the request anyway, and whoever gave
+     * up then retries and pays twice. Here giving up never retries (OUTCOME_UNKNOWN blocks the
+     * number), but a hung connection must not hold the worker for ever. This is the longest wait
+     * that still lets a deploy's restart finish the send: systemd kills a worker after 90 s.
+     */
+    private const SEND_TIMEOUT = 60;
+
+    /** Refusals about the account, not this number: asking for the next one gets the same answer. */
+    private const REFUSALS_THAT_STOP_A_RUN = [103, 105, 106, 200, 301, 302, 400, 401, 436, 437];
+    private const REFUSAL_NO_MONEY = 203;
 
     /**
      * A Cyrillic SMS is **70 characters**, not 160 — the alphabet does not fit GSM-7 and
@@ -172,10 +185,80 @@ class SmsSender
             ->setSentBy($sentBy)
             ->setRecipient($account, $user);
 
-        $key = $log->getPhoneKey();
+        $invalid = $this->invalidReason($log, $phone, $text);
+        if ($invalid !== null) {
+            return $this->persist($log->markFailed($invalid));
+        }
 
-        if ($key === '') {
-            return $this->persist($log->markFailed('номер не схожий на телефон'));
+        if ($dryRun) {
+            return $this->persist($log->markDryRun());
+        }
+
+        $notNow = $this->notNowReason($log);
+        if ($notNow !== null) {
+            return $this->persist($log->markFailed($notNow));
+        }
+
+        return $this->persist($this->post($log, null));
+    }
+
+    /**
+     * The row of a queued job, committed before anything leaves: `sending`, or failed with why.
+     *
+     * Unlike everything else here this one throws. A row that could not be written means the
+     * job has no way to know next time that it already sent, so it must not send now.
+     */
+    public function claim(string $phone, string $text, string $purpose, ?Account $account, ?string $sentBy, SmsRun $run): SmsLog
+    {
+        $log = (new SmsLog($phone, $text, $purpose))
+            ->setParts(self::parts($text))
+            ->setSentBy($sentBy)
+            ->setRecipient($account, null)
+            ->setRun($run);
+
+        $refused = $this->invalidReason($log, $phone, $text) ?? $this->notNowReason($log);
+        $refused === null ? $log->markSending() : $log->markFailed($refused);
+
+        $this->em->persist($log);
+        $this->em->flush();
+
+        return $log;
+    }
+
+    /**
+     * The request for a claimed row. `$sequenceId` makes TurboSMS run it at most once in 30 days
+     * and answer a repeat with 507 and the first result. A second line only: a job with a row
+     * never comes back here.
+     */
+    public function sendClaimed(SmsLog $log, string $sequenceId): SmsLog
+    {
+        return $this->persist($this->post($log, $sequenceId));
+    }
+
+    /**
+     * Why this run must not go on after this answer, or null. A refusal about the account would
+     * come back for every job left: the rest then write their rows without asking.
+     */
+    public static function reasonToStopRun(SmsLog $log): ?string
+    {
+        $error = (string)$log->getError();
+
+        if (!$log->isFailed() || str_starts_with($error, self::OUTCOME_UNKNOWN) || preg_match('/\((\d+)\)$/', $error, $code) !== 1) {
+            return null;
+        }
+
+        if ((int)$code[1] === self::REFUSAL_NO_MONEY) {
+            return DebtSmsCampaign::OUT_OF_MONEY;
+        }
+
+        return in_array((int)$code[1], self::REFUSALS_THAT_STOP_A_RUN, true) ? 'TurboSMS відмовив: ' . $error . ', розсилку зупинено' : null;
+    }
+
+    /** What is wrong with the message itself. */
+    private function invalidReason(SmsLog $log, string $phone, string $text): ?string
+    {
+        if ($log->getPhoneKey() === '') {
+            return 'номер не схожий на телефон';
         }
 
         // A foreign number is refused outright rather than "helpfully" converted. The
@@ -185,7 +268,7 @@ class SmsSender
         // number. Refusing costs one resident an SMS; guessing costs the ОСББ an
         // apology it cannot make, because it would not know it had happened.
         if (!PhoneKey::isUkrainian($phone)) {
-            return $this->persist($log->markFailed('не український номер — SMS не надсилаємо'));
+            return 'не український номер — SMS не надсилаємо';
         }
 
         // One part, always. A second part doubles what the run costs, and Иван's call on
@@ -194,49 +277,52 @@ class SmsSender
         // characters shows up as rows of failures in the journal — and in a dry run, before
         // anything is spent — instead of as a doubled bill.
         if ($log->getParts() > 1) {
-            return $this->persist($log->markFailed(sprintf(
-                'текст на %d SMS — надсилаємо лише одну (%d символів)',
-                $log->getParts(),
-                mb_strlen($text),
-            )));
+            return sprintf('текст на %d SMS — надсилаємо лише одну (%d символів)', $log->getParts(), mb_strlen($text));
         }
 
-        if ($dryRun) {
-            return $this->persist($log->markDryRun());
-        }
+        return null;
+    }
 
+    /** What stops an otherwise good message right now. */
+    private function notNowReason(SmsLog $log): ?string
+    {
         if (!$this->isConfigured()) {
-            return $this->persist($log->markFailed('TURBOSMS_TOKEN не налаштовано'));
+            return 'TURBOSMS_TOKEN не налаштовано';
         }
 
         // Same-day repeat guard. The expensive mistake is not a wrong number, it is the
         // same right number written to twice because a cron ran again or an import was
         // re-uploaded after a correction.
-        if ($this->logs->alreadySentToday($key, $purpose)) {
-            return $this->persist($log->markFailed(self::ALREADY_SENT));
-        }
+        return $this->logs->alreadySentToday($log->getPhoneKey(), $log->getPurpose()) ? self::ALREADY_SENT : null;
+    }
+
+    /** The request itself, and what it came to. */
+    private function post(SmsLog $log, ?string $sequenceId): SmsLog
+    {
+        $phone = $log->getPhone();
 
         try {
             $response = $this->http->request('POST', self::SEND_URL, [
                 'headers' => ['Authorization' => 'Bearer ' . trim($this->token)],
-                'json' => [
+                'json' => array_filter([
+                    'sequence_id' => $sequenceId,
                     'recipients' => [$this->msisdn($phone)],
                     'sms' => array_filter([
                         'sender' => $this->senderName() !== '' ? $this->senderName() : null,
-                        'text' => $text,
+                        'text' => $log->getText(),
                     ]),
-                ],
-                'timeout' => 15,
+                ]),
+                'timeout' => self::SEND_TIMEOUT,
             ]);
 
             $body = $response->toArray(false);
         } catch (\Throwable $e) {
-            $this->logger->error('sms send failed', ['phone_key' => $key, 'error' => $e->getMessage()]);
+            $this->logger->error('sms send failed', ['phone_key' => $log->getPhoneKey(), 'error' => $e->getMessage()]);
 
-            return $this->persist($log->markFailed(self::OUTCOME_UNKNOWN . $e->getMessage()));
+            return $log->markFailed(self::OUTCOME_UNKNOWN . $e->getMessage());
         }
 
-        return $this->persist($this->recordAnswer($log, $body, $phone));
+        return $this->recordAnswer($log, $body, $phone);
     }
 
     /**
@@ -345,12 +431,13 @@ class SmsSender
      * get a row saying why, so «чому мені не прийшло» is answered by the journal rather
      * than by a gap in it.
      */
-    public function refuse(string $phone, string $text, string $purpose, ?Account $account, ?string $sentBy, string $reason): SmsLog
+    public function refuse(string $phone, string $text, string $purpose, ?Account $account, ?string $sentBy, string $reason, ?SmsRun $run = null): SmsLog
     {
         $log = (new SmsLog($phone, $text, $purpose))
             ->setParts(self::parts($text))
             ->setSentBy($sentBy)
-            ->setRecipient($account, null);
+            ->setRecipient($account, null)
+            ->setRun($run);
 
         return $this->persist($log->markFailed($reason));
     }

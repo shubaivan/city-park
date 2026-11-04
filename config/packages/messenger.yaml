@@ -27,3 +27,5 @@ framework:
 
             # Route your messages to the transports
             App\Message\VoteBroadcastMessage: async
+            # On `async`, the transport the worker consumes, but never retried: see DebtSmsMessageHandler.
+            App\Message\DebtSmsMessage: async

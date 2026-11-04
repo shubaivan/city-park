@@ -46,6 +46,6 @@ class SmsSafetyInTestsTest extends KernelTestCase
         } catch (\DomainException) {
         }
 
-        $this->assertStringContainsString('s.status = :sent OR (s.status = :failed AND s.error LIKE :unknown)', (string)$dql);
+        $this->assertStringContainsString('s.status = :sent OR s.status = :sending OR (s.status = :failed AND s.error LIKE :unknown)', (string)$dql);
     }
 }

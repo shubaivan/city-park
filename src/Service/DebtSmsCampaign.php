@@ -5,10 +5,15 @@ namespace App\Service;
 use App\Command\DebtNotifySmsCommand;
 use App\Entity\Account;
 use App\Entity\SmsLog;
+use App\Entity\SmsRun;
 use App\Entity\TelegramUser;
+use App\Message\DebtSmsMessage;
 use App\Repository\AccountRepository;
 use App\Repository\ExpectedResidentRepository;
+use App\Repository\SmsRunRepository;
+use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * Who a debt SMS run would reach, and the run itself.
@@ -19,8 +24,9 @@ use Psr\Log\LoggerInterface;
  * disagreeing about who was written to.
  *
  * `plan()` and `estimate()` decide and spend nothing; `send()` sends exactly what a plan
- * holds, so the figure shown before the tap is the figure that goes out. The button goes
- * through `sendConfirmed()`, which is where a double send is refused.
+ * holds, which is the console's path. The button goes through `sendConfirmed()`, which is where
+ * a double send is refused and which only queues: one job per number, sent by the worker
+ * (DebtSmsDelivery), so the tap returns at once and a run survives a closed tab.
  *
  * In the panel a run goes only to the addresses ticked (Иван, 04.11.2026). What the browser
  * sends is a wish, not a list: `narrow()` holds it against a fresh `plan()` at every step.
@@ -37,8 +43,8 @@ class DebtSmsCampaign
     public const AUDIENCE_ALL = 'all';
     public const AUDIENCE_UNREACHABLE = 'unreachable';
 
-    /** What sendConfirmed() did. Anything but SENT means not one message left. */
-    public const OUTCOME_SENT = 'sent';
+    /** What sendConfirmed() did. Anything but QUEUED means not one job was queued. */
+    public const OUTCOME_QUEUED = 'queued';
     public const OUTCOME_RUNNING = 'running';
     public const OUTCOME_CHANGED = 'changed';
     public const OUTCOME_BLOCKED = 'blocked';
@@ -49,6 +55,9 @@ class DebtSmsCampaign
         private SmsSender $sms,
         private LoggerInterface $smsLogger,
         private string $projectDir,
+        private SmsRunRepository $runs,
+        private MessageBusInterface $bus,
+        private EntityManagerInterface $em,
     ) {
     }
 
@@ -167,11 +176,14 @@ class DebtSmsCampaign
      */
     public function estimate(?float $balance, ?\DateTimeImmutable $now = null, ?array $selectedIds = null): array
     {
+        $now ??= new \DateTimeImmutable();
         $everyone = $this->plan((float)AccountRepository::MIN_PUBLISHED_DEBT);
         $plan = self::aboveThreshold($everyone);
         $plan['searchable'] = $everyone['rows'];
         $plan['skippedSummary'] = self::skippedBreakdown($plan);
-        $plan['unavailable'] = $this->unavailableReason($everyone['recipients'] !== [], $balance, $now);
+        $running = $this->runs->findActive($now) !== null;
+        $plan['running'] = $running;
+        $plan['unavailable'] = $running ? self::RUN_IN_PROGRESS : $this->unavailableReason($everyone['recipients'] !== [], $balance, $now);
         $plan['selection'] = $selectedIds !== null;
         $plan = $selectedIds === null
             ? $plan + ['rejected' => [], 'notChosen' => 0, 'fromSearch' => 0]
@@ -240,7 +252,7 @@ class DebtSmsCampaign
      *
      * @return resource|null
      */
-    public function acquireLock()
+    public function acquireLock(bool $wait = false)
     {
         $path = $this->projectDir . '/var/debt-sms.lock';
         $handle = @fopen($path, 'c');
@@ -253,7 +265,7 @@ class DebtSmsCampaign
         // The panel runs as www-data, the console may not; either must be able to open it.
         @chmod($path, 0666);
 
-        if (!flock($handle, LOCK_EX | LOCK_NB)) {
+        if (!flock($handle, $wait ? LOCK_EX : LOCK_EX | LOCK_NB)) {
             fclose($handle);
 
             return null;
@@ -272,7 +284,7 @@ class DebtSmsCampaign
     }
 
     /**
-     * The confirmed tap: take the lock, look at everything again, send or refuse whole.
+     * The confirmed tap: take the lock, look at everything again, queue or refuse whole.
      *
      * Never a partial run by choice: if the balance does not cover the ticked addresses, or
      * one of them may no longer be written to, nothing goes.
@@ -310,24 +322,32 @@ class DebtSmsCampaign
                 ));
             }
 
-            $this->smsLogger->info('debt sms: run started', [
-                'by' => $sentBy, 'recipients' => count($estimate['recipients']),
+            $now ??= new \DateTimeImmutable();
+            $run = new SmsRun($sentBy, count($estimate['recipients']), $now);
+
+            // The jobs live in the same database: all of them and the run commit together, or none.
+            $this->em->wrapInTransaction(function () use ($run, $estimate): void {
+                $this->em->persist($run);
+                $this->em->flush();
+
+                foreach ($estimate['recipients'] as $r) {
+                    $this->bus->dispatch(new DebtSmsMessage((int)$run->getId(), (int)$r['account']->getId(), $r['phone'], $r['text']));
+                }
+            });
+
+            $this->smsLogger->info('debt sms: run queued', [
+                'run' => $run->getId(), 'by' => $sentBy, 'recipients' => $run->getTotal(),
                 'cost' => $estimate['cost'], 'balance' => $estimate['balance'],
             ]);
 
-            // Only the ticked: an address nobody chose gets neither a message nor a journal row.
-            $chosen = ['recipients' => $estimate['recipients']];
-            $run = $this->send($chosen, $sentBy);
-
-            $this->smsLogger->info('debt sms: run finished', [
-                'by' => $sentBy, 'sent' => $run['sent'], 'failed' => $run['failed'],
-                'skipped' => $run['skipped'], 'parts' => $run['parts'], 'out_of_money' => $run['outOfMoney'],
-            ]);
-
             return [
-                'outcome' => self::OUTCOME_SENT,
-                'flash' => $run['failed'] > 0 ? 'warning' : 'success',
-                'message' => self::summary($chosen, $run),
+                'outcome' => self::OUTCOME_QUEUED,
+                'flash' => 'success',
+                'message' => sprintf(
+                    'Поставлено в чергу: %d SMS · %s грн. Надсилаємо по одній, результат нижче й у журналі.',
+                    $run->getTotal(),
+                    number_format($estimate['cost'], 2, '.', ' '),
+                ),
             ];
         } finally {
             $this->releaseLock($lock);
@@ -533,6 +553,9 @@ class DebtSmsCampaign
         if (!$estimate['configured']) {
             return 'TurboSMS не налаштовано на сервері — надіслати нема чим.';
         }
+        if ($estimate['running']) {
+            return self::RUN_IN_PROGRESS;
+        }
         if ($estimate['rejected'] !== []) {
             return self::rejectedReason($estimate['rejected']);
         }
@@ -562,28 +585,6 @@ class DebtSmsCampaign
         return ['outcome' => $outcome, 'flash' => 'warning', 'message' => $message];
     }
 
-    private static function summary(array $plan, array $run): string
-    {
-        $text = sprintf(
-            'Надіслано %d, не надіслано %d, пропущено %d · %s грн.',
-            $run['sent'],
-            $run['failed'],
-            $run['skipped'],
-            number_format($run['parts'] * SmsSender::PRICE_PER_PART, 2, '.', ' '),
-        );
-
-        if ($run['skipped'] > 0) {
-            $breakdown = self::skippedBreakdown($plan);
-            $text .= $breakdown !== '' ? ' Пропущено: ' . $breakdown . '.' : '';
-        }
-
-        if ($run['outOfMoney']) {
-            return $text . ' На TurboSMS закінчились кошти. Поповніть рахунок і натисніть ще раз: кому вже пішло, сьогодні повторно не піде.';
-        }
-
-        return $run['failed'] > 0 ? $text . ' Причини — в журналі нижче.' : $text;
-    }
-
     private const INVALID_PHONE = 'не український номер — SMS не надсилаємо';
 
     /** Why a row on the card cannot be ticked. */
@@ -596,6 +597,14 @@ class DebtSmsCampaign
 
     /** Why the households after the point the money ran out were not written to. */
     public const OUT_OF_MONEY = 'на балансі TurboSMS закінчились кошти — розсилку зупинено';
+
+    private const RUN_IN_PROGRESS = 'Розсилка вже йде. Дочекайтесь, поки вона закінчиться: результат на цій сторінці.';
+
+    /** The flat's number as things stand now, by the rules of phoneFor(). For a job at delivery. */
+    public function currentPhone(Account $account): ?string
+    {
+        return $this->phoneFor($account, $this->expected->phonesByAccount()[$account->getId()] ?? []);
+    }
 
     /** Somebody on this account whom the bot can write to for free. */
     private function reachableInTelegram(Account $account): bool

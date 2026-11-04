@@ -27,6 +27,7 @@ use App\Repository\GuestPassRepository;
 use App\Repository\LinkClickRepository;
 use App\Repository\QrScanRepository;
 use App\Repository\SmsLogRepository;
+use App\Repository\SmsRunRepository;
 use App\Service\SmsSender;
 use App\Service\DebtSmsCampaign;
 use App\Telegram\Info\Command\InfoCommand;
@@ -122,7 +123,7 @@ class AdminController extends AbstractController
      * only — Иван's call (30.09.2026), same as the sign-in and scan logs.
      */
     #[Route('/admin/sms', name: 'app_admin_sms', methods: [Request::METHOD_GET])]
-    public function sms(SmsLogRepository $sms, DebtSmsCampaign $campaign, SmsSender $sender): Response
+    public function sms(SmsLogRepository $sms, DebtSmsCampaign $campaign, SmsSender $sender, SmsRunRepository $runs): Response
     {
         $monthStart = new \DateTime('first day of this month 00:00', new \DateTimeZone('Europe/Kyiv'));
 
@@ -147,6 +148,7 @@ class AdminController extends AbstractController
             'min_debt' => DebtSmsCampaign::DEFAULT_MIN_DEBT,
             'balance' => $balance,
             'turbosms_id' => SmsSender::ACCOUNT_ID,
+            'run' => $runs->latestStatus(new \DateTimeImmutable()),
         ]);
     }
 
@@ -176,8 +178,9 @@ class AdminController extends AbstractController
     }
 
     /**
-     * The send itself. Everything that can refuse lives in DebtSmsCampaign::sendConfirmed(),
-     * so that the list, the balance and the lock are all checked at the moment of the tap.
+     * The tap. Everything that can refuse lives in DebtSmsCampaign::sendConfirmed(), so that the
+     * list, the balance and the lock are all checked at this moment. It only queues and returns;
+     * the worker sends (DebtSmsDelivery).
      * ROLE_ADMIN only, by the `^/admin` rule — Сергій reads the journal and does not spend
      * the ОСББ's money.
      */
@@ -189,10 +192,6 @@ class AdminController extends AbstractController
 
             return $this->redirectToRoute('app_admin_sms');
         }
-
-        // A closed tab or a slow provider must not cut a run in half.
-        ignore_user_abort(true);
-        set_time_limit(0);
 
         $result = $campaign->sendConfirmed(
             (string)$request->request->get('fingerprint'),

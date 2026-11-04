@@ -17,6 +17,11 @@
 {% block body %}
     {{ parent() }}
 
+    {# While a run goes, the card is greyed out, so a reload loses nothing and the count moves by itself. #}
+    {% if run|default(null) and run.run.running %}
+        <meta http-equiv="refresh" content="15">
+    {% endif %}
+
     {# On a phone the two buttons are the whole width: a thumb, not a cursor. #}
     <style>
         @media (max-width: 575.98px) { .btn-block-xs { display: block; width: 100%; } }
@@ -74,6 +79,23 @@
                 </details>
             </div>
         </div>
+
+        {% if run|default(null) %}
+            <div class="card mb-3 {{ run.run.running ? 'border-primary' : (run.run.stopped ? 'border-warning' : 'border-success') }}" id="sms-run">
+                <div class="card-body py-2 px-3 small">
+                    <div style="font-size: 1rem;">
+                        📨 <b>Надіслано {{ run.sent }} з {{ run.total }}</b>{% if run.run.running %} <span class="text-muted">· йде</span>{% elseif run.run.stopped %} <span class="text-warning">· зупинено</span>{% else %} <span class="text-success">· завершено</span>{% endif %}
+                    </div>
+                    {% if run.failed > 0 %}Не надіслано: <b>{{ run.failed }}</b>. {% endif %}
+                    {% if run.unknown > 0 %}Невідомо, чи пішло: <b>{{ run.unknown }}</b> (сьогодні повторно не підуть). {% endif %}
+                    {% if run.sending > 0 %}Надсилається або без відповіді: <b>{{ run.sending }}</b>. {% endif %}
+                    {% if run.queued > 0 %}У черзі: <b>{{ run.queued }}</b>. {% endif %}
+                    {% if run.run.stopReason %}<div class="text-danger">{{ run.run.stopReason }}</div>{% endif %}
+                    {% if run.stalled %}<div class="alert alert-warning py-1 px-2 mt-1 mb-0">Черга не рухається понад 5 хвилин: схоже, не працює воркер. Напишіть Івану.</div>{% endif %}
+                    <div class="text-muted">Хто саме і чому: журнал нижче.{% if run.run.running %} Сторінка оновлюється сама.{% endif %}</div>
+                </div>
+            </div>
+        {% endif %}
 
         {% if preview is not null %}
             {#
@@ -192,7 +214,9 @@
                     </form>
 
                     <div class="small text-muted mt-2">
-                        Спершу покажемо, кому і за скільки, — без підтвердження нічого не піде.
+                        Спершу покажемо, кому і за скільки, — без підтвердження нічого не піде. Надсилаємо
+                        у фоні, по одній, тому вкладку можна закрити. Перед кожною SMS перевіряємо борг: хто вже
+                        сплатив, не отримає, а суму беремо ту, що на той момент.
                         Текст: «Буд.27 кв.63: борг 5430 грн. Просимо сплатити.» — одна SMS на адресу, на номер мешканця
                         з бота або записаний в «Очікуємо в боті». Той самий номер двічі за день не отримає.
                         Надіслані з'являться в журналі нижче — кому, коли і хто надіслав.
@@ -298,6 +322,7 @@
                                     <td>
                                         {% if e.status == 'sent' %}✅ надіслано
                                         {% elseif e.status == 'dry_run' %}👁 пробний запуск, не надсилалось
+                                        {% elseif e.status == 'sending' %}⏳ надсилається або без відповіді, сьогодні повторно не піде
                                         {% else %}⛔ не надіслано{% if e.error %}: <b>{{ e.error }}</b>{% endif %}
                                         {% endif %}
                                         <span class="text-muted">· {{ purposes[e.purpose] ?? e.purpose }}{% if e.parts > 1 %} · {{ e.parts }} SMS{% endif %}{% if e.status == 'sent' %} · {{ (e.parts * price)|number_format(2, '.', ' ') }} грн{% endif %}</span>

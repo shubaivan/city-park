@@ -37,8 +37,8 @@ class SmsLogRepository extends ServiceEntityRepository
      * The guard against the commonest and most expensive mistake there is here: a cron
      * that runs twice, or an import re-uploaded after a correction, sending the same
      * «у вас борг» to the same person again. Telegram forgives that; an SMS costs money
-     * and reads as harassment. A send that ended without an answer counts as sent: it may
-     * well have gone (see SmsSender::OUTCOME_UNKNOWN).
+     * and reads as harassment. A send that ended without an answer counts as sent, and so does
+     * one still `sending`: it may well have gone (see SmsSender::OUTCOME_UNKNOWN).
      */
     public function alreadySentToday(string $phoneKey, string $purpose): bool
     {
@@ -48,8 +48,9 @@ class SmsLogRepository extends ServiceEntityRepository
             ->select('COUNT(s.id)')
             ->andWhere('s.phone_key = :k')->setParameter('k', $phoneKey)
             ->andWhere('s.purpose = :p')->setParameter('p', $purpose)
-            ->andWhere('s.status = :sent OR (s.status = :failed AND s.error LIKE :unknown)')
+            ->andWhere('s.status = :sent OR s.status = :sending OR (s.status = :failed AND s.error LIKE :unknown)')
             ->setParameter('sent', SmsLog::STATUS_SENT)
+            ->setParameter('sending', SmsLog::STATUS_SENDING)
             ->setParameter('failed', SmsLog::STATUS_FAILED)
             ->setParameter('unknown', SmsSender::OUTCOME_UNKNOWN . '%')
             ->andWhere('s.created_at >= :start')->setParameter('start', $start)

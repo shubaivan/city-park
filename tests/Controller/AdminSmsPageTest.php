@@ -13,7 +13,7 @@ use Twig\Environment;
  */
 class AdminSmsPageTest extends KernelTestCase
 {
-    private function render(array $entries, ?array $preview = null, string $role = 'ROLE_ADMIN', ?float $balance = 412.5): string
+    private function render(array $entries, ?array $preview = null, string $role = 'ROLE_ADMIN', ?float $balance = 412.5, ?array $run = null): string
     {
         self::bootKernel();
 
@@ -37,6 +37,7 @@ class AdminSmsPageTest extends KernelTestCase
             'min_debt' => 5000.0,
             'balance' => $balance,
             'turbosms_id' => '8980641',
+            'run' => $run,
         ]);
     }
 
@@ -246,6 +247,37 @@ class AdminSmsPageTest extends KernelTestCase
 
         $low = $this->render([], null, 'ROLE_ADMIN', 9.13);
         $this->assertStringContainsString('<details class="mt-2" open', $low);
+    }
+
+    /** The run on the page: N of M, what failed, what is left, and why it stopped. The journal has the rest. */
+    public function testItShowsTheStatusOfTheRun(): void
+    {
+        $run = new \App\Entity\SmsRun('панель: alina', 8, new \DateTimeImmutable());
+        $status = ['run' => $run, 'total' => 8, 'sent' => 3, 'failed' => 1, 'unknown' => 1, 'sending' => 0, 'queued' => 3, 'stalled' => false];
+
+        $html = $this->render([], null, 'ROLE_COMPLAINTS', 100.0, $status);
+
+        $this->assertStringContainsString('Надіслано 3 з 8', $html);
+        $this->assertMatchesRegularExpression('#Не надіслано: <b>1</b>#u', $html);
+        $this->assertMatchesRegularExpression('#Невідомо, чи пішло: <b>1</b>#u', $html);
+        $this->assertMatchesRegularExpression('#У черзі: <b>3</b>#u', $html);
+        $this->assertStringContainsString('http-equiv="refresh"', $html, 'the count moves by itself while it goes');
+
+        $run->stop('на балансі TurboSMS закінчились кошти');
+        $stopped = $this->render([], null, 'ROLE_COMPLAINTS', 100.0, $status);
+        $this->assertStringContainsString('на балансі TurboSMS закінчились кошти', $stopped);
+        $this->assertStringNotContainsString('http-equiv="refresh"', $stopped);
+
+        $this->assertStringNotContainsString('id="sms-run"', $this->render([]));
+    }
+
+    /** A queue nobody consumes reads as «надсилається» for ever unless the page says otherwise. */
+    public function testAStalledRunSaysSo(): void
+    {
+        $run = new \App\Entity\SmsRun('a', 8, new \DateTimeImmutable());
+        $html = $this->render([], null, 'ROLE_ADMIN', 100.0, ['run' => $run, 'total' => 8, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'sending' => 0, 'queued' => 8, 'stalled' => true]);
+
+        $this->assertStringContainsString('Черга не рухається', $html);
     }
 
     /** Сергій reads the journal and never sees the button. */

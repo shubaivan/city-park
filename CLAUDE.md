@@ -1603,14 +1603,38 @@ blocks the number for the day, since a billed message must not look refused and 
 (an identical message exists from the last 90 s) is unknown too: this request created nothing, but
 that number has been written to.
 
-**A double send has four separate stops, from the outside in.** The browser disables the
+**A panel run goes through the queue** (Иван, 04.11.2026; the first mailing is the first user of
+it). The tap plans under the lock and queues one `App\Message\DebtSmsMessage` per number with an
+`SmsRun`, in one transaction, and returns; `city-park-messenger.service` sends them
+(`DebtSmsDelivery`). `debt:notify-sms` keeps its own loop in the terminal, on the same lock and
+guard. **Never retried:** the handler turns every failure into an unrecoverable one, so a job goes
+to the `failed` transport instead of the `async` transport's three retries, since a failure can
+follow a billed message (`DebtSmsNoRetryTest`, on Symfony's real Worker). **At most once:** the
+row is committed as `sending` before the request leaves. A job that finds its row (the worker
+died, and Doctrine redelivers after `redeliver_timeout`, 3600 s; or `messenger:failed:retry`) never
+sends; a row still `sending` becomes `OUTCOME_UNKNOWN`. `sms_log` has a unique (run_id, phone_key).
+`sequence_id` (`cpdebt-<run>-<number>`) goes with each request as a second line: TurboSMS runs one
+id once in 30 days and answers a repeat with 507 and the first result. **Checked again per job:**
+night, balance, same-day guard, whether the run is from today, and the flat: paid (below
+`MIN_PUBLISHED_DEBT`) gets no SMS, a changed sum goes out as the new sum, a number no longer the
+flat's (a tenant, replaced) is refused. **A stop:** at 22:00, on an empty or unknown balance, on an
+account-wide refusal (`SmsSender::reasonToStopRun()`) or for a queue left from another day, the run
+is stopped and each job left writes a row with the reason and no request, so sent + the rest reach
+M. Nothing resumes by itself the next morning: whoever was not reached can be picked again.
+Timeout 60 s: TurboSMS asks for none, but a hung connection must not hold the worker, and systemd
+kills it at 90 s. Pause 1 s between requests (`PAUSE_MS`). The page shows «Надіслано N з M» and
+warns when nothing moved for 5 minutes. **Deploy with `all`:** a migration, an Encore entry and the
+worker restart are all needed, and `be` skips the build, `fe` the migration and the restart.
+
+**A double send has five separate stops, from the outside in.** The browser disables the
 button on submit. The POST answers with a redirect, so a refresh repeats nothing.
-`DebtSmsCampaign::sendConfirmed()` holds an flock on `var/debt-sms.lock` for the whole run,
-shared with the console command, so a second run at the same time is refused; the kernel
-drops it if the process dies, so a crash cannot leave the button locked. Inside the lock it
-plans again and compares a fingerprint of phones and texts with the one the confirmation page
-carried: whoever a run reached has left the list, so the same form sent again no longer
-matches, and neither does a form from before a debt upload. Underneath it all,
+`DebtSmsCampaign::sendConfirmed()` holds an flock on `var/debt-sms.lock` while it queues, shared
+with the console command, whose whole run holds it, and with each job; the kernel drops it if the
+process dies, so a crash cannot leave the button locked. A run still going refuses the next tap
+(`SmsRunRepository::findActive()`). Inside the lock it plans again and compares a fingerprint of
+phones and texts with the one the confirmation page carried: whoever a run reached has left the
+list, so the same form sent again no longer matches, and neither does a form from before a debt
+upload. Underneath it all,
 `SmsLogRepository::alreadySentToday`, which also counts a send that ended with no answer
 (`SmsSender::OUTCOME_UNKNOWN`): a timeout can follow a message TurboSMS billed, so that
 resident waits until tomorrow rather than risk paying twice.
