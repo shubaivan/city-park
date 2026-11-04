@@ -55,7 +55,7 @@
                 {% if month.unknown|default(0) > 0 %}
                     Невідомо, чи пішло: <b>{{ month.unknown }}</b> (якщо пішли, ще {{ (month.unknownParts * price)|number_format(2, '.', ' ') }} грн; точно видно в кабінеті TurboSMS).
                 {% endif %}
-                <div class="text-muted">Ціна TurboSMS — {{ price|number_format(2, '.', ' ') }} грн за одну SMS; невдалі спроби не оплачуються.</div>
+                <div class="text-muted">Ціна TurboSMS — {{ price|number_format(2, '.', ' ') }} грн за одну SMS.</div>
                 {#
                     How to put money on it, so the ОСББ does not need Иван for that (07.10.2026).
                     Copied from TurboSMS's own top-up page: a terminal takes the account ID with
@@ -138,6 +138,19 @@
                         Боржників: <b>{{ preview.debtors }}</b> · можна надіслати: <b>{{ selectable|length }}</b>{% if preview.skippedSummary %}
                         · не можна: {{ preview.skippedSummary }}{% endif %}.
                     </p>
+
+                    {#
+                        Людмила's first question: what if the number does not exist, and is money
+                        taken? Nothing here promises a refund. TurboSMS bills every sent SMS unless
+                        the account has a signed contract (turbosms.ua/ua/guide.html, 5.8;
+                        /ua/price.html), and this app stores only the answer to the send, never a
+                        delivery status. Above the list, because below it is 59 rows away on a phone.
+                    #}
+                    <div class="small mb-2" id="debt-sms-delivery-note">
+                        <div>«✅ надіслано» означає, що TurboSMS прийняв SMS, а не що вона дійшла: це видно лише в його кабінеті.</div>
+                        <div><b>Номера немає або телефон вимкнено:</b> гроші можуть списатись, бо оплачуються всі відправлені SMS. Повернення за недоставлені є лише за договором з TurboSMS.</div>
+                        <div>Рядки з ⛔ у цьому списку не надсилаються і нічого не коштують.</div>
+                    </div>
 
                     <form id="debt-sms-form" method="get"{% if preview.unavailable is null %} action="{{ path('app_admin_sms_debt_confirm') }}"{% endif %}
                           data-price="{{ price }}" data-balance="{{ preview.balance }}" data-available="{{ preview.unavailable is null ? '1' : '0' }}">

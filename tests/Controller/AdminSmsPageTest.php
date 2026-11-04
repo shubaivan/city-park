@@ -221,6 +221,21 @@ class AdminSmsPageTest extends KernelTestCase
         $this->assertMatchesRegularExpression('/Номер не український \(SMS не піде\)<\/td><td[^>]*>1</u', $html);
     }
 
+    /**
+     * «Що, як номера немає, і чи знімуть гроші?» The page must not promise a refund: TurboSMS
+     * bills what was sent unless there is a contract, and the app never sees delivery.
+     */
+    public function testItSaysWhatHappensToANumberThatDoesNotExist(): void
+    {
+        $html = $this->render([], $this->preview(1, balance: 100.0));
+
+        $this->assertStringContainsString('а не що вона дійшла', $html);
+        $this->assertStringContainsString('гроші можуть списатись', $html);
+        $this->assertStringContainsString('лише за договором з TurboSMS', $html);
+        $this->assertStringNotContainsString('не оплачуються', $html);
+        $this->assertLessThan(strpos($html, 'id="debt-sms-form"'), strpos($html, 'id="debt-sms-delivery-note"'), 'above the list, not 59 rows below it');
+    }
+
     /** What is left on TurboSMS is on the page for everybody, and «unknown» is never «0». */
     public function testItShowsTheTurboSmsBalance(): void
     {
