@@ -33,14 +33,15 @@ class SmsRunRepository extends ServiceEntityRepository
     }
 
     /**
-     * What the panel shows: today's latest run, or one still open from before.
+     * What the panel shows: today's latest run. An older one still marked running is nobody's
+     * business on the page: its jobs can only stop, and the page must not reload for it.
      *
      * @return array{run: SmsRun, total: int, sent: int, failed: int, unknown: int, sending: int, queued: int, stalled: bool}|null
      */
     public function latestStatus(\DateTimeImmutable $now): ?array
     {
         $run = $this->findOneBy([], ['id' => 'DESC']);
-        if (!$run instanceof SmsRun || (!$run->isRunning() && !$run->isOfTheDay($now))) {
+        if (!$run instanceof SmsRun || !$run->isOfTheDay($now)) {
             return null;
         }
 
@@ -74,6 +75,19 @@ class SmsRunRepository extends ServiceEntityRepository
         $status['stalled'] = $run->isRunning() && $status['queued'] > 0 && $idle > self::STALLED_AFTER_SECONDS;
 
         return $status;
+    }
+
+    /** Runs from earlier days still marked running. Their jobs, if any are left, then write the reason. */
+    public function closeStale(\DateTimeImmutable $now): int
+    {
+        return (int)$this->getEntityManager()->createQuery(
+            'UPDATE ' . SmsRun::class . ' r SET r.status = :stopped, r.stop_reason = :reason WHERE r.status = :running AND r.created_at < :today'
+        )
+            ->setParameter('stopped', SmsRun::STATUS_STOPPED)
+            ->setParameter('reason', SmsRun::REASON_STALE)
+            ->setParameter('running', SmsRun::STATUS_RUNNING)
+            ->setParameter('today', $now->setTimezone(new \DateTimeZone('Europe/Kyiv'))->format('Y-m-d') . ' 00:00:00')
+            ->execute();
     }
 
     /** Rows a run has so far, in any state. */

@@ -58,23 +58,32 @@ class SmsLogRepository extends ServiceEntityRepository
             ->getSingleScalarResult() > 0;
     }
 
-    /** Totals for the panel's header: how many went out and what they cost. */
+    /**
+     * Totals for the panel's header. Sent is what TurboSMS confirmed. Unknown, a row still
+     * `sending` or an outcome nobody learned, may have been billed: counted apart, not hidden.
+     *
+     * @return array{sent: int, failed: int, parts: int, unknown: int, unknownParts: int}
+     */
     public function summarySince(\DateTimeInterface $since): array
     {
         $rows = $this->createQueryBuilder('s')
-            ->select('s.status AS status, COUNT(s.id) AS messages, SUM(s.parts) AS parts')
+            ->select('s.status AS status, CASE WHEN s.error LIKE :unknown THEN 1 ELSE 0 END AS isUnknown, COUNT(s.id) AS messages, SUM(s.parts) AS parts')
             ->andWhere('s.created_at >= :since')->setParameter('since', $since)
-            ->groupBy('s.status')
+            ->setParameter('unknown', SmsSender::OUTCOME_UNKNOWN . '%')
+            ->groupBy('s.status, isUnknown')
             ->getQuery()
             ->getArrayResult();
 
-        $out = ['sent' => 0, 'failed' => 0, 'parts' => 0];
+        $out = ['sent' => 0, 'failed' => 0, 'parts' => 0, 'unknown' => 0, 'unknownParts' => 0];
         foreach ($rows as $row) {
             if ($row['status'] === SmsLog::STATUS_SENT) {
-                $out['sent'] = (int)$row['messages'];
+                $out['sent'] += (int)$row['messages'];
                 $out['parts'] += (int)$row['parts'];
+            } elseif ($row['status'] === SmsLog::STATUS_SENDING || ($row['status'] === SmsLog::STATUS_FAILED && (int)$row['isUnknown'] === 1)) {
+                $out['unknown'] += (int)$row['messages'];
+                $out['unknownParts'] += (int)$row['parts'];
             } elseif ($row['status'] === SmsLog::STATUS_FAILED) {
-                $out['failed'] = (int)$row['messages'];
+                $out['failed'] += (int)$row['messages'];
             }
         }
 

@@ -189,6 +189,38 @@ class DebtSmsDeliveryTest extends TestCase
         $this->assertStringStartsWith(SmsSender::OUTCOME_UNKNOWN, (string)$this->journal->rows[0]->getError());
     }
 
+    /**
+     * TurboSMS hangs: 70 s a job, on the only worker, and each maybe billed. The first one stops
+     * the run, the rest write their rows with no request.
+     */
+    public function testTheFirstUnknownOutcomeStopsTheRun(): void
+    {
+        $this->answer = static function (): array {
+            throw new \Symfony\Component\HttpClient\Exception\TransportException('Operation timed out');
+        };
+        $this->queued($this->debtors([['9000', ['380671111111']], ['8000', ['380672222222']], ['7000', ['380673333333']]]));
+
+        $this->drain(new \DateTimeImmutable(self::DAY));
+
+        $this->assertCount(1, $this->posts);
+        $this->assertTrue($this->runs->runs[1]->isStopped());
+        $this->assertSame(SmsSender::STOPPED_ON_UNKNOWN, $this->runs->runs[1]->getStopReason());
+        $this->assertCount(3, $this->journal->rows, 'the count still reaches M');
+        $this->assertSame(SmsSender::STOPPED_ON_UNKNOWN, $this->journal->rows[2]->getError());
+    }
+
+    /** A row saying why not that cannot be written: the job fails where a person can see it. */
+    public function testAWriteOffThatCannotBeWrittenIsNotAcknowledged(): void
+    {
+        $debtors = $this->debtors([['9000', ['380671111111']]]);
+        $this->queued($debtors);
+        $debtors[0][0]->setDebt('0');
+        $this->flushFails = new \RuntimeException('database went away');
+
+        $this->expectExceptionMessage('database went away');
+        $this->drain(new \DateTimeImmutable(self::DAY));
+    }
+
     /** TurboSMS asks for no timeout on a send; 60 s is ours, and a repeat is de-duplicated by id. */
     public function testTheRequestCarriesASequenceIdAndALongTimeout(): void
     {
@@ -290,7 +322,7 @@ class DebtSmsDeliveryTest extends TestCase
         $this->assertFalse($this->runs->runs[1]->isStopped());
 
         $this->assertNotNull(SmsSender::reasonToStopRun((new SmsLog('1', 't', SmsLog::PURPOSE_DEBT))->markFailed('REQUIRED_AUTH (105)')));
-        $this->assertNull(SmsSender::reasonToStopRun((new SmsLog('1', 't', SmsLog::PURPOSE_DEBT))->markFailed(SmsSender::OUTCOME_UNKNOWN . 'FATAL_ERROR (9001)')));
+        $this->assertSame(SmsSender::STOPPED_ON_UNKNOWN, SmsSender::reasonToStopRun((new SmsLog('1', 't', SmsLog::PURPOSE_DEBT))->markFailed(SmsSender::OUTCOME_UNKNOWN . 'FATAL_ERROR (9001)')));
     }
 
     /** The debtor paid while the job waited: no message, and the journal says why. */

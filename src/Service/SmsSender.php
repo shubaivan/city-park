@@ -80,6 +80,8 @@ class SmsSender
      */
     private const SEND_TIMEOUT = 60;
 
+    public const STOPPED_ON_UNKNOWN = 'розсилку зупинено: невідомо, чи пішла попередня SMS. Перевірте кабінет TurboSMS і запустіть решту ще раз';
+
     /** Refusals about the account, not this number: asking for the next one gets the same answer. */
     private const REFUSALS_THAT_STOP_A_RUN = [103, 105, 106, 200, 301, 302, 400, 401, 436, 437];
     private const REFUSAL_NO_MONEY = 203;
@@ -229,21 +231,53 @@ class SmsSender
      * The request for a claimed row. `$sequenceId` makes TurboSMS run it at most once in 30 days
      * and answer a repeat with 507 and the first result. A second line only: a job with a row
      * never comes back here.
+     *
+     * Throws if the answer cannot be written. The row stays `sending`, which blocks the number,
+     * and the job must end up where a person can see it rather than count as done.
      */
     public function sendClaimed(SmsLog $log, string $sequenceId): SmsLog
     {
-        return $this->persist($this->post($log, $sequenceId));
+        $this->post($log, $sequenceId);
+        $this->em->persist($log);
+        $this->em->flush();
+
+        return $log;
+    }
+
+    /**
+     * A queued job's row saying why it did not send. Throws like claim(): a job whose row could
+     * not be written must not be acknowledged as if it had one.
+     */
+    public function writeOff(string $phone, string $text, string $purpose, ?Account $account, ?string $sentBy, string $reason, SmsRun $run): SmsLog
+    {
+        $log = (new SmsLog($phone, $text, $purpose))
+            ->setParts(self::parts($text))
+            ->setSentBy($sentBy)
+            ->setRecipient($account, null)
+            ->setRun($run)
+            ->markFailed($reason);
+
+        $this->em->persist($log);
+        $this->em->flush();
+
+        return $log;
     }
 
     /**
      * Why this run must not go on after this answer, or null. A refusal about the account would
-     * come back for every job left: the rest then write their rows without asking.
+     * come back for every job left. An unknown outcome is the first sign of a provider that hangs:
+     * at 70 s a job that holds the only worker, and maybe a bill per number with nothing to show.
+     * The rest then write their rows without asking.
      */
     public static function reasonToStopRun(SmsLog $log): ?string
     {
         $error = (string)$log->getError();
 
-        if (!$log->isFailed() || str_starts_with($error, self::OUTCOME_UNKNOWN) || preg_match('/\((\d+)\)$/', $error, $code) !== 1) {
+        if ($log->isFailed() && str_starts_with($error, self::OUTCOME_UNKNOWN)) {
+            return self::STOPPED_ON_UNKNOWN;
+        }
+
+        if (!$log->isFailed() || preg_match('/\((\d+)\)$/', $error, $code) !== 1) {
             return null;
         }
 
@@ -431,13 +465,12 @@ class SmsSender
      * get a row saying why, so «чому мені не прийшло» is answered by the journal rather
      * than by a gap in it.
      */
-    public function refuse(string $phone, string $text, string $purpose, ?Account $account, ?string $sentBy, string $reason, ?SmsRun $run = null): SmsLog
+    public function refuse(string $phone, string $text, string $purpose, ?Account $account, ?string $sentBy, string $reason): SmsLog
     {
         $log = (new SmsLog($phone, $text, $purpose))
             ->setParts(self::parts($text))
             ->setSentBy($sentBy)
-            ->setRecipient($account, null)
-            ->setRun($run);
+            ->setRecipient($account, null);
 
         return $this->persist($log->markFailed($reason));
     }

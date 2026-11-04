@@ -24,6 +24,12 @@ final class DebtSmsMessageHandler
         try {
             $this->delivery->deliver($message);
         } catch (\Throwable $e) {
+            try {
+                $this->delivery->stopAfterFailure($message);
+            } catch (\Throwable) {
+                // The first failure is the one to report, and tomorrow frees the button anyway.
+            }
+
             throw new UnrecoverableMessageHandlingException($e->getMessage(), 0, $e);
         }
     }

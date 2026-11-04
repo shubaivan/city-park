@@ -21,6 +21,8 @@ class SmsRun
     public const STATUS_FINISHED = 'finished';
     public const STATUS_STOPPED = 'stopped';
 
+    public const REASON_STALE = 'розсилка не з сьогоднішнього дня: черга стояла, не надсилаємо';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]

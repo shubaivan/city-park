@@ -52,6 +52,9 @@
                 ({{ month.parts }} SMS до оплати × {{ price|number_format(2, '.', ' ') }} грн
                 = <b>{{ (month.parts * price)|number_format(2, '.', ' ') }} грн</b>){% if month.failed > 0 %},
                 не надіслано <b>{{ month.failed }}</b>{% endif %}.
+                {% if month.unknown|default(0) > 0 %}
+                    Невідомо, чи пішло: <b>{{ month.unknown }}</b> (якщо пішли, ще {{ (month.unknownParts * price)|number_format(2, '.', ' ') }} грн; точно видно в кабінеті TurboSMS).
+                {% endif %}
                 <div class="text-muted">Ціна TurboSMS — {{ price|number_format(2, '.', ' ') }} грн за одну SMS; невдалі спроби не оплачуються.</div>
                 {#
                     How to put money on it, so the ОСББ does not need Иван for that (07.10.2026).
@@ -89,7 +92,7 @@
                     {% if run.failed > 0 %}Не надіслано: <b>{{ run.failed }}</b>. {% endif %}
                     {% if run.unknown > 0 %}Невідомо, чи пішло: <b>{{ run.unknown }}</b> (сьогодні повторно не підуть). {% endif %}
                     {% if run.sending > 0 %}Надсилається або без відповіді: <b>{{ run.sending }}</b>. {% endif %}
-                    {% if run.queued > 0 %}У черзі: <b>{{ run.queued }}</b>. {% endif %}
+                    {% if run.queued > 0 %}{{ run.run.running ? 'У черзі' : 'Без рядка в журналі' }}: <b>{{ run.queued }}</b>. {% endif %}
                     {% if run.run.stopReason %}<div class="text-danger">{{ run.run.stopReason }}</div>{% endif %}
                     {% if run.stalled %}<div class="alert alert-warning py-1 px-2 mt-1 mb-0">Черга не рухається понад 5 хвилин: схоже, не працює воркер. Напишіть Івану.</div>{% endif %}
                     <div class="text-muted">Хто саме і чому: журнал нижче.{% if run.run.running %} Сторінка оновлюється сама.{% endif %}</div>
@@ -323,6 +326,7 @@
                                         {% if e.status == 'sent' %}✅ надіслано
                                         {% elseif e.status == 'dry_run' %}👁 пробний запуск, не надсилалось
                                         {% elseif e.status == 'sending' %}⏳ надсилається або без відповіді, сьогодні повторно не піде
+                                        {% elseif e.error and e.error starts with constant('App\\Service\\SmsSender::OUTCOME_UNKNOWN') %}❓ <b>{{ e.error }}</b>, сьогодні повторно не піде
                                         {% else %}⛔ не надіслано{% if e.error %}: <b>{{ e.error }}</b>{% endif %}
                                         {% endif %}
                                         <span class="text-muted">· {{ purposes[e.purpose] ?? e.purpose }}{% if e.parts > 1 %} · {{ e.parts }} SMS{% endif %}{% if e.status == 'sent' %} · {{ (e.parts * price)|number_format(2, '.', ' ') }} грн{% endif %}</span>

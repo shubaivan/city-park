@@ -1620,7 +1620,14 @@ night, balance, same-day guard, whether the run is from today, and the flat: pai
 flat's (a tenant, replaced) is refused. **A stop:** at 22:00, on an empty or unknown balance, on an
 account-wide refusal (`SmsSender::reasonToStopRun()`) or for a queue left from another day, the run
 is stopped and each job left writes a row with the reason and no request, so sent + the rest reach
-M. Nothing resumes by itself the next morning: whoever was not reached can be picked again.
+M. So does the first unknown outcome: a provider that hangs is 70 s a job on the only worker, and
+maybe a bill per number. Nothing resumes by itself the next morning: whoever was not reached can be
+picked again. **A job that falls over** (the database, usually) cannot have its row counted, so the
+handler stops the run and the job goes to `failed`; every write of a job throws rather than being
+swallowed like the console's. A run from another day still marked running is ignored by the page
+and the button, and closed at the next tap or by its own next job, since drawing the page writes
+nothing. `DebtSmsRunPostgresTest` runs all this on a real database when it can reach one with the
+schema, and skips otherwise.
 Timeout 60 s: TurboSMS asks for none, but a hung connection must not hold the worker, and systemd
 kills it at 90 s. Pause 1 s between requests (`PAUSE_MS`). The page shows «Надіслано N з M» and
 warns when nothing moved for 5 minutes. **Deploy with `all`:** a migration, an Encore entry and the

@@ -305,6 +305,7 @@ class DebtSmsCampaign
         }
 
         try {
+            $this->runs->closeStale($now ?? new \DateTimeImmutable());
             $estimate = $this->estimate($this->sms->balance(), $now, $selectedIds);
 
             if ($estimate['rejected'] !== []) {

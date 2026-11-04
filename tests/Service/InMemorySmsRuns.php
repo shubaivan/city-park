@@ -37,6 +37,19 @@ final class InMemorySmsRuns extends SmsRunRepository
         return null;
     }
 
+    public function closeStale(\DateTimeImmutable $now): int
+    {
+        $closed = 0;
+        foreach ($this->runs as $run) {
+            if ($run->isRunning() && !$run->isOfTheDay($now)) {
+                $run->stop(SmsRun::REASON_STALE);
+                $closed++;
+            }
+        }
+
+        return $closed;
+    }
+
     public function writtenRows(SmsRun $run): int
     {
         return count(array_filter($this->journal->rows, static fn ($row): bool => $row->getRun() === $run));

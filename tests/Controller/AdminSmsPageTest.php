@@ -271,6 +271,34 @@ class AdminSmsPageTest extends KernelTestCase
         $this->assertStringNotContainsString('id="sms-run"', $this->render([]));
     }
 
+    /** A row whose outcome nobody learned is not a refusal, and it may have cost money. */
+    public function testAnUnknownRowIsLabelledAsUnknownAndCountedApart(): void
+    {
+        $unknown = (new SmsLog('380671234567', 'т', SmsLog::PURPOSE_DEBT))->markFailed(\App\Service\SmsSender::OUTCOME_UNKNOWN . 'Operation timed out');
+
+        $html = $this->render([$unknown]);
+
+        $this->assertStringContainsString('❓ <b>невідомо, чи пішло: Operation timed out</b>', $html);
+        $this->assertStringNotContainsString('⛔ не надіслано', $html);
+
+        self::bootKernel();
+        $month = self::getContainer()->get(Environment::class)->render('admin/sms.html.twig', [
+            'entries' => [], 'month' => ['sent' => 1, 'failed' => 0, 'parts' => 1, 'unknown' => 2, 'unknownParts' => 2], 'shown' => 500,
+            'price' => 1.29, 'preview' => null, 'min_debt' => 5000.0, 'balance' => 10.0, 'turbosms_id' => '1', 'run' => null,
+        ]);
+        $this->assertMatchesRegularExpression('#Невідомо, чи пішло: <b>2</b> \(якщо пішли, ще 2.58 грн#u', $month);
+    }
+
+    /** A run that stopped short of M has nothing queued: the jobs are gone, so it says so. */
+    public function testAStoppedRunDoesNotClaimAQueue(): void
+    {
+        $run = (new \App\Entity\SmsRun('a', 8, new \DateTimeImmutable()))->stop('x');
+        $html = $this->render([], null, 'ROLE_ADMIN', 100.0, ['run' => $run, 'total' => 8, 'sent' => 7, 'failed' => 0, 'unknown' => 0, 'sending' => 0, 'queued' => 1, 'stalled' => false]);
+
+        $this->assertMatchesRegularExpression('#Без рядка в журналі: <b>1</b>#u', $html);
+        $this->assertStringNotContainsString('У черзі', $html);
+    }
+
     /** A queue nobody consumes reads as «надсилається» for ever unless the page says otherwise. */
     public function testAStalledRunSaysSo(): void
     {

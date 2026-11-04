@@ -40,7 +40,8 @@ class DebtSmsDelivery
      */
     public const PAUSE_MS = 1000;
 
-    public const REASON_STALE = 'розсилка не з сьогоднішнього дня: черга стояла, не надсилаємо';
+    public const REASON_STALE = SmsRun::REASON_STALE;
+    public const REASON_JOB_FAILED = 'завдання не вдалося виконати, розсилку зупинено. Перевірте журнал і запустіть решту ще раз';
     public const REASON_PAID = 'борг уже погашено, не надсилаємо';
     public const REASON_NO_ACCOUNT = 'об\'єкта більше немає';
     public const REASON_PHONE_CHANGED = 'номер змінився після підтвердження, не надсилаємо';
@@ -83,6 +84,23 @@ class DebtSmsDelivery
 
         if ($sentRequest && $this->pauseMs > 0) {
             usleep($this->pauseMs * 1000);
+        }
+    }
+
+    /**
+     * A job fell over, usually the database. Its row may not exist, so the count will never reach
+     * M: stop the run, or the button stays locked for the rest of the day. The job itself goes
+     * to `failed`. If the database is still down this fails too, and tomorrow frees the button.
+     */
+    public function stopAfterFailure(DebtSmsMessage $message): void
+    {
+        if (!$this->em->isOpen()) {
+            $this->registry->resetManager();
+        }
+
+        $run = $this->runs->find($message->runId);
+        if ($run instanceof SmsRun && $run->isRunning()) {
+            $this->stopRun($run, self::REASON_JOB_FAILED);
         }
     }
 
@@ -211,7 +229,7 @@ class DebtSmsDelivery
 
     private function writeOff(DebtSmsMessage $message, SmsRun $run, ?Account $account, string $reason): void
     {
-        $this->sms->refuse($message->phone, $message->text, SmsLog::PURPOSE_DEBT, $account, $run->getCreatedBy(), $reason, $run);
+        $this->sms->writeOff($message->phone, $message->text, SmsLog::PURPOSE_DEBT, $account, $run->getCreatedBy(), $reason, $run);
         $this->closeIfDone($run);
     }
 
