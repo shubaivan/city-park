@@ -158,9 +158,9 @@ class AdminController extends AbstractController
      * ROLE_ADMIN only, by the `^/admin` rule.
      */
     #[Route('/admin/sms/debt/confirm', name: 'app_admin_sms_debt_confirm', methods: [Request::METHOD_GET])]
-    public function smsDebtConfirm(DebtSmsCampaign $campaign, SmsSender $sender): Response
+    public function smsDebtConfirm(Request $request, DebtSmsCampaign $campaign, SmsSender $sender): Response
     {
-        $estimate = $campaign->estimate($sender->balance());
+        $estimate = $campaign->estimate($sender->balance(), null, array_values($request->query->all('ids')));
 
         if ($estimate['blocked'] !== null) {
             $this->addFlash('warning', 'Нічого не надіслано. ' . $estimate['blocked']);
@@ -196,6 +196,7 @@ class AdminController extends AbstractController
 
         $result = $campaign->sendConfirmed(
             (string)$request->request->get('fingerprint'),
+            array_values($request->request->all('ids')),
             'панель: ' . $this->getUser()?->getUserIdentifier(),
         );
 

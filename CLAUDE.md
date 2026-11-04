@@ -1583,6 +1583,18 @@ button and `debt:notify-sms` go through `DebtSmsCampaign` — one definition of 
 a number», and `estimate()` prices only those who will really go out: no number, a foreign
 number, already sent today and a second object on the same number are listed apart.
 
+**Recipients are ticked by hand** (Иван, 04.11.2026, after reading «8 SMS» beside the button as
+«only 8 went»: no SMS had gone at all, 8 was everyone of the 67 debtors with a number). The card
+lists every debtor above the threshold, reachable first, nothing ticked, with «select all»; a
+row that cannot be ticked is greyed with its reason (`plan()['rows']`). The count, the cost and
+what is left on the balance follow the ticks in the browser, using the server's parts per row ×
+`PRICE_PER_PART`. The ticks are a wish: `DebtSmsCampaign::narrow()` holds them against a fresh
+plan on the confirmation and again at the POST. One id that is not a recipient refuses the whole
+run, no ticks means nobody and never everybody, and the balance is compared with the ticked
+addresses only, so a balance short of the whole list no longer greys out the card (`unavailable`
+is what no tick could change: quiet hours, no token, unknown balance). A panel run touches only
+the ticked: no journal row for anybody else. The console still sends to its whole plan.
+
 **A double send has four separate stops, from the outside in.** The browser disables the
 button on submit. The POST answers with a redirect, so a refresh repeats nothing.
 `DebtSmsCampaign::sendConfirmed()` holds an flock on `var/debt-sms.lock` for the whole run,

@@ -91,54 +91,57 @@ class AdminSmsPageTest extends KernelTestCase
     }
 
     /**
-     * On arrival: debtors, who gets it, what it costs, what is on the account — and the one
-     * button, with the price beside it. It leads to a confirmation, not to a send.
+     * On arrival: every debtor with a checkbox, nothing ticked, and the button leading to a
+     * confirmation, not to a send.
      */
-    public function testTheSummaryAndTheButtonAreThereOnArrival(): void
+    public function testTheListAndTheButtonAreThereOnArrival(): void
     {
         $html = $this->render([], $this->preview(3, balance: 100.0));
 
-        $this->assertMatchesRegularExpression('/Боржників понад 5 000 грн<\/td><td[^>]*><b>8<\/b>/u', $html);
-        $this->assertMatchesRegularExpression('/Отримають SMS<\/td><td[^>]*><b>3<\/b>/u', $html);
-        $this->assertMatchesRegularExpression('/Частин на одне повідомлення<\/td><td[^>]*><b>1<\/b>/u', $html);
-        $this->assertStringContainsString('<b>3.87 грн</b>', $html);
-        $this->assertStringContainsString('<b>100.00 грн</b>', $html);
+        $this->assertMatchesRegularExpression('/Боржників: <b>8<\/b> · можна надіслати: <b>3<\/b>/u', $html);
+        $this->assertSame(3, substr_count($html, 'class="debt-sms-pick"'));
+        $this->assertMatchesRegularExpression('/name="ids\[\]" value="100" data-parts="1"/', $html);
+        $this->assertStringNotContainsString(' checked', $html, 'nobody is written to unless somebody ticks them');
+        $this->assertStringContainsString('Вибрати всіх (3)', $html);
         $this->assertStringContainsString('буд. 27, кв. 63', $html);
-        $this->assertMatchesRegularExpression('#<a href="/admin/sms/debt/confirm"[^>]*>📨 Відправити СМС</a>#u', $html);
+        $this->assertStringContainsString('data-price="1.29"', $html);
+        $this->assertStringContainsString('data-balance="100"', $html);
+        $this->assertMatchesRegularExpression('#<form id="debt-sms-form" method="get" action="/admin/sms/debt/confirm"#u', $html);
         $this->assertStringNotContainsString('<form method="post"', $html);
+        $this->assertMatchesRegularExpression('#<b id="debt-sms-count">0</b> SMS · <b><span id="debt-sms-cost">0.00</span> грн</b>#u', $html);
+        $this->assertMatchesRegularExpression('#<button type="submit" id="debt-sms-send"[^>]*disabled>📨 Відправити СМС</button>#u', $html);
+    }
+
+    /** Whoever cannot be written to is on the list, greyed, with why: not a gap in the count. */
+    public function testARowThatCannotBeTickedIsDisabledWithTheReason(): void
+    {
+        $html = $this->render([], $this->preview(1, balance: 100.0));
+
+        $this->assertSame(1, substr_count($html, 'class="debt-sms-pick"'));
+        $this->assertSame(5, substr_count($html, '⛔ немає номера'));
+        $this->assertSame(5, substr_count($html, '<input type="checkbox" disabled aria-label="Не можна вибрати: немає номера">'));
+        $this->assertStringContainsString('не можна: без номера 5', $html);
     }
 
     /**
-     * Blocked, the button is still there, greyed, with the reason. Hiding it is what made
+     * Unavailable, the button is still there, greyed, with the reason. Hiding it is what made
      * Иван and Людмила report that the page has no button at all.
      */
-    public function testABlockedRunShowsTheButtonGreyedWithTheReason(): void
+    public function testAnUnavailableCardShowsTheButtonGreyedWithTheReason(): void
     {
         $preview = $this->preview(8, balance: 9.13);
-        $preview['blocked'] = 'бракує 1.19 грн';
+        $preview['unavailable'] = 'тихі години';
 
         $html = $this->render([], $preview);
 
-        $this->assertMatchesRegularExpression('#<button type="button"[^>]*disabled>📨 Відправити СМС</button>#u', $html);
+        $this->assertMatchesRegularExpression('#<button type="button" id="debt-sms-send"[^>]*disabled>📨 Відправити СМС</button>#u', $html);
         $this->assertStringNotContainsString('/admin/sms/debt', $html);
-        $this->assertStringContainsString('бракує 1.19 грн', $html);
-        $this->assertStringContainsString('10.32 грн', $html);
-    }
-
-    /** Why a household is not in the count is on the card, not a gap in the arithmetic. */
-    public function testItNamesWhoIsLeftOut(): void
-    {
-        $preview = $this->preview(1, balance: 100.0);
-        $preview['invalidPhone'] = [['phone' => '48796496316']];
-        $preview['alreadySent'] = [['phone' => '380671111111'], ['phone' => '380672222222']];
-        $preview['samePhone'] = [['phone' => '380673333333']];
-
-        $html = $this->render([], $preview);
-
-        $this->assertMatchesRegularExpression('/Без номера \(SMS не піде\)<\/td><td[^>]*>5</u', $html);
-        $this->assertMatchesRegularExpression('/Номер не український \(SMS не піде\)<\/td><td[^>]*>1</u', $html);
-        $this->assertMatchesRegularExpression('/Вже надіслано сьогодні або результат невідомий<\/td><td[^>]*>2</u', $html);
-        $this->assertMatchesRegularExpression('/Той самий номер, що в іншої адреси<\/td><td[^>]*>1</u', $html);
+        $this->assertStringContainsString('тихі години', $html);
+        $this->assertMatchesRegularExpression(
+            '#<div id="debt-sms-bar">.*тихі години.*</form>#su',
+            $html,
+            'the reason stays beside the button, not below a list that is 59 rows long on a phone',
+        );
     }
 
     /** The confirmation: who, how much, the real text, and a form bound to exactly this list. */
@@ -146,6 +149,8 @@ class AdminSmsPageTest extends KernelTestCase
     {
         $this->render([]);
         $preview = $this->preview(3, balance: 100.0);
+        $preview['notChosen'] = 2;
+        $preview['invalidPhone'] = [['phone' => '48796496316']];
 
         $html = self::getContainer()->get(Environment::class)->render('admin/sms_confirm.html.twig', [
             'preview' => $preview,
@@ -160,6 +165,10 @@ class AdminSmsPageTest extends KernelTestCase
         $this->assertStringContainsString('<details class="mb-2 small" open', $html);
         $this->assertSame(3, substr_count($html, '380671234567'));
         $this->assertStringContainsString('b.disabled = true', $html, 'a double tap is stopped in the browser too');
+        $this->assertStringContainsString('<input type="hidden" name="ids[]" value="100">', $html);
+        $this->assertSame(3, substr_count($html, 'name="ids[]"'));
+        $this->assertMatchesRegularExpression('/Не вибрано \(SMS не піде\)<\/td><td[^>]*>2</u', $html);
+        $this->assertMatchesRegularExpression('/Номер не український \(SMS не піде\)<\/td><td[^>]*>1</u', $html);
     }
 
     /** What is left on TurboSMS is on the page for everybody, and «unknown» is never «0». */
@@ -201,16 +210,26 @@ class AdminSmsPageTest extends KernelTestCase
     private function preview(int $n, ?float $balance): array
     {
         $recipients = [];
-        for ($i = 0; $i < $n; $i++) {
+        $rows = [];
+        for ($i = 0; $i < $n + 5; $i++) {
             $account = (new \App\Entity\Account())->setDebt('5430.00')->setHouseNumber('27')->setApartmentNumber('63')->setAccountNumber('520063');
-            $recipients[] = ['account' => $account, 'phone' => '380671234567', 'text' => 'x'];
+            (new \ReflectionProperty(\App\Entity\Account::class, 'id'))->setValue($account, 100 + $i);
+
+            if ($i < $n) {
+                $recipients[] = ['account' => $account, 'phone' => '380671234567', 'text' => 'x'];
+                $rows[] = ['account' => $account, 'phone' => '380671234567', 'parts' => 1, 'reason' => null];
+            } else {
+                $rows[] = ['account' => $account, 'phone' => null, 'parts' => 0, 'reason' => 'немає номера'];
+            }
         }
 
         return [
             'recipients' => $recipients,
+            'rows' => $rows,
             'tooLong' => [],
             'noPhone' => 5,
             'skippedTelegram' => 0,
+            'skippedSummary' => 'без номера 5',
             'invalidPhone' => [],
             'alreadySent' => [],
             'samePhone' => [],
@@ -222,6 +241,9 @@ class AdminSmsPageTest extends KernelTestCase
             'debtors' => $n + 5,
             'fingerprint' => 'abc123',
             'blocked' => null,
+            'unavailable' => null,
+            'rejected' => [],
+            'notChosen' => 0,
         ];
     }
 }

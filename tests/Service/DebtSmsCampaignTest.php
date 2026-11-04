@@ -210,12 +210,11 @@ class DebtSmsCampaignTest extends TestCase
         ]), $http, $this->journal(), $logger);
 
         $now = new \DateTimeImmutable(self::DAY);
-        $result = $campaign->sendConfirmed($campaign->estimate(100.0, $now)['fingerprint'], 'панель: luda_boss', $now);
+        $result = $this->confirmEveryone($campaign, 'панель: luda_boss', $now);
 
         $this->assertSame(DebtSmsCampaign::OUTCOME_SENT, $result['outcome']);
         $this->assertSame('warning', $result['flash']);
-        $this->assertStringContainsString('Надіслано 1, не надіслано 1, пропущено 1', $result['message']);
-        $this->assertStringContainsString('без номера 1', $result['message']);
+        $this->assertStringContainsString('Надіслано 1, не надіслано 1, пропущено 0', $result['message']);
         $this->assertSame('панель: luda_boss', $logged['debt sms: run started']['by']);
         $this->assertSame(1, $logged['debt sms: run finished']['sent']);
     }
@@ -238,12 +237,14 @@ class DebtSmsCampaignTest extends TestCase
         $campaign = $this->realCampaign($debtors, $http, $this->journal());
 
         $now = new \DateTimeImmutable(self::DAY);
-        $fingerprint = $campaign->estimate(100.0, $now)['fingerprint'];
+        $estimate = $campaign->estimate(100.0, $now);
+        $fingerprint = $estimate['fingerprint'];
+        $ids = $this->idsOf($estimate);
 
-        $this->assertSame(DebtSmsCampaign::OUTCOME_SENT, $campaign->sendConfirmed($fingerprint, 'a', $now)['outcome']);
+        $this->assertSame(DebtSmsCampaign::OUTCOME_SENT, $campaign->sendConfirmed($fingerprint, $ids, 'a', $now)['outcome']);
         $this->assertSame(3, $sends);
 
-        $second = $campaign->sendConfirmed($fingerprint, 'a', $now);
+        $second = $campaign->sendConfirmed($fingerprint, $ids, 'a', $now);
 
         $this->assertNotSame(DebtSmsCampaign::OUTCOME_SENT, $second['outcome']);
         $this->assertStringContainsString('Нічого не надіслано', $second['message']);
@@ -264,10 +265,12 @@ class DebtSmsCampaignTest extends TestCase
         );
 
         $now = new \DateTimeImmutable(self::DAY);
-        $fingerprint = $campaign->estimate(100.0, $now)['fingerprint'];
-        $campaign->sendConfirmed($fingerprint, 'a', $now);
+        $estimate = $campaign->estimate(100.0, $now);
+        $fingerprint = $estimate['fingerprint'];
+        $ids = $this->idsOf($estimate);
+        $campaign->sendConfirmed($fingerprint, $ids, 'a', $now);
 
-        $this->assertSame(DebtSmsCampaign::OUTCOME_CHANGED, $campaign->sendConfirmed($fingerprint, 'a', $now)['outcome']);
+        $this->assertSame(DebtSmsCampaign::OUTCOME_CHANGED, $campaign->sendConfirmed($fingerprint, $ids, 'a', $now)['outcome']);
     }
 
     /**
@@ -285,7 +288,7 @@ class DebtSmsCampaignTest extends TestCase
         $campaign = $this->realCampaign($this->debtors([['9000', ['380671111111']]]), $http, $journal);
 
         $now = new \DateTimeImmutable(self::DAY);
-        $result = $campaign->sendConfirmed($campaign->estimate(100.0, $now)['fingerprint'], 'a', $now);
+        $result = $this->confirmEveryone($campaign, 'a', $now);
 
         $this->assertStringContainsString('не надіслано 1', $result['message']);
         $this->assertStringStartsWith(SmsSender::OUTCOME_UNKNOWN, (string)$journal->rows[0]->getError());
@@ -302,7 +305,7 @@ class DebtSmsCampaignTest extends TestCase
         $campaign = $this->campaign($this->debtors([['6000', ['380671111111']], ['6000', ['380672222222']]]), $sms);
         $now = new \DateTimeImmutable(self::DAY);
 
-        $result = $campaign->sendConfirmed($campaign->estimate(100.0, $now)['fingerprint'], 'a', $now);
+        $result = $this->confirmEveryone($campaign, 'a', $now);
 
         $this->assertSame(DebtSmsCampaign::OUTCOME_BLOCKED, $result['outcome']);
         $this->assertStringContainsString('Нічого не надіслано', $result['message']);
@@ -316,7 +319,7 @@ class DebtSmsCampaignTest extends TestCase
         $sms->expects($this->never())->method('send');
 
         $campaign = $this->campaign($this->debtors([['6000', ['380671111111']]]), $sms);
-        $result = $campaign->sendConfirmed(str_repeat('0', 64), 'a', new \DateTimeImmutable(self::DAY));
+        $result = $campaign->sendConfirmed(str_repeat('0', 64), [100], 'a', new \DateTimeImmutable(self::DAY));
 
         $this->assertSame(DebtSmsCampaign::OUTCOME_CHANGED, $result['outcome']);
     }
@@ -342,7 +345,7 @@ class DebtSmsCampaignTest extends TestCase
         $this->assertNotNull($held);
         $this->assertNull($campaign->acquireLock(), 'a second holder must be refused');
 
-        $result = $campaign->sendConfirmed('anything', 'a', new \DateTimeImmutable(self::DAY));
+        $result = $campaign->sendConfirmed('anything', [100], 'a', new \DateTimeImmutable(self::DAY));
         $this->assertSame(DebtSmsCampaign::OUTCOME_RUNNING, $result['outcome']);
 
         $campaign->releaseLock($held);
@@ -365,7 +368,7 @@ class DebtSmsCampaignTest extends TestCase
             $this->projectDir . '/no/such/dir',
         );
 
-        $this->assertSame(DebtSmsCampaign::OUTCOME_RUNNING, $campaign->sendConfirmed('x', 'a')['outcome']);
+        $this->assertSame(DebtSmsCampaign::OUTCOME_RUNNING, $campaign->sendConfirmed('x', [100], 'a')['outcome']);
     }
 
     /** The same-day guard firing inside a run is a skip, not a failure: nothing was spent. */
@@ -399,6 +402,172 @@ class DebtSmsCampaignTest extends TestCase
 
         $this->assertSame(1, $run['skipped']);
         $this->assertSame(0, $run['failed']);
+    }
+
+    /** Only what was ticked goes out, is priced and gets a journal row. */
+    public function testOnlyTheTickedAddressesAreSentAndPriced(): void
+    {
+        $journal = $this->journal();
+        $sends = [];
+        $http = new MockHttpClient(static function (string $method, string $url, array $options) use (&$sends): MockResponse {
+            if (str_contains($url, '/user/balance.json')) {
+                return new MockResponse(json_encode(['response_result' => ['balance' => 100.0]]));
+            }
+            $sends[] = json_decode($options['body'], true)['recipients'][0];
+
+            return new MockResponse(json_encode(['response_code' => 0, 'response_result' => [['message_id' => 'a']]]));
+        }, 'https://api.turbosms.ua');
+
+        $campaign = $this->realCampaign($this->debtors([
+            ['9000', ['380671111111']],
+            ['8000', ['380672222222']],
+            ['7000', ['380673333333']],
+            ['6000', ['48796496316']],
+        ]), $http, $journal);
+        $now = new \DateTimeImmutable(self::DAY);
+
+        $estimate = $campaign->estimate(100.0, $now, ['101']);
+        $this->assertCount(1, $estimate['recipients']);
+        $this->assertSame(1.29, $estimate['cost']);
+        $this->assertSame(2, $estimate['notChosen']);
+        $this->assertNull($estimate['blocked']);
+
+        $result = $campaign->sendConfirmed($estimate['fingerprint'], ['101'], 'a', $now);
+
+        $this->assertSame(DebtSmsCampaign::OUTCOME_SENT, $result['outcome']);
+        $this->assertSame(['380672222222'], $sends);
+        $this->assertCount(1, $journal->rows, 'nobody unticked gets a row, the foreign number included');
+    }
+
+    /**
+     * A hand-edited form. One id the server would refuse stops the whole run: the person
+     * confirmed a list, and what is left after dropping one is not that list.
+     *
+     * @dataProvider notARecipient
+     */
+    public function testAnIdThatIsNotAllowedSendsNothingAtAll(mixed $bad): void
+    {
+        $sms = $this->configuredSms();
+        $sms->method('balance')->willReturn(100.0);
+        $sms->expects($this->never())->method('send');
+        $sms->expects($this->never())->method('refuse');
+
+        $campaign = $this->campaign($this->debtors([
+            ['9000', ['380671111111']],
+            ['8000', []],
+            ['7000', ['48796496316']],
+            ['1000', ['380674444444']],
+        ]), $sms);
+        $now = new \DateTimeImmutable(self::DAY);
+
+        $fingerprint = $campaign->estimate(100.0, $now, ['100'])['fingerprint'];
+        $result = $campaign->sendConfirmed($fingerprint, ['100', $bad], 'a', $now);
+
+        $this->assertSame(DebtSmsCampaign::OUTCOME_CHANGED, $result['outcome']);
+        $this->assertStringContainsString('Нічого не надіслано', $result['message']);
+    }
+
+    public static function notARecipient(): iterable
+    {
+        yield 'no phone' => ['101'];
+        yield 'foreign number' => ['102'];
+        yield 'debt under the threshold' => ['103'];
+        yield 'no such account' => ['99999'];
+        yield 'an id with something after it' => ['100abc'];
+        yield 'not a scalar' => [['100']];
+    }
+
+    /** Ticks swapped behind a confirmed form: the fingerprint belongs to another list. */
+    public function testAFingerprintOfAnotherSelectionSendsNothing(): void
+    {
+        $sms = $this->configuredSms();
+        $sms->method('balance')->willReturn(100.0);
+        $sms->expects($this->never())->method('send');
+
+        $campaign = $this->campaign($this->debtors([['9000', ['380671111111']], ['8000', ['380672222222']]]), $sms);
+        $now = new \DateTimeImmutable(self::DAY);
+
+        $fingerprint = $campaign->estimate(100.0, $now, ['100'])['fingerprint'];
+
+        $this->assertSame(DebtSmsCampaign::OUTCOME_CHANGED, $campaign->sendConfirmed($fingerprint, ['101'], 'a', $now)['outcome']);
+    }
+
+    /** No ticks is never «everybody». */
+    public function testNoSelectionSendsNothing(): void
+    {
+        $sms = $this->configuredSms();
+        $sms->method('balance')->willReturn(100.0);
+        $sms->expects($this->never())->method('send');
+
+        $campaign = $this->campaign($this->debtors([['9000', ['380671111111']]]), $sms);
+        $now = new \DateTimeImmutable(self::DAY);
+
+        $this->assertSame('Нікого не вибрано.', $campaign->estimate(100.0, $now, [])['blocked']);
+
+        $result = $campaign->sendConfirmed($campaign->estimate(100.0, $now)['fingerprint'], [], 'a', $now);
+        $this->assertSame(DebtSmsCampaign::OUTCOME_BLOCKED, $result['outcome']);
+    }
+
+    /** The balance is held against the ticks: enough for two of three is enough for two. */
+    public function testTheBalanceIsCheckedAgainstTheSelection(): void
+    {
+        $campaign = $this->campaign($this->debtors([
+            ['9000', ['380671111111']],
+            ['8000', ['380672222222']],
+            ['7000', ['380673333333']],
+        ]), $this->configuredSms());
+        $now = new \DateTimeImmutable(self::DAY);
+
+        $this->assertNull($campaign->estimate(2.58, $now, ['100', '101'])['blocked']);
+        $this->assertStringContainsString('бракує 1.29 грн', (string)$campaign->estimate(2.58, $now, ['100', '101', '102'])['blocked']);
+    }
+
+    /** A balance short of the whole list must not grey out the card: a few can still go. */
+    public function testTheCardIsUnavailableOnlyForWhatNoTickCouldChange(): void
+    {
+        $campaign = $this->campaign($this->debtors([['9000', ['380671111111']], ['8000', ['380672222222']]]), $this->configuredSms());
+        $day = new \DateTimeImmutable(self::DAY);
+
+        $this->assertNull($campaign->estimate(1.29, $day)['unavailable']);
+        $this->assertNull($campaign->estimate(0.0, $day)['unavailable'], 'the sum beside the button says it is short');
+        $this->assertNotNull($campaign->estimate(null, $day)['unavailable']);
+        $this->assertStringContainsString('тихі години', (string)$campaign->estimate(100.0, new \DateTimeImmutable('2026-11-02 23:00 Europe/Kyiv'))['unavailable']);
+    }
+
+    /** Every debtor is a row, and a row that cannot be ticked says why. */
+    public function testEveryDebtorIsARowWithTheReason(): void
+    {
+        $journal = $this->journal();
+        $journal->rows[] = (new SmsLog('380675555555', 't', SmsLog::PURPOSE_DEBT))->markSent('x');
+
+        $rows = $this->realCampaign($this->debtors([
+            ['9000', ['380671111111']],
+            ['8500', ['0671111111']],
+            ['8000', []],
+            ['7000', ['48796496316']],
+            ['6000', ['380675555555']],
+            ['1000', ['380676666666']],
+        ]), $this->turboSms(100.0, []), $journal)->plan()['rows'];
+
+        $this->assertSame(
+            [null, 'той самий номер, що в іншої адреси', 'немає номера', 'номер не український', 'сьогодні вже надсилали або результат невідомий'],
+            array_column($rows, 'reason'),
+        );
+        $this->assertSame([1, 1, 0, 1, 1], array_column($rows, 'parts'));
+    }
+
+    /** The whole list ticked and confirmed: what a test with no interest in ticks wants. */
+    private function confirmEveryone(DebtSmsCampaign $campaign, string $by, \DateTimeImmutable $now): array
+    {
+        $estimate = $campaign->estimate(100.0, $now);
+
+        return $campaign->sendConfirmed($estimate['fingerprint'], $this->idsOf($estimate), $by, $now);
+    }
+
+    /** @return list<int> */
+    private function idsOf(array $estimate): array
+    {
+        return array_map(static fn (array $r): int => $r['account']->getId(), $estimate['recipients']);
     }
 
     private function configuredSms(): SmsSender&MockObject
@@ -463,10 +632,9 @@ class DebtSmsCampaignTest extends TestCase
         $out = [];
         foreach ($rows as $i => [$debt, $phones]) {
             $flat = (string)(10 + $i);
-            $out[] = [
-                (new Account())->setDebt($debt)->setHouseNumber('27')->setApartmentNumber($flat)->setAccountNumber('5200' . $flat),
-                $phones,
-            ];
+            $account = (new Account())->setDebt($debt)->setHouseNumber('27')->setApartmentNumber($flat)->setAccountNumber('5200' . $flat);
+            (new \ReflectionProperty(Account::class, 'id'))->setValue($account, 100 + $i);
+            $out[] = [$account, $phones];
         }
 
         return $out;

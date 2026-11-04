@@ -20,6 +20,9 @@ use Psr\Log\LoggerInterface;
  * `plan()` and `estimate()` decide and spend nothing; `send()` sends exactly what a plan
  * holds, so the figure shown before the tap is the figure that goes out. The button goes
  * through `sendConfirmed()`, which is where a double send is refused.
+ *
+ * In the panel a run goes only to the addresses ticked (Иван, 04.11.2026). What the browser
+ * sends is a wish, not a list: `narrow()` holds it against a fresh `plan()` at every step.
  */
 class DebtSmsCampaign
 {
@@ -59,6 +62,7 @@ class DebtSmsCampaign
      *     alreadySent: list<array{account: Account, phone: string, text: string}>,
      *     samePhone: list<array{account: Account, phone: string, text: string}>,
      *     debtors: int,
+     *     rows: list<array{account: Account, phone: ?string, parts: int, reason: ?string}>,
      * }
      */
     public function plan(float $min = self::DEFAULT_MIN_DEBT, string $audience = self::AUDIENCE_ALL): array
@@ -66,7 +70,18 @@ class DebtSmsCampaign
         $plan = [
             'recipients' => [], 'tooLong' => [], 'noPhone' => 0, 'skippedTelegram' => 0,
             'invalidPhone' => [], 'alreadySent' => [], 'samePhone' => [], 'debtors' => 0,
+            'rows' => [],
         ];
+
+        // Every debtor, one row each: who can be ticked in the panel, and why the rest cannot.
+        $row = static function (Account $account, ?string $phone, ?string $text, ?string $reason) use (&$plan): void {
+            $plan['rows'][] = [
+                'account' => $account,
+                'phone' => $phone,
+                'parts' => $text === null ? 0 : SmsSender::parts($text),
+                'reason' => $reason,
+            ];
+        };
 
         $debtors = array_filter(
             $this->accounts->findAll(),
@@ -82,18 +97,21 @@ class DebtSmsCampaign
         foreach ($debtors as $account) {
             if ($audience === self::AUDIENCE_UNREACHABLE && $this->reachableInTelegram($account)) {
                 $plan['skippedTelegram']++;
+                $row($account, null, null, self::REASON_TELEGRAM);
                 continue;
             }
 
             $phone = $this->phoneFor($account);
             if ($phone === null) {
                 $plan['noPhone']++;
+                $row($account, null, null, self::REASON_NO_PHONE);
                 continue;
             }
 
             $text = DebtNotifySmsCommand::text($account);
             if ($text === null) {
                 $plan['tooLong'][] = $account;
+                $row($account, $phone, null, self::REASON_TOO_LONG);
                 continue;
             }
 
@@ -102,14 +120,18 @@ class DebtSmsCampaign
 
             if (!PhoneKey::isUkrainian($phone)) {
                 $plan['invalidPhone'][] = $recipient;
+                $row($account, $phone, $text, self::REASON_FOREIGN);
             } elseif (isset($seen[$key])) {
                 // The same-day guard would refuse the second one anyway; it must not be priced.
                 $plan['samePhone'][] = $recipient;
+                $row($account, $phone, $text, self::REASON_SAME_PHONE);
             } elseif ($this->sms->alreadySentToday($phone, SmsLog::PURPOSE_DEBT)) {
                 $plan['alreadySent'][] = $recipient;
+                $row($account, $phone, $text, self::REASON_ALREADY_SENT);
             } else {
                 $seen[$key] = true;
                 $plan['recipients'][] = $recipient;
+                $row($account, $phone, $text, null);
             }
         }
 
@@ -122,11 +144,22 @@ class DebtSmsCampaign
      * Asked on every page view and again at the tap. `$balance` is the caller's, since the
      * journal page has already asked TurboSMS for it. Spends nothing, writes nothing.
      *
-     * @return array<string, mixed> plan() plus parts, partsPerMessage, cost, balance, configured, fingerprint, blocked
+     * With `$selectedIds` everything is about those addresses only: the recipients, the
+     * cost, the balance check. `unavailable` is the reason nobody can be sent to right now
+     * whatever gets ticked, which is what greys out the button on the card.
+     *
+     * @param list<mixed>|null $selectedIds account ids as they came from the browser
+     *
+     * @return array<string, mixed> plan() plus parts, partsPerMessage, cost, balance, configured, fingerprint, blocked, unavailable, rejected, notChosen, skippedSummary
      */
-    public function estimate(?float $balance, ?\DateTimeImmutable $now = null): array
+    public function estimate(?float $balance, ?\DateTimeImmutable $now = null, ?array $selectedIds = null): array
     {
         $plan = $this->plan();
+        $plan['skippedSummary'] = self::skippedBreakdown($plan);
+        $plan['unavailable'] = $this->unavailableReason($plan['recipients'] !== [], $balance, $now);
+        $plan['selection'] = $selectedIds !== null;
+        $plan = $selectedIds === null ? $plan + ['rejected' => [], 'notChosen' => 0] : self::narrow($plan, $selectedIds);
+
         $parts = array_map(static fn (array $r) => SmsSender::parts($r['text']), $plan['recipients']);
 
         $plan['parts'] = array_sum($parts);
@@ -224,11 +257,14 @@ class DebtSmsCampaign
     /**
      * The confirmed tap: take the lock, look at everything again, send or refuse whole.
      *
-     * Never a partial run by choice: if the balance does not cover the list, nothing goes.
+     * Never a partial run by choice: if the balance does not cover the ticked addresses, or
+     * one of them may no longer be written to, nothing goes.
+     *
+     * @param list<mixed> $selectedIds account ids as they came from the browser
      *
      * @return array{outcome: string, flash: string, message: string}
      */
-    public function sendConfirmed(string $fingerprint, string $sentBy, ?\DateTimeImmutable $now = null): array
+    public function sendConfirmed(string $fingerprint, array $selectedIds, string $sentBy, ?\DateTimeImmutable $now = null): array
     {
         $lock = $this->acquireLock();
         if ($lock === null) {
@@ -240,7 +276,11 @@ class DebtSmsCampaign
         }
 
         try {
-            $estimate = $this->estimate($this->sms->balance(), $now);
+            $estimate = $this->estimate($this->sms->balance(), $now, $selectedIds);
+
+            if ($estimate['rejected'] !== []) {
+                return $this->refused(self::OUTCOME_CHANGED, $sentBy, 'Нічого не надіслано. ' . self::rejectedReason($estimate['rejected']));
+            }
 
             if ($estimate['blocked'] !== null) {
                 return $this->refused(self::OUTCOME_BLOCKED, $sentBy, 'Нічого не надіслано. ' . $estimate['blocked']);
@@ -258,7 +298,9 @@ class DebtSmsCampaign
                 'cost' => $estimate['cost'], 'balance' => $estimate['balance'],
             ]);
 
-            $run = $this->send($estimate, $sentBy);
+            // Only the ticked: an address nobody chose gets neither a message nor a journal row.
+            $chosen = ['recipients' => $estimate['recipients']];
+            $run = $this->send($chosen, $sentBy);
 
             $this->smsLogger->info('debt sms: run finished', [
                 'by' => $sentBy, 'sent' => $run['sent'], 'failed' => $run['failed'],
@@ -268,7 +310,7 @@ class DebtSmsCampaign
             return [
                 'outcome' => self::OUTCOME_SENT,
                 'flash' => $run['failed'] > 0 ? 'warning' : 'success',
-                'message' => self::summary($estimate, $run),
+                'message' => self::summary($chosen, $run),
             ];
         } finally {
             $this->releaseLock($lock);
@@ -375,13 +417,75 @@ class DebtSmsCampaign
             + count($plan['alreadySent'] ?? []) + count($plan['samePhone'] ?? []) + count($plan['tooLong'] ?? []);
     }
 
+    /**
+     * The plan cut down to what was ticked, and what was ticked but may not be written to.
+     *
+     * Ids are compared as strings, not cast: `12abc` must not quietly become address 12.
+     * A rejected id is never dropped and the rest sent, since the person confirmed a list
+     * and that list no longer exists. The same form sent twice lands here too: whoever the
+     * first run reached is no longer a recipient.
+     *
+     * @param array<string, mixed> $plan
+     * @param list<mixed>          $selectedIds
+     *
+     * @return array<string, mixed>
+     */
+    private static function narrow(array $plan, array $selectedIds): array
+    {
+        $wanted = array_values(array_unique(array_map(
+            static fn (mixed $id): string => is_scalar($id) ? (string)$id : '',
+            $selectedIds,
+        )));
+
+        $all = $plan['recipients'];
+        $plan['recipients'] = array_values(array_filter(
+            $all,
+            static fn (array $r): bool => in_array((string)$r['account']->getId(), $wanted, true),
+        ));
+        $plan['rejected'] = array_values(array_diff(
+            $wanted,
+            array_map(static fn (array $r): string => (string)$r['account']->getId(), $plan['recipients']),
+        ));
+        $plan['notChosen'] = count($all) - count($plan['recipients']);
+
+        return $plan;
+    }
+
+    /** @param list<string> $rejected */
+    private static function rejectedReason(array $rejected): string
+    {
+        return sprintf(
+            'Список змінився: вибраних адрес, яким SMS уже не можна надіслати: %d. Перевірте список і виберіть ще раз.',
+            count($rejected),
+        );
+    }
+
+    /** What stops every send, whoever is ticked. Cost is not here: that depends on the ticks. */
+    private function unavailableReason(bool $anyRecipient, ?float $balance, ?\DateTimeImmutable $now): ?string
+    {
+        if (!$this->sms->isConfigured()) {
+            return 'TurboSMS не налаштовано на сервері — надіслати нема чим.';
+        }
+        if (!$anyRecipient) {
+            return 'Нікому надсилати.';
+        }
+        if ($balance === null) {
+            return 'TurboSMS не відповів, скільки на рахунку. Без цього не надсилаємо — оновіть сторінку за кілька хвилин.';
+        }
+
+        return $this->quietHoursReason($now);
+    }
+
     private function blockedReason(array $estimate, ?\DateTimeImmutable $now): ?string
     {
         if (!$estimate['configured']) {
             return 'TurboSMS не налаштовано на сервері — надіслати нема чим.';
         }
+        if ($estimate['rejected'] !== []) {
+            return self::rejectedReason($estimate['rejected']);
+        }
         if ($estimate['recipients'] === []) {
-            return 'Нікому надсилати.';
+            return $estimate['selection'] ? 'Нікого не вибрано.' : 'Нікому надсилати.';
         }
         if ($estimate['balance'] === null) {
             return 'TurboSMS не відповів, скільки на рахунку. Без цього не надсилаємо — оновіть сторінку за кілька хвилин.';
@@ -429,6 +533,14 @@ class DebtSmsCampaign
     }
 
     private const INVALID_PHONE = 'не український номер — SMS не надсилаємо';
+
+    /** Why a row on the card cannot be ticked. */
+    private const REASON_NO_PHONE = 'немає номера';
+    private const REASON_FOREIGN = 'номер не український';
+    private const REASON_ALREADY_SENT = 'сьогодні вже надсилали або результат невідомий';
+    private const REASON_SAME_PHONE = 'той самий номер, що в іншої адреси';
+    private const REASON_TOO_LONG = 'адреса не влазить в одну SMS';
+    private const REASON_TELEGRAM = 'є в Telegram';
 
     /** Why the households after the point the money ran out were not written to. */
     public const OUT_OF_MONEY = 'на балансі TurboSMS закінчились кошти — розсилку зупинено';

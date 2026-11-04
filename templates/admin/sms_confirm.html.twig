@@ -25,6 +25,9 @@
               onsubmit="var b = this.querySelector('button'); if (b.disabled) return false; b.disabled = true; b.textContent = 'Надсилаю…';">
             <input type="hidden" name="_token" value="{{ csrf_token('sms-debt') }}">
             <input type="hidden" name="fingerprint" value="{{ preview.fingerprint }}">
+            {% for r in preview.recipients %}
+                <input type="hidden" name="ids[]" value="{{ r.account.id }}">
+            {% endfor %}
             <button type="submit" class="btn btn-danger btn-block">Так, відправити {{ n }} SMS · {{ preview.cost|number_format(2, '.', ' ') }} грн</button>
         </form>
     </div>
