@@ -212,20 +212,100 @@ class SmsSender
             return $this->persist($log->markFailed(self::OUTCOME_UNKNOWN . $e->getMessage()));
         }
 
-        $code = (int)($body['response_code'] ?? -1);
-        $result = $body['response_result'][0] ?? [];
+        return $this->persist($this->recordAnswer($log, $body, $phone));
+    }
 
-        // 0 and the 800s are the provider's success codes; everything else is a refusal,
-        // and its own words are more useful in the journal than anything we could write.
-        if ($code === 0 || ($code >= 800 && $code < 900)) {
-            return $this->persist($log->markSent($result['message_id'] ?? null));
+    /**
+     * What TurboSMS said about this one recipient, written down as what it means for the money.
+     *
+     * **The answer for the recipient decides, not the answer for the request.** A request with
+     * a refused recipient comes back 802, SUCCESS_MESSAGE_PARTIAL_ACCEPTED, with that
+     * recipient's message_id null and its own code in the entry (turbosms.ua/api.html).
+     *
+     * Three outcomes, and the third is why this is not a yes or no. Sent: an id. Refused: the
+     * provider says so, nothing was created, and a later attempt is fine. Unknown: anything that
+     * says it was accepted without an id, or that cannot be read. A billed message must not
+     * look refused and go out again, so those take OUTCOME_UNKNOWN, which the same-day guard
+     * treats like a sent one.
+     *
+     * @param array<mixed> $body
+     */
+    private function recordAnswer(SmsLog $log, array $body, string $phone): SmsLog
+    {
+        $code = is_numeric($body['response_code'] ?? null) ? (int)$body['response_code'] : null;
+        if ($code === null) {
+            return $log->markFailed(self::OUTCOME_UNKNOWN . 'відповідь без коду результату');
         }
 
-        return $this->persist($log->markFailed(sprintf(
-            '%s (%s)',
-            $body['response_status'] ?? 'unknown error',
-            $code,
-        )));
+        $status = self::statusText($body);
+        $entry = self::entryFor($body, $phone);
+
+        if ($entry !== null) {
+            $id = is_scalar($entry['message_id'] ?? null) && (string)$entry['message_id'] !== '' ? (string)$entry['message_id'] : null;
+            $entryCode = is_numeric($entry['response_code'] ?? null) ? (int)$entry['response_code'] : null;
+            $entryStatus = self::statusText($entry);
+            $entryAccepted = $entryCode === null || self::isAccepted($entryCode);
+
+            if ($id !== null) {
+                return $entryAccepted && self::isAccepted($code)
+                    ? $log->markSent($id)
+                    : $log->markFailed(self::OUTCOME_UNKNOWN . sprintf('є id, але код %s (%d)', $entryStatus, $entryCode ?? $code));
+            }
+
+            if (!$entryAccepted) {
+                return $log->markFailed(sprintf('%s (%d)', $entryStatus, $entryCode));
+            }
+        }
+
+        if (self::isAccepted($code)) {
+            return $log->markFailed(self::OUTCOME_UNKNOWN . sprintf('TurboSMS прийняв запит (%s, %d), але не дав id', $status, $code));
+        }
+
+        // A result it could not encode, or its own fatal error: the request may well have run.
+        if ($code === 500 || $code === 501 || ($code >= 9000 && $code <= 9999)) {
+            return $log->markFailed(self::OUTCOME_UNKNOWN . sprintf('%s (%d)', $status, $code));
+        }
+
+        return $log->markFailed(sprintf('%s (%d)', $status, $code));
+    }
+
+    /**
+     * OK, the four «created or sent» answers to message/send, and the answer to a repeated
+     * sequence_id, which carries the results of the request that already ran.
+     */
+    private static function isAccepted(int $code): bool
+    {
+        return $code === 0 || ($code >= 800 && $code <= 803) || $code === 507;
+    }
+
+    /** @param array<mixed> $answer */
+    private static function statusText(array $answer): string
+    {
+        return is_scalar($answer['response_status'] ?? null) ? (string)$answer['response_status'] : 'unknown error';
+    }
+
+    /**
+     * This recipient's entry in response_result. One recipient per request here, so a single
+     * entry is theirs even if the provider wrote the number another way.
+     *
+     * @param array<mixed> $body
+     *
+     * @return array<mixed>|null
+     */
+    private static function entryFor(array $body, string $phone): ?array
+    {
+        $entries = array_values(array_filter(
+            is_array($body['response_result'] ?? null) ? $body['response_result'] : [],
+            'is_array',
+        ));
+
+        foreach ($entries as $entry) {
+            if (is_scalar($entry['phone'] ?? null) && PhoneKey::same((string)$entry['phone'], $phone)) {
+                return $entry;
+            }
+        }
+
+        return count($entries) === 1 ? $entries[0] : null;
     }
 
     /**

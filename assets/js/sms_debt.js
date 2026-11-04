@@ -28,6 +28,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /** What was typed: buildings and units named as such, and everything else in order. */
     function parse(term) {
+        var digits = term.replace(/\D/g, '');
+
+        // A number as people write it, «+380 67 100 00 26» or «(067) 100-00-26»: one number.
+        if (digits.length >= 9 && /^[\d\s+()\-]+$/.test(term)) {
+            term = digits;
+        }
+
         var tokens = [];
 
         words(term).forEach(function (word) {
@@ -73,15 +80,25 @@ document.addEventListener('DOMContentLoaded', function () {
         return parsed;
     }
 
-    function hasWord(list, word, whole) {
-        return list.some(function (candidate) {
-            return whole ? candidate === word : candidate.indexOf(word) === 0;
-        });
+    function beginsAWord(value, word) {
+        return words(value).some(function (candidate) { return candidate.indexOf(word) === 0; });
     }
 
-    /** The whole number, in any of the shapes it is written in: the last nine digits are the person. */
+    /** The whole of it: «63/2» is flat 63/2, and neither flat 63 nor flat 2. */
+    function isExactly(value, word) {
+        return value.trim().toLowerCase() === word;
+    }
+
+    function digitsOf(phone) {
+        return phone.replace(/\D/g, '');
+    }
+
+    /**
+     * The whole number, in the shapes PhoneKey::isUkrainian() accepts: 380…, 0… or the bare nine
+     * digits that are the person. «48671000005» ends the same way and is somebody else.
+     */
     function isFullPhone(word, phone) {
-        return /^\d{9,}$/.test(word) && phone.slice(-9) === word.slice(-9);
+        return /^(380\d{9}|0\d{9}|\d{9})$/.test(word) && digitsOf(phone).slice(-9) === word.slice(-9);
     }
 
     /**
@@ -92,7 +109,7 @@ document.addEventListener('DOMContentLoaded', function () {
      * may also be anywhere in the phone number: a shorter run would match half the house.
      */
     function matches(parsed, option) {
-        var phone = option.dataset.phone;
+        var phone = digitsOf(option.dataset.phone);
         var address = words(option.dataset.place);
 
         function take(word) {
@@ -104,13 +121,13 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (parsed.house !== null) {
-            if (!hasWord(words(option.dataset.house), parsed.house, false)) {
+            if (!beginsAWord(option.dataset.house, parsed.house)) {
                 return false;
             }
             take(parsed.house);
         }
         if (parsed.unit !== null) {
-            if (option.dataset.kind !== 'apartment' || !hasWord(words(option.dataset.unit), parsed.unit, false)) {
+            if (option.dataset.kind !== 'apartment' || !beginsAWord(option.dataset.unit, parsed.unit)) {
                 return false;
             }
             take(parsed.unit);
@@ -143,8 +160,8 @@ document.addEventListener('DOMContentLoaded', function () {
      * and not буд. 17, кв. 27, whatever each owes. A single number is a building before it is a flat.
      */
     function closeness(parsed, option) {
-        var house = words(option.dataset.house);
-        var unit = words(option.dataset.unit);
+        var house = option.dataset.house;
+        var unit = option.dataset.unit;
         var first = parsed.houseWord;
         var second = parsed.unitWord;
 
@@ -152,39 +169,46 @@ document.addEventListener('DOMContentLoaded', function () {
             return 0;
         }
         if (first === null) {
-            return hasWord(unit, second, true) ? 0 : 2;
+            return isExactly(unit, second) ? 0 : 2;
         }
         if (second === null) {
-            if (hasWord(house, first, true)) { return 0; }
+            if (isExactly(house, first)) { return 0; }
 
-            return !parsed.named && hasWord(unit, first, true) ? 1 : 2;
+            return !parsed.named && isExactly(unit, first) ? 1 : 2;
         }
 
-        if (hasWord(house, first, true) && hasWord(unit, second, true)) { return 0; }
-        if (hasWord(house, first, true) && hasWord(unit, second, false)) { return 1; }
+        if (isExactly(house, first) && isExactly(unit, second)) { return 0; }
+        if (isExactly(house, first) && beginsAWord(unit, second)) { return 1; }
         // Both exact the other way round beats two beginnings: «1 19» is буд. 19, кв. 1.
-        if (!parsed.named && hasWord(house, second, true) && hasWord(unit, first, true)) { return 2; }
-        if (hasWord(house, first, false) && hasWord(unit, second, false)) { return 3; }
+        if (!parsed.named && isExactly(house, second) && isExactly(unit, first)) { return 2; }
+        if (beginsAWord(house, first) && beginsAWord(unit, second)) { return 3; }
 
         return 4;
     }
 
+    function isExactFlat(parsed, option) {
+        return parsed.houseWord !== null && parsed.unitWord !== null && !parsed.extra
+            && option.dataset.kind === 'apartment' && closeness(parsed, option) === 0;
+    }
+
     /**
-     * May Enter take this result? Only when what was typed can mean nothing else: a building and
-     * a flat, both whole, or a whole phone number. Anything less is a list to choose from, and
-     * an SMS to the wrong flat cannot be taken back.
+     * May Enter take the top result? Only when what was typed can mean nothing else: a whole
+     * phone number, or a building and a flat with exactly one flat answering to them. Anything
+     * less is a list to choose from, and an SMS to the wrong flat cannot be taken back.
      */
-    function isClearHit(parsed, option) {
-        if (option.disabled) {
+    function isClearHit(parsed, ranked) {
+        var top = ranked[0] && ranked[0].element;
+
+        if (!top || top.disabled) {
             return false;
         }
 
-        if (!parsed.named && parsed.free.length === 1 && isFullPhone(parsed.free[0], option.dataset.phone)) {
+        if (!parsed.named && parsed.free.length === 1 && isFullPhone(parsed.free[0], top.dataset.phone)) {
             return true;
         }
 
-        return parsed.houseWord !== null && parsed.unitWord !== null && !parsed.extra
-            && option.dataset.kind === 'apartment' && closeness(parsed, option) === 0;
+        return ranked.filter(function (result) { return isExactFlat(parsed, result.element); }).length === 1
+            && isExactFlat(parsed, top);
     }
 
     function cell(content, className) {
@@ -268,7 +292,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 return entry.result;
             });
 
-            clearHit = ranked.length > 0 && ranked[0].element && isClearHit(parsed, ranked[0].element);
+            clearHit = isClearHit(parsed, ranked);
 
             return ranked;
         },
