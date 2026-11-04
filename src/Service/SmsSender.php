@@ -25,6 +25,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  */
 class SmsSender
 {
+    use LogsWithoutThrowing;
+
     /** TurboSMS: 1.29 грн a part on 30.09.2026 (1.28 from a 10 000 грн top-up, 1.26 from 50 000). */
     public const PRICE_PER_PART = 1.29;
 
@@ -387,7 +389,7 @@ class SmsSender
             $log->markFailed(self::OUTCOME_UNKNOWN . $e->getMessage());
         }
 
-        $this->smsLogger->info('sms answer', [
+        $this->logLine('info', 'sms answer', [
             'row' => $log->getId(),
             'run' => $log->getRun()?->getId(),
             'phone_key' => $log->getPhoneKey(),
@@ -562,7 +564,7 @@ class SmsSender
                 'timeout' => 10,
             ])->toArray(false);
         } catch (\Throwable $e) {
-            $this->smsLogger->warning('sms balance check failed', ['error' => $e->getMessage()]);
+            $this->logLine('warning', 'sms balance check failed', ['error' => $e->getMessage()]);
 
             return null;
         }
@@ -596,7 +598,7 @@ class SmsSender
             $raw = $response->getContent(false);
             $body = $response->toArray(false);
         } catch (\Throwable $e) {
-            $this->smsLogger->warning('sms delivery status check failed', ['message_id' => $providerId, 'error' => $e->getMessage(), 'raw' => self::forTheLog($raw)]);
+            $this->logLine('warning', 'sms delivery status check failed', ['message_id' => $providerId, 'error' => $e->getMessage(), 'raw' => self::forTheLog($raw)]);
 
             return null;
         }
@@ -608,7 +610,7 @@ class SmsSender
             }
         }
 
-        $this->smsLogger->info('sms status answer', [
+        $this->logLine('info', 'sms status answer', [
             'message_id' => $providerId,
             'code' => $body['response_code'] ?? null,
             'delivery_status' => $status,
@@ -642,7 +644,7 @@ class SmsSender
             $this->em->flush();
         } catch (\Throwable $e) {
             // A journal that cannot be written must not swallow a message that was sent.
-            $this->smsLogger->error('sms log write failed', ['error' => $e->getMessage()]);
+            $this->logLine('error', 'sms log write failed', ['error' => $e->getMessage()]);
         }
 
         return $log;
@@ -677,7 +679,7 @@ class SmsSender
 
             return [$expected?->getAccount(), $user];
         } catch (\Throwable $e) {
-            $this->smsLogger->warning('SMS: could not resolve recipient by phone', ['error' => $e->getMessage()]);
+            $this->logLine('warning', 'SMS: could not resolve recipient by phone', ['error' => $e->getMessage()]);
 
             return [null, $user];
         }

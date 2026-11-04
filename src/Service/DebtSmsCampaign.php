@@ -37,6 +37,8 @@ use Symfony\Component\Messenger\MessageBusInterface;
  */
 class DebtSmsCampaign
 {
+    use LogsWithoutThrowing;
+
     /** Иван's and the ОСББ's figure: above this a debt is worth paying to chase. */
     public const DEFAULT_MIN_DEBT = 5000.0;
 
@@ -258,7 +260,7 @@ class DebtSmsCampaign
         $path = $this->projectDir . '/var/debt-sms.lock';
         $handle = @fopen($path, 'c');
         if ($handle === false) {
-            $this->smsLogger->error('debt sms: cannot open the lock file', ['path' => $path]);
+            $this->logLine('error', 'debt sms: cannot open the lock file', ['path' => $path]);
 
             return null;
         }
@@ -337,7 +339,7 @@ class DebtSmsCampaign
                 }
             });
 
-            $this->smsLogger->info('debt sms: run queued', [
+            $this->logLine('info', 'debt sms: run queued', [
                 'run' => $run->getId(), 'by' => $sentBy, 'recipients' => $run->getTotal(),
                 'cost' => $estimate['cost'], 'balance' => $estimate['balance'],
             ]);
@@ -597,7 +599,7 @@ class DebtSmsCampaign
     /** @return array{outcome: string, flash: string, message: string} */
     private function refused(string $outcome, string $sentBy, string $message): array
     {
-        $this->smsLogger->info('debt sms: refused', ['by' => $sentBy, 'outcome' => $outcome, 'message' => $message]);
+        $this->logLine('info', 'debt sms: refused', ['by' => $sentBy, 'outcome' => $outcome, 'message' => $message]);
 
         return ['outcome' => $outcome, 'flash' => 'warning', 'message' => $message];
     }

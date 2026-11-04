@@ -474,4 +474,17 @@ class DebtSmsRunPostgresTest extends KernelTestCase
 
         $this->assertSame(3, $this->logs->costlyToday());
     }
+
+    /** Cancelled, «кошти повернено»: it was sent, and it is not to pay for. */
+    public function testACancelledSendIsNotCountedAsToPay(): void
+    {
+        $this->row('380671111111', null, SmsLog::STATUS_SENT);
+        $cancelled = $this->row('380672222222', null, SmsLog::STATUS_SENT)->markDelivery('Cancelled');
+        $this->em->flush();
+
+        $month = $this->logs->summarySince(new \DateTime('-1 day'));
+
+        $this->assertSame([2, 1], [$month['sent'], $month['parts']]);
+        $this->assertSame('Cancelled', $cancelled->getDeliveryStatus());
+    }
 }

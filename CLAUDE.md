@@ -2164,7 +2164,8 @@ Opening a campaign no longer broadcasts synchronously in the admin request: `ope
 
 **SMS has its own worker, `city-park-sms.service`, with the same rule about restarting.** Without it,
 SMS queue and never send, and the panel says so after 5 minutes. One instance, never scaled up:
-`/etc/systemd/system/city-park-sms.service`, then `systemctl daemon-reload && systemctl enable --now`:
+`/etc/systemd/system/city-park-sms.service`, then `systemctl daemon-reload && systemctl enable city-park-sms.service`,
+without `--now`: on the old code it would crash-loop on an unknown transport, and the deploy's restart starts it:
 
 ```
 [Unit]
@@ -2194,13 +2195,13 @@ cd /var/www/html/city-park
 git pull origin master
 composer install --no-dev --optimize-autoloader --no-interaction   # if composer.lock changed
 NODE_OPTIONS=--openssl-legacy-provider npx encore production       # if assets/twig changed (flag needed for prod Node 17+ vs old webpack/terser)
+sudo -u www-data php bin/console doctrine:migrations:migrate --no-interaction --env=prod   # if migration added; before the new code boots
+systemctl stop city-park-messenger.service city-park-sms.service     # they hold the old container; can take 150 s if a send hangs
 sudo -u www-data php bin/console cache:clear --env=prod       # NOT `rm -rf var/cache/prod` — see below
-php bin/console doctrine:migrations:migrate --no-interaction --env=prod   # if migration added
 sudo -u www-data php bin/console bot:menu:update --env=prod          # idempotent; safe every deploy
 mkdir -p public/uploads/pavilion-photos
 chown -R www-data:www-data var/cache var/log var/pools public/uploads
-systemctl restart city-park-messenger.service                        # long-running worker; see above
-systemctl restart city-park-sms.service                              # the SMS worker; below
+systemctl restart city-park-messenger.service city-park-sms.service  # long-running workers; see above
 # NOTE: php-fpm is deliberately NOT restarted — see below
 ```
 

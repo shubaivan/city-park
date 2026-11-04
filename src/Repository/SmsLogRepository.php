@@ -85,9 +85,10 @@ class SmsLogRepository extends ServiceEntityRepository
     public function summarySince(\DateTimeInterface $since): array
     {
         $rows = $this->createQueryBuilder('s')
-            ->select('s.status AS status, CASE WHEN s.error LIKE :unknown THEN 1 ELSE 0 END AS isUnknown, COUNT(s.id) AS messages, SUM(s.parts) AS parts')
+            ->select('s.status AS status, CASE WHEN s.error LIKE :unknown THEN 1 ELSE 0 END AS isUnknown, COUNT(s.id) AS messages, SUM(CASE WHEN s.delivery_status = :cancelled THEN 0 ELSE s.parts END) AS parts')
             ->andWhere('s.created_at >= :since')->setParameter('since', $since)
             ->setParameter('unknown', SmsSender::OUTCOME_UNKNOWN . '%')
+            ->setParameter('cancelled', 'Cancelled') // «кошти повернено»: sent, but not to pay for
             ->groupBy('s.status, isUnknown')
             ->getQuery()
             ->getArrayResult();

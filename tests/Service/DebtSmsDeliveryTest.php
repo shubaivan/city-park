@@ -7,6 +7,7 @@ use App\Entity\TelegramUser;
 use App\Message\DebtSmsMessage;
 use App\Service\DebtSmsCampaign;
 use App\Service\DebtSmsDelivery;
+use App\Service\SmsDeliveryChecker;
 use App\Service\SmsSender;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
@@ -22,7 +23,7 @@ class DebtSmsDeliveryTest extends TestCase
 
     private const DAY = '2026-11-02 12:00 Europe/Kyiv';
 
-    private object $logs;
+    private \Psr\Log\LoggerInterface $logs;
     private string $projectDir;
     private InMemorySmsJournal $journal;
     /** @var list<array<string, mixed>> */
@@ -74,7 +75,8 @@ class DebtSmsDeliveryTest extends TestCase
             $body = json_decode($options['body'], true);
             $this->posts[] = $body;
             $this->lastOptions = $options;
-            $this->statusAtRequest[] = $this->journal->rows[count($this->journal->rows) - 1]->getStatus();
+            // The console writes its row after the request (D6), so there may be none yet.
+            $this->statusAtRequest[] = ($this->journal->rows[count($this->journal->rows) - 1] ?? null)?->getStatus() ?? 'no row';
 
             return new MockResponse(json_encode(($this->answer)($body)));
         }, 'https://api.turbosms.ua');
@@ -287,6 +289,58 @@ class DebtSmsDeliveryTest extends TestCase
         $all = json_encode($this->logs->lines, JSON_UNESCAPED_UNICODE);
         $this->assertStringNotContainsString('380671111111', $all);
         $this->assertStringNotContainsString('Просимо', $all);
+    }
+
+    /**
+     * sms.log unwritable or the disk full: Monolog throws. On the panel the tap must still report
+     * what it did, the job must still save its row, and a redelivered job must not send.
+     */
+    public function testALogThatCannotBeWrittenChangesNothingOnThePanelPath(): void
+    {
+        $this->logs = $this->brokenLog();
+        $debtors = $this->debtors([['9000', ['380671111111']]]);
+        $this->queued($debtors);
+
+        $now = new \DateTimeImmutable(self::DAY);
+        $job = array_shift($this->bus->messages);
+        $this->delivery->deliver($job, $now);
+
+        $this->assertCount(1, $this->posts);
+        $this->assertTrue($this->journal->rows[0]->isSent());
+        $this->assertFalse($this->runs->runs[1]->isRunning());
+        $this->assertCount(1, $this->bus->checks);
+
+        $this->delivery->deliver($job, $now);
+        $this->assertCount(1, $this->posts, 'redelivered: no second request');
+
+        $this->delivery->stopAfterFailure($job);
+        $check = new SmsDeliveryChecker($this->createMock(SmsSender::class), $this->journal, $this->bus, $this->entityManager($this->journal), $this->createMock(\Doctrine\Persistence\ManagerRegistry::class), $this->brokenLog());
+        $check->check($this->bus->checks[0]->getMessage(), $now);
+        $this->assertCount(1, $this->posts);
+    }
+
+    /** The console and sms:test go through send(): one request, the row saved, a re-run refused. */
+    public function testALogThatCannotBeWrittenChangesNothingOnTheConsolePath(): void
+    {
+        $campaign = $this->realCampaign($this->debtors([['9000', ['380671111111']]]), $this->turbo(), $this->journal, $this->brokenLog());
+
+        $run = $campaign->send($plan = $campaign->plan(), 'debt:notify-sms');
+
+        $this->assertSame(1, $run['sent']);
+        $this->assertCount(1, $this->posts);
+        $this->assertCount(1, $this->journal->rows);
+        $this->assertTrue($this->journal->rows[0]->isSent());
+
+        $this->assertSame([], $campaign->plan()['recipients'], 'a fresh plan leaves them out');
+        $again = $campaign->send($plan, 'debt:notify-sms');
+        $this->assertCount(1, $this->posts, 'and the old plan is stopped by the guard');
+        $this->assertSame(1, $again['skipped']);
+    }
+
+    /** A real Monolog stream on a path it cannot open: the failure prod would see. */
+    private function brokenLog(): \Monolog\Logger
+    {
+        return new \Monolog\Logger('sms', [new \Monolog\Handler\StreamHandler('/proc/no/such/dir/sms.log')]);
     }
 
     /** Accepted with an id: a check follows. Refused or unknown: nothing to ask about. */

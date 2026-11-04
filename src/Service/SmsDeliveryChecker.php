@@ -26,6 +26,8 @@ use Symfony\Component\Messenger\Stamp\DelayStamp;
  */
 class SmsDeliveryChecker
 {
+    use LogsWithoutThrowing;
+
     /** Minutes until each next question: quick while it is likely to change, then rarely. */
     public const DELAYS_MINUTES = [1, 5, 15, 60, 240, 720];
 
@@ -61,7 +63,7 @@ class SmsDeliveryChecker
                 $now->getTimestamp() + self::GIVE_UP_AFTER_HOURS * 3600,
             ), self::DELAYS_MINUTES[0] * 60);
         } catch (\Throwable $e) {
-            $this->smsLogger->warning('sms delivery: check not queued', ['row' => $log->getId(), 'error' => $e->getMessage()]);
+            $this->logLine('warning', 'sms delivery: check not queued', ['row' => $log->getId(), 'error' => $e->getMessage()]);
         }
     }
 
@@ -74,7 +76,7 @@ class SmsDeliveryChecker
         $started = microtime(true);
         $log = $this->logs->find($message->logId);
         if (!$log instanceof SmsLog || !$log->isSent() || $log->getProviderId() === null || $log->isDeliveryFinal()) {
-            $this->smsLogger->info('sms delivery: check', ['row' => $message->logId, 'attempt' => $message->attempt, 'decision' => 'nothing to ask']);
+            $this->logLine('info', 'sms delivery: check', ['row' => $message->logId, 'attempt' => $message->attempt, 'decision' => 'nothing to ask']);
 
             return;
         }
@@ -108,7 +110,7 @@ class SmsDeliveryChecker
             $this->queue(...$next);
         }
 
-        $this->smsLogger->info('sms delivery: check', [
+        $this->logLine('info', 'sms delivery: check', [
             'row' => $log->getId(),
             'run' => $log->getRun()?->getId(),
             'phone_key' => $log->getPhoneKey(),

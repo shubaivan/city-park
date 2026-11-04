@@ -32,6 +32,8 @@ use Psr\Log\LoggerInterface;
  */
 class DebtSmsDelivery
 {
+    use LogsWithoutThrowing;
+
     /**
      * Between two requests to TurboSMS. Its docs state no rate for message/send, only limits set
      * per connection (436, 437), no parallel sends where that is on (438) and 5 in 10 s and 10 in
@@ -96,7 +98,7 @@ class DebtSmsDelivery
             throw $e;
         } finally {
             $this->campaign->releaseLock($lock);
-            $this->smsLogger->info('debt sms: job', [
+            $this->logLine('info', 'debt sms: job', [
                 'run' => $message->runId,
                 'row' => $this->rowId,
                 'account' => $message->accountId,
@@ -223,7 +225,7 @@ class DebtSmsDelivery
 
         $existing->markFailed(SmsSender::OUTCOME_UNKNOWN . self::REASON_INTERRUPTED);
         $this->em->flush();
-        $this->smsLogger->warning('debt sms: job found its row still sending', ['run' => $run->getId(), 'row' => $existing->getId()]);
+        $this->logLine('warning', 'debt sms: job found its row still sending', ['run' => $run->getId(), 'row' => $existing->getId()]);
         $this->closeIfDone($run);
     }
 
@@ -285,7 +287,7 @@ class DebtSmsDelivery
     {
         $run->stop($reason);
         $this->em->flush();
-        $this->smsLogger->warning('debt sms: run stopped', ['run' => $run->getId(), 'reason' => $reason]);
+        $this->logLine('warning', 'debt sms: run stopped', ['run' => $run->getId(), 'reason' => $reason]);
     }
 
     private function closeIfDone(SmsRun $run): void
@@ -293,7 +295,7 @@ class DebtSmsDelivery
         if ($run->isRunning() && $this->runs->writtenRows($run) >= $run->getTotal()) {
             $run->finish();
             $this->em->flush();
-            $this->smsLogger->info('debt sms: run finished', ['run' => $run->getId()]);
+            $this->logLine('info', 'debt sms: run finished', ['run' => $run->getId()]);
         }
     }
 }
