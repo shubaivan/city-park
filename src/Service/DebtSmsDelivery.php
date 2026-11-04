@@ -58,6 +58,7 @@ class DebtSmsDelivery
         private EntityManagerInterface $em,
         private ManagerRegistry $registry,
         private LoggerInterface $smsLogger,
+        private SmsDeliveryChecker $deliveryChecks,
         private int $pauseMs = self::PAUSE_MS,
     ) {
     }
@@ -157,6 +158,7 @@ class DebtSmsDelivery
         }
 
         $this->sms->sendClaimed($log, sprintf('cpdebt-%d-%s', $run->getId(), $log->getPhoneKey()));
+        $this->deliveryChecks->start($log, $now);
 
         $stopReason = SmsSender::reasonToStopRun($log);
         if ($stopReason !== null) {
@@ -171,6 +173,12 @@ class DebtSmsDelivery
     private function settleRedelivered(SmsLog $existing, SmsRun $run): void
     {
         if (!$existing->isSending()) {
+            // Died after the row and before the check was queued: this is the second chance.
+            // If it had been queued after all, two checks ask the same question for a while.
+            if ($existing->getDeliveryStatus() === null) {
+                $this->deliveryChecks->start($existing);
+            }
+
             return;
         }
 

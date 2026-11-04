@@ -9,6 +9,7 @@ use App\Repository\AccountRepository;
 use App\Repository\ExpectedResidentRepository;
 use App\Service\DebtSmsCampaign;
 use App\Service\DebtSmsDelivery;
+use App\Service\SmsDeliveryChecker;
 use App\Service\SmsSender;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -37,7 +38,9 @@ trait DebtSmsRig
         $this->bus = new RecordingBus();
         $this->runs = new InMemorySmsRuns($journal);
 
-        return new DebtSmsCampaign(...$this->parts($debtors), ...[$sms, new NullLogger(), $this->projectDir, $this->runs, $this->bus, $this->entityManager($journal)]);
+        $em = $this->entityManager($journal);
+
+        return new DebtSmsCampaign(...$this->parts($debtors), ...[$sms, new NullLogger(), $this->projectDir, $this->runs, $this->bus, $em, $this->checker($sms, $journal, $em)]);
     }
 
     /** @param list<array{0: Account, 1: list<string>}> $debtors */
@@ -49,7 +52,8 @@ trait DebtSmsRig
 
         $sms = new SmsSender($http, $em, $journal, new NullLogger(), 'mock-token', 'CityPark');
         [$accounts, $expected] = $this->parts($debtors);
-        $campaign = new DebtSmsCampaign($accounts, $expected, $sms, $logger ?? new NullLogger(), $this->projectDir, $this->runs, $this->bus, $em);
+        $checks = $this->checker($sms, $journal, $em);
+        $campaign = new DebtSmsCampaign($accounts, $expected, $sms, $logger ?? new NullLogger(), $this->projectDir, $this->runs, $this->bus, $em, $checks);
 
         $this->delivery = new DebtSmsDelivery(
             $campaign,
@@ -60,10 +64,16 @@ trait DebtSmsRig
             $em,
             $this->createMock(ManagerRegistry::class),
             new NullLogger(),
+            $checks,
             0,
         );
 
         return $campaign;
+    }
+
+    private function checker(SmsSender $sms, InMemorySmsJournal $journal, EntityManagerInterface $em): SmsDeliveryChecker
+    {
+        return new SmsDeliveryChecker($sms, $journal, $this->bus, $em, $this->createMock(ManagerRegistry::class), new NullLogger());
     }
 
     /** What the worker does: every job waiting, once, in order. */
@@ -85,6 +95,7 @@ trait DebtSmsRig
                 if ($this->flushFails !== null) {
                     throw $this->flushFails;
                 }
+                (new \ReflectionProperty(SmsLog::class, 'id'))->setValue($row, count($journal->rows) + 1);
                 $journal->rows[] = $row;
             }
         });

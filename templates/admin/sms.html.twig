@@ -89,11 +89,17 @@
                     <div style="font-size: 1rem;">
                         📨 <b>Надіслано {{ run.sent }} з {{ run.total }}</b>{% if run.run.running %} <span class="text-muted">· йде</span>{% elseif run.run.stopped %} <span class="text-warning">· зупинено</span>{% else %} <span class="text-success">· завершено</span>{% endif %}
                     </div>
+                    {% if run.sent > 0 %}
+                        <div>
+                            З надісланих: доставлено <b>{{ run.delivered|default(0) }}</b>{% if run.undelivered|default(0) > 0 %}, не доставлено <b>{{ run.undelivered }}</b>{% endif %}{% if run.awaiting|default(0) > 0 %}, чекаємо статус <b>{{ run.awaiting }}</b>{% endif %}{% if run.unanswered|default(0) > 0 %}, статус не отримано <b>{{ run.unanswered }}</b>{% endif %}.
+                        </div>
+                    {% endif %}
                     {% if run.failed > 0 %}Не надіслано: <b>{{ run.failed }}</b>. {% endif %}
                     {% if run.unknown > 0 %}Невідомо, чи пішло: <b>{{ run.unknown }}</b> (сьогодні повторно не підуть). {% endif %}
                     {% if run.sending > 0 %}Надсилається або без відповіді: <b>{{ run.sending }}</b>. {% endif %}
                     {% if run.queued > 0 %}{{ run.run.running ? 'У черзі' : 'Без рядка в журналі' }}: <b>{{ run.queued }}</b>. {% endif %}
                     {% if run.run.stopReason %}<div class="text-danger">{{ run.run.stopReason }}</div>{% endif %}
+                    {% if run.checksStalled|default(false) %}<div class="alert alert-warning py-1 px-2 mt-1 mb-0">Статуси доставки не оновлюються: схоже, не працює воркер SMS. Напишіть Івану.</div>{% endif %}
                     {% if run.stalled %}<div class="alert alert-warning py-1 px-2 mt-1 mb-0">Черга не рухається понад 5 хвилин: схоже, не працює воркер. Напишіть Івану.</div>{% endif %}
                     <div class="text-muted">Хто саме і чому: журнал нижче.{% if run.run.running %} Сторінка оновлюється сама.{% endif %}</div>
                 </div>
@@ -330,6 +336,7 @@
                                         {% else %}⛔ не надіслано{% if e.error %}: <b>{{ e.error }}</b>{% endif %}
                                         {% endif %}
                                         <span class="text-muted">· {{ purposes[e.purpose] ?? e.purpose }}{% if e.parts > 1 %} · {{ e.parts }} SMS{% endif %}{% if e.status == 'sent' %} · {{ (e.parts * price)|number_format(2, '.', ' ') }} грн{% endif %}</span>
+                                        {% if e.status == 'sent' and e.deliveryLabel %}<div>{{ e.deliveryLabel }}</div>{% endif %}
                                         <div style="white-space: pre-wrap">{{ e.text }}</div>
                                         <div class="d-md-none text-muted">{{ e.sentBy ?? '—' }}</div>
                                     </td>

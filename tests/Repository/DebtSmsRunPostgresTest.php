@@ -50,6 +50,10 @@ class DebtSmsRunPostgresTest extends KernelTestCase
     /** @var list<string|false> */
     private array $statusSeenFromOutside = [];
     private \Closure $answer;
+    private RecordingBus $checkBus;
+    private \App\Service\SmsDeliveryChecker $checker;
+    /** @var array<string, string> */
+    private array $statuses = [];
 
     protected function setUp(): void
     {
@@ -84,6 +88,11 @@ class DebtSmsRunPostgresTest extends KernelTestCase
                 return new MockResponse(json_encode(['response_result' => ['balance' => 100.0]]));
             }
             $body = json_decode($options['body'], true);
+            if (str_contains($url, '/message/status.json')) {
+                return new MockResponse(json_encode(['response_code' => 0, 'response_status' => 'OK', 'response_result' => [
+                    ['message_id' => $body['messages'][0], 'response_code' => 0, 'status' => $this->statuses[$body['messages'][0]] ?? 'Sent'],
+                ]]));
+            }
             $this->posts[] = $body['recipients'][0];
             // Another connection sees only what is committed.
             $this->statusSeenFromOutside[] = $outside->fetchOne('SELECT status FROM sms_log WHERE phone_key = ?', [substr($body['recipients'][0], -9)]);
@@ -92,6 +101,8 @@ class DebtSmsRunPostgresTest extends KernelTestCase
         }, 'https://api.turbosms.ua');
 
         $sms = new SmsSender($http, $this->em, $this->logs, new NullLogger(), 'mock-token', 'CityPark');
+        $this->checkBus = new RecordingBus();
+        $this->checker = new \App\Service\SmsDeliveryChecker($sms, $this->logs, $this->checkBus, $this->em, $container->get('doctrine'), new NullLogger());
         $campaign = new DebtSmsCampaign(
             $container->get(AccountRepository::class),
             $container->get(ExpectedResidentRepository::class),
@@ -101,6 +112,7 @@ class DebtSmsRunPostgresTest extends KernelTestCase
             $this->runs,
             new RecordingBus(),
             $this->em,
+            $this->checker,
         );
         $this->delivery = new DebtSmsDelivery(
             $campaign,
@@ -111,6 +123,7 @@ class DebtSmsRunPostgresTest extends KernelTestCase
             $this->em,
             $container->get('doctrine'),
             new NullLogger(),
+            $this->checker,
             0,
         );
         $this->handler = new DebtSmsMessageHandler($this->delivery);
@@ -376,5 +389,75 @@ class DebtSmsRunPostgresTest extends KernelTestCase
 
         $this->assertSame(['380672222222'], $this->posts);
         $this->assertSame(SmsRun::STATUS_FINISHED, $this->runStatus($nextId));
+    }
+
+    /** Accepted, then delivered: the row and the card, from real rows, with a real query. */
+    public function testDeliveryIsCountedApartFromSentAndLeavesTheRunAlone(): void
+    {
+        $flat = $this->account('27', '63', '300', '380671111111');
+        $other = $this->account('27', '64', '300', '380672222222');
+        $run = $this->newRun(2);
+        ($this->handler)(new DebtSmsMessage($run->getId(), $flat->getId(), '380671111111', 'т'));
+        ($this->handler)(new DebtSmsMessage($run->getId(), $other->getId(), '380672222222', 'т'));
+
+        $this->assertSame(SmsRun::STATUS_FINISHED, $this->runStatus($run->getId()));
+        $this->assertCount(2, $this->checkBus->checks);
+
+        $status = $this->runs->latestStatus(new \DateTimeImmutable());
+        $this->assertSame([2, 0, 2], [$status['sent'], $status['delivered'], $status['awaiting']]);
+
+        $this->statuses['id'] = 'Sent';
+        $this->checker->check($this->checkBus->checks[0]->getMessage());
+        $this->assertSame('Sent', $this->db->fetchOne('SELECT delivery_status FROM sms_log WHERE phone_key = ?', ['671111111']));
+        $this->assertCount(3, $this->checkBus->checks, 'not final: it queued itself');
+
+        $this->statuses['id'] = 'Delivered';
+        $this->em->clear();
+        $this->checker->check($this->checkBus->checks[2]->getMessage());
+        $this->statuses['id'] = 'Undelivered';
+        $this->em->clear();
+        $this->checker->check($this->checkBus->checks[1]->getMessage());
+
+        $this->assertCount(3, $this->checkBus->checks, 'final: nothing further queued');
+
+        $status = $this->runs->latestStatus(new \DateTimeImmutable());
+        $this->assertSame([2, 2, 1, 1, 0, 0], [$status['total'], $status['sent'], $status['delivered'], $status['undelivered'], $status['awaiting'], $status['unanswered']]);
+        $this->assertSame(SmsRun::STATUS_FINISHED, $this->runStatus($run->getId()));
+        $this->assertCount(2, $this->posts, 'nothing was sent again');
+
+        // Not delivered does not free the number.
+        $this->assertTrue($this->logs->alreadySentToday('672222222', SmsLog::PURPOSE_DEBT));
+    }
+
+    /** Older rows: the migration leaves them, and nobody claims anything about them. */
+    public function testARowNeverAskedAboutHasNoDeliveryState(): void
+    {
+        $log = $this->row('380671111111', null, SmsLog::STATUS_SENT);
+        $this->em->clear();
+
+        $found = $this->logs->find($log->getId());
+        $this->assertNull($found->getDeliveryStatus());
+        $this->assertNull($found->getDeliveryLabel());
+    }
+
+    /** A check due long ago and still waiting: the worker is down, and the card says so. */
+    public function testAnOverdueCheckIsNoticedAndAFutureOneIsNot(): void
+    {
+        $flat = $this->account('27', '63', '300', '380671111111');
+        $run = $this->newRun(1);
+        ($this->handler)(new DebtSmsMessage($run->getId(), $flat->getId(), '380671111111', 'т'));
+
+        $this->db->executeStatement('DELETE FROM messenger_messages WHERE queue_name = ?', ['sms_status']);
+        $insert = "INSERT INTO messenger_messages (body, headers, queue_name, created_at, available_at) VALUES ('x', 'x', 'sms_status', (now() at time zone 'UTC') - interval '3 hours', (now() at time zone 'UTC') + make_interval(mins => ?))";
+
+        try {
+            $this->db->executeStatement($insert, [30]);
+            $this->assertFalse($this->runs->latestStatus(new \DateTimeImmutable())['checksStalled'], 'due later: fine');
+
+            $this->db->executeStatement($insert, [-30]);
+            $this->assertTrue($this->runs->latestStatus(new \DateTimeImmutable())['checksStalled']);
+        } finally {
+            $this->db->executeStatement('DELETE FROM messenger_messages WHERE queue_name = ?', ['sms_status']);
+        }
     }
 }

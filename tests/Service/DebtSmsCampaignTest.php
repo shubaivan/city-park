@@ -75,6 +75,22 @@ class DebtSmsCampaignTest extends TestCase
         $this->assertCount(3, $run['logs'], 'every household gets a journal row, sent or not');
     }
 
+    /** The console's accepted sends get a check like the panel's; a dry run has nothing to ask. */
+    public function testTheConsoleLoopQueuesChecksButNotForADryRun(): void
+    {
+        $http = $this->turboSms(100.0, [static fn () => ['response_code' => 0, 'response_result' => [['message_id' => 'a']]]]);
+        $debtors = $this->debtors([['9000', ['380671111111']]]);
+
+        // Fresh journals: the fake guard reads a dry-run row as written to.
+        $dry = $this->realCampaign($debtors, $http, $this->journal());
+        $dry->send($dry->plan(), 'debt:notify-sms', true);
+        $this->assertSame([], $this->bus->checks);
+
+        $real = $this->realCampaign($debtors, $http, $this->journal());
+        $real->send($real->plan(), 'debt:notify-sms');
+        $this->assertCount(1, $this->bus->checks);
+    }
+
     /** A wrong number is not an empty balance: the run carries on to the next household. */
     public function testOneBadNumberDoesNotStopTheRun(): void
     {
@@ -394,6 +410,7 @@ class DebtSmsCampaignTest extends TestCase
             new InMemorySmsRuns($this->journal()),
             new RecordingBus(),
             $this->createMock(EntityManagerInterface::class),
+            $this->createMock(\App\Service\SmsDeliveryChecker::class),
         );
 
         $this->assertSame(DebtSmsCampaign::OUTCOME_RUNNING, $campaign->sendConfirmed('x', [100], 'a')['outcome']);

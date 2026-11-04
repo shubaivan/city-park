@@ -221,6 +221,70 @@ class DebtSmsDeliveryTest extends TestCase
         $this->drain(new \DateTimeImmutable(self::DAY));
     }
 
+    /** Accepted with an id: a check follows. Refused or unknown: nothing to ask about. */
+    public function testASendThatWasAcceptedQueuesACheckAndNothingElse(): void
+    {
+        $this->queued($this->debtors([['9000', ['380671111111']]]));
+
+        $this->drain(new \DateTimeImmutable(self::DAY));
+
+        $this->assertCount(1, $this->bus->checks);
+        $this->assertSame($this->journal->rows[0]->getId(), $this->bus->checks[0]->getMessage()->logId);
+        $this->assertFalse($this->runs->runs[1]->isRunning(), 'the check does not hold the run open');
+    }
+
+    public function testARefusedOrUnknownSendQueuesNoCheck(): void
+    {
+        $this->answer = static fn (): array => ['response_code' => 802, 'response_status' => 'x', 'response_result' => [
+            ['phone' => 'x', 'response_code' => 404, 'message_id' => null, 'response_status' => 'NOT_ALLOWED_NUMBER_STOPLIST'],
+        ]];
+        $this->queued($this->debtors([['9000', ['380671111111']]]));
+
+        $this->drain(new \DateTimeImmutable(self::DAY));
+
+        $this->assertSame([], $this->bus->checks);
+    }
+
+    /** The check could not be queued: the send stands, the run finishes, the job is done. */
+    public function testACheckThatCannotBeQueuedDoesNotHurtTheSend(): void
+    {
+        $this->queued($this->debtors([['9000', ['380671111111']]]));
+        $job = array_shift($this->bus->messages);
+        $this->bus->failWith = new \RuntimeException('database went away');
+
+        $this->delivery->deliver($job, new \DateTimeImmutable(self::DAY));
+
+        $this->assertTrue($this->journal->rows[0]->isSent());
+        $this->assertFalse($this->runs->runs[1]->isRunning());
+    }
+
+    /** Died after the row and before the check: the redelivered job queues it, and does not send. */
+    public function testARedeliveredJobQueuesTheCheckItNeverGot(): void
+    {
+        $this->queued($this->debtors([['9000', ['380671111111']]]));
+        $job = array_shift($this->bus->messages);
+        $now = new \DateTimeImmutable(self::DAY);
+        $this->delivery->deliver($job, $now);
+        $this->bus->checks = [];
+
+        $this->delivery->deliver($job, $now);
+
+        $this->assertCount(1, $this->posts);
+        $this->assertCount(1, $this->bus->checks);
+    }
+
+    /** Not delivered is only recorded: the number stays blocked until a person decides tomorrow. */
+    public function testNotDeliveredDoesNotFreeTheNumber(): void
+    {
+        $this->queued($this->debtors([['9000', ['380671111111']]]));
+        $this->drain(new \DateTimeImmutable(self::DAY));
+
+        $this->journal->rows[0]->markDelivery('Undelivered');
+
+        $this->assertTrue($this->journal->alreadySentToday('671111111', SmsLog::PURPOSE_DEBT));
+        $this->assertCount(1, $this->posts);
+    }
+
     /** TurboSMS asks for no timeout on a send; 120 s is ours, and a repeat is de-duplicated by id. */
     public function testTheRequestCarriesASequenceIdAndALongTimeout(): void
     {

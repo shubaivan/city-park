@@ -47,6 +47,7 @@ class SmsSender
 
     private const SEND_URL = 'https://api.turbosms.ua/message/send.json';
     private const BALANCE_URL = 'https://api.turbosms.ua/user/balance.json';
+    private const STATUS_URL = 'https://api.turbosms.ua/message/status.json';
 
     /**
      * Codes from the table at turbosms.ua/api.html that mean nothing was created for this SMS:
@@ -502,6 +503,38 @@ class SmsSender
         $balance = $body['response_result']['balance'] ?? null;
 
         return $balance === null ? null : (float)$balance;
+    }
+
+    /**
+     * What TurboSMS last said about this message, or null when it could not say: no connection,
+     * an unreadable answer, or a code in place of a status (414 for an id it does not know).
+     * Never throws. This is the one request here that cannot send anything.
+     */
+    public function deliveryStatus(string $providerId): ?string
+    {
+        if (!$this->isConfigured()) {
+            return null;
+        }
+
+        try {
+            $body = $this->http->request('POST', self::STATUS_URL, [
+                'headers' => ['Authorization' => 'Bearer ' . trim($this->token)],
+                'json' => ['messages' => [$providerId]],
+                'timeout' => 10,
+            ])->toArray(false);
+        } catch (\Throwable $e) {
+            $this->logger->warning('sms delivery status check failed', ['id' => $providerId, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        foreach (is_array($body['response_result'] ?? null) ? $body['response_result'] : [] as $entry) {
+            if (is_array($entry) && ($entry['message_id'] ?? null) === $providerId && is_string($entry['status'] ?? null) && $entry['status'] !== '') {
+                return $entry['status'];
+            }
+        }
+
+        return null;
     }
 
     /**

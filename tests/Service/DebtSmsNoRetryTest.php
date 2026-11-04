@@ -83,12 +83,68 @@ class DebtSmsNoRetryTest extends TestCase
         $this->assertCount(1, $transport->getRejected());
     }
 
+    /**
+     * The other way round: a check only reads, so its failure does retry, on its transport's own
+     * rule read from the real config. The two rules do not leak into each other.
+     */
+    public function testAFailingCheckIsDeliveredAgain(): void
+    {
+        $transports = Yaml::parseFile(dirname(__DIR__, 2) . '/config/packages/messenger.yaml')['framework']['messenger']['transports'];
+        $checker = $this->createMock(\App\Service\SmsDeliveryChecker::class);
+        $checker->expects($this->once())->method('check')->willThrowException(new \RuntimeException('database went away'));
+
+        $transport = $this->runOnce(
+            new \App\Message\SmsDeliveryCheckMessage(1, 0, time() + 60),
+            new \App\MessageHandler\SmsDeliveryCheckMessageHandler($checker),
+            $transports['sms_status']['retry_strategy']['max_retries'],
+        );
+
+        $this->assertCount(2, $transport->getSent(), 'the original and one retry');
+    }
+
+    /**
+     * One worker consuming `sms_send sms_status`: a send is taken first, whatever is waiting, on
+     * Symfony's real Worker. So a check holds a send up by one request at most.
+     */
+    public function testASendIsTakenBeforeACheck(): void
+    {
+        $order = [];
+        $bus = new MessageBus([new HandleMessageMiddleware(new HandlersLocator([
+            DebtSmsMessage::class => [new HandlerDescriptor(static function (DebtSmsMessage $m) use (&$order): void { $order[] = 'send' . $m->accountId; })],
+            \App\Message\SmsDeliveryCheckMessage::class => [new HandlerDescriptor(static function (\App\Message\SmsDeliveryCheckMessage $m) use (&$order, &$sends): void {
+                $order[] = 'check' . $m->logId;
+                $sends?->send(new Envelope(new DebtSmsMessage(1, 3, '380671111111', 't')));
+                $sends = null;
+            })],
+        ]))]);
+
+        $sends = new InMemoryTransport();
+        $checks = new InMemoryTransport();
+        $checks->send(new Envelope(new \App\Message\SmsDeliveryCheckMessage(1, 0, time() + 60)));
+        $checks->send(new Envelope(new \App\Message\SmsDeliveryCheckMessage(2, 0, time() + 60)));
+        $sends->send(new Envelope(new DebtSmsMessage(1, 1, '380671111111', 't')));
+        $sends->send(new Envelope(new DebtSmsMessage(1, 2, '380672222222', 't')));
+
+        $dispatcher = new EventDispatcher();
+        $dispatcher->addSubscriber(new StopWorkerOnMessageLimitListener(5));
+        $transports = array_keys(Yaml::parseFile(dirname(__DIR__, 2) . '/config/packages/messenger.yaml')['framework']['messenger']['transports']);
+        $this->assertLessThan(array_search('sms_status', $transports, true), array_search('sms_send', $transports, true));
+
+        (new Worker(['sms_send' => $sends, 'sms_status' => $checks], $bus, $dispatcher))->run(['sleep' => 0]);
+
+        $this->assertSame('send1', $order[0]);
+        $this->assertSame('send2', $order[1]);
+        $this->assertSame('check1', $order[2]);
+        $this->assertContains('send3', $order);
+    }
+
     /** Its own queue, and votes stay where they were. */
     public function testSmsHasItsOwnTransportAndVotesDoNotShareIt(): void
     {
         $messenger = Yaml::parseFile(dirname(__DIR__, 2) . '/config/packages/messenger.yaml')['framework']['messenger'];
 
         $this->assertSame('sms_send', $messenger['routing'][DebtSmsMessage::class]);
+        $this->assertSame('sms_status', $messenger['routing'][\App\Message\SmsDeliveryCheckMessage::class]);
         $this->assertSame('async', $messenger['routing'][\App\Message\VoteBroadcastMessage::class]);
         $this->assertStringContainsString('queue_name=sms_send', $messenger['transports']['sms_send']['dsn']);
     }
@@ -100,7 +156,7 @@ class DebtSmsNoRetryTest extends TestCase
 
         $bus = new MessageBus([
             new AddBusNameStampMiddleware('messenger.bus.default'),
-            new HandleMessageMiddleware(new HandlersLocator([DebtSmsMessage::class => [new HandlerDescriptor($handler)]])),
+            new HandleMessageMiddleware(new HandlersLocator([$job::class => [new HandlerDescriptor($handler)]])),
         ]);
 
         $locator = new class($transport, new MultiplierRetryStrategy($maxRetries, 0, 1, 0)) implements ContainerInterface {

@@ -299,6 +299,27 @@ class AdminSmsPageTest extends KernelTestCase
         $this->assertStringNotContainsString('У черзі', $html);
     }
 
+    /** N of M stays accepted or refused; delivery is a separate line, and a row says its own. */
+    public function testDeliveryIsSeparateFromSent(): void
+    {
+        $run = new \App\Entity\SmsRun('a', 8, new \DateTimeImmutable());
+        $html = $this->render([], null, 'ROLE_ADMIN', 100.0, ['run' => $run, 'total' => 8, 'sent' => 6, 'failed' => 2, 'unknown' => 0, 'sending' => 0, 'queued' => 0, 'stalled' => false, 'delivered' => 3, 'undelivered' => 1, 'awaiting' => 1, 'unanswered' => 1]);
+
+        $this->assertStringContainsString('Надіслано 6 з 8', $html);
+        $this->assertMatchesRegularExpression('#З надісланих: доставлено <b>3</b>, не доставлено <b>1</b>, чекаємо статус <b>1</b>, статус не отримано <b>1</b>#u', $html);
+
+        $row = fn (?string $status) => (new SmsLog('380671234567', 'т', SmsLog::PURPOSE_DEBT))->markSent('id');
+        $this->assertStringContainsString('📬 доставлено', $this->render([$row(null)->markDelivery('Delivered')]));
+        $this->assertStringContainsString('📭 не доставлено: минув строк доставки', $this->render([$row(null)->markDelivery('Expired')]));
+        $this->assertStringContainsString('⏳ чекаємо статус доставки', $this->render([$row(null)->markDelivery('Queued')]));
+        $this->assertStringContainsString('❔ статус не отримано', $this->render([$row(null)->markDelivery(SmsLog::DELIVERY_NO_ANSWER)]));
+
+        $this->assertStringContainsString('Статуси доставки не оновлюються', $this->render([], null, 'ROLE_ADMIN', 100.0, ['run' => $run, 'total' => 8, 'sent' => 6, 'failed' => 2, 'unknown' => 0, 'sending' => 0, 'queued' => 0, 'stalled' => false, 'delivered' => 0, 'undelivered' => 0, 'awaiting' => 6, 'unanswered' => 0, 'checksStalled' => true]));
+
+        $old = $this->render([$row(null)]);
+        $this->assertStringNotContainsString('доставлено', preg_replace('/З надісланих.*/su', '', $old), 'a row nobody asked about claims nothing');
+    }
+
     /** A queue nobody consumes reads as «надсилається» for ever unless the page says otherwise. */
     public function testAStalledRunSaysSo(): void
     {

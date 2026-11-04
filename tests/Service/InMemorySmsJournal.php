@@ -27,6 +27,17 @@ final class InMemorySmsJournal extends SmsLogRepository
         return false;
     }
 
+    public function find(mixed $id, $lockMode = null, $lockVersion = null): ?object
+    {
+        foreach ($this->rows as $row) {
+            if ($row->getId() === $id) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
     public function findOneBy(array $criteria, ?array $orderBy = null): ?object
     {
         foreach ($this->rows as $row) {

@@ -1636,6 +1636,21 @@ warns when nothing moved for 5 minutes, which is what a stopped `city-park-sms.s
 **Deploy with `all`:** a migration and an Encore entry are needed, and `be` skips the build, `fe`
 the migration.
 
+**Delivery status** (Иван, 04.11.2026; `SmsDeliveryChecker`). After a send TurboSMS accepted with an
+id, a delayed `SmsDeliveryCheckMessage` asks `message/status` once and finishes: never a sleep or a
+loop on the worker. Not final means it queues itself again after 1, 5, 15, 60, 240, then 720 minutes,
+up to 48 h, and then the row says «статус не отримано». Final by the docs' table: Delivered, Read
+(📬), Expired, Undelivered, Rejected, Failed, Cancelled (📭); anything else may still change. **It
+never sends**, and `status` stays `sent`, so a «not delivered» does not free the number from the
+same-day guard: sending again is a person's decision. It does not touch the run either: «Надіслано
+N з M» counts accepted or refused and that is what finishes a run, delivery is a separate line under
+it. A check only reads, so its `sms_status` transport retries normally, while `sms_send` never does;
+`DebtSmsNoRetryTest` pins both. **One worker for both, sends first:** Symfony goes back to the first
+transport after every job, so a check holds a send up by one 10 s request at most, and a second
+worker would add a unit and nothing else. The card warns when a due check waits over 15 minutes. A check cannot hurt a send: `start()` swallows its own failure, and a worker that dies
+before queuing it leaves the job to be redelivered, which queues it then. `debt:notify-sms` gets
+checks too, `sms:test` does not. Older rows stay NULL: nobody asked, so nothing is shown.
+
 **A double send has five separate stops, from the outside in.** The browser disables the
 button on submit. The POST answers with a redirect, so a refresh repeats nothing.
 `DebtSmsCampaign::sendConfirmed()` holds an flock on `var/debt-sms.lock` while it queues, shared
@@ -2148,7 +2163,7 @@ Restart=always
 RestartSec=5
 TimeoutStopSec=150
 WorkingDirectory=/var/www/html/city-park
-ExecStart=/usr/bin/php8.5 /var/www/html/city-park/bin/console messenger:consume sms_send --time-limit=3600 --memory-limit=128M --env=prod
+ExecStart=/usr/bin/php8.5 /var/www/html/city-park/bin/console messenger:consume sms_send sms_status --time-limit=3600 --memory-limit=128M --env=prod
 [Install]
 WantedBy=multi-user.target
 ```

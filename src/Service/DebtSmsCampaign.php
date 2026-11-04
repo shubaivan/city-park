@@ -58,6 +58,7 @@ class DebtSmsCampaign
         private SmsRunRepository $runs,
         private MessageBusInterface $bus,
         private EntityManagerInterface $em,
+        private SmsDeliveryChecker $deliveryChecks,
     ) {
     }
 
@@ -417,6 +418,12 @@ class DebtSmsCampaign
 
             $result['sent']++;
             $result['parts'] += $log->getParts();
+
+            // The console's sends are in the same journal, so they get the same answer. Queued
+            // for the worker; dry runs have nothing to ask about.
+            if (!$dryRun) {
+                $this->deliveryChecks->start($log);
+            }
         }
 
         // A foreign number stays a journal row with its reason, as it always was.
