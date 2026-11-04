@@ -739,6 +739,77 @@ class DebtSmsCampaignTest extends TestCase
         $this->assertSame('380673333333', $estimate['searchable'][1]['phone']);
     }
 
+    /**
+     * The row the ОСББ wrote survives being claimed, so a person who came in on it and was then
+     * marked a tenant is still on file under the object, maybe in another shape of the number.
+     */
+    public function testATenantsNumberIsNotUsedFromTheExpectedRowEither(): void
+    {
+        [[$flat]] = $debtors = $this->debtors([['300', ['0671111111']]]);
+        $flat->getUsers()->add((new TelegramUser())->setPhoneNumber('380671111111')->setRole(TelegramUser::ROLE_TENANT));
+
+        $estimate = $this->campaign($debtors, $this->configuredSms())->estimate(100.0, new \DateTimeImmutable(self::DAY));
+
+        $this->assertSame('немає номера', $estimate['searchable'][0]['reason']);
+    }
+
+    /** Claimed by a tenant, whatever the number looks like now: theirs. By anybody else: the flat's. */
+    public function testAnExpectedRowClaimedByATenantIsNotUsed(): void
+    {
+        $debtors = $this->debtors([
+            ['300', [['phone' => '380671111111', 'claimedByRole' => TelegramUser::ROLE_TENANT]]],
+            ['200', [['phone' => '380672222222', 'claimedByRole' => TelegramUser::ROLE_OWNER]]],
+            ['100', [['phone' => '380673333333', 'claimedByRole' => TelegramUser::ROLE_TENANT], '380674444444']],
+        ]);
+
+        $rows = $this->campaign($debtors, $this->configuredSms())->estimate(100.0, new \DateTimeImmutable(self::DAY))['searchable'];
+
+        $this->assertSame([null, '380672222222', '380674444444'], array_column($rows, 'phone'));
+    }
+
+    /** The owner's number the ОСББ wrote down beside a tenant in the bot is still the flat's. */
+    public function testAnotherNumberBesideATenantIsStillUsed(): void
+    {
+        [[$flat]] = $debtors = $this->debtors([['300', ['380672222222']]]);
+        $flat->getUsers()->add((new TelegramUser())->setPhoneNumber('380671111111')->setRole(TelegramUser::ROLE_TENANT));
+
+        $rows = $this->campaign($debtors, $this->configuredSms())->estimate(100.0, new \DateTimeImmutable(self::DAY))['searchable'];
+
+        $this->assertSame('380672222222', $rows[0]['phone']);
+    }
+
+    /** A flat's number is the same one however the residents happened to be loaded. */
+    public function testTheNumberIsTheEarliestResidentsWhateverOrderTheyLoadIn(): void
+    {
+        $resident = function (int $id, string $phone): TelegramUser {
+            $user = (new TelegramUser())->setPhoneNumber($phone);
+            (new \ReflectionProperty(TelegramUser::class, 'id'))->setValue($user, $id);
+
+            return $user;
+        };
+
+        [[$flat]] = $debtors = $this->debtors([['300', []]]);
+        $flat->getUsers()->add($resident(9, '380672222222'));
+        $flat->getUsers()->add($resident(4, '380671111111'));
+
+        $estimate = $this->campaign($debtors, $this->configuredSms())->estimate(100.0, new \DateTimeImmutable(self::DAY));
+
+        $this->assertSame('380671111111', $estimate['searchable'][0]['phone']);
+    }
+
+    /** Equal debts, one number: which object the SMS names must not depend on how they loaded. */
+    public function testATieOnTheDebtDoesNotDependOnLoadOrder(): void
+    {
+        $debtors = $this->debtors([['300', ['380671111111']], ['300', ['380671111111']]]);
+        $sms = $this->configuredSms();
+
+        $forward = $this->campaign($debtors, $sms)->estimate(100.0, new \DateTimeImmutable(self::DAY));
+        $backward = $this->campaign(array_reverse($debtors), $sms)->estimate(100.0, new \DateTimeImmutable(self::DAY));
+
+        $this->assertSame(array_column($forward['searchable'], 'reason'), array_column($backward['searchable'], 'reason'));
+        $this->assertSame($forward['searchable'][0]['account'], $backward['searchable'][0]['account']);
+    }
+
     /** The balance has to cover the picks from the search too. */
     public function testAPickFromTheSearchCountsAgainstTheBalance(): void
     {
@@ -818,7 +889,11 @@ class DebtSmsCampaignTest extends TestCase
         $expected = $this->createMock(ExpectedResidentRepository::class);
         $phones = [];
         foreach ($debtors as [$account, $numbers]) {
-            $phones[$account->getId()] = $numbers;
+            // A plain number, or a row with who claimed it.
+            $phones[$account->getId()] = array_map(
+                static fn (string|array $n): array => is_array($n) ? $n : ['phone' => $n, 'claimedByRole' => null],
+                $numbers,
+            );
         }
         $expected->method('phonesByAccount')->willReturn($phones);
 

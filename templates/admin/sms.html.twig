@@ -128,7 +128,8 @@
                                     {% for r in searchable %}
                                         {% set debt = r.account.debt|number_format(2, '.', ' ') %}
                                         <option value="{{ r.account.id }}"{{ r.reason is not null ? ' disabled' }}
-                                                data-place="{{ r.account.placeLabel }}" data-debt="{{ debt }}" data-phone="{{ r.phone }}" data-parts="{{ r.parts }}">{{ r.account.placeLabel }} · {{ debt }} грн · {{ r.reason is null ? r.phone : '⛔ ' ~ r.reason }}</option>
+                                                data-place="{{ r.account.placeLabel }}" data-debt="{{ debt }}" data-phone="{{ r.phone }}" data-parts="{{ r.parts }}"
+                                                data-house="{{ r.account.houseNumber }}" data-unit="{{ r.account.apartmentNumber }}" data-kind="{{ r.account.unitType }}">{{ r.account.placeLabel }} · {{ debt }} грн · {{ r.reason is null ? r.phone : '⛔ ' ~ r.reason }}</option>
                                     {% endfor %}
                                 </select>
                             </div>

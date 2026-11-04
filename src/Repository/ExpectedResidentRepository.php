@@ -74,13 +74,15 @@ class ExpectedResidentRepository extends ServiceEntityRepository
 
     /**
      * Every phone on file, by account, in `forAccount()`'s order: one query for a whole list.
+     * With the role of whoever claimed it, since the row outlives the claim.
      *
-     * @return array<int, list<string>>
+     * @return array<int, list<array{phone: string, claimedByRole: ?string}>>
      */
     public function phonesByAccount(): array
     {
         $rows = $this->createQueryBuilder('e')
-            ->select('IDENTITY(e.account) AS account', 'e.phone AS phone')
+            ->leftJoin('e.claimed_by', 'c')
+            ->select('IDENTITY(e.account) AS account', 'e.phone AS phone', 'c.role AS claimedByRole')
             ->andWhere('e.account IS NOT NULL')
             ->andWhere("e.phone <> ''")
             ->orderBy('e.id', 'DESC')
@@ -89,7 +91,7 @@ class ExpectedResidentRepository extends ServiceEntityRepository
 
         $phones = [];
         foreach ($rows as $row) {
-            $phones[(int)$row['account']][] = $row['phone'];
+            $phones[(int)$row['account']][] = ['phone' => $row['phone'], 'claimedByRole' => $row['claimedByRole']];
         }
 
         return $phones;

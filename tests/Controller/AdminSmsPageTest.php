@@ -162,7 +162,7 @@ class AdminSmsPageTest extends KernelTestCase
 
         $this->assertMatchesRegularExpression('/<select id="debt-sms-search"(?![^>]*\bname=)[^>]*>/u', $html);
         $this->assertStringContainsString('усі боржники, 2, з номером 1', $html);
-        $this->assertMatchesRegularExpression('/<option value="500"\s+data-place="буд. 27, кв. 63" data-debt="320.50" data-phone="380671234567" data-parts="1">буд. 27, кв. 63 · 320.50 грн · 380671234567<\/option>/u', $html);
+        $this->assertMatchesRegularExpression('/<option value="500"\s+data-place="буд. 27, кв. 63" data-debt="320.50" data-phone="380671234567" data-parts="1"\s+data-house="27" data-unit="63" data-kind="[a-z]+">буд. 27, кв. 63 · 320.50 грн · 380671234567<\/option>/u', $html);
         $this->assertMatchesRegularExpression('/<option value="501" disabled\s+[^>]*>буд. 19, кв. 7 · 150.00 грн · ⛔ немає номера<\/option>/u', $html);
         $this->assertStringNotContainsString(' selected', $html, 'nobody is written to unless somebody picks them');
     }

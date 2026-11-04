@@ -1621,12 +1621,15 @@ select2 above it lists everybody owing at least `MIN_PUBLISHED_DEBT`, the board'
 900 objects, at most 213 of them with a number that can be used. Each option carries the address, the debt and the number, or ⛔ and
 the reason, in which case it cannot be picked. Search is by building and flat («27 63»: every word
 typed must begin a different word of the address, so not кв. 127), and from four digits by phone.
+The first number is the building and the second the unit, so the top hit for «27 17» is буд. 27,
+кв. 17; a flat goes above a storeroom or parking space of the same number and the debt only breaks
+ties. When the best match cannot be written to, nothing is highlighted, so Enter cannot take another address.
 The select has no `name`: picking makes a ticked row in the table (or ticks the one there), so
 there is one checkbox per address and one way into `ids[]`. On the server there is one plan:
 `estimate()` plans for everyone and cuts the threshold's list out of it (`aboveThreshold()`), so
 figures, table and console stay what they were, and `narrow()` holds a posted id against everybody
 who may be written to. No number, a foreign number, a second object on one number: refused, whole
-run, as before. A tenant's number is never used, the rule `DebtNotifyCommand` already kept. It is 900 rows on each view, so `plan()` loads owners and phones in one query each.
+run, as before. A tenant's number is never used, the rule `DebtNotifyCommand` already kept, including an `ExpectedResident` row they claimed or that carries their number (the row survives the claim). A flat's number is its earliest resident's by id, and equal debts go by особовий рахунок, so neither depends on load order. It is 900 rows on each view, so `plan()` loads owners and phones in one query each.
 **A new Encore entry: a deploy has to run `encore production`**, or `/admin/sms` is a 500 in prod,
 where `strict_mode` is on. The test env has it off, so a test does not depend on the last build.
 

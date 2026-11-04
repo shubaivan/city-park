@@ -28,31 +28,70 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /**
      * Every word typed has to begin a different word of the address, so «27 63» finds буд. 27,
-     * кв. 63 and never кв. 127, and «27 2» goes on narrowing as the flat is typed. Four digits
-     * or more may also be anywhere in the phone number: a shorter run would match half the house.
+     * кв. 63 and never кв. 127, and «27 2» goes on narrowing as the flat is typed. Tried every
+     * way round: «1 19» is буд. 19, кв. 1 although «1» also begins «19». Four digits or more may
+     * also be anywhere in the phone number: a shorter run would match half the house.
      */
     function matches(typed, option) {
-        var address = words(option.dataset.place);
         var phone = option.dataset.phone;
 
-        return typed.every(function (word) {
-            var at = address.findIndex(function (candidate) { return candidate.indexOf(word) === 0; });
-
-            if (at >= 0) {
-                address.splice(at, 1);
-
+        function place(left, address) {
+            if (!left.length) {
                 return true;
             }
 
-            return /^\d{4,}$/.test(word) && phone.indexOf(word) >= 0;
+            var word = left[0];
+            var rest = left.slice(1);
+
+            if (/^\d{4,}$/.test(word) && phone.indexOf(word) >= 0 && place(rest, address)) {
+                return true;
+            }
+
+            return address.some(function (candidate, at) {
+                return candidate.indexOf(word) === 0
+                    && place(rest, address.slice(0, at).concat(address.slice(at + 1)));
+            });
+        }
+
+        return place(typed, words(option.dataset.place));
+    }
+
+    function hasWord(list, word, whole) {
+        return list.some(function (candidate) {
+            return whole ? candidate === word : candidate.indexOf(word) === 0;
         });
     }
 
-    /** How many of the words typed are a whole word of the address. */
-    function exactWords(typed, option) {
-        var address = words(option.dataset.place);
+    /**
+     * How well the numbers typed name this address, lower is better: the first is the building,
+     * the second the unit, as a person says them. So «27 17» is буд. 27, кв. 17 and not буд. 17,
+     * кв. 27, whatever each owes. A single number is a building before it is a flat.
+     */
+    function closeness(typed, option) {
+        var numbers = typed.filter(function (word) { return /\d/.test(word); });
+        var house = words(option.dataset.house);
+        var unit = words(option.dataset.unit);
+        var first = numbers[0];
+        var second = numbers[1];
 
-        return typed.filter(function (word) { return address.indexOf(word) >= 0; }).length;
+        if (first === undefined) {
+            return 0;
+        }
+
+        if (second === undefined) {
+            if (hasWord(house, first, true)) { return 0; }
+            if (hasWord(unit, first, true)) { return 1; }
+
+            return 2;
+        }
+
+        if (hasWord(house, first, true) && hasWord(unit, second, true)) { return 0; }
+        if (hasWord(house, first, true) && hasWord(unit, second, false)) { return 1; }
+        // Both exact the other way round beats two beginnings: «1 19» is буд. 19, кв. 1.
+        if (hasWord(house, second, true) && hasWord(unit, first, true)) { return 2; }
+        if (hasWord(house, first, false) && hasWord(unit, second, false)) { return 3; }
+
+        return 4;
     }
 
     function cell(content, className) {
@@ -111,16 +150,38 @@ document.addEventListener('DOMContentLoaded', function () {
 
             return data.element && data.element.value && matches(typed, data.element) ? data : null;
         },
-        // кв. 63 above кв. 630 and кв. 639, whatever they owe. Otherwise largest debt first.
+        // How close the address is, then a flat before a parking space or a storeroom. The debt
+        // only breaks a tie: the options arrive largest first and this sort keeps their order.
         sorter: function (results) {
             if (!typed.length) {
                 return results;
             }
 
-            return results.slice().sort(function (a, b) {
-                return exactWords(typed, b.element) - exactWords(typed, a.element);
+            return results.map(function (result) {
+                return {
+                    result: result,
+                    close: closeness(typed, result.element),
+                    flat: result.element.dataset.kind === 'apartment' ? 0 : 1,
+                };
+            }).sort(function (a, b) {
+                return a.close - b.close || a.flat - b.flat;
+            }).map(function (ranked) {
+                return ranked.result;
             });
         },
+    });
+
+    /*
+        Select2 highlights the first result that can be picked, and Enter takes the highlighted.
+        When the best match has no number, that would be some other address: nothing is
+        highlighted then, and picking it takes the mouse or an arrow key, on purpose.
+    */
+    $select.data('select2').on('results:all', function () {
+        var $options = $('.select2-container--open .select2-results__option');
+
+        if ($options.first().attr('aria-disabled') === 'true') {
+            $options.removeClass('select2-results__option--highlighted');
+        }
     });
 
     $select.on('select2:select', function (event) {

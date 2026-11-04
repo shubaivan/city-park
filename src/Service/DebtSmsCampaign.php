@@ -5,6 +5,7 @@ namespace App\Service;
 use App\Command\DebtNotifySmsCommand;
 use App\Entity\Account;
 use App\Entity\SmsLog;
+use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
 use App\Repository\ExpectedResidentRepository;
 use Psr\Log\LoggerInterface;
@@ -95,7 +96,8 @@ class DebtSmsCampaign
         );
         // Largest debt first: it is the order anybody reading the list wants it in, and when
         // one number covers two objects it decides which of them the one SMS names.
-        usort($debtors, static fn (Account $a, Account $b) => (float)$b->getDebt() <=> (float)$a->getDebt());
+        // Equal debts by the unique особовий рахунок, so the choice survives how they were loaded.
+        usort($debtors, static fn (Account $a, Account $b) => [(float)$b->getDebt(), $a->getAccountNumber()] <=> [(float)$a->getDebt(), $b->getAccountNumber()]);
 
         $plan['debtors'] = count($debtors);
         $seen = [];
@@ -614,21 +616,39 @@ class DebtSmsCampaign
      * bot — and otherwise whatever the ОСББ wrote down against the object, which is the
      * only thing there is for the ~790 objects with nobody in the bot.
      *
-     * Never a tenant's: the flat's arrears are not theirs (`owesForTheFlat()`, as in
-     * DebtNotifyCommand). Above the threshold no object depended on one, in the search three do.
+     * The earliest resident first, by id: a query without an order hands them back as the table
+     * happens to lie, and the same-day guard is per number, so a flat whose number changed between
+     * two runs could be written to twice.
      *
-     * @param list<string> $expectedPhones what the ОСББ wrote down for this object
+     * Never a tenant's: the flat's arrears are not theirs (`owesForTheFlat()`, as in
+     * DebtNotifyCommand). That goes for the ОСББ's row too, which survives being claimed: one
+     * claimed by a tenant, or carrying a linked tenant's number, is that tenant's.
+     *
+     * @param list<array{phone: string, claimedByRole: ?string}> $expected what the ОСББ wrote down for this object
      */
-    private function phoneFor(Account $account, array $expectedPhones): ?string
+    private function phoneFor(Account $account, array $expected): ?string
     {
+        $users = $account->getUsers()->toArray();
+        usort($users, static fn (TelegramUser $a, TelegramUser $b): int => $a->getId() <=> $b->getId());
+
         $phones = [];
-        foreach ($account->getUsers() as $user) {
-            if ($user->owesForTheFlat() && $user->getPhoneNumber()) {
+        $tenantKeys = [];
+        foreach ($users as $user) {
+            if (!$user->getPhoneNumber()) {
+                continue;
+            }
+            if ($user->owesForTheFlat()) {
                 $phones[] = $user->getPhoneNumber();
+            } else {
+                $tenantKeys[PhoneKey::of($user->getPhoneNumber())] = true;
             }
         }
 
-        array_push($phones, ...$expectedPhones);
+        foreach ($expected as $row) {
+            if ($row['claimedByRole'] !== TelegramUser::ROLE_TENANT && !isset($tenantKeys[PhoneKey::of($row['phone'])])) {
+                $phones[] = $row['phone'];
+            }
+        }
 
         // A foreign number first in line must not hide a usable one behind it.
         foreach ($phones as $phone) {
