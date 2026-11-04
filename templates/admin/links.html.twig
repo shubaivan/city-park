@@ -9,9 +9,15 @@
     not exist, and the link took every one of them somewhere unrelated. A kind this file
     does not know now says so.
 #}
-{% macro kindIcon(kind) %}
+{#
+    A rental link is the board's link, and that board holds sales too: its kind says nothing
+    about the deal. Listing #5 is a sale and was drawn as «🔑 оренда #5». So the listing, where
+    there is one, decides; without one (the per-board totals, a row deleted since) nothing
+    here claims to know which it was.
+#}
+{% macro kindIcon(kind, target = null) %}
     {%- if kind == 'service' -%}🛠
-    {%- elseif kind == 'rental' -%}🔑
+    {%- elseif kind == 'rental' -%}{{ target ? target.dealIcon : '📋' }}
     {%- elseif kind == 'complaint' -%}🔧
     {%- elseif kind == 'vote' -%}🗳
     {%- elseif kind == 'debt' -%}💸
@@ -21,9 +27,9 @@
     {%- endif -%}
 {% endmacro %}
 
-{% macro kindWord(kind) %}
+{% macro kindWord(kind, target = null) %}
     {%- if kind == 'service' -%}послуга
-    {%- elseif kind == 'rental' -%}оренда
+    {%- elseif kind == 'rental' -%}{{ target ? target.dealLabel|lower : 'оголошення' }}
     {%- elseif kind == 'complaint' -%}заявка
     {%- elseif kind == 'vote' -%}голосування
     {%- elseif kind == 'debt' -%}борги
@@ -141,7 +147,7 @@
                         {% set href = link.targetHref(row.kind, row.target_id)|trim %}
                         <tr>
                             <td>
-                                {{ link.kindIcon(row.kind) }}
+                                {{ link.kindIcon(row.kind, target) }}
                                 {% if target %}
                                     {% if href %}<a href="{{ href }}">{% endif %}
                                     {% if row.kind == 'service' %}
@@ -242,12 +248,13 @@
                                 {% set clickName = click.kind == 'info'
                                     ? (info_titles[click.targetId] ?? null)
                                     : null %}
+                                {% set clickTarget = titles[click.kind][click.targetId] ?? null %}
                                 {% if clickHref %}<a href="{{ clickHref }}"
                                     {%- if click.kind == 'info' %} target="_blank" rel="noopener"
                                         title="Відкриється в боті. Ваш перехід теж потрапить у цей журнал."{% endif %}>{% endif %}
-                                    {{ link.kindIcon(click.kind) }}
+                                    {{ link.kindIcon(click.kind, clickTarget) }}
                                     {%- if clickName %} {{ clickName }}
-                                    {%- else %} {{ link.kindWord(click.kind) }} #{{ click.targetId }}{% endif %}
+                                    {%- else %} {{ link.kindWord(click.kind, clickTarget) }} #{{ click.targetId }}{% endif %}
                                 {% if clickHref %}</a>{% endif %}
                             </td>
                         </tr>

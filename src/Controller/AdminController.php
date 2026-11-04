@@ -842,7 +842,7 @@ class AdminController extends AbstractController
     {
         $kinds = [
             DeepLink::KIND_SERVICE => 'послуги',
-            DeepLink::KIND_RENTAL => 'оренда',
+            DeepLink::KIND_RENTAL => 'оренда і продаж',
             DeepLink::KIND_COMPLAINT => 'заявки',
             DeepLink::KIND_VOTE => 'голосування',
             DeepLink::KIND_DEBT => 'борги',
@@ -920,6 +920,7 @@ class AdminController extends AbstractController
         DebtSnapshotRepository $snapshots,
     ): Response {
         $summary = $clicks->summary();
+        $recent = $clicks->recent();
 
         // What each row is about, resolved in one query per kind rather than one per row.
         //
@@ -937,10 +938,20 @@ class AdminController extends AbstractController
             DeepLink::KIND_VOTE => $campaigns,
             DeepLink::KIND_DEBT => $snapshots,
         ] as $kind => $repository) {
-            $ids = array_values(array_map(
-                static fn (array $row): int => (int)$row['target_id'],
-                array_filter($summary, static fn (array $row): bool => $row['kind'] === $kind),
-            ));
+            // Both tables: «Останні переходи» needs the listing too, to say sale or rent, and
+            // the two lists are capped separately, so one can hold a row the other does not.
+            $ids = [];
+            foreach ($summary as $row) {
+                if ($row['kind'] === $kind) {
+                    $ids[(int)$row['target_id']] = (int)$row['target_id'];
+                }
+            }
+            foreach ($recent as $click) {
+                if ($click->getKind() === $kind) {
+                    $ids[$click->getTargetId()] = $click->getTargetId();
+                }
+            }
+            $ids = array_values($ids);
 
             foreach ($ids === [] ? [] : $repository->findBy(['id' => $ids]) as $entity) {
                 $titles[$kind][$entity->getId()] = $entity;
@@ -957,7 +968,7 @@ class AdminController extends AbstractController
             'titles' => $titles,
             'info_titles' => $infoTitles,
             'by_kind' => self::clicksByKind($summary),
-            'recent' => $clicks->recent(),
+            'recent' => $recent,
         ]);
     }
 
