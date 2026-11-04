@@ -59,7 +59,7 @@ class SmsLog
     private const FINAL_DELIVERED = ['Delivered', 'Read'];
     private const FINAL_UNDELIVERED = [
         'Expired' => 'минув строк доставки',
-        'Undelivered' => 'не доставлено',
+        'Undelivered' => 'оператор не зміг доставити',
         'Rejected' => 'відхилено',
         'Failed' => 'неможливо надіслати',
         'Cancelled' => 'скасовано, кошти повернено',
