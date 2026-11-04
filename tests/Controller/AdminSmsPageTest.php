@@ -223,7 +223,7 @@ class AdminSmsPageTest extends KernelTestCase
 
     /**
      * «Що, як номера немає, і чи знімуть гроші?» The page must not promise a refund: TurboSMS
-     * bills what was sent unless there is a contract, and the app never sees delivery.
+     * bills what was sent unless there is a contract, and delivery is a separate, later answer.
      */
     public function testItSaysWhatHappensToANumberThatDoesNotExist(): void
     {

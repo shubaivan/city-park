@@ -1651,9 +1651,8 @@ worker would add a unit and nothing else. The card warns when a due check waits 
 before queuing it leaves the job to be redelivered, which queues it then. `debt:notify-sms` gets
 checks too, `sms:test` does not. Older rows stay NULL: nobody asked, so nothing is shown.
 
-**«Sent» means accepted, not delivered.** `SmsSender` stores only the answer to the send and
-never asks for a delivery status, so `sms_log` cannot say whether a message arrived; only the
-TurboSMS cabinet can. By TurboSMS's rules every sent SMS is billed, and undelivered ones come
+**«Sent» means accepted, not delivered.** `status` is only the answer to the send; whether it
+arrived is the delivery status above, which comes later. By TurboSMS's rules every sent SMS is billed, and undelivered ones come
 back only on a signed contract (turbosms.ua/ua/guide.html 5.8, /ua/price.html), so the panel must
 not say a failed or undelivered message is free. `/admin/sms` explains this beside the button.
 
