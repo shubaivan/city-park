@@ -107,7 +107,7 @@
                                 <thead>
                                     <tr>
                                         <th style="width: 1%;">
-                                            <input type="checkbox" id="debt-sms-all" aria-label="Вибрати всіх"{{ selectable is empty ? ' disabled' }}>
+                                            <input type="checkbox" id="debt-sms-all" autocomplete="off" aria-label="Вибрати всіх"{{ selectable is empty ? ' disabled' }}>
                                         </th>
                                         <th><label for="debt-sms-all" class="mb-0">Вибрати всіх ({{ selectable|length }})</label></th>
                                         <th class="text-right">Борг</th>
@@ -117,7 +117,7 @@
                                 <tbody>
                                     {% for r in selectable %}
                                         <tr>
-                                            <td><input type="checkbox" class="debt-sms-pick" id="debt-sms-{{ r.account.id }}" name="ids[]" value="{{ r.account.id }}" data-parts="{{ r.parts }}"></td>
+                                            <td><input type="checkbox" class="debt-sms-pick" autocomplete="off" id="debt-sms-{{ r.account.id }}" name="ids[]" value="{{ r.account.id }}" data-parts="{{ r.parts }}"></td>
                                             <td><label for="debt-sms-{{ r.account.id }}" class="mb-0">{{ r.account.placeLabel }}</label></td>
                                             <td class="text-right text-nowrap"><b>{{ r.account.debt|number_format(2, '.', ' ') }}</b></td>
                                             <td class="text-nowrap">{{ r.phone }}</td>

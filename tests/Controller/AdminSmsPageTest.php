@@ -102,6 +102,8 @@ class AdminSmsPageTest extends KernelTestCase
         $this->assertSame(3, substr_count($html, 'class="debt-sms-pick"'));
         $this->assertMatchesRegularExpression('/name="ids\[\]" value="100" data-parts="1"/', $html);
         $this->assertStringNotContainsString(' checked', $html, 'nobody is written to unless somebody ticks them');
+        $this->assertSame(3, substr_count($html, 'class="debt-sms-pick" autocomplete="off"'), 'a reload must not bring old ticks back');
+        $this->assertStringContainsString('id="debt-sms-all" autocomplete="off"', $html);
         $this->assertStringContainsString('Вибрати всіх (3)', $html);
         $this->assertStringContainsString('буд. 27, кв. 63', $html);
         $this->assertStringContainsString('data-price="1.29"', $html);
