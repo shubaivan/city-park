@@ -1656,6 +1656,17 @@ arrived is the delivery status above, which comes later. By TurboSMS's rules eve
 back only on a signed contract (turbosms.ua/ua/guide.html 5.8, /ua/price.html), so the panel must
 not say a failed or undelivered message is free. `/admin/sms` explains this beside the button.
 
+**No failure may eat the balance or bomb people** (Иван, 04.11.2026). There is no automatic re-send
+anywhere: a send job is never retried or re-requested, a check only reads, the client has no
+`retry_failed` and a send follows no redirect. **The circuit-breaker:** `SMS_DAILY_LIMIT` (250, so
+322.50 грн; prod has at most 213 usable numbers) is checked at the last gate before any request, on
+every path. It counts this Kyiv day's rows that may have cost money: sent, `sending` and unknown.
+Reached, a run stops with no request. **Logs:** `var/log/sms.log` (channel `sms`, info, kept about a
+month by logrotate) has `debt sms: job` per job with its decision and balance, `sms answer` per send,
+`sms status answer` and `sms delivery: check` per check. TurboSMS's raw answer is kept there, with
+numbers cut to the nine-digit key. Never a full phone or a text. The balance after a send is the next
+job's `balance_before`: no call is added for it.
+
 **A double send has five separate stops, from the outside in.** The browser disables the
 button on submit. The POST answers with a redirect, so a refresh repeats nothing.
 `DebtSmsCampaign::sendConfirmed()` holds an flock on `var/debt-sms.lock` while it queues, shared

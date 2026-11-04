@@ -382,15 +382,18 @@ class DebtSmsCampaign
             'logs' => [],
         ];
 
+        $limitReached = null;
+
         foreach ($plan['recipients'] as $r) {
-            if ($result['outOfMoney']) {
+            $stop = $result['outOfMoney'] ? self::OUT_OF_MONEY : $limitReached;
+            if ($stop !== null) {
                 $result['logs'][] = $this->sms->refuse(
                     $r['phone'],
                     $r['text'],
                     SmsLog::PURPOSE_DEBT,
                     $r['account'],
                     $sentBy,
-                    self::OUT_OF_MONEY,
+                    $stop,
                 );
                 $result['failed']++;
                 continue;
@@ -403,6 +406,12 @@ class DebtSmsCampaign
             // A send the plan could not foresee being guarded is a skip: nothing was spent.
             if ($log->isFailed() && $log->getError() === SmsSender::ALREADY_SENT) {
                 $result['skipped']++;
+                continue;
+            }
+
+            if ($log->isFailed() && $log->getError() === SmsSender::DAILY_LIMIT_REACHED) {
+                $limitReached = SmsSender::DAILY_LIMIT_REACHED;
+                $result['failed']++;
                 continue;
             }
 

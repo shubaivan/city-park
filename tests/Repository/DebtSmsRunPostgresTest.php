@@ -460,4 +460,18 @@ class DebtSmsRunPostgresTest extends KernelTestCase
             $this->db->executeStatement('DELETE FROM messenger_messages WHERE queue_name = ?', ['sms_status']);
         }
     }
+
+    /** What the ceiling counts, on the real query: what may have cost money today, and only that. */
+    public function testTheCeilingCountsOnlyWhatMayHaveCostMoneyToday(): void
+    {
+        $this->row('380671111111', null, SmsLog::STATUS_SENT);
+        $this->row('380672222222', null, SmsLog::STATUS_SENDING);
+        $this->row('380673333333', null, SmsLog::STATUS_FAILED, SmsSender::OUTCOME_UNKNOWN . 'timeout');
+        $this->row('380674444444', null, SmsLog::STATUS_FAILED, 'NOT_ALLOWED_NUMBER_STOPLIST (404)');
+        $this->row('380675555555', null, SmsLog::STATUS_FAILED, SmsSender::DAILY_LIMIT_REACHED);
+        $yesterday = $this->row('380676666666', null, SmsLog::STATUS_SENT);
+        $this->db->executeStatement("UPDATE sms_log SET created_at = created_at - interval '1 day' WHERE id = ?", [$yesterday->getId()]);
+
+        $this->assertSame(3, $this->logs->costlyToday());
+    }
 }

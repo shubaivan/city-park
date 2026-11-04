@@ -30,6 +30,7 @@ trait DebtSmsRig
     /** @var array<int, array<int, string|array>> */
     private array $phonesOnFile = [];
     private ?\Throwable $flushFails = null;
+    private int $dailyLimit = SmsSender::DEFAULT_DAILY_LIMIT;
 
     /** @param list<array{0: Account, 1: list<string>}> $debtors */
     private function campaign(array $debtors, SmsSender $sms): DebtSmsCampaign
@@ -50,7 +51,7 @@ trait DebtSmsRig
         $this->runs = new InMemorySmsRuns($journal);
         $em = $this->entityManager($journal);
 
-        $sms = new SmsSender($http, $em, $journal, new NullLogger(), 'mock-token', 'CityPark');
+        $sms = new SmsSender($http, $em, $journal, $logger ?? new NullLogger(), 'mock-token', 'CityPark', $this->dailyLimit);
         [$accounts, $expected] = $this->parts($debtors);
         $checks = $this->checker($sms, $journal, $em);
         $campaign = new DebtSmsCampaign($accounts, $expected, $sms, $logger ?? new NullLogger(), $this->projectDir, $this->runs, $this->bus, $em, $checks);
@@ -63,7 +64,7 @@ trait DebtSmsRig
             $journal,
             $em,
             $this->createMock(ManagerRegistry::class),
-            new NullLogger(),
+            $logger ?? new NullLogger(),
             $checks,
             0,
         );

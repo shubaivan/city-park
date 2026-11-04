@@ -75,6 +75,27 @@ class DebtSmsCampaignTest extends TestCase
         $this->assertCount(3, $run['logs'], 'every household gets a journal row, sent or not');
     }
 
+    /** The ceiling holds on the console too: one row reached it, the rest do not ask. */
+    public function testTheConsoleLoopStopsAtTheCeiling(): void
+    {
+        $this->dailyLimit = 1;
+        $sends = 0;
+        $http = $this->turboSms(100.0, [static function () use (&$sends): array {
+            $sends++;
+
+            return ['response_code' => 0, 'response_result' => [['message_id' => 'a']]];
+        }]);
+        $journal = $this->journal();
+        $campaign = $this->realCampaign($this->debtors([['9000', ['380671111111']], ['8000', ['380672222222']], ['7000', ['380673333333']]]), $http, $journal);
+
+        $run = $campaign->send($campaign->plan(), 'debt:notify-sms');
+
+        $this->assertSame(1, $sends);
+        $this->assertSame(1, $run['sent']);
+        $this->assertSame(2, $run['failed']);
+        $this->assertSame(SmsSender::DAILY_LIMIT_REACHED, $run['logs'][1]->getError());
+    }
+
     /** The console's accepted sends get a check like the panel's; a dry run has nothing to ask. */
     public function testTheConsoleLoopQueuesChecksButNotForADryRun(): void
     {

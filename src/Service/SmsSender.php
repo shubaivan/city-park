@@ -82,6 +82,16 @@ class SmsSender
      */
     private const SEND_TIMEOUT = 120;
 
+    /**
+     * The circuit-breaker: requests that may cost money in one Kyiv day, from every path, 250 ×
+     * 1.29 = 322.50 грн at most. Prod has at most 213 usable numbers, so a mailing to everybody
+     * fits with a few tests to spare, and no failure can spend more than that in a day. Change it
+     * with SMS_DAILY_LIMIT, which is the setting; this default is for code built by hand.
+     */
+    public const DEFAULT_DAILY_LIMIT = 250;
+
+    public const DAILY_LIMIT_REACHED = 'досягнуто денного ліміту SMS: сьогодні більше не надсилаємо';
+
     public const STOPPED_ON_UNKNOWN = 'розсилку зупинено: невідомо, чи пішла попередня SMS. Перевірте кабінет TurboSMS і запустіть решту ще раз';
 
     /** Refusals about the account, not this number: asking for the next one gets the same answer. */
@@ -103,9 +113,10 @@ class SmsSender
         private HttpClientInterface $http,
         private EntityManagerInterface $em,
         private SmsLogRepository $logs,
-        private LoggerInterface $logger,
+        private LoggerInterface $smsLogger,
         private string $token = '',
         private string $sender = '',
+        private int $dailyLimit = self::DEFAULT_DAILY_LIMIT,
     ) {
     }
 
@@ -279,6 +290,10 @@ class SmsSender
             return self::STOPPED_ON_UNKNOWN;
         }
 
+        if ($log->isFailed() && $error === self::DAILY_LIMIT_REACHED) {
+            return self::DAILY_LIMIT_REACHED;
+        }
+
         if (!$log->isFailed() || preg_match('/\((\d+)\)$/', $error, $code) !== 1) {
             return null;
         }
@@ -329,13 +344,25 @@ class SmsSender
         // Same-day repeat guard. The expensive mistake is not a wrong number, it is the
         // same right number written to twice because a cron ran again or an import was
         // re-uploaded after a correction.
-        return $this->logs->alreadySentToday($log->getPhoneKey(), $log->getPurpose()) ? self::ALREADY_SENT : null;
+        if ($this->logs->alreadySentToday($log->getPhoneKey(), $log->getPurpose())) {
+            return self::ALREADY_SENT;
+        }
+
+        // The last gate before any request, on every path: panel, console and sms:test.
+        return $this->logs->costlyToday() >= $this->dailyLimit ? self::DAILY_LIMIT_REACHED : null;
     }
 
-    /** The request itself, and what it came to. */
+    /**
+     * The request itself, and what it came to. One attempt, whatever happens: no retry here and
+     * none in the client, and redirects off, so a 307 cannot post it twice.
+     */
     private function post(SmsLog $log, ?string $sequenceId): SmsLog
     {
         $phone = $log->getPhone();
+        $started = microtime(true);
+        $raw = null;
+        $http = null;
+        $body = [];
 
         try {
             $response = $this->http->request('POST', self::SEND_URL, [
@@ -349,16 +376,56 @@ class SmsSender
                     ]),
                 ]),
                 'timeout' => self::SEND_TIMEOUT,
+                'max_redirects' => 0,
             ]);
 
+            $http = $response->getStatusCode();
+            $raw = $response->getContent(false);
             $body = $response->toArray(false);
+            $this->recordAnswer($log, $body, $phone);
         } catch (\Throwable $e) {
-            $this->logger->error('sms send failed', ['phone_key' => $log->getPhoneKey(), 'error' => $e->getMessage()]);
-
-            return $log->markFailed(self::OUTCOME_UNKNOWN . $e->getMessage());
+            $log->markFailed(self::OUTCOME_UNKNOWN . $e->getMessage());
         }
 
-        return $this->recordAnswer($log, $body, $phone);
+        $this->smsLogger->info('sms answer', [
+            'row' => $log->getId(),
+            'run' => $log->getRun()?->getId(),
+            'phone_key' => $log->getPhoneKey(),
+            'http' => $http,
+            'code' => $body['response_code'] ?? null,
+            'status' => $body['response_status'] ?? null,
+            'message_id' => $log->getProviderId(),
+            'decision' => self::decisionOf($log),
+            'error' => $log->getError(),
+            'duration_ms' => (int)((microtime(true) - $started) * 1000),
+            'raw' => self::forTheLog($raw),
+        ]);
+
+        return $log;
+    }
+
+    private static function decisionOf(SmsLog $log): string
+    {
+        return match (true) {
+            $log->isSent() => 'sent',
+            str_starts_with((string)$log->getError(), self::OUTCOME_UNKNOWN) => 'unknown',
+            default => 'refused',
+        };
+    }
+
+    /**
+     * A provider's answer as it came, for the log: nobody has seen a real one yet. Its numbers
+     * cut down to the nine digits the log goes by, and the length bounded.
+     */
+    private static function forTheLog(?string $raw): ?string
+    {
+        if ($raw === null) {
+            return null;
+        }
+
+        $masked = preg_replace_callback('/(?<![\w-])\+?\d{9,15}(?![\w-])/', static fn (array $m): string => substr($m[0], -9), $raw);
+
+        return mb_substr((string)$masked, 0, 2000);
     }
 
     /**
@@ -495,7 +562,7 @@ class SmsSender
                 'timeout' => 10,
             ])->toArray(false);
         } catch (\Throwable $e) {
-            $this->logger->warning('sms balance check failed', ['error' => $e->getMessage()]);
+            $this->smsLogger->warning('sms balance check failed', ['error' => $e->getMessage()]);
 
             return null;
         }
@@ -516,25 +583,40 @@ class SmsSender
             return null;
         }
 
+        $started = microtime(true);
+        $raw = null;
+        $body = [];
+
         try {
-            $body = $this->http->request('POST', self::STATUS_URL, [
+            $response = $this->http->request('POST', self::STATUS_URL, [
                 'headers' => ['Authorization' => 'Bearer ' . trim($this->token)],
                 'json' => ['messages' => [$providerId]],
                 'timeout' => 10,
-            ])->toArray(false);
+            ]);
+            $raw = $response->getContent(false);
+            $body = $response->toArray(false);
         } catch (\Throwable $e) {
-            $this->logger->warning('sms delivery status check failed', ['id' => $providerId, 'error' => $e->getMessage()]);
+            $this->smsLogger->warning('sms delivery status check failed', ['message_id' => $providerId, 'error' => $e->getMessage(), 'raw' => self::forTheLog($raw)]);
 
             return null;
         }
 
+        $status = null;
         foreach (is_array($body['response_result'] ?? null) ? $body['response_result'] : [] as $entry) {
             if (is_array($entry) && ($entry['message_id'] ?? null) === $providerId && is_string($entry['status'] ?? null) && $entry['status'] !== '') {
-                return $entry['status'];
+                $status = $entry['status'];
             }
         }
 
-        return null;
+        $this->smsLogger->info('sms status answer', [
+            'message_id' => $providerId,
+            'code' => $body['response_code'] ?? null,
+            'delivery_status' => $status,
+            'duration_ms' => (int)((microtime(true) - $started) * 1000),
+            'raw' => self::forTheLog($raw),
+        ]);
+
+        return $status;
     }
 
     /**
@@ -560,7 +642,7 @@ class SmsSender
             $this->em->flush();
         } catch (\Throwable $e) {
             // A journal that cannot be written must not swallow a message that was sent.
-            $this->logger->error('sms log write failed', ['error' => $e->getMessage()]);
+            $this->smsLogger->error('sms log write failed', ['error' => $e->getMessage()]);
         }
 
         return $log;
@@ -595,7 +677,7 @@ class SmsSender
 
             return [$expected?->getAccount(), $user];
         } catch (\Throwable $e) {
-            $this->logger->warning('SMS: could not resolve recipient by phone', ['error' => $e->getMessage()]);
+            $this->smsLogger->warning('SMS: could not resolve recipient by phone', ['error' => $e->getMessage()]);
 
             return [null, $user];
         }

@@ -27,6 +27,14 @@ final class InMemorySmsJournal extends SmsLogRepository
         return false;
     }
 
+    public function costlyToday(): int
+    {
+        return count(array_filter(
+            $this->rows,
+            static fn (SmsLog $row): bool => $row->isSent() || $row->isSending() || str_starts_with((string)$row->getError(), SmsSender::OUTCOME_UNKNOWN),
+        ));
+    }
+
     public function find(mixed $id, $lockMode = null, $lockVersion = null): ?object
     {
         foreach ($this->rows as $row) {

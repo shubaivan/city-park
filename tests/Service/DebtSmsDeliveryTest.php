@@ -22,6 +22,7 @@ class DebtSmsDeliveryTest extends TestCase
 
     private const DAY = '2026-11-02 12:00 Europe/Kyiv';
 
+    private object $logs;
     private string $projectDir;
     private InMemorySmsJournal $journal;
     /** @var list<array<string, mixed>> */
@@ -37,6 +38,15 @@ class DebtSmsDeliveryTest extends TestCase
 
     protected function setUp(): void
     {
+        $this->logs = new class extends \Psr\Log\AbstractLogger {
+            /** @var list<array{0: string, 1: array}> */
+            public array $lines = [];
+
+            public function log($level, \Stringable|string $message, array $context = []): void
+            {
+                $this->lines[] = [(string)$message, $context];
+            }
+        };
         $this->projectDir = sys_get_temp_dir() . '/debt-sms-' . uniqid();
         mkdir($this->projectDir . '/var', 0777, true);
         $this->journal = $this->journal();
@@ -73,7 +83,7 @@ class DebtSmsDeliveryTest extends TestCase
     /** Queue a run for these debtors and hand back the campaign, jobs waiting. */
     private function queued(array $debtors, string $when = self::DAY): DebtSmsCampaign
     {
-        $campaign = $this->realCampaign($debtors, $this->turbo(), $this->journal);
+        $campaign = $this->realCampaign($debtors, $this->turbo(), $this->journal, $this->logs);
         $now = new \DateTimeImmutable($when);
         $estimate = $campaign->estimate(100.0, $now);
         $ids = array_map(static fn (array $r): int => $r['account']->getId(), $estimate['recipients']);
@@ -219,6 +229,64 @@ class DebtSmsDeliveryTest extends TestCase
 
         $this->expectExceptionMessage('database went away');
         $this->drain(new \DateTimeImmutable(self::DAY));
+    }
+
+    /** The ceiling, reached by rows of every kind that may have cost money: no request, run stopped. */
+    public function testTheDailyCeilingStopsTheRunWithNoRequest(): void
+    {
+        $this->dailyLimit = 2;
+        $this->queued($this->debtors([['9000', ['380671111111']], ['8000', ['380672222222']], ['7000', ['380673333333']]]));
+        $this->journal->rows[] = (new SmsLog('380679999991', 't', SmsLog::PURPOSE_TEST))->markSent('other');
+        $this->journal->rows[] = (new SmsLog('380679999992', 't', SmsLog::PURPOSE_ANNOUNCEMENT))->markFailed(SmsSender::OUTCOME_UNKNOWN . 'timeout');
+
+        $this->drain(new \DateTimeImmutable(self::DAY));
+
+        $this->assertSame([], $this->posts);
+        $this->assertTrue($this->runs->runs[1]->isStopped());
+        $this->assertSame(SmsSender::DAILY_LIMIT_REACHED, $this->runs->runs[1]->getStopReason());
+        $this->assertSame(SmsSender::DAILY_LIMIT_REACHED, $this->journal->rows[4]->getError());
+        $this->assertCount(5, $this->journal->rows, 'the count still reaches M');
+    }
+
+    /** It is reached part way: what went stays, what is left does not ask. */
+    public function testTheCeilingCountsWhatTheRunItselfSent(): void
+    {
+        $this->dailyLimit = 1;
+        $this->queued($this->debtors([['9000', ['380671111111']], ['8000', ['380672222222']]]));
+
+        $this->drain(new \DateTimeImmutable(self::DAY));
+
+        $this->assertCount(1, $this->posts);
+        $this->assertTrue($this->journal->rows[0]->isSent());
+        $this->assertSame(SmsSender::DAILY_LIMIT_REACHED, $this->journal->rows[1]->getError());
+    }
+
+    /** The first real sends will be read from these lines: all of it there, no phone, no text. */
+    public function testEveryJobAndSendLeavesALineWithoutThePhoneOrTheText(): void
+    {
+        $this->answer = static fn (array $body): array => ['response_code' => 802, 'response_status' => 'SUCCESS_MESSAGE_PARTIAL_ACCEPTED', 'response_result' => [
+            ['phone' => $body['recipients'][0], 'response_code' => 406, 'message_id' => null, 'response_status' => 'NOT_ALLOWED_RECIPIENT_COUNTRY'],
+        ]];
+        $this->queued($this->debtors([['9000', ['380671111111']]]));
+
+        $this->drain(new \DateTimeImmutable(self::DAY));
+
+        $byName = [];
+        foreach ($this->logs->lines as [$name, $context]) {
+            $byName[$name] = $context;
+        }
+        $answer = $byName['sms answer'];
+        $this->assertSame([1, 1, '671111111', 200, 802, 'refused'], [$answer['row'], $answer['run'], $answer['phone_key'], $answer['http'], $answer['code'], $answer['decision']]);
+        $this->assertStringContainsString('NOT_ALLOWED_RECIPIENT_COUNTRY', $answer['raw'], 'the raw answer is kept');
+        $this->assertIsInt($answer['duration_ms']);
+
+        $job = $byName['debt sms: job'];
+        $this->assertSame([1, 1, '671111111', 100.0], [$job['run'], $job['row'], $job['phone_key'], $job['balance_before']]);
+        $this->assertStringContainsString('request sent: failed', $job['decision']);
+
+        $all = json_encode($this->logs->lines, JSON_UNESCAPED_UNICODE);
+        $this->assertStringNotContainsString('380671111111', $all);
+        $this->assertStringNotContainsString('Просимо', $all);
     }
 
     /** Accepted with an id: a check follows. Refused or unknown: nothing to ask about. */

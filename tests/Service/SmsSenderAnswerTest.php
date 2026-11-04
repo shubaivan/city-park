@@ -128,4 +128,35 @@ class SmsSenderAnswerTest extends TestCase
             'CityPark',
         ))->send(self::PHONE, 'Буд.27 кв.63: борг 5430 грн. Просимо сплатити.', SmsLog::PURPOSE_DEBT, new \App\Entity\Account());
     }
+
+    /** At the ceiling the sender refuses by itself, whoever calls: no request leaves. */
+    public function testTheCeilingRefusesBeforeAnyRequest(): void
+    {
+        $http = new MockHttpClient(static function (): never {
+            throw new \LogicException('no request may leave at the ceiling');
+        }, 'https://api.turbosms.ua');
+        $logs = $this->createMock(SmsLogRepository::class);
+        $logs->method('costlyToday')->willReturn(5);
+
+        $log = (new SmsSender($http, $this->createMock(EntityManagerInterface::class), $logs, new NullLogger(), 'mock-token', 'CityPark', 5))
+            ->send(self::PHONE, 'т', SmsLog::PURPOSE_TEST);
+
+        $this->assertSame(SmsSender::DAILY_LIMIT_REACHED, $log->getError());
+    }
+
+    /** One attempt: no redirect may post it again. */
+    public function testASendFollowsNoRedirect(): void
+    {
+        $options = [];
+        $http = new MockHttpClient(static function (string $m, string $u, array $o) use (&$options): MockResponse {
+            $options = $o;
+
+            return new MockResponse('{}');
+        }, 'https://api.turbosms.ua');
+
+        (new SmsSender($http, $this->createMock(EntityManagerInterface::class), $this->createMock(SmsLogRepository::class), new NullLogger(), 'mock-token'))
+            ->send(self::PHONE, 'т', SmsLog::PURPOSE_TEST);
+
+        $this->assertSame(0, $options['max_redirects']);
+    }
 }

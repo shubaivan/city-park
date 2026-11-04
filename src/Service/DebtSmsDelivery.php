@@ -49,6 +49,11 @@ class DebtSmsDelivery
     public const REASON_NO_BALANCE = 'TurboSMS не відповів, скільки на рахунку: розсилку зупинено';
     public const REASON_INTERRUPTED = 'обробку перервано під час надсилання';
 
+    /** For the job's log line. The balance after a send is the next job's `balance_before`. */
+    private string $decision = 'none';
+    private ?float $balanceBefore = null;
+    private ?int $rowId = null;
+
     public function __construct(
         private DebtSmsCampaign $campaign,
         private SmsSender $sms,
@@ -77,10 +82,29 @@ class DebtSmsDelivery
             throw new \RuntimeException('debt sms: no lock, not sending');
         }
 
+        $started = microtime(true);
+        $this->decision = 'none';
+        $this->balanceBefore = null;
+        $this->rowId = null;
+        $sentRequest = false;
+
         try {
             $sentRequest = $this->deliverLocked($message, $now ?? new \DateTimeImmutable());
+        } catch (\Throwable $e) {
+            $this->decision = 'exception: ' . $e->getMessage();
+
+            throw $e;
         } finally {
             $this->campaign->releaseLock($lock);
+            $this->smsLogger->info('debt sms: job', [
+                'run' => $message->runId,
+                'row' => $this->rowId,
+                'account' => $message->accountId,
+                'phone_key' => PhoneKey::of($message->phone),
+                'decision' => mb_substr($this->decision, 0, 200),
+                'balance_before' => $this->balanceBefore,
+                'duration_ms' => (int)((microtime(true) - $started) * 1000),
+            ]);
         }
 
         if ($sentRequest && $this->pauseMs > 0) {
@@ -110,13 +134,15 @@ class DebtSmsDelivery
     {
         $run = $this->runs->find($message->runId);
         if (!$run instanceof SmsRun) {
-            $this->smsLogger->warning('debt sms: job of a run that is gone', ['run' => $message->runId]);
+            $this->decision = 'run is gone';
 
             return false;
         }
 
         $existing = $this->logs->findOneBy(['run' => $run, 'phone_key' => PhoneKey::of($message->phone)]);
         if ($existing instanceof SmsLog) {
+            $this->rowId = $existing->getId();
+            $this->decision = 'redelivered, no request: row was ' . $existing->getStatus();
             $this->settleRedelivered($existing, $run);
 
             return false;
@@ -131,6 +157,7 @@ class DebtSmsDelivery
                 $this->stopRun($run, $stop);
             }
             $this->writeOff($message, $run, $account, $stop);
+            $this->decision = 'stopped, no request: ' . $stop;
 
             return false;
         }
@@ -138,6 +165,7 @@ class DebtSmsDelivery
         $reason = $this->reasonToSkip($message, $account);
         if ($reason !== null) {
             $this->writeOff($message, $run, $account, $reason);
+            $this->decision = 'skipped, no request: ' . $reason;
 
             return false;
         }
@@ -151,14 +179,25 @@ class DebtSmsDelivery
             $run,
         );
 
+        $this->rowId = $log->getId();
+
         if (!$log->isSending()) {
+            $this->decision = 'refused by our own gate, no request: ' . $log->getError();
+            $stopReason = SmsSender::reasonToStopRun($log);
+            if ($stopReason !== null) {
+                $this->stopRun($run, $stopReason);
+            }
             $this->closeIfDone($run);
 
             return false;
         }
 
+        // Written down by SmsSender as `sms answer` too, with the raw answer.
+        $this->decision = 'request sent';
+
         $this->sms->sendClaimed($log, sprintf('cpdebt-%d-%s', $run->getId(), $log->getPhoneKey()));
         $this->deliveryChecks->start($log, $now);
+        $this->decision = 'request sent: ' . $log->getStatus() . ($log->getError() !== null ? ', ' . $log->getError() : '');
 
         $stopReason = SmsSender::reasonToStopRun($log);
         if ($stopReason !== null) {
@@ -208,6 +247,7 @@ class DebtSmsDelivery
         }
 
         $balance = $this->sms->balance();
+        $this->balanceBefore = $balance;
         if ($balance === null) {
             return self::REASON_NO_BALANCE;
         }

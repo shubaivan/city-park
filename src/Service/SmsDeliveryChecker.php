@@ -71,8 +71,11 @@ class SmsDeliveryChecker
             $this->registry->resetManager();
         }
 
+        $started = microtime(true);
         $log = $this->logs->find($message->logId);
         if (!$log instanceof SmsLog || !$log->isSent() || $log->getProviderId() === null || $log->isDeliveryFinal()) {
+            $this->smsLogger->info('sms delivery: check', ['row' => $message->logId, 'attempt' => $message->attempt, 'decision' => 'nothing to ask']);
+
             return;
         }
 
@@ -83,27 +86,38 @@ class SmsDeliveryChecker
             $log->markDelivery($status);
         }
 
-        if ($log->isDeliveryFinal()) {
-            $this->em->flush();
-
-            return;
-        }
-
-        $left = $message->deadline - $now->getTimestamp();
-        if ($left <= 0) {
-            $log->markDelivery(SmsLog::DELIVERY_NO_ANSWER);
-            $this->em->flush();
-
-            return;
+        $decision = 'final';
+        $next = null;
+        if (!$log->isDeliveryFinal()) {
+            $left = $message->deadline - $now->getTimestamp();
+            if ($left <= 0) {
+                $log->markDelivery(SmsLog::DELIVERY_NO_ANSWER);
+                $decision = 'no answer by the ceiling';
+            } else {
+                $attempt = $message->attempt + 1;
+                $delay = (self::DELAYS_MINUTES[$attempt] ?? self::DELAYS_MINUTES[count(self::DELAYS_MINUTES) - 1]) * 60;
+                // Not past the deadline, so the last question comes when it says and the row is settled.
+                $next = [new SmsDeliveryCheckMessage($message->logId, $attempt, $message->deadline), min($delay, $left)];
+                $decision = 'ask again in ' . $next[1] . ' s';
+            }
         }
 
         $this->em->flush();
 
-        $next = $message->attempt + 1;
-        $delay = (self::DELAYS_MINUTES[$next] ?? self::DELAYS_MINUTES[count(self::DELAYS_MINUTES) - 1]) * 60;
+        if ($next !== null) {
+            $this->queue(...$next);
+        }
 
-        // Not past the deadline, so the last question comes when it says and the row is settled.
-        $this->queue(new SmsDeliveryCheckMessage($message->logId, $next, $message->deadline), min($delay, $left));
+        $this->smsLogger->info('sms delivery: check', [
+            'row' => $log->getId(),
+            'run' => $log->getRun()?->getId(),
+            'phone_key' => $log->getPhoneKey(),
+            'message_id' => $log->getProviderId(),
+            'attempt' => $message->attempt,
+            'delivery_status' => $status,
+            'decision' => $decision,
+            'duration_ms' => (int)((microtime(true) - $started) * 1000),
+        ]);
     }
 
     private function queue(SmsDeliveryCheckMessage $message, int $delaySeconds): void

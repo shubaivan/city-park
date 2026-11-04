@@ -59,6 +59,24 @@ class SmsLogRepository extends ServiceEntityRepository
     }
 
     /**
+     * Rows from this Kyiv day that may have cost money, whoever sent them: sent, still `sending`,
+     * or an outcome nobody learned. What the daily ceiling counts (SmsSender).
+     */
+    public function costlyToday(): int
+    {
+        return (int)$this->createQueryBuilder('s')
+            ->select('COUNT(s.id)')
+            ->andWhere('s.status = :sent OR s.status = :sending OR (s.status = :failed AND s.error LIKE :unknown)')
+            ->setParameter('sent', SmsLog::STATUS_SENT)
+            ->setParameter('sending', SmsLog::STATUS_SENDING)
+            ->setParameter('failed', SmsLog::STATUS_FAILED)
+            ->setParameter('unknown', SmsSender::OUTCOME_UNKNOWN . '%')
+            ->andWhere('s.created_at >= :start')->setParameter('start', new \DateTime('today', new \DateTimeZone('Europe/Kyiv')))
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
      * Totals for the panel's header. Sent is what TurboSMS confirmed. Unknown, a row still
      * `sending` or an outcome nobody learned, may have been billed: counted apart, not hidden.
      *
