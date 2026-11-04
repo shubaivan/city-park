@@ -2,6 +2,11 @@
 
 namespace App\Tests\Controller;
 
+use App\Entity\Account;
+use App\Entity\LinkClick;
+use App\Entity\RentalListing;
+use App\Repository\LinkClickRepository;
+use App\Repository\RentalListingRepository;
 use App\Service\DeepLink;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -201,6 +206,70 @@ class AdminLinksPageTest extends WebTestCase
             (string)file_get_contents(__DIR__ . '/../../templates/base.html.twig'),
             'the row somebody was sent to has to be marked, or the link is only a scroll position',
         );
+    }
+
+    /**
+     * The label follows the listing, not the link: #5 was a sale drawn as «🔑 оренда #5».
+     *
+     * A click that only «Останні переходи» holds still has to find its listing, or it falls
+     * back to the word that claims nothing, so the summary here is left empty on purpose.
+     */
+    public function testARentalLinkIsLabelledByTheDealOfItsListing(): void
+    {
+        $sale = $this->listing(5, RentalListing::DEAL_SALE);
+        $rent = $this->listing(4, RentalListing::DEAL_RENT);
+
+        $html = $this->page([], [
+            (new LinkClick())->setKind(DeepLink::KIND_RENTAL)->setTargetId(5),
+            (new LinkClick())->setKind(DeepLink::KIND_RENTAL)->setTargetId(4),
+            (new LinkClick())->setKind(DeepLink::KIND_RENTAL)->setTargetId(99),
+        ], [$sale, $rent]);
+
+        $this->assertMatchesRegularExpression('/🏡\s*продаж #5/u', $html);
+        $this->assertMatchesRegularExpression('/🔑\s*оренда #4/u', $html);
+        $this->assertMatchesRegularExpression('/📋\s*оголошення #99/u', $html, 'a deleted listing must not claim a deal');
+        $this->assertStringNotContainsString('оренда #5', $html);
+    }
+
+    /** The per-post table draws the same icon, and the board's total covers both deals. */
+    public function testThePerPostTableAndTheBoardTotalAreNotRentOnly(): void
+    {
+        $sale = $this->listing(5, RentalListing::DEAL_SALE);
+
+        $html = $this->page([[
+            'kind' => DeepLink::KIND_RENTAL, 'target_id' => 5, 'clicks' => 16, 'people' => 14, 'last_at' => '2026-11-04 08:34:34',
+        ]], [], [$sale]);
+
+        $this->assertMatchesRegularExpression('/🏡\s*(<a[^>]*>)?\s*<b>/u', $html);
+        $this->assertStringContainsString('оренда і продаж', $html);
+    }
+
+    /** @param list<array<string, mixed>> $summary @param list<LinkClick> $recent @param list<RentalListing> $listings */
+    private function page(array $summary, array $recent, array $listings): string
+    {
+        $client = $this->loginAs('alina');
+
+        $clicks = $this->createMock(LinkClickRepository::class);
+        $clicks->method('summary')->willReturn($summary);
+        $clicks->method('recent')->willReturn($recent);
+        static::getContainer()->set(LinkClickRepository::class, $clicks);
+
+        $repository = $this->createMock(RentalListingRepository::class);
+        $repository->method('findBy')->willReturn($listings);
+        static::getContainer()->set(RentalListingRepository::class, $repository);
+
+        $client->request('GET', '/admin/links');
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+
+        return (string)$client->getResponse()->getContent();
+    }
+
+    private function listing(int $id, string $deal): RentalListing
+    {
+        $listing = (new RentalListing())->setDeal($deal)->setAccount((new Account())->setHouseNumber('19')->setApartmentNumber('62')->setAccountNumber('520062'));
+        (new \ReflectionProperty(RentalListing::class, 'id'))->setValue($listing, $id);
+
+        return $listing;
     }
 
     private function template(): string

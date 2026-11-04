@@ -69,37 +69,94 @@
 
         {% if preview is not null %}
             {#
-                Людмила's button (07.10.2026). The summary is drawn on arrival — debtors,
-                numbers, cost, balance — and the one button leads to a confirmation of exactly
-                that list. Nothing on this card spends anything.
+                Людмила's button (07.10.2026), and since Иван's ask of 04.11.2026 the list behind
+                it: every debtor above the threshold, ticked by hand, the sum beside the button
+                following the ticks. Parts per row come from the server, so the arithmetic here
+                is only ever SmsSender::parts() × the price; the server redoes it at each step.
+                Nothing on this card spends anything: the form is a GET to the confirmation.
             #}
-            {% set n = preview.recipients|length %}
+            <style>
+                /* 13px is a mouse's checkbox: on a phone it is a thumb's target. */
+                @media (max-width: 575.98px) {
+                    #debt-sms-form input[type="checkbox"] { width: 22px; height: 22px; }
+                }
+                #debt-sms-bar {
+                    position: sticky;
+                    bottom: 0;
+                    z-index: 2;
+                    background: #fff;
+                    border-top: 1px solid #dee2e6;
+                    padding: .5rem 0 calc(.5rem + env(safe-area-inset-bottom));
+                }
+            </style>
+            {% set selectable = preview.rows|filter(r => r.reason is null) %}
+            {% set unreachable = preview.rows|filter(r => r.reason is not null) %}
             <div class="card mb-3 border-primary" id="debt-sms">
                 <div class="card-body py-2 px-3">
                     <h6 class="mb-2">💸 SMS боржникам понад {{ min_debt|number_format(0, '.', ' ') }} грн</h6>
 
-                    {% include 'admin/_sms_debt_summary.html.twig' %}
+                    <p class="small mb-2">
+                        Боржників: <b>{{ preview.debtors }}</b> · можна надіслати: <b>{{ selectable|length }}</b>{% if preview.skippedSummary %}
+                        · не можна: {{ preview.skippedSummary }}{% endif %}.
+                    </p>
 
-                    {#
-                        The button is always on the card. Hiding it when the balance was short
-                        read as «there is no button» (Иван and Людмила, 02.11.2026): now it is
-                        greyed out, with the reason right under it.
-                    #}
-                    <div class="d-flex flex-wrap align-items-center mb-2">
-                        {% if preview.blocked is null %}
-                            <a href="{{ path('app_admin_sms_debt_confirm') }}" class="btn btn-danger btn-block-xs mr-sm-3">📨 Відправити СМС</a>
-                        {% else %}
-                            <button type="button" class="btn btn-secondary btn-block-xs mr-sm-3" disabled>📨 Відправити СМС</button>
-                        {% endif %}
-                        <span class="small">
-                            {{ n }} SMS · <b>{{ preview.cost|number_format(2, '.', ' ') }} грн</b>
-                            · на рахунку {{ preview.balance is null ? 'невідомо' : preview.balance|number_format(2, '.', ' ') ~ ' грн' }}
-                        </span>
-                    </div>
+                    <form id="debt-sms-form" method="get"{% if preview.unavailable is null %} action="{{ path('app_admin_sms_debt_confirm') }}"{% endif %}
+                          data-price="{{ price }}" data-balance="{{ preview.balance }}" data-available="{{ preview.unavailable is null ? '1' : '0' }}">
+                        <div class="table-responsive">
+                            <table class="table table-sm small mb-2">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 1%;">
+                                            <input type="checkbox" id="debt-sms-all" autocomplete="off" aria-label="Вибрати всіх"{{ selectable is empty ? ' disabled' }}>
+                                        </th>
+                                        <th><label for="debt-sms-all" class="mb-0">Вибрати всіх ({{ selectable|length }})</label></th>
+                                        <th class="text-right">Борг</th>
+                                        <th>Номер</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for r in selectable %}
+                                        <tr>
+                                            <td><input type="checkbox" class="debt-sms-pick" autocomplete="off" id="debt-sms-{{ r.account.id }}" name="ids[]" value="{{ r.account.id }}" data-parts="{{ r.parts }}"></td>
+                                            <td><label for="debt-sms-{{ r.account.id }}" class="mb-0">{{ r.account.placeLabel }}</label></td>
+                                            <td class="text-right text-nowrap"><b>{{ r.account.debt|number_format(2, '.', ' ') }}</b></td>
+                                            <td class="text-nowrap">{{ r.phone }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                    {% for r in unreachable %}
+                                        <tr class="text-muted">
+                                            <td><input type="checkbox" disabled aria-label="Не можна вибрати: {{ r.reason }}"></td>
+                                            <td>{{ r.account.placeLabel }}</td>
+                                            <td class="text-right text-nowrap">{{ r.account.debt|number_format(2, '.', ' ') }}</td>
+                                            <td>{% if r.phone %}{{ r.phone }} · {% endif %}<span class="debt-sms-reason">⛔ {{ r.reason }}</span></td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
 
-                    {% if preview.blocked is not null %}
-                        <div class="alert alert-warning py-2 px-3 small mb-0">{{ preview.blocked }}</div>
-                    {% endif %}
+                        {#
+                            The button is always on the card. Hiding it when the balance was short
+                            read as «there is no button» (Иван and Людмила, 02.11.2026): it is greyed
+                            out, with the reason right under it. It stays at the bottom of the screen
+                            so the sum stays in sight while scrolling down a long list on a phone.
+                        #}
+                        <div id="debt-sms-bar">
+                            <div class="d-flex flex-wrap align-items-center">
+                                <button type="{{ preview.unavailable is null ? 'submit' : 'button' }}" id="debt-sms-send" class="btn btn-secondary btn-block-xs mr-sm-3" disabled>📨 Відправити СМС</button>
+                                <span class="small">
+                                    <b id="debt-sms-count">0</b> SMS · <b><span id="debt-sms-cost">0.00</span> грн</b>
+                                    · на рахунку {{ preview.balance is null ? 'невідомо' : preview.balance|number_format(2, '.', ' ') ~ ' грн' }}{% if preview.balance is not null %}
+                                    · залишиться <span id="debt-sms-left">{{ preview.balance|number_format(2, '.', ' ') }}</span> грн{% endif %}
+                                </span>
+                            </div>
+                            {# Why the button is grey belongs beside the button: below the list it is 59 rows away on a phone. #}
+                            <div id="debt-sms-short" class="alert alert-warning py-1 px-2 small mt-1 mb-0" hidden></div>
+                            {% if preview.unavailable is not null %}
+                                <div class="alert alert-warning py-1 px-2 small mt-1 mb-0">{{ preview.unavailable }}</div>
+                            {% endif %}
+                        </div>
+                    </form>
 
                     <div class="small text-muted mt-2">
                         Спершу покажемо, кому і за скільки, — без підтвердження нічого не піде.
@@ -109,6 +166,58 @@
                     </div>
                 </div>
             </div>
+
+            <script>
+                (function () {
+                    var form = document.getElementById('debt-sms-form');
+                    var all = document.getElementById('debt-sms-all');
+                    var send = document.getElementById('debt-sms-send');
+                    var short = document.getElementById('debt-sms-short');
+                    var left = document.getElementById('debt-sms-left');
+                    var picks = Array.prototype.slice.call(form.querySelectorAll('.debt-sms-pick'));
+                    var price = parseFloat(form.dataset.price);
+                    var balance = form.dataset.balance === '' ? null : parseFloat(form.dataset.balance);
+                    var available = form.dataset.available === '1';
+                    var money = function (n) {
+                        return n.toFixed(2).replace(/\B(?=(\d{3})+\.)/g, ' ');
+                    };
+
+                    function refresh() {
+                        var ticked = picks.filter(function (p) { return p.checked; });
+                        var parts = ticked.reduce(function (sum, p) { return sum + parseInt(p.dataset.parts, 10); }, 0);
+                        var cost = Math.round(parts * price * 100) / 100;
+                        var isShort = balance !== null && balance < cost;
+
+                        document.getElementById('debt-sms-count').textContent = parts;
+                        document.getElementById('debt-sms-cost').textContent = money(cost);
+                        if (left) {
+                            left.textContent = money(Math.max(balance - cost, 0));
+                        }
+
+                        all.checked = picks.length > 0 && ticked.length === picks.length;
+                        all.indeterminate = ticked.length > 0 && ticked.length < picks.length;
+
+                        short.hidden = !isShort;
+                        short.textContent = isShort
+                            ? 'На рахунку ' + money(balance) + ' грн, а вибрано на ' + money(cost) + ' грн — бракує ' + money(cost - balance) + ' грн.'
+                            : '';
+
+                        var canSend = available && ticked.length > 0 && !isShort;
+                        send.disabled = !canSend;
+                        send.classList.toggle('btn-danger', canSend);
+                        send.classList.toggle('btn-secondary', !canSend);
+                    }
+
+                    all.addEventListener('change', function () {
+                        picks.forEach(function (p) { p.checked = all.checked; });
+                        refresh();
+                    });
+                    picks.forEach(function (p) { p.addEventListener('change', refresh); });
+                    // Back from the confirmation: the browser restores the ticks after the script ran.
+                    window.addEventListener('pageshow', refresh);
+                    refresh();
+                })();
+            </script>
         {% endif %}
 
         {% if entries is empty %}
