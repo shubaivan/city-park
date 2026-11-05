@@ -458,7 +458,12 @@ opt-in phone, admin take-down. What differs from it differs on purpose:
   never silently removed. **One exemption:** Telegram ids in `SERVICE_UNCAPPED_TELEGRAM_IDS`
   (`.env.local`) have no cap — Иван's (23.09.2026), who posts the masters the house
   recommends rather than his own trades. Empty means nobody, never everybody
-  (`ServiceOfferService::isUncapped()`, pinned in `ServiceOfferRulesTest`).
+  (`ServiceOfferService::isUncapped()`, pinned in `ServiceOfferRulesTest`). The same ids'
+  offers are also **permanent** (05.11.2026): `expires_at` is `ServiceOffer::PERMANENT_UNTIL`
+  (a far date, not NULL, so every expiry filter stays as it is), so no «ще актуально?» and
+  no auto-close, and the card reads «безстроково». `service:expire` first moves any live
+  offer of theirs onto that date — including one already past its 30 days but not yet
+  closed — before it prompts or closes anything.
 - **Publishing adds; editing is its own path.** While one offer per person was the rule,
   «✏️ Змінити» restarted the publish flow and let it *replace* whatever was there, which is
   a reasonable spelling of "edit" for exactly as long as there is only one. With three, that

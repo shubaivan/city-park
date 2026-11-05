@@ -76,7 +76,7 @@
                             <td>
                                 {% if offer.status == 'active' %}
                                     <span class="badge bg-success">Активне</span><br>
-                                    <small>до {{ offer.expiresAt|date('d.m.Y') }}</small>
+                                    <small>{{ offer.permanent ? 'безстроково' : 'до ' ~ offer.expiresAt|date('d.m.Y') }}</small>
                                 {% elseif offer.status == 'removed' %}
                                     <span class="badge bg-secondary">Знято автором</span>
                                 {% elseif offer.status == 'expired' %}

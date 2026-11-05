@@ -226,6 +226,86 @@ class ServiceOfferRulesTest extends KernelTestCase
     }
 
     /**
+     * The uncapped authors' offers are permanent (Иван, 05.11.2026): no 30 days, no
+     * «ще актуально?», never closed by the cron — and the card says so instead of
+     * printing 31.12.2099.
+     */
+    public function testAnUncappedAuthorsOfferNeverLapses(): void
+    {
+        $service = $this->bareService(' 999, 12345 ');
+        $lifetimeEnd = new \ReflectionMethod(ServiceOfferService::class, 'lifetimeEnd');
+
+        $listed = (new \App\Entity\TelegramUser())->setTelegramId('12345');
+        $other = (new \App\Entity\TelegramUser())->setTelegramId('777');
+
+        $this->assertEquals(new \DateTime(ServiceOffer::PERMANENT_UNTIL), $lifetimeEnd->invoke($service, $listed));
+        $this->assertLessThan(new \DateTime('+31 days'), $lifetimeEnd->invoke($service, $other));
+        $this->assertLessThan(new \DateTime('+31 days'), $lifetimeEnd->invoke($service, null));
+
+        $offer = $this->offer($this->account('2-1-0-085', '85'), 'Сантехнік')
+            ->setExpiresAt(new \DateTime(ServiceOffer::PERMANENT_UNTIL));
+        $this->assertTrue($offer->isPermanent());
+        $this->assertStringContainsString('безстроково', $this->service()->describe($offer));
+        $this->assertStringNotContainsString('діє до', $this->service()->describe($offer));
+
+        $ordinary = $this->offer($this->account('2-1-0-085', '85'), 'Сантехнік');
+        $this->assertFalse($ordinary->isPermanent());
+        $this->assertStringContainsString('діє до', $this->service()->describe($ordinary));
+    }
+
+    /**
+     * Offers published before the rule are brought onto it — including one whose 30 days
+     * already ran out but which the cron has not closed yet — and nobody else's are.
+     */
+    public function testTheCronMakesExistingUncappedOffersPermanent(): void
+    {
+        $listed = (new \App\Entity\TelegramUser())->setTelegramId('12345');
+        $other = (new \App\Entity\TelegramUser())->setTelegramId('777');
+        $account = $this->account('2-1-0-085', '85');
+
+        $lapsed = $this->offer($account, 'Меблі')->setAuthor($listed)
+            ->setExpiresAt(new \DateTime('-2 hours'))->setRenewPromptSentAt(new \DateTime('-3 days'));
+        $fresh = $this->offer($account, 'Сантехнік')->setAuthor($listed);
+        $neighbour = $this->offer($account, 'Манікюр')->setAuthor($other);
+
+        $repo = $this->createMock(\App\Repository\ServiceOfferRepository::class);
+        $repo->method('findBy')->willReturn([$lapsed, $fresh, $neighbour]);
+
+        $service = $this->bareService('12345');
+        (new \ReflectionProperty(ServiceOfferService::class, 'offers'))->setValue($service, $repo);
+        (new \ReflectionProperty(ServiceOfferService::class, 'em'))
+            ->setValue($service, $this->createMock(\Doctrine\ORM\EntityManagerInterface::class));
+
+        $this->assertSame(2, $service->makeUncappedPermanent());
+        $this->assertTrue($lapsed->isPermanent());
+        $this->assertTrue($lapsed->isActive());
+        $this->assertNull($lapsed->getRenewPromptSentAt());
+        $this->assertTrue($fresh->isPermanent());
+        $this->assertFalse($neighbour->isPermanent());
+
+        $this->assertSame(0, $service->makeUncappedPermanent(), 'a second run changes nothing');
+    }
+
+    /** The permanent pass must run before the cron prompts or closes anything. */
+    public function testTheCronMakesThemPermanentBeforeClosingAnything(): void
+    {
+        $source = (string)file_get_contents(__DIR__ . '/../../src/Command/ServiceExpireCommand.php');
+
+        $permanent = strpos($source, '->makeUncappedPermanent()');
+        $this->assertNotFalse($permanent);
+        $this->assertLessThan(strpos($source, '->sendDueRenewPrompts()'), $permanent);
+        $this->assertLessThan(strpos($source, '->closeExpired()'), $permanent);
+    }
+
+    private function bareService(string $uncappedIds): ServiceOfferService
+    {
+        $service = (new \ReflectionClass(ServiceOfferService::class))->newInstanceWithoutConstructor();
+        (new \ReflectionProperty(ServiceOfferService::class, 'serviceUncappedIds'))->setValue($service, $uncappedIds);
+
+        return $service;
+    }
+
+    /**
      * The cap counts the person, not the flat.
      *
      * Father recommends his electrician and daughter posts her manicurist on the same

@@ -57,6 +57,14 @@ class ServiceOffer
     public const RENEW_PROMPT_BEFORE_DAYS = 3;
 
     /**
+     * The expiry stamped on an uncapped author's offer (SERVICE_UNCAPPED_TELEGRAM_IDS):
+     * those never lapse, are never asked «ще актуально?» and are never closed by the
+     * cron. A far date rather than NULL so every query that filters on expires_at keeps
+     * working unchanged.
+     */
+    public const PERMANENT_UNTIL = '2099-12-31 00:00:00';
+
+    /**
      * The trade, in the resident's own words — «Плиточник», «Електрик», «Манікюр вдома».
      *
      * Short because it is an inline button caption and Telegram truncates those; long
@@ -280,6 +288,11 @@ class ServiceOffer
         $this->closed_by = $closed_by;
 
         return $this;
+    }
+
+    public function isPermanent(): bool
+    {
+        return $this->expires_at >= new \DateTime(self::PERMANENT_UNTIL);
     }
 
     public function isActive(): bool

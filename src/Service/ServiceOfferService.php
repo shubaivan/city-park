@@ -140,7 +140,7 @@ class ServiceOfferService
             // and «380…», and formatPhone() returns null for anything that is not a
             // plausible Ukrainian number — better no number than half of one.
             ->setContactPhone(RentalListingService::formatPhone($contactPhone))
-            ->setExpiresAt((clone $now)->modify('+' . ServiceOffer::LIFETIME_DAYS . ' days'));
+            ->setExpiresAt($this->lifetimeEnd($author));
 
         $this->em->persist($offer);
         $this->em->flush();
@@ -206,11 +206,49 @@ class ServiceOfferService
     /** Author confirmed it is still current — another full lifetime, prompt re-armed. */
     public function extend(ServiceOffer $offer): void
     {
-        $offer->setExpiresAt(
-            (clone self::now())->modify('+' . ServiceOffer::LIFETIME_DAYS . ' days')
-        );
+        $offer->setExpiresAt($this->lifetimeEnd($offer->getAuthor()));
         $offer->setRenewPromptSentAt(null);
         $this->em->flush();
+    }
+
+    /**
+     * 30 days for everyone except the uncapped authors, whose offers are permanent —
+     * Иван's call (05.11.2026): the masters he posts are the house's recommendations, not
+     * adverts that go stale, so they must not lapse or be asked «ще актуально?».
+     */
+    private function lifetimeEnd(?TelegramUser $author): \DateTime
+    {
+        return $this->isUncapped($author)
+            ? new \DateTime(ServiceOffer::PERMANENT_UNTIL)
+            : (clone self::now())->modify('+' . ServiceOffer::LIFETIME_DAYS . ' days');
+    }
+
+    /**
+     * Bring the uncapped authors' live offers onto the permanent date.
+     *
+     * Run by service:expire *before* it prompts or closes anything, so an offer published
+     * before the rule (or before its author was added to the list) is caught even when its
+     * 30 days already ran out — status is still `active` until the cron closes it.
+     *
+     * @return int offers made permanent
+     */
+    public function makeUncappedPermanent(): int
+    {
+        $made = 0;
+
+        foreach ($this->offers->findBy(['status' => ServiceOffer::STATUS_ACTIVE]) as $offer) {
+            if ($offer->isPermanent() || !$this->isUncapped($offer->getAuthor())) {
+                continue;
+            }
+
+            $offer->setExpiresAt(new \DateTime(ServiceOffer::PERMANENT_UNTIL));
+            $offer->setRenewPromptSentAt(null);
+            $made++;
+        }
+
+        $this->em->flush();
+
+        return $made;
     }
 
     /**
@@ -241,7 +279,7 @@ class ServiceOfferService
 
         $lines[] = '';
         $lines[] = '<i>' . ($published ? 'Опубліковано ' . $published->format('d.m.Y') . ' · ' : '')
-            . 'діє до ' . $offer->getExpiresAt()->format('d.m.Y') . '</i>';
+            . ($offer->isPermanent() ? 'безстроково' : 'діє до ' . $offer->getExpiresAt()->format('d.m.Y')) . '</i>';
 
         return implode("\n", $lines);
     }

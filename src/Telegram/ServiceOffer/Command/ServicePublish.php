@@ -373,8 +373,10 @@ class ServicePublish extends Conversation
             text: ($existing !== null ? "✅ <b>Оголошення оновлено</b>\n\n" : "✅ <b>Оголошення опубліковано</b>\n\n")
                 . $this->offerService->describe($offer) . "\n\n"
                 . 'Його бачать усі підтверджені мешканці в розділі «🛠 Послуги». '
-                . 'За ' . ServiceOffer::RENEW_PROMPT_BEFORE_DAYS . ' дні до кінця строку '
-                . 'запитаємо, чи ще актуально.',
+                . ($offer->isPermanent()
+                    ? 'Оголошення безстрокове.'
+                    : 'За ' . ServiceOffer::RENEW_PROMPT_BEFORE_DAYS . ' дні до кінця строку '
+                        . 'запитаємо, чи ще актуально.'),
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()
                 // Photos are the single biggest thing an offer can gain now that the card

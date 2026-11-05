@@ -36,16 +36,20 @@ class ServiceExpireCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
+        // First, so an uncapped author's offer is never prompted or closed.
+        $permanent = $this->offerService->makeUncappedPermanent();
         $prompted = $this->offerService->sendDueRenewPrompts();
         $closed = $this->offerService->closeExpired();
 
         $this->logger->info('service:expire done', [
+            'made_permanent' => $permanent,
             'renew_prompts' => $prompted,
             'closed' => $closed,
         ]);
 
         $io->success(sprintf(
-            'Готово. Запитів «ще актуально?»: %d, знято за строком: %d',
+            'Готово. Безстрокових: %d, запитів «ще актуально?»: %d, знято за строком: %d',
+            $permanent,
             $prompted,
             $closed,
         ));
