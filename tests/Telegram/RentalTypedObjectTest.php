@@ -73,6 +73,41 @@ class RentalTypedObjectTest extends KernelTestCase
         $this->assertSame(2400000, $this->stored($bot)->price);
     }
 
+    /** «9500$» is a price in dollars, and the preview says so (05.11.2026). */
+    public function testAPriceWithADollarSignIsInDollars(): void
+    {
+        self::bootKernel();
+        $container = self::getContainer();
+        $this->stubCurrentUser($container);
+
+        $bot = FakeNutgram::instance();
+        $bot->getContainer()->delegate($container);
+        require $container->getParameter('kernel.project_dir') . '/config/telegram.php';
+
+        $conversation = $container->get(RentalPublish::class);
+        $conversation->deal = RentalListing::DEAL_SALE;
+        $conversation->objectType = Account::UNIT_STORAGE;
+        (new \ReflectionProperty(Conversation::class, 'step'))->setValue($conversation, 'askDescription');
+        $bot->stepConversation($conversation, self::USER_ID, self::USER_ID);
+
+        $bot->processUpdate($this->text('9500$'));
+
+        $stored = $this->stored($bot);
+        $this->assertSame(9500, $stored->price);
+        $this->assertSame(RentalListing::CURRENCY_USD, $stored->currency);
+    }
+
+    public function testCurrencyIsReadOffWhatWasTyped(): void
+    {
+        foreach (['9500$', '$9500', '9 500 $', '9500 usd', '9500 USD', '9500 дол.', '9500 доларів'] as $raw) {
+            $this->assertSame(RentalListing::CURRENCY_USD, RentalPublish::currencyOf($raw), $raw);
+        }
+
+        foreach (['9500', '9 500 грн', '9500 гривень'] as $raw) {
+            $this->assertSame(RentalListing::CURRENCY_UAH, RentalPublish::currencyOf($raw), $raw);
+        }
+    }
+
     public function testATypedListingNamesItsObjectAndWhoPostedIt(): void
     {
         $author = (new Account())->setAccountNumber('320090')->setApartmentNumber('90')->setHouseNumber('21');

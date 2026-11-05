@@ -140,6 +140,7 @@ class RentalListingService
         ?string $objectNumber = null,
         ?int $entrance = null,
         ?int $floor = null,
+        string $currency = RentalListing::CURRENCY_UAH,
     ): RentalListing {
         $now = self::now();
 
@@ -167,6 +168,7 @@ class RentalListingService
             ->setAuthor($author)
             ->setRooms($rooms)
             ->setPrice($price)
+            ->setCurrency($currency)
             ->setDescription($description)
             ->setDeal($deal)
             ->setObject($objectType, $objectHouse, $objectNumber, $entrance, $floor)
