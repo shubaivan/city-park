@@ -252,6 +252,23 @@ class RentalListingRulesTest extends KernelTestCase
         $this->assertNull((new RentalListing())->roomsLabel());
     }
 
+    /** A price may be in dollars (05.11.2026); a listing from before stays in hryvnias. */
+    public function testPriceInDollars(): void
+    {
+        $this->assertSame(RentalListing::CURRENCY_UAH, (new RentalListing())->getCurrency());
+
+        $sale = (new RentalListing())->setDeal(RentalListing::DEAL_SALE)->setPrice(9500)->setCurrency(RentalListing::CURRENCY_USD);
+        $this->assertSame('9 500 $', $sale->priceLabel());
+
+        $rent = (new RentalListing())->setPrice(400)->setCurrency(RentalListing::CURRENCY_USD);
+        $this->assertSame('400 $/міс', $rent->priceLabel());
+
+        $open = (new RentalListing())->setPrice(null)->setCurrency(RentalListing::CURRENCY_USD);
+        $this->assertSame('ціна договірна', $open->priceLabel());
+
+        $this->assertSame(RentalListing::CURRENCY_UAH, (new RentalListing())->setCurrency('EUR')->getCurrency(), 'only UAH or USD is stored');
+    }
+
     /**
      * The post that goes into the residents' chat.
      *

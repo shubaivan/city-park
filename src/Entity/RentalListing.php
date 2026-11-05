@@ -46,6 +46,9 @@ class RentalListing
     public const DEAL_RENT = 'rent';
     public const DEAL_SALE = 'sale';
 
+    public const CURRENCY_UAH = 'UAH';
+    public const CURRENCY_USD = 'USD';
+
     public const LIFETIME_DAYS = 30;
 
     /**
@@ -116,9 +119,13 @@ class RentalListing
     #[ORM\Column(type: 'smallint', nullable: true)]
     private ?int $rooms = null;
 
-    /** UAH per month; NULL means "договірна". */
+    /** Per month on a rent, whole on a sale, in `currency`; NULL means "договірна". */
     #[ORM\Column(type: 'integer', nullable: true)]
     private ?int $price = null;
+
+    /** UAH or USD — a комора sold for 9 500 $ was not a price the bot could take (05.11.2026). */
+    #[ORM\Column(type: 'string', length: 3, options: ['default' => self::CURRENCY_UAH])]
+    private string $currency = self::CURRENCY_UAH;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $description = null;
@@ -460,6 +467,18 @@ class RentalListing
         return $this;
     }
 
+    public function getCurrency(): string
+    {
+        return $this->currency;
+    }
+
+    public function setCurrency(string $currency): static
+    {
+        $this->currency = $currency === self::CURRENCY_USD ? self::CURRENCY_USD : self::CURRENCY_UAH;
+
+        return $this;
+    }
+
     public function getDescription(): ?string
     {
         return $this->description;
@@ -543,7 +562,9 @@ class RentalListing
 
         // «грн/міс» on a sale would read as rent at a fantastic price, and the number is
         // the first thing anyone looks at — so the suffix follows the deal, not the field.
-        return number_format($this->price, 0, ',', ' ') . ($this->isSale() ? ' грн' : ' грн/міс');
+        $unit = $this->currency === self::CURRENCY_USD ? ' $' : ' грн';
+
+        return number_format($this->price, 0, ',', ' ') . $unit . ($this->isSale() ? '' : '/міс');
     }
 
     /** 🔑 / 🏡 — one glyph, because it rides in a button caption Telegram truncates. */

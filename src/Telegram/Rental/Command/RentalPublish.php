@@ -60,6 +60,8 @@ class RentalPublish extends Conversation
     public ?int $accountId = null;
     public ?int $rooms = null;
     public ?int $price = null;
+    /** UAH unless the number came with «$», «usd» or «дол» — «9500$» (05.11.2026). */
+    public string $currency = RentalListing::CURRENCY_UAH;
     public ?string $description = null;
     public bool $showPhone = false;
 
@@ -350,12 +352,14 @@ class RentalPublish extends Conversation
     private function pricePrompt(): string
     {
         if ($this->isSale()) {
-            return "💰 Яка ціна, грн?\n\n<i>Надішліть число, наприклад 1850000.</i>";
+            return "💰 Яка ціна?\n\n<i>Надішліть число в гривнях, наприклад 1850000.\n"
+                . 'Ціна в доларах — додайте $, наприклад 9500$.</i>';
         }
 
         $example = $this->objectType === Account::UNIT_APARTMENT ? '12000' : '2000';
 
-        return "💰 Яка ціна, грн на місяць?\n\n<i>Надішліть число, наприклад {$example}.</i>";
+        return "💰 Яка ціна на місяць?\n\n<i>Надішліть число в гривнях, наприклад {$example}.\n"
+            . 'Ціна в доларах — додайте $, наприклад 400$.</i>';
     }
 
     private function priceMarkup(): InlineKeyboardMarkup
@@ -404,6 +408,12 @@ class RentalPublish extends Conversation
         return (int)$digits;
     }
 
+    /** «9500$», «$9500», «9500 usd», «9500 дол.» are dollars; a bare number is hryvnias. */
+    public static function currencyOf(string $raw): string
+    {
+        return preg_match('/\$|usd|дол/iu', $raw) === 1 ? RentalListing::CURRENCY_USD : RentalListing::CURRENCY_UAH;
+    }
+
     private function callbackData(Nutgram $bot): string
     {
         return $bot->isCallbackQuery() ? (string)($bot->callbackQuery()->data ?? '') : '';
@@ -442,14 +452,15 @@ class RentalPublish extends Conversation
             }
 
             $this->price = null;
+            $this->currency = RentalListing::CURRENCY_UAH;
         } else {
             $raw = trim((string)$bot->message()?->text);
             $digits = preg_replace('/\D+/', '', $raw);
 
             if ($digits === '') {
                 $bot->sendMessage(
-                    text: '⚠️ Не зрозумів ціну. Надішліть число, наприклад <b>12000</b>, '
-                        . 'або натисніть «Договірна».',
+                    text: '⚠️ Не зрозумів ціну. Надішліть число, наприклад <b>12000</b> '
+                        . 'або <b>9500$</b>, або натисніть «Договірна».',
                     parse_mode: ParseMode::HTML,
                 );
                 return;
@@ -462,14 +473,15 @@ class RentalPublish extends Conversation
 
             if ($price <= 0) {
                 $bot->sendMessage(
-                    text: '⚠️ Не зрозумів ціну. Надішліть число, наприклад <b>12000</b>, '
-                        . 'або натисніть «Договірна».',
+                    text: '⚠️ Не зрозумів ціну. Надішліть число, наприклад <b>12000</b> '
+                        . 'або <b>9500$</b>, або натисніть «Договірна».',
                     parse_mode: ParseMode::HTML,
                 );
                 return;
             }
 
             $this->price = $price;
+            $this->currency = self::currencyOf($raw);
         }
 
         $bot->sendMessage(
@@ -613,6 +625,7 @@ class RentalPublish extends Conversation
             $this->objectNumber,
             $this->entrance,
             $this->floor,
+            $this->currency,
         );
 
         $bot->sendMessage(
@@ -657,14 +670,14 @@ class RentalPublish extends Conversation
         $draft = (new RentalListing())
             ->setAccount($account)
             ->setRooms($this->rooms)
+            ->setPrice($this->price)
+            ->setCurrency($this->currency)
             ->setDeal($this->deal)
             ->setObject($this->objectType, $this->objectHouse, $this->objectNumber, $this->entrance, $this->floor);
 
         $lines = [
             $draft->dealIcon() . ' <b>' . self::esc(implode(' · ', RentalListingService::head($draft))) . '</b>',
-            '💰 ' . ($this->price === null
-                ? 'ціна договірна'
-                : number_format($this->price, 0, ',', ' ') . ($this->deal === RentalListing::DEAL_SALE ? ' грн' : ' грн/міс')),
+            '💰 ' . self::esc($draft->priceLabel()),
         ];
 
         if ($this->description) {
