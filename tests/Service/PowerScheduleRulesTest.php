@@ -407,6 +407,99 @@ class PowerScheduleRulesTest extends TestCase
         $this->assertSame('residents', (new \ReflectionClass(\App\Entity\PowerSchedulePost::class))->getConstructor()->getParameters()[3]->getDefaultValue());
     }
 
+    /** Черкасиобленерго's own post of 06.11.2026, 12:11 Kyiv, verbatim. */
+    private const EMERGENCY = <<<'TXT'
+        Через наслідки попередніх масованих ракетно-дронових атак 6 листопада з 12:04 по Черкаській області застосовані графіки аварійних відключень (ГАВ) за командою НЕК "Укренерго".
+
+        Також продовжують діяти графіки погодинних відключень (ГПВ).
+
+        Просимо з розумінням поставитися до вжитих заходів, спрямованих на збереження енергосистеми України.
+        TXT;
+
+    /** The emergency post says the day and the minute, and nothing else — that much is read. */
+    public function testAnEmergencyPostIsRead(): void
+    {
+        $now = self::now('2026-11-06 12:12');
+
+        $this->assertSame(['date' => '2026-11-06', 'from' => 724], PowerChannelParser::parseEmergency(self::EMERGENCY, $now));
+        $this->assertNull(PowerChannelParser::parsePost(self::EMERGENCY, $now), 'not a schedule: the hours stay as they were');
+    }
+
+    /** «Аварійні» in an explainer, or the hourly schedule itself, is not an emergency applied. */
+    public function testOnlyAnAppliedEmergencyIsAnEmergency(): void
+    {
+        $now = self::now('2026-11-05 14:10');
+
+        $this->assertNull(PowerChannelParser::parseEmergency(
+            '💡Світло повернули – і знову вимкнули: що відбувається? Чому аварійні відключення скасовують і невдовзі вводять знову.',
+            $now,
+        ));
+        $this->assertNull(PowerChannelParser::parseEmergency(self::POST, self::now()));
+        $this->assertNull(PowerChannelParser::parseEmergency(
+            'Відповідно до команди НЕК "Укренерго" для промисловості та бізнесу Черкаської області 6 листопада з 00:00 до 24:00 будуть застосовані графіки обмеження потужності (ГОП).',
+            $now,
+        ));
+    }
+
+    public function testThePageKeepsEmergenciesApartFromSchedules(): void
+    {
+        $post = static fn (int $id, string $text) => sprintf(
+            '<div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message" data-post="pat_cherkasyoblenergo/%d">'
+                . '<div class="tgme_widget_message_text js-message_text" dir="auto">%s</div>'
+                . '<time datetime="2026-11-06T10:11:12+00:00" class="time">10:11</time></div></div>',
+            $id,
+            nl2br(htmlspecialchars($text)),
+        );
+
+        $html = $post(1967, self::EMERGENCY) . $post(1966, str_replace('28 жовтня', '6 листопада', self::POST));
+        $now = self::now('2026-11-06 12:12');
+
+        $emergencies = PowerChannelParser::parseEmergencies($html, $now);
+        $this->assertCount(1, $emergencies);
+        $this->assertSame(1967, $emergencies[0]['post']);
+        $this->assertSame(724, $emergencies[0]['from']);
+
+        $this->assertSame([1966], array_column(PowerChannelParser::parsePage($html, $now), 'post'));
+    }
+
+    public function testTheEmergencyNoticeSaysFromWhenAndWhatItMeans(): void
+    {
+        $text = PowerScheduleAnnouncer::emergencyText(724, 1967);
+
+        $this->assertStringContainsString('Аварійні відключення', $text);
+        $this->assertStringContainsString('З 12:04', $text);
+        $this->assertStringContainsString('поза графіком', $text);
+        $this->assertStringContainsString('https://t.me/pat_cherkasyoblenergo/1967', $text);
+    }
+
+    /** After emergency outages begin, «мають увімкнути» no longer reads as a promise. */
+    public function testAReturnAfterAnEmergencySaysTheLightMayNotCome(): void
+    {
+        $days = self::days([[720, 840], [1020, 1140]]);
+
+        $due = PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 18:45'), ['2026-10-28' => 724]);
+        $this->assertStringContainsString('🚨 Діють аварійні відключення — світло можуть не дати.', $due[0]['text'] ?? '');
+
+        // Applied after this return was due: the earlier «увімкнуть» stays as it was.
+        $due = PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 13:45'), ['2026-10-28' => 900]);
+        $this->assertStringNotContainsString('аварійні', $due[0]['text'] ?? 'x');
+
+        // The warning before an outage needs no caveat: it is going anyway.
+        $due = PowerScheduleAnnouncer::dueReminders($days, self::now('2026-10-28 16:45'), ['2026-10-28' => 724]);
+        $this->assertSame('off@3.1@1020', $due[0]['key'] ?? null);
+        $this->assertStringNotContainsString('аварійні', $due[0]['text']);
+    }
+
+    public function testTheDayRemembersSinceWhenEmergencyOutagesApply(): void
+    {
+        $row = new \App\Entity\PowerSchedulePost(new \DateTimeImmutable('2026-11-06'), '[]', 1966);
+        $this->assertNull($row->emergencySince());
+
+        $row->markReminded('off@3.1@480', 1)->markReminded('gav@1967@724', 2)->markReminded('gav@1970@650', 3);
+        $this->assertSame(650, $row->emergencySince());
+        $this->assertTrue($row->wasReminded('gav@1967@724'));
+    }
+
     /** Reminders stay one after another: the next one never deletes the last (Иван, 29.10.2026). */
     public function testARemindLeavesEarlierRemindersInTheTopic(): void
     {

@@ -144,6 +144,23 @@ class PowerSchedulePost
         return $this;
     }
 
+    /**
+     * The minute of the day emergency outages were applied from, once «Світло» has said so
+     * (key «gav@<channel post>@<minute>»), or null. The earliest, if the company posted twice.
+     */
+    public function emergencySince(): ?int
+    {
+        $since = null;
+
+        foreach ($this->reminders_sent as $key) {
+            if (preg_match('/^gav@\d+@(\d+)$/', $key, $m)) {
+                $since = $since === null ? (int)$m[1] : min($since, (int)$m[1]);
+            }
+        }
+
+        return $since;
+    }
+
     public function getReminderMessageId(): ?int
     {
         return $this->reminder_message_id;

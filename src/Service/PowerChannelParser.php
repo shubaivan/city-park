@@ -48,6 +48,80 @@ class PowerChannelParser
     {
         $found = [];
 
+        foreach (self::posts($html) as $post) {
+            $schedule = self::parsePost($post['text'], $now);
+
+            if ($schedule !== null) {
+                $found[] = ['post' => $post['post'], 'at' => $post['at']] + $schedule;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * Every «застосовані графіки аварійних відключень (ГАВ)» post on the page, oldest first.
+     *
+     * **An emergency outage is not a schedule and never has queue lines.** The company
+     * posts one sentence for the whole region — «6 листопада з 12:04 по Черкаській області
+     * застосовані графіки аварійних відключень (ГАВ) за командою НЕК "Укренерго"» — with no
+     * queue, no hours and, in the whole of October and November 2026, never a post saying
+     * they were lifted. {@see parsePost()} rightly throws it away as «not a schedule», which
+     * is how 06.11.2026 went by with the light gone at 12:16, in the hour the schedule had
+     * promised it, and nothing in «Світло».
+     *
+     * `from` is the minute of the day it was applied from.
+     *
+     * @return list<array{post: int, at: ?\DateTimeImmutable, date: string, from: int}>
+     */
+    public static function parseEmergencies(string $html, \DateTimeImmutable $now): array
+    {
+        $found = [];
+
+        foreach (self::posts($html) as $post) {
+            $emergency = self::parseEmergency($post['text'], $now);
+
+            if ($emergency !== null) {
+                $found[] = ['post' => $post['post'], 'at' => $post['at']] + $emergency;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * One post, or null when it does not announce emergency outages as applied. An
+     * explainer about emergency outages («Чому аварійні відключення скасовують…») says
+     * «аварійні» but not «застосовані графіки аварійних відключень», and is not one.
+     *
+     * @return array{date: string, from: int}|null
+     */
+    public static function parseEmergency(string $text, \DateTimeImmutable $now): ?array
+    {
+        if (!preg_match('/застосован\w*\s+графік\w*\s+аварійних\s+відключень/iu', $text)) {
+            return null;
+        }
+
+        $date = self::date($text, $now);
+
+        if ($date === null || !preg_match('/\bз\s+(\d{1,2})[:.](\d{2})/u', $text, $m)) {
+            return null;
+        }
+
+        $from = (int)$m[1] * 60 + (int)$m[2];
+
+        return $from < 1440 ? ['date' => $date, 'from' => $from] : null;
+    }
+
+    /**
+     * The posts on a `t.me/s/` page as plain text, oldest first.
+     *
+     * @return list<array{post: int, at: ?\DateTimeImmutable, text: string}>
+     */
+    private static function posts(string $html): array
+    {
+        $found = [];
+
         $chunks = preg_split('/(?=<div class="tgme_widget_message_wrap)/', $html) ?: [];
 
         foreach ($chunks as $chunk) {
@@ -65,12 +139,8 @@ class PowerChannelParser
                 'UTF-8',
             );
 
-            $schedule = self::parsePost($text, $now);
-
-            if ($schedule !== null) {
-                $at = preg_match('/<time datetime="([^"]+)"/', $chunk, $time) ? new \DateTimeImmutable($time[1]) : null;
-                $found[] = ['post' => (int)$post[1], 'at' => $at] + $schedule;
-            }
+            $at = preg_match('/<time datetime="([^"]+)"/', $chunk, $time) ? new \DateTimeImmutable($time[1]) : null;
+            $found[] = ['post' => (int)$post[1], 'at' => $at, 'text' => $text];
         }
 
         usort($found, static fn (array $a, array $b) => $a['post'] <=> $b['post']);

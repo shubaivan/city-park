@@ -13,6 +13,7 @@ use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
+use SergiX44\Nutgram\Telegram\Types\Message\LinkPreviewOptions;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -48,6 +49,13 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *
  * The same post goes to every chat in {@see PowerTargets}, each with its own queue,
  * its own post per day and, where it wants them, its own reminders. One chat's failure does not reach another.
+ *
+ * **Emergency outages (ГАВ) are said too, once each** (06.11.2026: the light went at 12:16,
+ * inside the hour the schedule had promised it, and the topic said nothing). The company
+ * announces them for the whole region with a start time and nothing else — no queue, no
+ * hours, no «скасовано» afterwards — so that is all the topic can say: that they apply,
+ * from when, and that the schedule's «увімкнуть» is no promise for the rest of that day.
+ * Only where reminders are on: the other chats asked for the daily post alone.
  */
 class PowerScheduleAnnouncer
 {
@@ -168,21 +176,106 @@ class PowerScheduleAnnouncer
             $byDay[$schedule['date']][] = $schedule;
         }
 
+        $emergencies = PowerChannelParser::parseEmergencies($html, $now);
+
         foreach ($ready as [$target, $houses]) {
             if ($target->isResidents()) {
                 array_push($done, ...$this->publish($target, $houses, $byDay, $now, $dryRun));
+                array_push($done, ...$this->warnEmergency($target, $emergencies, $now, $dryRun));
                 continue;
             }
 
             // Another chat's trouble is its own: the residents' post has already gone.
             try {
                 array_push($done, ...$this->publish($target, $houses, $byDay, $now, $dryRun));
+                array_push($done, ...$this->warnEmergency($target, $emergencies, $now, $dryRun));
             } catch (\Throwable $e) {
                 $this->failed($target, $e, $done);
             }
         }
 
         return $done;
+    }
+
+    /**
+     * Say in the topic that emergency outages apply today, once per channel post.
+     *
+     * Remembered on the day's post, like the reminders: on a day of emergency outages the
+     * hourly schedule «також продовжує діяти», so the day's post is there. Where it is not,
+     * nothing is said rather than said every two minutes.
+     *
+     * @param list<array{post: int, at: ?\DateTimeImmutable, date: string, from: int}> $emergencies
+     * @return list<string>
+     */
+    private function warnEmergency(PowerTarget $target, array $emergencies, \DateTimeImmutable $now, bool $dryRun): array
+    {
+        if (!$target->reminders) {
+            return [];
+        }
+
+        $today = $now->format('Y-m-d');
+        $tag = $target->isResidents() ? '' : sprintf('[%s] ', $target->key);
+        $done = [];
+
+        foreach ($emergencies as $emergency) {
+            if ($emergency['date'] !== $today) {
+                continue;
+            }
+
+            $key = sprintf('gav@%d@%d', $emergency['post'], $emergency['from']);
+            $text = self::emergencyText($emergency['from'], $emergency['post']);
+
+            if ($dryRun) {
+                $done[] = sprintf("%s[DRY] ГАВ %s %s\n%s", $tag, $today, $key, $text);
+                continue;
+            }
+
+            $row = $this->posts->forDay($now, $target->key);
+
+            if ($row === null) {
+                $this->logger->warning('power: emergency outages announced, but no post for today to remember it on', ['post' => $emergency['post'], 'target' => $target->key]);
+                continue;
+            }
+
+            if ($row->wasReminded($key)) {
+                continue;
+            }
+
+            $hour = (int)$now->format('G');
+
+            try {
+                $message = $this->bot->sendMessage(
+                    text: $text,
+                    chat_id: (int)$target->chatId,
+                    message_thread_id: $target->topic,
+                    parse_mode: ParseMode::HTML,
+                    disable_notification: $hour >= self::QUIET_FROM || $hour < self::QUIET_UNTIL,
+                    link_preview_options: LinkPreviewOptions::make(is_disabled: true),
+                );
+            } catch (\Throwable $e) {
+                $this->logger->error('power: emergency notice failed', ['key' => $key, 'target' => $target->key, 'error' => $e->getMessage()]);
+                continue;
+            }
+
+            $row->markReminded($key, $message?->message_id);
+            $this->em->flush();
+            $done[] = sprintf('%sГАВ %s %s', $tag, $today, $key);
+        }
+
+        return $done;
+    }
+
+    /** What the topic says when the company applies emergency outages. */
+    public static function emergencyText(int $from, int $post): string
+    {
+        return sprintf(
+            "🚨 <b>Аварійні відключення</b>\n"
+            . "З %s по Черкаській області застосовано графіки аварійних відключень (ГАВ) за командою Укренерго.\n"
+            . "Світло можуть вимкнути поза графіком — і в години, коли за графіком воно має бути. Години для черг ГАВ обленерго не публікує, про скасування окремо не повідомляє.\n"
+            . '<a href="https://t.me/pat_cherkasyoblenergo/%d">Повідомлення Черкасиобленерго</a>',
+            PowerScheduleImage::clock($from),
+            $post,
+        );
     }
 
     /**
@@ -320,14 +413,19 @@ class PowerScheduleAnnouncer
         $rows = $this->posts->around($now, $target->key);
         $tag = $target->isResidents() ? '' : sprintf('[%s] ', $target->key);
         $days = [];
+        $emergency = [];
 
         foreach ($rows as $date => $row) {
             $days[$date] = json_decode($row->getSignature(), true) ?: [];
+
+            if ($row->emergencySince() !== null) {
+                $emergency[$date] = $row->emergencySince();
+            }
         }
 
         $done = [];
 
-        foreach (self::dueReminders($days, $now) as $due) {
+        foreach (self::dueReminders($days, $now, $emergency) as $due) {
             $row = $rows[$due['date']];
 
             if ($row->wasReminded($due['key'])) {
@@ -371,10 +469,14 @@ class PowerScheduleAnnouncer
      * schedule says it returns, and is skipped where the next day's outage simply
      * continues the same one past midnight.
      *
+     * On a day emergency outages were applied, every «увімкнуть» due after they began says
+     * that the light may not come — the company never says when they end.
+     *
      * @param array<string, list<array{queue: string, houses: list<string>, outages: list<array{int, int}>}>> $days
+     * @param array<string, int> $emergency date → minute emergency outages applied from
      * @return list<array{date: string, key: string, text: string}>
      */
-    public static function dueReminders(array $days, \DateTimeImmutable $now): array
+    public static function dueReminders(array $days, \DateTimeImmutable $now, array $emergency = []): array
     {
         $tz = new \DateTimeZone(self::TZ);
         $due = [];
@@ -425,14 +527,19 @@ class PowerScheduleAnnouncer
                             default => 'Сьогодні відключень більше не заплановано.',
                         };
 
+                        $caveat = isset($emergency[$date]) && $emergency[$date] <= $to
+                            ? "\n🚨 Діють аварійні відключення — світло можуть не дати."
+                            : '';
+
                         $due[] = [
                             'date' => $date,
                             'key' => sprintf('on@%s@%d', $group['queue'], $to),
                             'text' => sprintf(
-                                "🟢 Через %d хвилин, о %s, за графіком мають увімкнути світло.\n%s%s",
+                                "🟢 Через %d хвилин, о %s, за графіком мають увімкнути світло.\n%s%s%s",
                                 self::WARN_BEFORE_MIN,
                                 PowerScheduleImage::clock($to),
                                 $then,
+                                $caveat,
                                 $label,
                             ),
                         ];
