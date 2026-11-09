@@ -8,7 +8,9 @@ use App\Telegram\CarPlate\Command\CarPlateCommand;
 use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\Voting\Command\VotingMenuCommand;
+use App\Telegram\Guard\Command\GuardQrCommand;
 use App\Telegram\Guard\Command\GuardScanCommand;
+use App\Telegram\GuestPass\Command\GuestPassCommand;
 use App\Telegram\GuestPass\Command\GuestPassScanCommand;
 use App\Telegram\Info\Command\InfoCommand;
 use App\Telegram\Rental\Command\RentalMenuCommand;
@@ -34,6 +36,8 @@ use SergiX44\Nutgram\Nutgram;
  *   v-<campaign>              a vote of the house    → VotingMenuCommand
  *   i-<topic>                 one FAQ topic          → InfoCommand
  *   a-<account>               «🚗 Мої авто»          → CarPlateCommand (the reader's own)
+ *   qr                        «🪪 Мій QR-код»        → GuardQrCommand (the reader's own code)
+ *   pass                      «👷 Пропуски»          → GuestPassCommand (the reader's own list)
  *
  * **An unknown payload opens the main menu**, rather than erroring or refusing. A link may
  * be forwarded months later, from a post that has since been deleted, or simply mistyped;
@@ -44,6 +48,18 @@ use SergiX44\Nutgram\Nutgram;
  */
 class StartPayloadCommand
 {
+    /**
+     * Direct openers for the two things a resident shows at the gate.
+     *
+     * Since 10.11.2026 a car enters only on a QR (правління ОСББ, 09.11.2026), and the
+     * announcement links straight to the code and to the passes rather than to their
+     * instructions. Exact words, not prefixes: `p-` is a guest pass being scanned and must
+     * stay one. Not recorded as clicks, like the other kinds that open the reader's own
+     * things rather than somebody's post.
+     */
+    public const OPEN_QR = 'qr';
+    public const OPEN_PASSES = 'pass';
+
     public function __construct(
         private GuardScanCommand $guardScan,
         private GuestPassScanCommand $passScan,
@@ -56,11 +72,27 @@ class StartPayloadCommand
         private CarPlateCommand $cars,
         private DeepLink $links,
         private TelegramUserService $telegramUserService,
+        private GuardQrCommand $ownQr,
+        private GuestPassCommand $passMenu,
     ) {}
 
     public function __invoke(Nutgram $bot, string $payload = ''): void
     {
         $payload = trim($payload);
+
+        // An unconfirmed reader gets each handler's own «/phone» prompt.
+        if ($payload === self::OPEN_QR) {
+            ($this->ownQr)($bot);
+
+            return;
+        }
+
+        if ($payload === self::OPEN_PASSES) {
+            ($this->passMenu)($bot);
+
+            return;
+        }
+
         $kind = DeepLink::kindOf($payload);
 
         if ($kind === null) {
