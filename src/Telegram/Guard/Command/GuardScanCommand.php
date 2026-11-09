@@ -102,7 +102,7 @@ class GuardScanCommand
             $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING, $user, $account, null, $isGuard);
             $this->answer($bot, sprintf(
                 "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n\n"
-                    . '<i>Але броні на альтанку на зараз у них немає.</i>',
+                    . '<i>Броні на альтанку зараз немає.</i>',
                 htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
             ));
 
