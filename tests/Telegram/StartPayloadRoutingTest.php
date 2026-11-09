@@ -9,7 +9,9 @@ use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\Debt\Command\DebtBoardCommand;
 use App\Telegram\Info\Command\InfoCommand;
 use App\Telegram\Voting\Command\VotingMenuCommand;
+use App\Telegram\Guard\Command\GuardQrCommand;
 use App\Telegram\Guard\Command\GuardScanCommand;
+use App\Telegram\GuestPass\Command\GuestPassCommand;
 use App\Telegram\GuestPass\Command\GuestPassScanCommand;
 use App\Telegram\Rental\Command\RentalMenuCommand;
 use App\Telegram\ServiceOffer\Command\ServiceMenuCommand;
@@ -43,6 +45,9 @@ class StartPayloadRoutingTest extends KernelTestCase
         ?VotingMenuCommand $votes = null,
         ?InfoCommand $info = null,
         ?CarPlateCommand $cars = null,
+        ?GuardQrCommand $ownQr = null,
+        ?GuestPassCommand $passMenu = null,
+        ?DeepLink $links = null,
     ): StartPayloadCommand {
         return new StartPayloadCommand(
             $guard ?? $this->createMock(GuardScanCommand::class),
@@ -54,8 +59,10 @@ class StartPayloadRoutingTest extends KernelTestCase
             $votes ?? $this->createMock(VotingMenuCommand::class),
             $info ?? $this->createMock(InfoCommand::class),
             $cars ?? $this->createMock(CarPlateCommand::class),
-            $this->createMock(DeepLink::class),
+            $links ?? $this->createMock(DeepLink::class),
             $this->createMock(TelegramUserService::class),
+            $ownQr ?? $this->createMock(GuardQrCommand::class),
+            $passMenu ?? $this->createMock(GuestPassCommand::class),
         );
     }
 
@@ -190,6 +197,8 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(CarPlateCommand::class),
             $links,
             $this->createMock(TelegramUserService::class),
+            $this->createMock(GuardQrCommand::class),
+            $this->createMock(GuestPassCommand::class),
         ))($this->bot(), 'r-7');
     }
 
@@ -217,6 +226,8 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(CarPlateCommand::class),
             $links,
             $this->createMock(TelegramUserService::class),
+            $this->createMock(GuardQrCommand::class),
+            $this->createMock(GuestPassCommand::class),
         ))($this->bot(), 'p-12-abcdef012345');
     }
 
@@ -237,6 +248,8 @@ class StartPayloadRoutingTest extends KernelTestCase
             $this->createMock(CarPlateCommand::class),
             $links,
             $this->createMock(TelegramUserService::class),
+            $this->createMock(GuardQrCommand::class),
+            $this->createMock(GuestPassCommand::class),
         ))($this->bot(), 'g-7-abcdef012345');
     }
 
@@ -262,6 +275,52 @@ class StartPayloadRoutingTest extends KernelTestCase
                 sprintf('%s can be linked to but the router never mentions it', $kind),
             );
         }
+    }
+
+    /** `?start=qr` under the vehicle-entry announcement opens the reader's own code. */
+    public function testQrOpensTheReadersOwnCode(): void
+    {
+        $ownQr = $this->createMock(GuardQrCommand::class);
+        $ownQr->expects($this->once())->method('__invoke');
+
+        $guard = $this->createMock(GuardScanCommand::class);
+        $guard->expects($this->never())->method('__invoke');
+
+        $this->command(guard: $guard, ownQr: $ownQr)($this->bot(), StartPayloadCommand::OPEN_QR);
+    }
+
+    /** `?start=pass` opens the reader's own list of passes. */
+    public function testPassOpensTheReadersPassList(): void
+    {
+        $passMenu = $this->createMock(GuestPassCommand::class);
+        $passMenu->expects($this->once())->method('__invoke');
+
+        $scan = $this->createMock(GuestPassScanCommand::class);
+        $scan->expects($this->never())->method('__invoke');
+
+        $this->command(passes: $scan, passMenu: $passMenu)($this->bot(), StartPayloadCommand::OPEN_PASSES);
+    }
+
+    /** A scanned guest pass (`p-…`) must still reach the scanner, never the pass list. */
+    public function testAScannedPassNeverOpensThePassList(): void
+    {
+        $passMenu = $this->createMock(GuestPassCommand::class);
+        $passMenu->expects($this->never())->method('__invoke');
+
+        $scan = $this->createMock(GuestPassScanCommand::class);
+        $scan->expects($this->once())->method('__invoke');
+
+        $this->command(passes: $scan, passMenu: $passMenu)($this->bot(), 'p-12-abcdef012345');
+    }
+
+    /** The two openers show the reader's own things, so neither is a click on a post. */
+    public function testTheDirectOpenersAreNotRecordedAsClicks(): void
+    {
+        $links = $this->createMock(DeepLink::class);
+        $links->expects($this->never())->method('record');
+
+        $this->command(links: $links)($this->bot(), StartPayloadCommand::OPEN_QR);
+        $this->command(links: $links)($this->bot(), StartPayloadCommand::OPEN_PASSES);
     }
 
     private function bot(): Nutgram
