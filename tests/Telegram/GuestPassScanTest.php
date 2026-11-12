@@ -41,6 +41,33 @@ class GuestPassScanTest extends KernelTestCase
         $this->assertStringContainsString('буд. 19', $text);
     }
 
+    /**
+     * The gate is told who issued the pass and how to ring them (Иван, 12.11.2026); a
+     * resident scanning the same pass gets the crew and the flat only.
+     */
+    public function testOnlyTheGuardGetsTheIssuersNameAndPhone(): void
+    {
+        $guard = $this->scan($this->pass(activeToday: true), scannerId: '777000');
+        $resident = $this->scan($this->pass(activeToday: true));
+
+        $this->assertStringContainsString('Пропуск дійсний', $guard);
+        $this->assertStringContainsString('Ніна Коваль', $guard);
+        $this->assertStringContainsString('+380671112233', $guard);
+
+        $this->assertStringContainsString('кв. 85', $resident);
+        $this->assertStringNotContainsString('Ніна Коваль', $resident, 'a resident must not get the issuer');
+        $this->assertStringNotContainsString('380671112233', $resident, 'a resident must not get the phone');
+    }
+
+    /** An inactive pass too — the guard rings the flat to have it switched on. No issuer: «—». */
+    public function testTheGuardGetsDashesWhenTheIssuerIsGone(): void
+    {
+        $pass = $this->pass(activeToday: false);
+        $pass->setIssuedBy(null);
+
+        $this->assertStringContainsString('👤 — · 📞 —', $this->scan($pass, scannerId: '777000'));
+    }
+
     public function testAPassOutsideItsWindowIsRefused(): void
     {
         $text = $this->scan($this->pass(activeToday: false));
@@ -77,7 +104,7 @@ class GuestPassScanTest extends KernelTestCase
         $this->assertStringNotContainsString('Бригада', $text);
     }
 
-    private function scan(GuestPass $pass, bool $linked = true): string
+    private function scan(GuestPass $pass, bool $linked = true, string $scannerId = '888111'): string
     {
         self::bootKernel();
 
@@ -86,7 +113,7 @@ class GuestPassScanTest extends KernelTestCase
         $passes->method('find')->willReturn($pass);
 
         $scanner = new TelegramUser();
-        $scanner->setTelegramId('888111');
+        $scanner->setTelegramId($scannerId);
 
         $users = $this->createMock(TelegramUserService::class);
         $users->method('getCurrentUser')->willReturn($scanner);
@@ -113,7 +140,8 @@ class GuestPassScanTest extends KernelTestCase
     {
         $pass = (new GuestPass())
             ->setAccount($this->account(7, '85'))
-            ->setLabel('Бригада, ремонт');
+            ->setLabel('Бригада, ремонт')
+            ->setIssuedBy((new TelegramUser())->setFirstName('Ніна')->setLastName('Коваль')->setPhoneNumber('+380 67 111 22 33'));
 
         if ($activeToday) {
             $pass->setActiveUntil(new \DateTime('+2 hours', new \DateTimeZone('Europe/Kyiv')));

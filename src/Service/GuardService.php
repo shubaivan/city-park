@@ -66,6 +66,59 @@ class GuardService
         return in_array((string)$id, $this->guardTelegramIds(), true);
     }
 
+    /**
+     * Who to ring about a code, for the guard's eyes only (Иван, 12.11.2026): the name and
+     * the phone of the pass's issuer, or of the people linked to the flat whose QR it is.
+     * Same source as the panel — the resident's own row. A missing field is «—», never a
+     * failure, and never a reason to drop the line.
+     *
+     * HTML-escaped, ready for a `parse_mode: HTML` message.
+     *
+     * @param iterable<TelegramUser|null> $people
+     */
+    public static function contactBlock(iterable $people, int $max = 4): string
+    {
+        $lines = [];
+
+        foreach ($people as $person) {
+            if (count($lines) >= $max) {
+                break;
+            }
+
+            $lines[] = sprintf(
+                '👤 %s · 📞 %s',
+                htmlspecialchars(self::contactName($person), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                htmlspecialchars(self::contactPhone($person), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            );
+        }
+
+        if ($lines === []) {
+            $lines[] = '👤 — · 📞 —';
+        }
+
+        return "\n\n<b>Контакт власника</b> <i>(бачить лише охорона)</i>\n" . implode("\n", $lines);
+    }
+
+    /** ПІБ as the panel holds it, else the Telegram name; «—» when there is neither. */
+    public static function contactName(?TelegramUser $person): string
+    {
+        if ($person === null) {
+            return '—';
+        }
+
+        $name = $person->getDisplayName();
+
+        return $name === 'без імені' ? '—' : $name;
+    }
+
+    /** «+380…» the way the resident card writes it; «—» when the bot never got one. */
+    public static function contactPhone(?TelegramUser $person): string
+    {
+        $digits = preg_replace('/\D+/', '', (string)$person?->getPhoneNumber());
+
+        return $digits === '' ? '—' : '+' . $digits;
+    }
+
     /** The same check for a bare Telegram id — the panel's one-time link carries no user row. */
     public function isGuardTelegramId(?string $telegramId): bool
     {

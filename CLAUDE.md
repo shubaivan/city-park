@@ -604,6 +604,13 @@ nobody by name, so the form (`provider: users_in_memory`) can never reach it. A 
 lands on `/login?link=invalid` with a line saying to tap the button again.
 `GuardPanelLoginTest`.
 
+**Who to ring, for the gate only** (Иван, 12.11.2026). A scan by a `GUARD_TELEGRAM_IDS` id
+adds «Контакт власника» — name (ПІБ from the panel, else the Telegram name) and phone, «—»
+for a missing field — under the usual answer: the pass's issuer, or the people linked to
+the flat whose QR it is (`GuardService::contactBlock()`). Everybody else still gets the
+address alone; `GuardScanAudienceTest` / `GuestPassScanTest` pin both. `/admin/scans` shows
+the issuer's phone beside «Видав» for everybody who reads the page — one view, no role rule.
+
 ## A number the bot uses against somebody shows where it came from
 
 **Rule.** «Поріг блокування: 1 024.65 грн» is unarguable and unverifiable at the same time:
