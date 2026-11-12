@@ -103,6 +103,37 @@ class AdminScansPageTest extends KernelTestCase
     }
 
     /**
+     * When the pass was made: a pass issued this morning and one that has been reused for
+     * weeks look the same otherwise, and «Діє до» only says today's window.
+     */
+    public function testLivePassesShowWhenTheyWereCreated(): void
+    {
+        $pass = (new GuestPass())->setAccount($this->flat(9))->setLabel('Бригада, ремонт');
+        (new \ReflectionProperty(GuestPass::class, 'created_at'))
+            ->setValue($pass, new \DateTime('2026-11-12 10:58:00', new \DateTimeZone('Europe/Kyiv')));
+
+        $html = $this->render([], [$pass]);
+
+        $this->assertStringContainsString('<th>Створено</th>', $html);
+        $this->assertStringContainsString('12.11 10:58', $html);
+    }
+
+    /** «Видав» opens the resident's card and «Квартира» the object's — one click to who and where. */
+    public function testIssuerAndFlatLinkToTheirCards(): void
+    {
+        $issuer = (new \App\Entity\TelegramUser())->setFirstName('Тоха')->setLastName('');
+        (new \ReflectionProperty(\App\Entity\TelegramUser::class, 'id'))->setValue($issuer, 533);
+
+        $pass = (new GuestPass())->setAccount($this->flat(503))->setLabel('Бригада, ремонт');
+        (new \ReflectionProperty(GuestPass::class, 'issuedBy'))->setValue($pass, $issuer);
+
+        $html = $this->render([], [$pass]);
+
+        $this->assertStringContainsString('href="/admin/users/533"', $html);
+        $this->assertStringContainsString('href="/admin/objects/503"', $html);
+    }
+
+    /**
      * «Що це було» leads to the thing it names.
      *
      * The cell said «👷 пропуск #2» and did nothing, on a page whose whole job is being

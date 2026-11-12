@@ -42,6 +42,7 @@
                             <tr>
                                 <th>Кого чекають</th>
                                 <th>Квартира</th>
+                                <th>Створено</th>
                                 <th>Діє до</th>
                                 <th>Сканів</th>
                                 <th>Востаннє</th>
@@ -57,7 +58,10 @@
                                 #}
                                 <tr id="pass-{{ pass.id }}">
                                     <td>{{ pass.label }}</td>
-                                    <td>{{ pass.account ? pass.account.placeLabel : '—' }}</td>
+                                    <td>
+                                        {% if pass.account and pass.account.id %}<a href="{{ path('app_admin_object', {id: pass.account.id}) }}" class="text-decoration-none">{{ pass.account.placeLabel }}</a>{% else %}{{ pass.account ? pass.account.placeLabel : '—' }}{% endif %}
+                                    </td>
+                                    <td class="text-muted">{{ pass.createdAt|date('d.m H:i') }}</td>
                                     <td>
                                         {% if pass.activeUntil and pass.activeUntil > now %}
                                             <span class="text-success">✅ активний до {{ pass.activeUntil|date('H:i') }}</span>
@@ -68,7 +72,8 @@
                                     <td>{{ pass.scans }}</td>
                                     <td class="text-muted">{{ pass.lastScannedAt ? pass.lastScannedAt|date('d.m H:i') : '—' }}</td>
                                     <td class="text-muted">
-                                        {% if pass.issuedBy %}{{ pass.issuedBy.firstName }} {{ pass.issuedBy.lastName }}{% else %}—{% endif %}
+                                        {# The resident's card: where they live, their phone, who else is on the flat. #}
+                                        {% if pass.issuedBy %}<a href="{{ path('app_admin_resident', {id: pass.issuedBy.id}) }}" class="text-decoration-none">{{ pass.issuedBy.firstName }} {{ pass.issuedBy.lastName }}</a>{% else %}—{% endif %}
                                     </td>
                                 </tr>
                             {% endfor %}
