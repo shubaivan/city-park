@@ -102,8 +102,9 @@ class GuardScanCommand
             $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING, $user, $account, null, $isGuard);
             $this->answer($bot, sprintf(
                 "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n\n"
-                    . '<i>Броні на альтанку зараз немає.</i>',
+                    . '<i>Броні на альтанку зараз немає.</i>%s',
                 htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                $isGuard ? GuardService::contactBlock($account->getUsers()) : '',
             ));
 
             return;
@@ -113,12 +114,14 @@ class GuardScanCommand
 
         $this->answer($bot, sprintf(
             "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n"
-                . "🏛 Зараз бронь: %s альтанка · <b>%s–%s</b>\n\n<i>Перевірено %s.</i>",
+                . "🏛 Зараз бронь: %s альтанка · <b>%s–%s</b>\n\n<i>Перевірено %s.</i>%s",
             htmlspecialchars(GuardService::place($session), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
             SchedulePavilionService::pavilionName($session['pavilion']),
             $session['start']->format('H:i'),
             $session['end']->format('H:i'),
             $now->format('d.m о H:i'),
+            // Only the gate gets who to ring; a neighbour checking a code keeps the address.
+            $isGuard ? GuardService::contactBlock($account->getUsers()) : '',
         ));
     }
 

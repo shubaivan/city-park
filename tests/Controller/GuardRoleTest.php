@@ -159,7 +159,7 @@ class GuardRoleTest extends WebTestCase
 
         $account = (new \App\Entity\Account())->setAccountNumber('220085')->setApartmentNumber('85')->setHouseNumber('19')->setStreet('Козацька');
         (new \ReflectionProperty(\App\Entity\Account::class, 'id'))->setValue($account, 7);
-        $issuer = (new \App\Entity\TelegramUser())->setFirstName('Ніка')->setLastName('');
+        $issuer = (new \App\Entity\TelegramUser())->setFirstName('Ніка')->setLastName('')->setPhoneNumber('380671112233');
         (new \ReflectionProperty(\App\Entity\TelegramUser::class, 'id'))->setValue($issuer, 9);
         $pass = (new \App\Entity\GuestPass())->setAccount($account)->setLabel('Бригада')->setIssuedBy($issuer);
         $scan = (new \App\Entity\QrScan())->setKind('resident')->setResult('ok')
@@ -175,9 +175,11 @@ class GuardRoleTest extends WebTestCase
 
         $this->assertStringContainsString('Сканування QR', $html);
         $this->assertStringContainsString('буд. 19', $html);
+        // The issuer's phone, so the guard can ring the flat.
+        $this->assertStringContainsString('href="tel:+380671112233"', $html);
         preg_match_all('/href="([^"]+)"/', $html, $m);
         foreach ($m[1] as $href) {
-            if (str_starts_with($href, '#') || str_contains($href, '/build/') || str_ends_with($href, '.jpg')) {
+            if (str_starts_with($href, '#') || str_starts_with($href, 'tel:') || str_contains($href, '/build/') || str_ends_with($href, '.jpg')) {
                 continue;
             }
             $this->assertContains($href, ['/admin/scans', '/logout'], 'the guard is offered a link to ' . $href);

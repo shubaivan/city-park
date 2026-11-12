@@ -80,6 +80,15 @@
                                     <td class="text-muted">
                                         {# The resident's card: where they live, their phone, who else is on the flat. #}
                                         {% if pass.issuedBy and not guard_only %}<a href="{{ path('app_admin_resident', {id: pass.issuedBy.id}) }}" class="text-decoration-none">{{ pass.issuedBy.firstName }} {{ pass.issuedBy.lastName }}</a>{% elseif pass.issuedBy %}{{ pass.issuedBy.firstName }} {{ pass.issuedBy.lastName }}{% else %}—{% endif %}
+                                        {#
+                                            The issuer's phone, for everybody who reads this page
+                                            (Иван, 12.11.2026): the guard rings the flat when
+                                            something is wrong with a crew. One view, no role rule.
+                                        #}
+                                        {% if pass.issuedBy %}
+                                            {% set digits = (pass.issuedBy.phoneNumber ?? '')|replace({'+': '', ' ': '', '-': '', '(': '', ')': ''}) %}
+                                            <span class="text-nowrap">({% if digits %}<a href="tel:+{{ digits }}">+{{ digits }}</a>{% else %}—{% endif %})</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                             {% endfor %}

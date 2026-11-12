@@ -39,15 +39,37 @@ class GuardScanAudienceTest extends KernelTestCase
     /** «буд. 19, кв. 85» — the string that must never reach a neighbour. */
     private const FLAT = 'кв. 85';
 
-    /** The guard's answer and a neighbour's are the same string. */
-    public function testEveryReaderGetsTheSameAnswer(): void
+    /**
+     * The same answer for everybody — plus, for the gate alone, who to ring (Иван,
+     * 12.11.2026): the name and phone of the people on the flat. A neighbour checking a
+     * code keeps the address and nothing more.
+     */
+    public function testOnlyTheGuardIsToldWhoToRing(): void
     {
         $guard = $this->scan(self::GUARD_TELEGRAM_ID, booked: true);
         $resident = $this->scan('888111', booked: true);
 
         $this->assertStringContainsString('Код дійсний', $guard);
         $this->assertStringContainsString(self::FLAT, $guard);
-        $this->assertSame($guard, $resident, 'one answer: a second version is a rule that can leak');
+        $this->assertStringContainsString('Олена Петренко', $guard);
+        $this->assertStringContainsString('+380501234567', $guard);
+
+        $this->assertStringContainsString(self::FLAT, $resident);
+        $this->assertStringNotContainsString('Олена Петренко', $resident, 'a neighbour must not get the name');
+        $this->assertStringNotContainsString('380501234567', $resident, 'a neighbour must not get the phone');
+        $this->assertStringNotContainsString('Контакт власника', $resident);
+
+        // Everything else is the same answer: the guard's is the neighbour's plus the block.
+        $this->assertStringStartsWith(rtrim(explode('<i>Перевірено', $resident)[0]), $guard);
+    }
+
+    /** With no booking too, and a missing phone is «—», not a failure. */
+    public function testTheGuardGetsADashForAMissingField(): void
+    {
+        $text = $this->scan(self::GUARD_TELEGRAM_ID, booked: false, holderPhone: null);
+
+        $this->assertStringContainsString('Олена Петренко · 📞 —', $text);
+        $this->assertStringNotContainsString('Олена Петренко', $this->scan('888111', booked: false));
     }
 
     /** The flat and the hours: «хто це» and «чи вони тут по броні» in one line each. */
@@ -103,11 +125,15 @@ class GuardScanAudienceTest extends KernelTestCase
         bool $booked,
         bool $linked = true,
         bool $blockedReader = false,
+        ?string $holderPhone = '380501234567',
     ): string
     {
         self::bootKernel();
 
         $holder = $this->account(7, '85');
+        $owner = (new TelegramUser())->setFirstName('Олена')->setLastName('Петренко')->setPhoneNumber($holderPhone);
+        $owner->setTelegramId('5');
+        $holder->getUsers()->add($owner);
         $bookings = $this->createMock(ScheduledSetRepository::class);
         $guard = new GuardService($bookings, self::GUARD_TELEGRAM_ID, self::SECRET);
 

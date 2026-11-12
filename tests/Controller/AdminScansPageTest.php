@@ -20,12 +20,12 @@ use Twig\Environment;
  */
 class AdminScansPageTest extends KernelTestCase
 {
-    private function render(array $entries, array $passes = []): string
+    private function render(array $entries, array $passes = [], string $role = 'ROLE_ADMIN'): string
     {
         self::bootKernel();
 
         self::getContainer()->get('security.token_storage')->setToken(
-            new UsernamePasswordToken(new InMemoryUser('alina', null, ['ROLE_ADMIN']), 'main', ['ROLE_ADMIN']),
+            new UsernamePasswordToken(new InMemoryUser('alina', null, [$role]), 'main', [$role]),
         );
 
         return self::getContainer()->get(Environment::class)->render('admin/scans.html.twig', [
@@ -106,6 +106,21 @@ class AdminScansPageTest extends KernelTestCase
      * When the pass was made: a pass issued this morning and one that has been reused for
      * weeks look the same otherwise, and «Діє до» only says today's window.
      */
+    /**
+     * The issuer's phone beside the name, for everybody who reads the page (Иван,
+     * 12.11.2026): one view, no role rule.
+     */
+    public function testTheIssuersPhoneIsShownBesideTheName(): void
+    {
+        $issuer = (new \App\Entity\TelegramUser())->setFirstName('Ніна')->setLastName('Коваль')->setPhoneNumber('380671112233');
+        (new \ReflectionProperty(\App\Entity\TelegramUser::class, 'id'))->setValue($issuer, 5);
+        $pass = (new GuestPass())->setAccount($this->flat(9))->setLabel('Бригада')->setIssuedBy($issuer);
+
+        $this->assertStringContainsString('href="tel:+380671112233"', $this->render([], [$pass]));
+        $this->assertStringContainsString('href="tel:+380671112233"', $this->render([], [$pass], 'ROLE_COMPLAINTS'));
+        $this->assertStringContainsString('Ніна Коваль', $this->render([], [$pass]));
+    }
+
     public function testLivePassesShowWhenTheyWereCreated(): void
     {
         $pass = (new GuestPass())->setAccount($this->flat(9))->setLabel('Бригада, ремонт');

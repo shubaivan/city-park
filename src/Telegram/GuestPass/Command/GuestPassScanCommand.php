@@ -100,9 +100,11 @@ class GuestPassScanCommand
             $this->answer($bot, sprintf(
                 "❌ <b>Пропуск зараз не активний</b>\n\n%s\n%s\n\n"
                     . '<i>Пропуск працює лише у вікні, яке вмикає мешканець. Попросіть '
-                    . 'увімкнути його в боті.</i>',
+                    . 'увімкнути його в боті.</i>%s',
                 self::esc($pass->getLabel()),
                 self::esc($pass->getAccount()?->getPlaceLabel() ?? ''),
+                // The guard rings whoever issued it to have it switched on.
+                $isGuard ? GuardService::contactBlock([$pass->getIssuedBy()]) : '',
             ));
 
             return;
@@ -119,7 +121,7 @@ class GuestPassScanCommand
 
         $this->answer($bot, sprintf(
             "✅ <b>Пропуск дійсний</b>\n\n👷 %s\nЧекають у: <b>%s</b>\n\n"
-                . "<i>Діє до %s. Перевірено %s.</i>",
+                . "<i>Діє до %s. Перевірено %s.</i>%s",
             self::esc($pass->getLabel()),
             self::esc($pass->getAccount()?->getPlaceLabel() ?? ''),
             // The date, not only the hour: this answer is looked at as a record — on a
@@ -127,6 +129,9 @@ class GuestPassScanCommand
             // «до 23:59» on its own does not say which day the bot was talking about.
             $pass->getActiveUntil()?->format('d.m о H:i') ?? 'кінця дня',
             $now->format('d.m о H:i'),
+            // Who to ring if something goes wrong — the guard only; a resident scanning
+            // a pass keeps the flat and nothing more.
+            $isGuard ? GuardService::contactBlock([$pass->getIssuedBy()]) : '',
         ));
     }
 
