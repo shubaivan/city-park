@@ -103,6 +103,22 @@ class AdminScansPageTest extends KernelTestCase
     }
 
     /**
+     * When the pass was made: a pass issued this morning and one that has been reused for
+     * weeks look the same otherwise, and «Діє до» only says today's window.
+     */
+    public function testLivePassesShowWhenTheyWereCreated(): void
+    {
+        $pass = (new GuestPass())->setAccount($this->flat(9))->setLabel('Бригада, ремонт');
+        (new \ReflectionProperty(GuestPass::class, 'created_at'))
+            ->setValue($pass, new \DateTime('2026-11-12 10:58:00', new \DateTimeZone('Europe/Kyiv')));
+
+        $html = $this->render([], [$pass]);
+
+        $this->assertStringContainsString('<th>Створено</th>', $html);
+        $this->assertStringContainsString('12.11 10:58', $html);
+    }
+
+    /**
      * «Що це було» leads to the thing it names.
      *
      * The cell said «👷 пропуск #2» and did nothing, on a page whose whole job is being

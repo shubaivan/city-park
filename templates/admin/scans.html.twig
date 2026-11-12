@@ -42,6 +42,7 @@
                             <tr>
                                 <th>Кого чекають</th>
                                 <th>Квартира</th>
+                                <th>Створено</th>
                                 <th>Діє до</th>
                                 <th>Сканів</th>
                                 <th>Востаннє</th>
@@ -58,6 +59,7 @@
                                 <tr id="pass-{{ pass.id }}">
                                     <td>{{ pass.label }}</td>
                                     <td>{{ pass.account ? pass.account.placeLabel : '—' }}</td>
+                                    <td class="text-muted">{{ pass.createdAt|date('d.m H:i') }}</td>
                                     <td>
                                         {% if pass.activeUntil and pass.activeUntil > now %}
                                             <span class="text-success">✅ активний до {{ pass.activeUntil|date('H:i') }}</span>
