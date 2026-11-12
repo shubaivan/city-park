@@ -94,6 +94,10 @@ class EventApprovePhoneCommand extends Command
             . "Так вона додасть номер до вашого рахунку без зайвих уточнень;\n"
             . "• якщо ви <b>член сім'ї або орендар</b> — попросіть власника написати бухгалтеру з цими ж "
             . "даними та вашим номером телефону.\n\n"
-            . '<i>Щойно номер з’явиться в реєстрі, натисніть /phone ще раз — і все відкриється.</i>';
+            // No «натисніть /phone ще раз»: resolveAccount() links the resident on whatever
+            // they open next, whether the accountant added the number to the account or
+            // wrote it down as an expected resident. Pressing /phone again was never needed.
+            . '<i>Щойно бухгалтер додасть ваш номер, бот прив’яже вас сам — наступного разу, '
+            . 'коли ви його відкриєте. Натискати /phone ще раз не потрібно.</i>';
     }
 }
