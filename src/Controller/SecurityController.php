@@ -23,7 +23,19 @@ class SecurityController extends AbstractController
             // Sent here by DailySignOutSubscriber. Without a word, being asked for the
             // password again reads as the panel having broken overnight.
             'expired' => $request->query->getBoolean('expired'),
+            // The guard's one-time link from the bot was used, expired or forged.
+            'link_invalid' => $request->query->get('link') === 'invalid',
         ]);
+    }
+
+    /**
+     * The bot's one-time link for the gate. Never reached: TelegramLinkAuthenticator
+     * answers it — into the scan log, or back to /login with ?link=invalid.
+     */
+    #[Route(path: '/panel/auth/{token}', name: 'app_panel_auth', requirements: ['token' => '[a-f0-9]{64}'], methods: ['GET'])]
+    public function panelAuth(): Response
+    {
+        return $this->redirectToRoute('app_login', ['link' => 'invalid']);
     }
 
     #[Route(path: '/logout', name: 'app_logout')]

@@ -66,6 +66,13 @@ class GuardService
         return in_array((string)$id, $this->guardTelegramIds(), true);
     }
 
+    /** The same check for a bare Telegram id — the panel's one-time link carries no user row. */
+    public function isGuardTelegramId(?string $telegramId): bool
+    {
+        return $telegramId !== null && $telegramId !== ''
+            && in_array($telegramId, $this->guardTelegramIds(), true);
+    }
+
     /** @return string[] */
     public function guardTelegramIds(): array
     {

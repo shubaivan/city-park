@@ -14,7 +14,13 @@
     {{ parent() }}
 
     <div class="container-fluid py-3 px-2 px-sm-3" style="max-width: 1000px;">
-        <p class="mb-2"><a href="{{ path('app_admin') }}">← На головну адмінки</a></p>
+        {#
+            The gate's login (ROLE_GUARD) reads this page and nothing else, so nothing here
+            may lead it elsewhere: no dashboard link, and the flat and the resident are
+            plain text rather than links to cards it would only be refused at.
+        #}
+        {% set guard_only = is_granted('ROLE_GUARD') and not is_granted('ROLE_ADMIN') and not is_granted('ROLE_COMPLAINTS') %}
+        {% if not guard_only %}<p class="mb-2"><a href="{{ path('app_admin') }}">← На головну адмінки</a></p>{% endif %}
 
         <h4 class="mb-1">🪪 Сканування QR-кодів</h4>
         <p class="text-muted small mb-3">
@@ -59,7 +65,7 @@
                                 <tr id="pass-{{ pass.id }}">
                                     <td>{{ pass.label }}</td>
                                     <td>
-                                        {% if pass.account and pass.account.id %}<a href="{{ path('app_admin_object', {id: pass.account.id}) }}" class="text-decoration-none">{{ pass.account.placeLabel }}</a>{% else %}{{ pass.account ? pass.account.placeLabel : '—' }}{% endif %}
+                                        {% if pass.account and pass.account.id and not guard_only %}<a href="{{ path('app_admin_object', {id: pass.account.id}) }}" class="text-decoration-none">{{ pass.account.placeLabel }}</a>{% else %}{{ pass.account ? pass.account.placeLabel : '—' }}{% endif %}
                                     </td>
                                     <td class="text-muted">{{ pass.createdAt|date('d.m H:i') }}</td>
                                     <td>
@@ -73,7 +79,7 @@
                                     <td class="text-muted">{{ pass.lastScannedAt ? pass.lastScannedAt|date('d.m H:i') : '—' }}</td>
                                     <td class="text-muted">
                                         {# The resident's card: where they live, their phone, who else is on the flat. #}
-                                        {% if pass.issuedBy %}<a href="{{ path('app_admin_resident', {id: pass.issuedBy.id}) }}" class="text-decoration-none">{{ pass.issuedBy.firstName }} {{ pass.issuedBy.lastName }}</a>{% else %}—{% endif %}
+                                        {% if pass.issuedBy and not guard_only %}<a href="{{ path('app_admin_resident', {id: pass.issuedBy.id}) }}" class="text-decoration-none">{{ pass.issuedBy.firstName }} {{ pass.issuedBy.lastName }}</a>{% elseif pass.issuedBy %}{{ pass.issuedBy.firstName }} {{ pass.issuedBy.lastName }}{% else %}—{% endif %}
                                     </td>
                                 </tr>
                             {% endfor %}
@@ -137,7 +143,7 @@
                                             👷 пропуск{% if scan.guestPassId %} <span class="text-muted">#{{ scan.guestPassId }}</span>{% endif %}
                                         {% endif %}
                                     {% else %}
-                                        {% if scan.subjectAccount %}
+                                        {% if scan.subjectAccount and not guard_only %}
                                             <a href="{{ path('app_admin_object', {id: scan.subjectAccount.id}) }}" class="text-decoration-none">🪪 мешканець</a>
                                         {% else %}
                                             🪪 мешканець

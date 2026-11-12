@@ -19,6 +19,7 @@ use App\Repository\ServiceOfferRepository;
 use App\Telegram\Complaint\Command\ComplaintMenuCommand;
 use App\Telegram\ServiceOffer\Command\ServiceMenuCommand;
 use App\Telegram\Guard\Command\GuardCommand;
+use App\Telegram\Guard\Command\GuardPanelLoginCommand;
 use App\Telegram\Guard\Command\GuardQrCommand;
 use App\Telegram\CarPlate\Command\CarPlateCheck;
 use App\Telegram\CarPlate\Command\CarPlateCommand;
@@ -674,6 +675,11 @@ class StartCommand extends Command
             $markup->addRow(InlineKeyboardButton::make(
                 '🚗 Перевірити номер авто',
                 callback_data: CarPlateCheck::START_CALLBACK,
+            ));
+            // The gate's one-time link into the panel's QR scan log — no password at the post.
+            $markup->addRow(InlineKeyboardButton::make(
+                '🔐 Вхід у панель',
+                callback_data: GuardPanelLoginCommand::MENU_CALLBACK,
             ));
         }
 
