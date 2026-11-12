@@ -118,6 +118,21 @@ class AdminScansPageTest extends KernelTestCase
         $this->assertStringContainsString('12.11 10:58', $html);
     }
 
+    /** «Видав» opens the resident's card and «Квартира» the object's — one click to who and where. */
+    public function testIssuerAndFlatLinkToTheirCards(): void
+    {
+        $issuer = (new \App\Entity\TelegramUser())->setFirstName('Тоха')->setLastName('');
+        (new \ReflectionProperty(\App\Entity\TelegramUser::class, 'id'))->setValue($issuer, 533);
+
+        $pass = (new GuestPass())->setAccount($this->flat(503))->setLabel('Бригада, ремонт');
+        (new \ReflectionProperty(GuestPass::class, 'issuedBy'))->setValue($pass, $issuer);
+
+        $html = $this->render([], [$pass]);
+
+        $this->assertStringContainsString('href="/admin/users/533"', $html);
+        $this->assertStringContainsString('href="/admin/objects/503"', $html);
+    }
+
     /**
      * «Що це було» leads to the thing it names.
      *
