@@ -581,6 +581,16 @@ submit — a form that renders and then 403s is reported as «панель не 
 `ComplaintsRoleTest` pins the routes; `AdminResidentPageTest` pins that the card renders
 without a single one of its forms.
 
+**A third, narrower role: `ROLE_GUARD`, the gate's own login** (12.11.2026). It reads
+`/admin/scans` and nothing else — no dashboard (`/admin` redirects to the scan log, and so
+does signing in), a nav bar with that one page, and the page's flat/resident links drawn as
+plain text. Enforced server-side twice: `access_control` lists ROLE_GUARD on `/admin/scans`
+(and `/admin`, only to redirect) and nowhere else, and `GuardPanelScopeSubscriber` is an
+allowlist on top, so a later `access_control` line cannot widen it by accident.
+`GuardRoleTest` walks **every** `/admin` route the router knows — exports, downloads,
+DataTables POSTs included — and asserts 403 exactly. Its user `test_guard` exists in
+`when@test` only.
+
 ## A number the bot uses against somebody shows where it came from
 
 **Rule.** «Поріг блокування: 1 024.65 грн» is unarguable and unverifiable at the same time:

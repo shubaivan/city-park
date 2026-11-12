@@ -33,7 +33,9 @@ security:
         # that leads to it are open to both roles; everything else under /admin is the
         # full administrator's.
         - { path: ^/admin/complaints, roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
-        - { path: ^/admin$, roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        # ROLE_GUARD only to be redirected to the scan log (GuardPanelScopeSubscriber):
+        # the dashboard is never drawn for the gate's login.
+        - { path: ^/admin$, roles: [ROLE_ADMIN, ROLE_COMPLAINTS, ROLE_GUARD] }
         # The sign-in log is read by everyone who can sign in, deliberately: four
         # colleagues seeing each other's visits is what makes an entry nobody recognises
         # get mentioned the same day. Nothing here is anybody's to change, so GET only.
@@ -45,7 +47,9 @@ security:
         # answers («хто їх пустив і коли вони заходили») is asked by whoever is dealing
         # with what happened, and that is as often the repairs side as the accountant.
         # GET only: a security log that can be edited is not a log.
-        - { path: ^/admin/scans$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        # ROLE_GUARD — the gate's own login — reads this page and no other one under /admin;
+        # GuardPanelScopeSubscriber holds it to that whatever is added to this list later.
+        - { path: ^/admin/scans$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS, ROLE_GUARD] }
         # The SMS journal: read by everyone who can sign in (Иван, 30.09.2026 — «всем»).
         # GET only: a log of what was sent is not anybody's to change.
         - { path: ^/admin/sms$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
@@ -67,6 +71,14 @@ security:
 
 when@test:
     security:
+        providers:
+            users_in_memory:
+                memory:
+                    users:
+                        # Test-only: the gate's role, so its confinement can be pinned
+                        # without a real guard login existing in this file. The hash is
+                        # minted per run by GuardRoleTest from a random password.
+                        test_guard: { password: '%env(TEST_GUARD_PASSWORD_HASH)%', roles: [ 'ROLE_GUARD' ] }
         password_hashers:
             # By default, password hashers are resource intensive and take time. This is
             # important to generate secure password hashes. In tests however, secure hashes

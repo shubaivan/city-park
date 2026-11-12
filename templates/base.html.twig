@@ -156,12 +156,25 @@
         look alike and «де я?» is a question a nav bar should answer without being asked.
     #}
     <nav class="navbar navbar-expand navbar-dark bg-dark shadow-sm py-1 px-2 px-sm-3">
-        <a href="{{ is_granted('IS_AUTHENTICATED_REMEMBERED') ? path('app_admin') : path('app_login') }}"
+        {#
+            The gate's login (ROLE_GUARD) has one page, the QR scan log, and the bar shows
+            that page alone — no section it would only be refused at. The server refuses
+            the rest anyway (GuardPanelScopeSubscriber); this is so nothing is offered.
+        #}
+        {% set guard_only = is_granted('ROLE_GUARD') and not is_granted('ROLE_ADMIN') and not is_granted('ROLE_COMPLAINTS') %}
+        <a href="{{ guard_only ? path('app_admin_scans') : (is_granted('IS_AUTHENTICATED_REMEMBERED') ? path('app_admin') : path('app_login')) }}"
            class="navbar-brand mr-2" title="ОСББ City Park">🏢</a>
 
         {% if is_granted('IS_AUTHENTICATED_REMEMBERED') %}
             {# Null outside a request — a template rendered from a command or a test. #}
             {% set section = app.request ? app.request.attributes.get('_route') : '' %}
+            {% if guard_only %}
+            <ul class="navbar-nav mr-auto flex-row" style="gap:.15rem">
+                <li class="nav-item">
+                    <a class="nav-link px-2 active font-weight-bold" href="{{ path('app_admin_scans') }}">🪪 <span class="d-none d-sm-inline">Сканування QR</span></a>
+                </li>
+            </ul>
+            {% else %}
             <ul class="navbar-nav mr-auto flex-row" style="gap:.15rem">
                 <li class="nav-item">
                     <a class="nav-link px-2 {{ section starts with 'app_admin_resident' or section == 'app_admin_users' ? 'active font-weight-bold' }}"
@@ -184,6 +197,7 @@
                        href="{{ path('app_admin_sms') }}">✉️ <span class="d-none d-sm-inline">SMS</span></a>
                 </li>
             </ul>
+            {% endif %}
 
             <span class="navbar-text text-white-50 small mr-2 d-none d-md-inline">{{ app.user.userIdentifier }}</span>
             <a href="{{ path('app_logout') }}" class="btn btn-sm btn-outline-light">Вийти</a>
