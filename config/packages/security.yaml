@@ -14,14 +14,27 @@ security:
                     # ROLE_ADMIN would hand him the resident register and the debt upload,
                     # which is the accountant's work and nobody else's.
                     serhii:     { password: "%env(SERHII_ADMIN_PASSWORD)%", roles: [ 'ROLE_COMPLAINTS' ] }
+        # The gate (ROLE_GUARD) has no password: it signs in through the bot's one-time
+        # link (TelegramLinkAuthenticator). This provider only keeps that session alive,
+        # and ends it once the Telegram id leaves GUARD_TELEGRAM_IDS.
+        guard_users:
+            id: App\Security\GuardUserProvider
+        panel_users:
+            chain:
+                providers: [ users_in_memory, guard_users ]
     firewalls:
         dev:
             pattern: ^/(_(profiler|wdt)|css|images|js)/
             security: false
         main:
             lazy: true
-            provider: users_in_memory
+            provider: panel_users
+            custom_authenticators:
+                - App\Security\TelegramLinkAuthenticator
+            entry_point: form_login
             form_login:
+                # The form never reaches the gate's user: it has no password.
+                provider: users_in_memory
                 login_path: app_login
                 check_path: app_login
                 enable_csrf: true

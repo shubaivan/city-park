@@ -160,3 +160,8 @@ services:
         resource: '../src/Telegram'
         exclude:
             - '../src/Telegram/Location/Model'
+
+    # The guard's one-time panel links (PanelLoginLink). An interface so the single-use and
+    # expiry rules are testable without a database.
+    App\Service\PanelLoginTokenStore:
+        alias: App\Service\DoctrinePanelLoginTokenStore

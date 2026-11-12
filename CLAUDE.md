@@ -591,6 +591,19 @@ allowlist on top, so a later `access_control` line cannot widen it by accident.
 DataTables POSTs included — and asserts 403 exactly. Its user `test_guard` exists in
 `when@test` only.
 
+**The gate signs in through the bot, never with a password** (Иван, 12.11.2026). The post
+phone's Telegram (`GUARD_TELEGRAM_IDS`) gets «🔐 Вхід у панель» on the main menu (and
+`/panel`, kept off the pushed slash menu like `/guard`); `GuardPanelLoginCommand` sends a
+one-time `/panel/auth/<64 hex>` link on a **URL button, never in the text** — a link in a
+message is fetched for its preview, which would burn the token. `PanelLoginLink`: 5
+minutes, single use, only the SHA-256 stored (`panel_login_token`), the burn is one
+conditional UPDATE, and the id is checked against the list both when the link is made and
+when it is opened. `TelegramLinkAuthenticator` signs in a `GuardUser` (`ohorona`, ROLE_GUARD);
+`GuardUserProvider` keeps the session and ends it once the id leaves the list, and loads
+nobody by name, so the form (`provider: users_in_memory`) can never reach it. A bad link
+lands on `/login?link=invalid` with a line saying to tap the button again.
+`GuardPanelLoginTest`.
+
 ## A number the bot uses against somebody shows where it came from
 
 **Rule.** «Поріг блокування: 1 024.65 грн» is unarguable and unverifiable at the same time:

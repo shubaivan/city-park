@@ -136,6 +136,10 @@ $bot->onCommand('problem', \App\Telegram\Complaint\Command\ComplaintMenuCommand:
 // private chats, and /guard belongs to two people. The handler checks the id itself.
 $bot->onCallbackQueryData(\App\Telegram\Guard\Command\GuardCommand::MENU_CALLBACK, \App\Telegram\Guard\Command\GuardCommand::class);
 $bot->onCommand('guard', \App\Telegram\Guard\Command\GuardCommand::class);
+// The gate's one-time link into the panel's QR scan log. Same rule: not on the pushed
+// slash menu, the handler checks the id itself.
+$bot->onCallbackQueryData(\App\Telegram\Guard\Command\GuardPanelLoginCommand::MENU_CALLBACK, \App\Telegram\Guard\Command\GuardPanelLoginCommand::class);
+$bot->onCommand('panel', \App\Telegram\Guard\Command\GuardPanelLoginCommand::class);
 // The resident's QR, and every other deep link. Nutgram anchors command patterns, so
 // `/start` alone still reaches StartCommand and `start {payload}` only ever sees a deep
 // link — which is why it must be its own command and not a prefix. It routes on the

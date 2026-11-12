@@ -46,6 +46,13 @@
                     </div>
                 {% endif %}
 
+                {% if link_invalid is defined and link_invalid %}
+                    <div class="alert alert-warning py-2 px-2 small">
+                        Посилання для входу вже використане або минуло 5 хвилин.
+                        Натисніть у боті «🔐 Вхід у панель» ще раз.
+                    </div>
+                {% endif %}
+
                 {% if error %}
                     <div class="alert alert-danger py-2 px-2 small">
                         {{ error.messageKey|trans(error.messageData, 'security') }}
