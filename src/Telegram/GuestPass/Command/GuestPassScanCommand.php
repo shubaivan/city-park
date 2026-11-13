@@ -4,6 +4,7 @@ namespace App\Telegram\GuestPass\Command;
 
 use App\Entity\GuestPass;
 use App\Entity\QrScan;
+use App\Service\GateLogService;
 use App\Service\GuardService;
 use App\Service\GuestPassService;
 use App\Service\TelegramUserService;
@@ -38,6 +39,7 @@ class GuestPassScanCommand
         private GuestPassService $passes,
         private GuardService $guard,
         private TelegramUserService $telegramUserService,
+        private ?GateLogService $gate = null,
     ) {}
 
     public function __invoke(Nutgram $bot, string $payload = ''): void
@@ -110,7 +112,7 @@ class GuestPassScanCommand
             return;
         }
 
-        $this->passes->recordScan(
+        $scan = $this->passes->recordScan(
             QrScan::KIND_GUEST,
             QrScan::RESULT_OK,
             $user,
@@ -132,7 +134,7 @@ class GuestPassScanCommand
             // Who to ring if something goes wrong — the guard only; a resident scanning
             // a pass keeps the flat and nothing more.
             $isGuard ? GuardService::contactBlock([$pass->getIssuedBy()]) : '',
-        ));
+        ), $this->gate?->buttonsFor($scan, $user));
     }
 
     /**
@@ -143,12 +145,21 @@ class GuestPassScanCommand
      * is a button about somebody else's pavilion hours, shown to a guard at a gate — an
      * offer that reads as if the bot misunderstood the question.
      */
-    private function answer(Nutgram $bot, string $text): void
+    /**
+     * @param InlineKeyboardButton[]|null $gate the guard's «В'їзд / Виїзд», valid passes only
+     */
+    private function answer(Nutgram $bot, string $text, ?array $gate = null): void
     {
+        $markup = InlineKeyboardMarkup::make();
+
+        if ($gate !== null) {
+            $markup->addRow(...$gate);
+        }
+
         $bot->sendMessage(
             text: $text,
             parse_mode: ParseMode::HTML,
-            reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
+            reply_markup: $markup->addRow(StartCommand::homeButton()),
         );
     }
 

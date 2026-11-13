@@ -63,6 +63,7 @@ flat kept as labels, the `QrScan` rule. ROLE_ADMIN, GET only, like the schedule 
 | 🔧 Заявки | `complaints-menu` / `cmp:{view,photos,page,del,delok,edit}:<id>` / `cmp:pic:<id>:<n>` / `cmp:status:<id>:<status>` / `cmp:new` | `/problem` | `ComplaintMenuCommand` + `ComplaintCreate` / `ComplaintEdit` (conversations) |
 | 🛡 Хто зараз в альтанці | `guard-board` | `/guard` | `GuardCommand` (guards only — **not** in the pushed slash menu) |
 | 🔒 QR для охорони | `guard-qr` | — | `GuardQrCommand` (resident, only while a booking runs); scanned via `/start g-…` → `GuardScanCommand` |
+| 🚗 В'їзд / 🚙 Виїзд (under the guard's valid scan) | `gate:<in\|out>:<scan>:<sig>` / `gate:noop` | — | `GateEventCommand` → `GateLogService` |
 | 🚗 Мої авто (linked residents) / 🚗 Перевірити номер авто (guard) | `car:list` / `car:{del,delok}:<id>` / `car:new` / `car:check` | `/car` | `CarPlateCommand` + `CarPlateAdd` / `CarPlateCheck` (conversations) |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
 | 📱 Поділитися номером / 📕 Номер не знайдено (top, unrecognised) · ✅ Телефон підтверджено (bottom, linked) | `phone-status` | `/phone` | `ApprovePhoneCommand` — a status screen, not only the share button (23.10.2026); hidden for the guard and complaint managers with no flat |
@@ -610,6 +611,20 @@ for a missing field — under the usual answer: the pass's issuer, or the people
 the flat whose QR it is (`GuardService::contactBlock()`). Everybody else still gets the
 address alone; `GuardScanAudienceTest` / `GuestPassScanTest` pin both. `/admin/scans` shows
 the issuer's phone beside «Видав» for everybody who reads the page — one view, no role rule.
+
+**Entry / exit log, for the gate only** (Иван, 13.11.2026). Under a guard's **valid** scan
+(resident code `ok`/`no_booking`, guest pass `ok`) the answer gets a row «🚗 В'їзд» /
+«🚙 Виїзд»; a press writes one `GateEvent` (`gate_event`: direction, scan, guard, flat,
+ПІБ or pass label, the household's plates, nullable `gate`) and sends «✅ Зафіксовано: …».
+Everybody else's scan is unchanged — no row, nothing written (`GateScanFlowTest`).
+`GateLogService` owns the rules: callback `gate:<in|out>:<scan>:<sig>`, sig = HMAC over scan
+id + the guard's Telegram id, and the scan row must name him; still in `GUARD_TELEGRAM_IDS`;
+stale after `TTL_MINUTES` (10); **one event per scan** (unique `qr_scan_id`, pre-check +
+`UniqueConstraintViolation`), so a second tap answers «Вже зафіксовано» and writes nothing.
+After a press the two buttons become a dead «✅ Обрано: 🚗 В'їзд · 14:32» (`gate:noop`).
+`GuestPassService::recordScan()` returns the `QrScan` so the buttons can be bound to it.
+Today's events are a card on `/admin/scans` («🚧 В'їзд / виїзд сьогодні»), which the gate's
+own login reads too.
 
 ## A number the bot uses against somebody shows where it came from
 

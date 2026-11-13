@@ -192,6 +192,9 @@ class GuestPassService
      *
      * **Never fatal.** The person is standing at the gate waiting for an answer; a log that
      * cannot be written must not turn into a refusal. Failures go to the log file instead.
+     *
+     * Returns the row, so the guard's «В'їзд / Виїзд» buttons can be bound to this very scan
+     * (GateLogService); null when it could not be written — then there are no buttons.
      */
     public function recordScan(
         string $kind,
@@ -200,7 +203,7 @@ class GuestPassService
         ?Account $subject,
         ?GuestPass $pass = null,
         bool $byGuard = false,
-    ): void {
+    ): ?QrScan {
         try {
             $scan = (new QrScan())
                 ->setKind($kind)
@@ -227,6 +230,8 @@ class GuestPassService
             if ($first) {
                 $this->notifyArrival($pass, $scan);
             }
+
+            return $scan;
         } catch (\Throwable $e) {
             $this->logger->warning('qr scan not recorded', [
                 'kind' => $kind,
@@ -234,6 +239,8 @@ class GuestPassService
                 'error' => $e->getMessage(),
             ]);
         }
+
+        return null;
     }
 
     /**

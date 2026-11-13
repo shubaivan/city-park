@@ -23,6 +23,7 @@ use App\Repository\AdminLoginRepository;
 use App\Repository\PavilionPhotoRepository;
 use App\Repository\PhotoUploadRequestRepository;
 use App\Repository\RentalListingRepository;
+use App\Repository\GateEventRepository;
 use App\Repository\GuestPassRepository;
 use App\Repository\LinkClickRepository;
 use App\Repository\QrScanRepository;
@@ -221,9 +222,13 @@ class AdminController extends AbstractController
      * anybody's to change, and a security log that can be edited is not a log.
      */
     #[Route('/admin/scans', name: 'app_admin_scans', methods: [Request::METHOD_GET])]
-    public function scans(QrScanRepository $scans, GuestPassRepository $passes): Response
+    public function scans(QrScanRepository $scans, GuestPassRepository $passes, GateEventRepository $gate): Response
     {
+        $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+
         return $this->render('admin/scans.html.twig', [
+            // «🚗 В'їзд / 🚙 Виїзд» the guard pressed today under a valid scan (13.11.2026).
+            'gate_events' => $gate->ofDay($now),
             'entries' => $scans->latest(self::SCANS_SHOWN),
             'total' => $scans->total(),
             'shown' => self::SCANS_SHOWN,

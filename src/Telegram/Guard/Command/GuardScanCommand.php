@@ -5,6 +5,7 @@ namespace App\Telegram\Guard\Command;
 use App\Entity\Account;
 use App\Repository\AccountRepository;
 use App\Entity\QrScan;
+use App\Service\GateLogService;
 use App\Service\GuardService;
 use App\Service\GuestPassService;
 use App\Service\SchedulePavilionService;
@@ -54,6 +55,7 @@ class GuardScanCommand
         private AccountRepository $accounts,
         private GuestPassService $passes,
         private ?LoggerInterface $chatLogger = null,
+        private ?GateLogService $gate = null,
     ) {}
 
     public function __invoke(Nutgram $bot, string $payload = ''): void
@@ -99,18 +101,18 @@ class GuardScanCommand
         $session = $this->guard->runningSessionFor($account, $now);
 
         if ($session === null) {
-            $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING, $user, $account, null, $isGuard);
+            $scan = $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING, $user, $account, null, $isGuard);
             $this->answer($bot, sprintf(
                 "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n\n"
                     . '<i>Броні на альтанку зараз немає.</i>%s',
                 htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 $isGuard ? GuardService::contactBlock($account->getUsers()) : '',
-            ));
+            ), $this->gate?->buttonsFor($scan, $user));
 
             return;
         }
 
-        $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK, $user, $account, null, $isGuard);
+        $scan = $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK, $user, $account, null, $isGuard);
 
         $this->answer($bot, sprintf(
             "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n"
@@ -122,23 +124,37 @@ class GuardScanCommand
             $now->format('d.m о H:i'),
             // Only the gate gets who to ring; a neighbour checking a code keeps the address.
             $isGuard ? GuardService::contactBlock($account->getUsers()) : '',
-        ));
+        ), $this->gate?->buttonsFor($scan, $user));
     }
 
     /**
      * The button under the answer goes to the board, which renders itself per reader — the
      * guard's names flats, everybody else's says «зайнято». One label, because at this
      * point the bot has already answered and the two boards are the same section.
+     *
+     * The guard's valid scan also gets «🚗 В'їзд / 🚙 Виїзд» above it (GateLogService);
+     * `$gate` is null for everybody else, so their answer is exactly what it was.
+     *
+     * @param InlineKeyboardButton[]|null $gate
      */
-    private function answer(Nutgram $bot, string $text): void
+    private function answer(Nutgram $bot, string $text, ?array $gate = null): void
     {
+        $markup = InlineKeyboardMarkup::make();
+
+        if ($gate !== null) {
+            $markup->addRow(...$gate);
+        }
+
         $bot->sendMessage(
             text: $text,
             parse_mode: ParseMode::HTML,
-            reply_markup: InlineKeyboardMarkup::make()->addRow(InlineKeyboardButton::make(
-                '🏛 Альтанки зараз',
-                callback_data: GuardCommand::MENU_CALLBACK,
-            )),
+            reply_markup: $markup->addRow(self::boardButton()),
         );
+    }
+
+    /** The button every resident-code answer ends with; GateEventCommand puts it back. */
+    public static function boardButton(): InlineKeyboardButton
+    {
+        return InlineKeyboardButton::make('🏛 Альтанки зараз', callback_data: GuardCommand::MENU_CALLBACK);
     }
 }

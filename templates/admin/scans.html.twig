@@ -29,6 +29,52 @@
         </p>
 
         {#
+            Today at the gate: what the guard pressed under a valid scan, «🚗 В'їзд» or
+            «🚙 Виїзд» (13.11.2026). Today only — this is the post's shift sheet, and the
+            log below already covers the history of who was checked.
+        #}
+        {% set gate_events = gate_events|default([]) %}
+        <div class="card mb-3">
+            <div class="card-header py-2 px-3">
+                <b>🚧 В'їзд / виїзд сьогодні</b>
+                {% set gate_in = gate_events|filter(e => e.entry)|length %}
+                <span class="text-muted small">— 🚗 {{ gate_in }} · 🚙 {{ gate_events|length - gate_in }}</span>
+            </div>
+            <div class="card-body p-0">
+                {% if gate_events is empty %}
+                    <div class="p-3 small text-muted mb-0">Сьогодні ще нічого не зафіксовано. Охорона натискає «🚗 В'їзд» або «🚙 Виїзд» у боті після сканування QR.</div>
+                {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 small">
+                            <thead>
+                            <tr>
+                                <th>Час</th>
+                                <th>Куди</th>
+                                <th>Хто</th>
+                                <th>Квартира</th>
+                                <th>Авто</th>
+                                <th>Охорона</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for e in gate_events %}
+                                <tr>
+                                    <td class="text-nowrap">{{ e.createdAt|date('H:i') }}</td>
+                                    <td class="text-nowrap">{{ e.directionLabel }}</td>
+                                    <td>{{ e.personLabel }}</td>
+                                    <td>{{ e.placeLabel }}</td>
+                                    <td>{% if e.carLabel %}<span class="text-nowrap">{{ e.carLabel }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                    <td class="text-muted">{{ e.guardLabel }}{% if e.gate %} · {{ e.gate }}{% endif %}</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {#
             The live passes first: «які пропуски зараз ходять по ЖК» is the question this
             page is opened with more often than «хто сканував».
         #}
