@@ -3,6 +3,7 @@
 namespace App\Tests\Controller;
 
 use App\Entity\Account;
+use App\Entity\GateEvent;
 use App\Entity\GuestPass;
 use App\Entity\QrScan;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -20,7 +21,7 @@ use Twig\Environment;
  */
 class AdminScansPageTest extends KernelTestCase
 {
-    private function render(array $entries, array $passes = [], string $role = 'ROLE_ADMIN'): string
+    private function render(array $entries, array $passes = [], string $role = 'ROLE_ADMIN', array $gate = []): string
     {
         self::bootKernel();
 
@@ -31,6 +32,7 @@ class AdminScansPageTest extends KernelTestCase
         return self::getContainer()->get(Environment::class)->render('admin/scans.html.twig', [
             'entries' => $entries,
             'passes' => $passes,
+            'gate_events' => $gate,
             'total' => count($entries),
             'shown' => 300,
             'now' => new \DateTime('now', new \DateTimeZone('Europe/Kyiv')),
@@ -216,5 +218,36 @@ class AdminScansPageTest extends KernelTestCase
     public function testAnEmptyLogStillRenders(): void
     {
         $this->assertStringContainsString('Сканування QR', $this->render([]));
+    }
+
+    /**
+     * Today's «🚗 В'їзд / 🚙 Виїзд» (13.11.2026) — the post's shift sheet, read by the gate's
+     * own login as well as the panel's.
+     */
+    public function testTodaysEntriesAndExitsAreListed(): void
+    {
+        $in = (new GateEvent())
+            ->setDirection(GateEvent::DIRECTION_IN)
+            ->setPersonLabel('Олена Петренко')
+            ->setPlaceLabel('буд. 19, кв. 85')
+            ->setCarLabel('CA 1234 AB')
+            ->setGuardLabel('Охорона · Охрана Ситипарк');
+        $out = (new GateEvent())
+            ->setDirection(GateEvent::DIRECTION_OUT)
+            ->setPersonLabel('👷 AA1234BB Бригада')
+            ->setPlaceLabel('буд. 21, кв. 3');
+
+        foreach (['ROLE_ADMIN', 'ROLE_GUARD'] as $role) {
+            $html = $this->render([], [], $role, [$out, $in]);
+
+            $this->assertStringContainsString("В'їзд / виїзд сьогодні", $html);
+            $this->assertStringContainsString('🚗 1 · 🚙 1', $html);
+            $this->assertStringContainsString('Олена Петренко', $html);
+            $this->assertStringContainsString('CA 1234 AB', $html);
+            $this->assertStringContainsString('AA1234BB Бригада', $html);
+            $this->assertStringContainsString('🚙 Виїзд', $html);
+        }
+
+        $this->assertStringContainsString('Сьогодні ще нічого не зафіксовано', $this->render([]));
     }
 }

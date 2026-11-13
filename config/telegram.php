@@ -140,6 +140,10 @@ $bot->onCommand('guard', \App\Telegram\Guard\Command\GuardCommand::class);
 // slash menu, the handler checks the id itself.
 $bot->onCallbackQueryData(\App\Telegram\Guard\Command\GuardPanelLoginCommand::MENU_CALLBACK, \App\Telegram\Guard\Command\GuardPanelLoginCommand::class);
 $bot->onCommand('panel', \App\Telegram\Guard\Command\GuardPanelLoginCommand::class);
+// «🚗 В'їзд / 🚙 Виїзд» under the guard's valid scan: gate:<in|out>:<scan>:<sig>, and the
+// dead «✅ Обрано» button. Bound to the scan and the guard inside GateLogService::press().
+// The literal must equal GateLogService::CALLBACK_PATTERN — GateWiringTest holds them in step.
+$bot->onCallbackQueryData('^gate:(?:(?:in|out):\d+:[a-f0-9]{10}|noop)$', \App\Telegram\Guard\Command\GateEventCommand::class);
 // The resident's QR, and every other deep link. Nutgram anchors command patterns, so
 // `/start` alone still reaches StartCommand and `start {payload}` only ever sees a deep
 // link — which is why it must be its own command and not a prefix. It routes on the
