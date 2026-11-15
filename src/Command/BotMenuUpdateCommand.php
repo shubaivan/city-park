@@ -2,6 +2,8 @@
 
 namespace App\Command;
 
+use App\Repository\TelegramUserRepository;
+use App\Service\GuardService;
 use Psr\Log\LoggerInterface;
 use SergiX44\Nutgram\Nutgram;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -49,9 +51,22 @@ class BotMenuUpdateCommand extends Command
         ['debts', '💸 Звіт боржників'],
     ];
 
+    /**
+     * The post's phone sees these two and nothing else (Иван, 15.11.2026). Pushed to each
+     * guard's own chat (scope `chat`), which Telegram prefers over `all_private_chats`.
+     * A guard who also lives here is linked to a flat and keeps the residents' list — his
+     * chat scope is deleted instead, so he falls back to MENU.
+     */
+    private const GUARD_MENU = [
+        ['start', '🏠 Головне меню'],
+        ['panel', '🔐 Вхід у панель'],
+    ];
+
     public function __construct(
         private Nutgram $bot,
         private LoggerInterface $logger,
+        private GuardService $guards,
+        private TelegramUserRepository $users,
     ) {
         parent::__construct();
     }
@@ -105,6 +120,48 @@ class BotMenuUpdateCommand extends Command
         foreach (self::MENU as [$cmd, $desc]) {
             $io->writeln(sprintf('  /%s — %s', $cmd, $desc));
         }
+
+        $this->pushGuardMenus($io);
+
         return Command::SUCCESS;
+    }
+
+    /** @return array<int, array{command: string, description: string}> */
+    public static function guardCommands(): array
+    {
+        return array_map(
+            static fn (array $row): array => ['command' => $row[0], 'description' => $row[1]],
+            self::GUARD_MENU,
+        );
+    }
+
+    /**
+     * Not fatal per chat: a guard id that never opened the bot answers «chat not found»,
+     * and the residents' menu is already in place.
+     */
+    private function pushGuardMenus(SymfonyStyle $io): void
+    {
+        foreach ($this->guards->guardTelegramIds() as $telegramId) {
+            $scope = json_encode(['type' => 'chat', 'chat_id' => (int)$telegramId]);
+            $livesHere = $this->users->getByTelegramId($telegramId)?->getAccount() !== null;
+
+            try {
+                if ($livesHere) {
+                    $this->bot->sendRequest('deleteMyCommands', ['scope' => $scope]);
+                    $io->writeln(sprintf('<info>Guard %s is linked to a flat — keeps the residents\' menu.</info>', $telegramId));
+
+                    continue;
+                }
+
+                $this->bot->sendRequest('setMyCommands', [
+                    'commands' => json_encode(self::guardCommands(), JSON_UNESCAPED_UNICODE),
+                    'scope' => $scope,
+                ]);
+                $io->writeln(sprintf('<info>Guard %s: /start, /panel only.</info>', $telegramId));
+            } catch (\Throwable $t) {
+                $this->logger->warning(sprintf('guard menu for %s failed: %s', $telegramId, $t->getMessage()));
+                $io->warning(sprintf('Guard %s: %s', $telegramId, $t->getMessage()));
+            }
+        }
     }
 }
