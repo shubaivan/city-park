@@ -570,16 +570,18 @@ class StartCommand extends Command
 
     private static function mainMenuMarkup(Nutgram $bot, ?Account $account = null): InlineKeyboardMarkup
     {
-        // The gate's own button, above everything: he opens the bot for exactly one
-        // reason, and he does it standing outside in the dark. Nobody else sees it —
-        // isGuard() is a short list of Telegram ids in .env.local.
+        // The post's phone (a guard id with no flat of its own) gets the guard's menu and
+        // nothing else (Иван, 15.11.2026): альтанки, правила, «Як доїхати», борги are a
+        // resident's screens, and on the post they were only noise to scroll past.
         //
-        // **Added to the menu, never replacing it.** The first shape returned a
-        // one-button menu to anybody in that list, which is wrong twice over: it takes
-        // a resident-guard's own flat, bookings and debts away the moment his id is
-        // added, and it would have taken «🔧 Заявки» from Сергій, who has no особовий
-        // рахунок and manages the register. What each person may use is decided by the
-        // rows below, every one of them already gated on what they actually have.
+        // **Only for a guard without a flat.** A guard who also lives here keeps his own
+        // flat, bookings and debts — the rows below are each gated on what he has, and the
+        // guard buttons are added to them. Сергій (complaints) is not a guard and is not
+        // touched either.
+        if (!$account instanceof Account && self::isGuard($bot)) {
+            return self::guardMenuMarkup();
+        }
+
         $markup = InlineKeyboardMarkup::make();
 
         // The phone, first, for somebody the bot does not know yet: it is the one button
@@ -660,17 +662,8 @@ class StartCommand extends Command
                 InlineKeyboardButton::make('📅 Бронювання альтанки', callback_data: self::PAVILION_MENU_CALLBACK),
             );
 
-        // The guard opens the bot for one thing, standing outside, and has no booking of
-        // his own — so his board stays one tap away rather than behind the submenu.
-        if (!$account instanceof Account && self::isGuard($bot)) {
-            $markup->addRow(InlineKeyboardButton::make(
-                '🏛 Хто зараз в альтанці',
-                callback_data: GuardCommand::MENU_CALLBACK,
-            ));
-        }
-
-        // The guard's lookup of the house's car list. Drawn for the guard flag alone, flat
-        // or no flat: checking a car at the gate is his job, not his household's.
+        // The guard's lookup of the house's car list, for a guard who also lives here (a
+        // guard without a flat never reaches this line — see guardMenuMarkup()).
         if (self::isGuard($bot)) {
             $markup->addRow(InlineKeyboardButton::make(
                 '🚗 Перевірити номер авто',
@@ -742,6 +735,19 @@ class StartCommand extends Command
         }
 
         return $markup;
+    }
+
+    /**
+     * The whole main menu of the post's phone: «🔐 Вхід у панель», nothing else.
+     * Its slash menu is the same two lines — `bot:menu:update` pushes /start + /panel to
+     * that chat alone (BotMenuUpdateCommand::GUARD_MENU).
+     */
+    public static function guardMenuMarkup(): InlineKeyboardMarkup
+    {
+        return InlineKeyboardMarkup::make()->addRow(InlineKeyboardButton::make(
+            '🔐 Вхід у панель',
+            callback_data: GuardPanelLoginCommand::MENU_CALLBACK,
+        ));
     }
 
     /**
