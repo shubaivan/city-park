@@ -138,6 +138,11 @@ services:
     App\Service\CleaningStaffService:
         public: true
 
+    # config/telegram.php's global middleware hands it every residents'-chat message (to relay
+    # «Прибирання» comments) and asks it about replies in private chats.
+    App\Service\CleaningCommentRelay:
+        public: true
+
     # Same reason: the menu header names every object the household owns, and the owner
     # group behind that list is only reachable through a service the bot container exposes.
     App\Service\PropertyRegistry:

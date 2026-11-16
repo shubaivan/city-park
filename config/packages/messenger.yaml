@@ -50,5 +50,6 @@ framework:
             # Route your messages to the transports
             App\Message\VoteBroadcastMessage: async
             App\Message\CleaningAlbumFlushMessage: async
+            App\Message\CleaningCommentFlushMessage: async
             App\Message\DebtSmsMessage: sms_send
             App\Message\SmsDeliveryCheckMessage: sms_status

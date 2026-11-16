@@ -49,11 +49,35 @@ $bot->middleware(function (Nutgram $bot, $next) {
     $type = $update->getChat()?->type;
     $type = $type instanceof ChatType ? $type->value : $type;
 
+    // «🧹 Прибирання»: comments in that topic are carried to the cleaning crew,
+    // anonymously (CleaningCommentRelay). Captured here because nothing from a group may
+    // go further; capture() checks chat and topic itself and never throws.
+    if ($type !== null && $type !== ChatType::PRIVATE->value) {
+        try {
+            $bot->getContainer()->get(\App\Service\CleaningCommentRelay::class)->capture($update->message);
+        } catch (\Throwable) {
+            // a group message must never turn into a /hook 500
+        }
+
+        return;
+    }
+
+    // A worker answering a relayed comment: there is nobody on the other end to hear it.
+    if ($type === ChatType::PRIVATE->value && $update->message?->reply_to_message !== null) {
+        try {
+            if ($bot->getContainer()->get(\App\Service\CleaningCommentRelay::class)->isReplyToRelay($update->message)) {
+                $bot->sendMessage(text: \App\Service\CleaningCommentRelay::REPLY_REFUSED, chat_id: $update->message->chat->id);
+
+                return;
+            }
+        } catch (\Throwable) {
+            // fall through to the ordinary handlers
+        }
+    }
+
     // No chat at all (inline queries, poll answers) keeps the old behaviour: those
     // never carried a chat to be confused about in the first place.
-    if ($type === null || $type === ChatType::PRIVATE->value) {
-        $next($bot);
-    }
+    $next($bot);
 });
 
 $bot->registerCommand(StartCommand::class);
@@ -190,3 +214,10 @@ $bot->onCommand('debts', \App\Telegram\Debt\Command\DebtBoardCommand::class);
 $bot->onChatJoinRequest(\App\Telegram\ResidentChat\Command\JoinRequestCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\ResidentChat\Command\ResidentChatCommand::MENU_CALLBACK, \App\Telegram\ResidentChat\Command\ResidentChatCommand::class);
 $bot->onCommand('chat', \App\Telegram\ResidentChat\Command\ResidentChatCommand::class);
+
+// Global middleware runs only around a handler that matched. Without this no-op, a plain
+// text posted in the residents' chat matches nothing, so the middleware never sees it and
+// «🧹 Прибирання» comments would never reach the cleaning crew (CleaningCommentRelay); the
+// same for a worker's text reply to a relayed comment. Unmatched private updates still do
+// nothing, exactly as before.
+$bot->fallback(static function (Nutgram $bot): void {});

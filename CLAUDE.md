@@ -63,7 +63,7 @@ flat kept as labels, the `QrScan` rule. ROLE_ADMIN, GET only, like the schedule 
 | 🔧 Заявки | `complaints-menu` / `cmp:{view,photos,page,del,delok,edit}:<id>` / `cmp:pic:<id>:<n>` / `cmp:status:<id>:<status>` / `cmp:new` | `/problem` | `ComplaintMenuCommand` + `ComplaintCreate` / `ComplaintEdit` (conversations) |
 | 🛡 Хто зараз в альтанці | `guard-board` | `/guard` | `GuardCommand` (guards only — **not** in the pushed slash menu) |
 | 🔒 QR для охорони | `guard-qr` | — | `GuardQrCommand` (resident, only while a booking runs); scanned via `/start g-…` → `GuardScanCommand` |
-| 📷 Фотозвіт (cleaning staff only) | `cleaning-report` | `/report` | `CleaningReportCommand`; staff = `service_staff` rows (phone_key, linked by telegram_id on /phone), managed by `bin/console staff:cleaning list\|add <phone>\|remove <phone>`. Their photos → `PhotoUploadFlow` → `CleaningReportService` → topic `RESIDENT_CHAT_TOPIC_CLEANING` (no General fallback); albums buffered in `cleaning_report_photo` and posted by the delayed `CleaningAlbumFlushMessage` (async worker). Staff never get the residents' chat (`mayJoin()` ignores them) |
+| 📷 Фотозвіт (cleaning staff only) | `cleaning-report` | `/report` | `CleaningReportCommand`; staff = `service_staff` rows (phone_key, linked by telegram_id on /phone), managed by `bin/console staff:cleaning list\|add <phone>\|remove <phone>`. Their photos → `PhotoUploadFlow` → `CleaningReportService` → topic `RESIDENT_CHAT_TOPIC_CLEANING` (no General fallback); albums buffered in `cleaning_report_photo` and posted by the delayed `CleaningAlbumFlushMessage` (async worker). Staff never get the residents' chat (`mayJoin()` ignores them). **The other way (16.11.2026): every comment in that topic is relayed to the active, linked crew's private chats, anonymously** — `CleaningCommentRelay`, captured by the global middleware in `config/telegram.php`; table `cleaning_comment` stores no author at all; @mentions / text_mentions / links to profiles / phones / e-mails are cut; skipped: bots (the reports), the crew, a linked channel, service messages, empty; the board posting as the group goes. A reply to a report says «до звіту від <дата, час>» (reply_to_message.date). Batched by the delayed `CleaningCommentFlushMessage` (10 s quiet, ≤60 s), one message per worker. A worker's text reply to a relayed message gets «Відповісти тут не можна — зверніться, будь ласка, до правління.»; a photo reply stays a report. `CleaningCommentRelayTest` |
 | 🚗 В'їзд / 🚙 Виїзд (under the guard's valid scan) | `gate:<in\|out>:<scan>:<sig>` / `gate:noop` | — | `GateEventCommand` → `GateLogService` |
 | 🚗 Мої авто (linked residents) / 🚗 Перевірити номер авто (guard) | `car:list` / `car:{del,delok}:<id>` / `car:new` / `car:check` | `/car` | `CarPlateCommand` + `CarPlateAdd` / `CarPlateCheck` (conversations) |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |
@@ -2071,6 +2071,11 @@ Two concrete failures it prevents:
   the new group, the single service message "Ivan added the bot" re-pointed the owner's own
   `chat_id` at it (`telegram_user` #1, repaired with
   `update telegram_user set chat_id = telegram_id where chat_id like '-%'`).
+
+**Global middleware runs only around a handler that matched.** A plain text in the group
+matches nothing, so without the no-op `$bot->fallback()` at the end of `config/telegram.php`
+the middleware would never see it — and the «Прибирання» relay, which lives in that
+middleware, would hear photos only. Keep the fallback.
 
 Global middleware is attached in `Nutgram::preflight()`, which runs from `run()` — *not*
 from `processUpdate()`. Tests that fire handlers directly must invoke `preflight()` first

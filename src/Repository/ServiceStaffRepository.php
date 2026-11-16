@@ -34,6 +34,18 @@ class ServiceStaffRepository extends ServiceEntityRepository
         return $this->findOneBy(['telegram_id' => $telegramId, 'active' => true]);
     }
 
+    /** @return ServiceStaff[] active cleaning staff the bot can write to (linked by /phone) */
+    public function findReachableCleaning(): array
+    {
+        return $this->createQueryBuilder('s')
+            ->andWhere('s.active = true')
+            ->andWhere('s.role = :role')->setParameter('role', ServiceStaff::ROLE_CLEANING)
+            ->andWhere('s.telegram_id IS NOT NULL')
+            ->orderBy('s.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
     /** @return ServiceStaff[] */
     public function findAllOrdered(): array
     {
