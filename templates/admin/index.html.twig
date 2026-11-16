@@ -161,6 +161,14 @@
                 </div>
             </a>
 
+            {% if is_granted('ROLE_ADMIN') %}<a class="card hub-card" href="{{ path('app_admin_staff') }}">
+                <div class="card-body">
+                    <div class="hub-emoji">🧹</div>
+                    <b>Клінінг</b>
+                    <div class="hub-note">Номери персоналу з прибирання: фотозвіти в тему «🧹 Прибирання».</div>
+                </div>
+            </a>{% endif %}
+
             <a class="card hub-card" href="{{ path('app_admin_scans') }}">
                 <div class="card-body">
                     <div class="hub-emoji">🪪</div>

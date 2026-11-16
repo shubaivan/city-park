@@ -63,6 +63,7 @@ flat kept as labels, the `QrScan` rule. ROLE_ADMIN, GET only, like the schedule 
 | 🔧 Заявки | `complaints-menu` / `cmp:{view,photos,page,del,delok,edit}:<id>` / `cmp:pic:<id>:<n>` / `cmp:status:<id>:<status>` / `cmp:new` | `/problem` | `ComplaintMenuCommand` + `ComplaintCreate` / `ComplaintEdit` (conversations) |
 | 🛡 Хто зараз в альтанці | `guard-board` | `/guard` | `GuardCommand` (guards only — **not** in the pushed slash menu) |
 | 🔒 QR для охорони | `guard-qr` | — | `GuardQrCommand` (resident, only while a booking runs); scanned via `/start g-…` → `GuardScanCommand` |
+| 📷 Фотозвіт (cleaning staff only) | `cleaning-report` | `/report` | `CleaningReportCommand`; staff = `service_staff` rows (phone_key, linked by telegram_id on /phone), managed by `bin/console staff:cleaning list\|add <phone>\|remove <phone>`. Their photos → `PhotoUploadFlow` → `CleaningReportService` → topic `RESIDENT_CHAT_TOPIC_CLEANING` (no General fallback); albums buffered in `cleaning_report_photo` and posted by the delayed `CleaningAlbumFlushMessage` (async worker). Staff never get the residents' chat (`mayJoin()` ignores them) |
 | 🚗 В'їзд / 🚙 Виїзд (under the guard's valid scan) | `gate:<in\|out>:<scan>:<sig>` / `gate:noop` | — | `GateEventCommand` → `GateLogService` |
 | 🚗 Мої авто (linked residents) / 🚗 Перевірити номер авто (guard) | `car:list` / `car:{del,delok}:<id>` / `car:new` / `car:check` | `/car` | `CarPlateCommand` + `CarPlateAdd` / `CarPlateCheck` (conversations) |
 | 🏠 На головну | `main-menu` | `/start` | `StartCommand::__invoke` re-renders menu |

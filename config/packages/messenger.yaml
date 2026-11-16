@@ -8,7 +8,9 @@ framework:
                 dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
                 options:
                     use_notify: true
-                    check_delayed_interval: 60000
+                    # 5 s, not 60: a cleaning album (CleaningAlbumFlushMessage) is a delayed
+                    # job, and this is how often the worker looks for delayed jobs.
+                    check_delayed_interval: 5000
                 retry_strategy:
                     max_retries: 3
                     multiplier: 2
@@ -47,5 +49,6 @@ framework:
 
             # Route your messages to the transports
             App\Message\VoteBroadcastMessage: async
+            App\Message\CleaningAlbumFlushMessage: async
             App\Message\DebtSmsMessage: sms_send
             App\Message\SmsDeliveryCheckMessage: sms_status

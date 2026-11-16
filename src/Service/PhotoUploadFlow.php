@@ -28,6 +28,8 @@ class PhotoUploadFlow
         private PavilionPhotoService $photoService,
         private LoggerInterface $logger,
         private LoggerInterface $photoLogger,
+        private ?CleaningStaffService $cleaningStaff = null,
+        private ?CleaningReportService $cleaningReports = null,
     ) {}
 
     /**
@@ -155,6 +157,18 @@ class PhotoUploadFlow
             'telegram_user_id' => $user?->getId(),
             'account_id' => $account?->getId(),
         ]);
+
+        // The cleaning crew (no flat by definition): their photos are a report for the
+        // «🧹 Прибирання» topic, never pavilion evidence.
+        if (!$account && $this->cleaningStaff !== null && $this->cleaningReports !== null) {
+            $staff = $this->cleaningStaff->staffFor($user);
+
+            if ($staff !== null) {
+                $this->cleaningReports->handle($bot, $staff);
+
+                return;
+            }
+        }
 
         if (!$account) {
             $this->photoLogger->info('photoEvent ignored: no linked account', ['chat_id' => $chatId]);

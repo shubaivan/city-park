@@ -29,6 +29,8 @@ services:
             $topicVotes: '%env(string:RESIDENT_CHAT_TOPIC_VOTES)%'
             $topicCars: '%env(string:RESIDENT_CHAT_TOPIC_CARS)%'
             $topicPower: '%env(string:RESIDENT_CHAT_TOPIC_POWER)%'
+            # «🧹 Прибирання» — cleaning crew's photo reports (CleaningReportService). No General fallback.
+            $topicCleaning: '%env(string:RESIDENT_CHAT_TOPIC_CLEANING)%'
             # Another chat that gets the outage schedule, without topics (PowerTargets).
             $powerZakhidnaChatId: '%env(string:POWER_ZAKHIDNA_CHAT_ID)%'
             # Panel login → Telegram chat, «login:id,login:id» (AdminTelegramChats).
@@ -129,6 +131,11 @@ services:
     # decoration, and the reason a private service failed *silently*: the buttons simply
     # never appeared, with nothing in any log.
     App\Service\GuardService:
+        public: true
+
+    # Same reason: the menu asks it whether the reader is the cleaning crew (service_staff).
+    # Private, the lookup throws into the catch and the worker gets the resident menu.
+    App\Service\CleaningStaffService:
         public: true
 
     # Same reason: the menu header names every object the household owns, and the owner

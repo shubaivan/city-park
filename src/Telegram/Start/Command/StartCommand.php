@@ -6,6 +6,8 @@ use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Entity\TelegramUser;
 use App\Service\BlockVoteService;
+use App\Service\CleaningStaffService;
+use App\Telegram\Cleaning\Command\CleaningReportCommand;
 use App\Service\ComplaintService;
 use App\Service\PropertyRegistry;
 use App\Service\DebtBoardService;
@@ -59,8 +61,17 @@ class StartCommand extends Command
         // all need it, and each lookup is a DB round-trip on every menu render.
         $account = self::currentAccount($bot);
 
-        $text = self::header($bot, $account) . self::phoneHint($bot, $account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
-        $markup = self::mainMenuMarkup($bot, $account);
+        // The cleaning crew (service_staff, 16.11.2026): staff, not residents — no flat, no
+        // debts, no chat, no contacts block. Two buttons and one line of explanation.
+        if (!$account instanceof Account && self::isCleaning($bot)) {
+            $text = "🧹 <b>Клінінг ЖК City Park</b>\n\n"
+                . "Надсилайте сюди фото виконаної роботи — бот опублікує їх у темі «🧹 Прибирання» чату мешканців.\n\n"
+                . 'Оберіть:';
+            $markup = self::cleaningMenuMarkup();
+        } else {
+            $text = self::header($bot, $account) . self::phoneHint($bot, $account) . self::chairBlock($account) . self::debtBlock($bot, $account) . 'Оберіть:';
+            $markup = self::mainMenuMarkup($bot, $account);
+        }
 
         if ($edit) {
             try {
@@ -457,7 +468,7 @@ class StartCommand extends Command
      */
     private static function phoneState(Nutgram $bot, ?Account $account): ?string
     {
-        if (!$account instanceof Account && (self::isGuard($bot) || self::isComplaintManager($bot))) {
+        if (!$account instanceof Account && (self::isGuard($bot) || self::isComplaintManager($bot) || self::isCleaning($bot))) {
             return null;
         }
 
@@ -580,6 +591,10 @@ class StartCommand extends Command
         // touched either.
         if (!$account instanceof Account && self::isGuard($bot)) {
             return self::guardMenuMarkup();
+        }
+
+        if (!$account instanceof Account && self::isCleaning($bot)) {
+            return self::cleaningMenuMarkup();
         }
 
         $markup = InlineKeyboardMarkup::make();
@@ -751,6 +766,18 @@ class StartCommand extends Command
     }
 
     /**
+     * The cleaning crew's whole menu: «📷 Фотозвіт». «Головне» is /start and the
+     * «🏠 На головну» button on the report screen.
+     */
+    public static function cleaningMenuMarkup(): InlineKeyboardMarkup
+    {
+        return InlineKeyboardMarkup::make()->addRow(InlineKeyboardButton::make(
+            '📷 Фотозвіт',
+            callback_data: CleaningReportCommand::MENU_CALLBACK,
+        ));
+    }
+
+    /**
      * «🔑 Оренда та продаж (4)» — how many flats are on the board right now.
      *
      * Same shape as «🛠 Послуги»: shown to everyone who sees the button, linked or not,
@@ -867,6 +894,21 @@ class StartCommand extends Command
             return $guard instanceof GuardService
                 && $users instanceof TelegramUserService
                 && $guard->isGuard($users->getCurrentUser());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /** Cleaning crew without a flat (service_staff). Fails closed, like isGuard(). */
+    private static function isCleaning(Nutgram $bot): bool
+    {
+        try {
+            $staff = $bot->getContainer()->get(CleaningStaffService::class);
+            $users = $bot->getContainer()->get(TelegramUserService::class);
+
+            return $staff instanceof CleaningStaffService
+                && $users instanceof TelegramUserService
+                && $staff->isCleaning($users->getCurrentUser());
         } catch (\Throwable) {
             return false;
         }

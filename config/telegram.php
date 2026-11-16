@@ -64,6 +64,9 @@ $bot->onContact(\App\Telegram\ApprovePhone\Command\EventApprovePhoneCommand::cla
 $bot->onCallbackQueryData(\App\Telegram\ApprovePhone\Command\ApprovePhoneCommand::MENU_CALLBACK, \App\Telegram\ApprovePhone\Command\ApprovePhoneCommand::class);
 
 $bot->onPhoto(\App\Telegram\Photo\Command\UploadPhotoCommand::class);
+// Cleaning crew (service_staff): «📷 Фотозвіт» screen; the photos themselves go through onPhoto.
+$bot->onCommand('report', \App\Telegram\Cleaning\Command\CleaningReportCommand::class);
+$bot->onCallbackQueryData(\App\Telegram\Cleaning\Command\CleaningReportCommand::MENU_CALLBACK, \App\Telegram\Cleaning\Command\CleaningReportCommand::class);
 
 $bot->onLocation(\App\Telegram\Location\Command\LocationCommand::class);
 $bot->onCallbackQueryData('type:route', \App\Telegram\Location\Command\RouteCommand::class);

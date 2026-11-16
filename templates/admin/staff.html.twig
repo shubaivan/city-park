@@ -1,0 +1,51 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Клінінг · ОСББ City Park{% endblock %}
+
+{% block body %}
+    {{ parent() }}
+
+    <div class="container-fluid py-3 px-2 px-sm-3" style="max-width: 1000px;">
+        <p class="mb-2"><a href="{{ path('app_admin') }}">← На головну адмінки</a></p>
+
+        <h4 class="mb-1">🧹 Клінінг</h4>
+        <p class="text-muted small mb-3">
+            Номери персоналу з прибирання. Коли людина відкриває бот і ділиться цим номером, бот
+            впізнає її як «Клінінг»: у меню лише «📷 Фотозвіт», фото публікуються в темі
+            «🧹 Прибирання» чату мешканців. До чату, боргів і даних мешканців доступу немає.
+        </p>
+
+        <form method="post" action="{{ path('app_admin_staff_add') }}" class="row g-2 mb-3">
+            <div class="col-12 col-sm-5"><input class="form-control" name="phone" placeholder="+380 67 000 00 01" required></div>
+            <div class="col-8 col-sm-4"><input class="form-control" name="label" value="Клінінг" maxlength="64"></div>
+            <div class="col-4 col-sm-3"><button class="btn btn-primary w-100" type="submit">Додати</button></div>
+        </form>
+
+        {% if rows is empty %}
+            <div class="alert alert-secondary">Ще нікого не додано.</div>
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Номер</th><th>Підпис</th><th>Бот</th><th>Стан</th><th></th></tr></thead>
+                    <tbody>
+                    {% for row in rows %}
+                        <tr class="{{ row.active ? '' : 'text-muted' }}">
+                            <td>{{ row.phone }}</td>
+                            <td>{{ row.label }}</td>
+                            <td class="small">{% if row.telegramId %}✅ {{ row.linkedAt ? row.linkedAt|date('d.m.Y H:i') : '' }}{% else %}ще не відкривав(ла){% endif %}</td>
+                            <td>{{ row.active ? 'активний' : 'вимкнено' }}</td>
+                            <td class="text-end">
+                                <form method="post" action="{{ path('app_admin_staff_toggle') }}"
+                                      onsubmit="return confirm('{{ row.active ? 'Вимкнути' : 'Увімкнути' }} {{ row.phone|e('js') }}?');">
+                                                            <input type="hidden" name="id" value="{{ row.id }}">
+                                    <button class="btn btn-sm {{ row.active ? 'btn-outline-danger' : 'btn-outline-success' }}" type="submit">{{ row.active ? 'Вимкнути' : 'Увімкнути' }}</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

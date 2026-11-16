@@ -5,6 +5,8 @@ namespace App\Telegram\ApprovePhone\Command;
 use App\Service\OsbbContacts;
 use App\Entity\Account;
 use App\Service\TelegramUserService;
+use App\Service\CleaningStaffService;
+use App\Telegram\Start\Command\StartCommand;
 use App\Telegram\Location\Repository\OfficeRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use SergiX44\Nutgram\Handlers\Type\Command;
@@ -24,6 +26,7 @@ class EventApprovePhoneCommand extends Command
     public function __construct(
         private TelegramUserService $telegramUserService,
         private EntityManagerInterface $em,
+        private CleaningStaffService $cleaningStaff,
         $callable = null, ?string $command = null)
     {
         parent::__construct($callable, $command);
@@ -41,11 +44,41 @@ class EventApprovePhoneCommand extends Command
      */
     public function handle(Nutgram $bot): void
     {
+        // Only the sender's own number. A contact card of somebody else (attach → contact)
+        // would otherwise claim their flat — or their cleaning-staff row. The share button
+        // always sends the sender's own contact with their user_id.
+        $contactUserId = $bot->message()->contact->user_id ?? null;
+
+        if ($contactUserId === null || (int)$contactUserId !== (int)$bot->userId()) {
+            $bot->sendMessage(
+                text: '📱 Будь ласка, надішліть <b>свій</b> номер — кнопкою «Поділитися номером» нижче.',
+                parse_mode: ParseMode::HTML,
+            );
+
+            return;
+        }
+
         $this->telegramUserService->savePhone($bot->message()->contact->phone_number);
         $this->em->flush();
 
         $user = $this->telegramUserService->getCurrentUser();
         $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
+
+        // The cleaning crew: recognised by the number the ОСББ wrote into service_staff,
+        // linked by Telegram id here, and sent straight to their two-button menu.
+        $staff = !$account instanceof Account ? $this->cleaningStaff->staffFor($user) : null;
+
+        if ($staff !== null) {
+            $bot->sendMessage(
+                text: sprintf('✅ <b>Вас впізнано: %s.</b>', htmlspecialchars($staff->getLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')),
+                parse_mode: ParseMode::HTML,
+                reply_markup: ReplyKeyboardRemove::make(true),
+            );
+            $this->pushStaffSlashMenu($bot);
+            StartCommand::send($bot);
+
+            return;
+        }
 
         // The keyboard is taken away by the answer itself. It used to be a second message
         // reading «Removing keyboard...» — English, in a Ukrainian bot, on the screen a
@@ -56,6 +89,21 @@ class EventApprovePhoneCommand extends Command
             parse_mode: ParseMode::HTML,
             reply_markup: ReplyKeyboardRemove::make(true),
         );
+    }
+
+    /** /start + /report for this chat only, like the guard's GUARD_MENU. Decoration: never fails the reply. */
+    private function pushStaffSlashMenu(Nutgram $bot): void
+    {
+        try {
+            $bot->sendRequest('setMyCommands', [
+                'commands' => json_encode([
+                    ['command' => 'start', 'description' => '🏠 Головне меню'],
+                    ['command' => 'report', 'description' => '📷 Фотозвіт'],
+                ], JSON_UNESCAPED_UNICODE),
+                'scope' => json_encode(['type' => 'chat', 'chat_id' => (int)$bot->chatId()]),
+            ]);
+        } catch (\Throwable) {
+        }
     }
 
     /**
