@@ -63,6 +63,7 @@ class GateEventCommand
                     text: GateLogService::confirmation($press->event),
                     parse_mode: ParseMode::HTML,
                 );
+                $this->tellIssuer($bot, $press->event);
                 break;
 
             case GatePress::ALREADY:
@@ -89,6 +90,31 @@ class GateEventCommand
 
             default:
                 $bot->answerCallbackQuery(text: 'Не вдалося зафіксувати. Відскануйте код ще раз.', show_alert: true);
+        }
+    }
+
+    /**
+     * The flat that issued a guest pass hears its people leave (and come back) — after the
+     * guard has his receipt, and never at its cost: a failed DM is logged, not raised.
+     */
+    private function tellIssuer(Nutgram $bot, GateEvent $event): void
+    {
+        try {
+            $notice = $this->gate->issuerNotice($event);
+
+            if ($notice !== null) {
+                $bot->sendMessage(
+                    text: $notice['text'],
+                    chat_id: $notice['chat_id'],
+                    parse_mode: ParseMode::HTML,
+                );
+            }
+        } catch (\Throwable $e) {
+            $this->logger?->warning('guest pass gate notice failed', [
+                'guest_pass_id' => $event->getGuestPassId(),
+                'direction' => $event->getDirection(),
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

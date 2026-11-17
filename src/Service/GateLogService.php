@@ -237,6 +237,58 @@ class GateLogService
         );
     }
 
+    /**
+     * What the flat that issued the pass is told about this press, or null for nothing.
+     *
+     * Until 17.11.2026 the flat heard only the pass's first valid scan of the day
+     * (GuestPassService::notifyArrival), so a delivery that the guard let in and then let
+     * out told Иван «люди на місці» at 13:51 and nothing at 14:13, when they had gone. The
+     * guard's «🚙 Виїзд» is the one moment the bot *knows* they left, so it is said:
+     *
+     * - **out** — always: «ваші люди виїхали о 14:13»;
+     * - **in** — only when the guard logged this pass going *out* earlier the same day:
+     *   the crew coming back after lunch, a fresh fact. The first entry already sent
+     *   «щойно перевірили» from the scan itself, and a second «заїхали» seconds later —
+     *   or after a double scan at the door, or a neighbour's check — is the duplicate that
+     *   teaches people to mute the bot.
+     *
+     * Residents' own codes get nothing: there is no issuer, and the person is the resident.
+     *
+     * @return array{chat_id:int, text:string}|null
+     */
+    public function issuerNotice(GateEvent $event): ?array
+    {
+        $passId = $event->getGuestPassId();
+
+        if ($event->getKind() !== QrScan::KIND_GUEST || $passId === null) {
+            return null;
+        }
+
+        $pass = $this->passes->find($passId);
+        $chatId = $pass instanceof GuestPass ? $pass->getIssuedBy()?->getChatId() : null;
+
+        if ($chatId === null || $chatId === '') {
+            return null;
+        }
+
+        $out = $event->getDirection() === GateEvent::DIRECTION_OUT;
+
+        if (!$out && !$this->events->passLeftEarlier($passId, $event->getCreatedAt(), $event->getId() ?? PHP_INT_MAX)) {
+            return null;
+        }
+
+        return [
+            'chat_id' => (int)$chatId,
+            'text' => sprintf(
+                "%s\n\n%s\nОхорона зафіксувала %s о <b>%s</b>",
+                $out ? '🚙 <b>Ваші люди виїхали з території</b>' : '🚗 <b>Ваші люди знову заїхали на територію</b>',
+                htmlspecialchars($pass->getLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                $out ? 'виїзд' : "в'їзд",
+                $event->getCreatedAt()->format('H:i'),
+            ),
+        ];
+    }
+
     /** @return GateEvent[] */
     public function ofDay(\DateTimeInterface $day): array
     {

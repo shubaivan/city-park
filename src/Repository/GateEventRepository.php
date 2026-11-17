@@ -31,6 +31,23 @@ class GateEventRepository extends ServiceEntityRepository
      *
      * @return GateEvent[]
      */
+    /**
+     * Has the guard logged this pass going *out* earlier that day? Then a «🚗 В'їзд» is the
+     * crew coming back, and the flat is told (GateLogService::issuerNotice).
+     */
+    public function passLeftEarlier(int $passId, \DateTimeInterface $day, int $beforeEventId = PHP_INT_MAX): bool
+    {
+        return (bool)$this->createQueryBuilder('e')
+            ->select('COUNT(e.id)')
+            ->andWhere('e.guest_pass_id = :p')->setParameter('p', $passId)
+            ->andWhere('e.direction = :out')->setParameter('out', GateEvent::DIRECTION_OUT)
+            ->andWhere('e.id < :before')->setParameter('before', $beforeEventId)
+            ->andWhere('e.created_at >= :from')->setParameter('from', new \DateTime($day->format('Y-m-d') . ' 00:00:00'))
+            ->andWhere('e.created_at < :to')->setParameter('to', new \DateTime($day->format('Y-m-d') . ' 00:00:00 +1 day'))
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
     public function ofDay(\DateTimeInterface $day, int $limit = 300): array
     {
         $from = new \DateTime($day->format('Y-m-d') . ' 00:00:00');

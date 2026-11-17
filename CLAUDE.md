@@ -1266,6 +1266,14 @@ revoking: tomorrow the same picture works again.
   them arrive twice, and a second message teaches the resident to mute the first. Who
   scanned is given as «охорона» or «мешканець» and never by name — naming the neighbour who
   checked turns a security tool into something people avoid using.
+- **…and when they leave** (17.11.2026). The guard's «🚙 Виїзд» DMs the issuer «Ваші люди
+  виїхали з території … о 14:13»; a «🚗 В'їзд» does too, but only after a «Виїзд» of the
+  same pass earlier that day (a crew coming back after lunch) — otherwise the scan already
+  said «щойно перевірили», and a double scan or a neighbour's check must not say it twice.
+  Found when Иван's washing-machine delivery (pass 8) was let in at 13:51 and out at 14:13
+  and the flat heard only the first: the arrival notice is once a day by design, and
+  nothing at all listened to the gate log. `GateLogService::issuerNotice()`, sent from
+  `GateEventCommand` after the guard's receipt, never fatal. `GateIssuerNoticeTest`.
 - **Anybody linked to the рахунок may issue one**, and the flat on the card is who vouches.
   Same reading as the services board's «👤 Розмістив».
 
