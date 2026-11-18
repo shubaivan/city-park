@@ -49,6 +49,7 @@ class BookingConversationPhotoGuardTest extends KernelTestCase
         yield 'complaint hold' => [ComplaintHold::class, 'save'];
         yield 'service offer' => [ServicePublish::class, 'askDescription'];
         yield 'guest pass' => [GuestPassCreate::class, 'save'];
+        yield 'guest pass length' => [GuestPassCreate::class, 'saveDays'];
         yield 'car plate' => [CarPlateAdd::class, 'save'];
         yield 'guard plate check' => [CarPlateCheck::class, 'answer'];
         yield 'car parking spot' => [CarPlateSpot::class, 'save'];

@@ -1248,8 +1248,26 @@ and a renovation is all day, and «до кінця дня» handed to a courier 
 midnight. The card offers ⏱ 2 години / ⏱ 4 години / до кінця дня, and «⏹ Вимкнути зараз»
 for the van that came and went at 11:20. `activate()` **clamps to 23:59 whatever is asked**
 — four hours at 22:00 would otherwise run into tomorrow, which is a second day nobody chose,
-and one day is the outer limit the feature was asked for with. Switching off is not
-revoking: tomorrow the same picture works again.
+and one day was the outer limit the feature was first asked for with (a week since
+18.11.2026, below). Switching off is not revoking: tomorrow the same picture works again.
+
+**…or whole days, up to a week** (Иван, 18.11.2026). A five-day renovation left the flat
+pressing «🔁 Активувати» every morning, so «➕ Новий пропуск» now asks one more thing after
+the label — «📅 На скільки днів пропуск?»: «Сьогодні · до 23:59» (first, the default and what
+every pass was before), «Сьогодні й завтра», «3 дні», «Тиждень», each button carrying its end date;
+the card offers the same three as `pass:days:<id>:<n>`. Days count today, and every day
+window ends **23:59:59 Kyiv of the last day** (`GuestPassService::endOfDays()`, wall clock,
+so a week across the clock change still ends at 23:59). `GuestPass::MAX_DAYS = 7`, clamped
+server-side — the number arrives in a callback. Hour windows still never cross midnight and
+*replace* a running week; on a week pass «🔁 Лише до кінця сьогодні» says it shortens. The
+conversation's buttons are `passnew:days:<n>`, deliberately outside every registered pattern:
+in Nutgram a callback matching a handler escapes the live conversation and the pass would
+never be made (`GuestPassWiringTest`, `GuestPassCreateLengthTest`). Nothing else changed
+shape: validity is the answer on every scan, the arrival DM stays the first valid scan *per
+day* (so a week pass tells the flat each morning, now with «Пропуск діє до 24.11 о 23:59»),
+the exit/return DM is per day as before. No migration — `active_until` simply lies further
+ahead; passes made earlier stay one-day. List, card, forwarded copy and `/admin/scans` show
+the end date. `GuestPassMultiDayTest`, `GuestPassMultiDayCardTest`.
 
 - **Stored, unlike the resident's own QR**, which is a bare HMAC over an account id and
   needs no row. This one carries a day, a name, a revocation and a scan history — every one

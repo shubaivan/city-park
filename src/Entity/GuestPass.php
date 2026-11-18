@@ -36,6 +36,14 @@ class GuestPass
      */
     public const MAX_PER_ACCOUNT = 3;
 
+    /**
+     * The longest a pass may be switched on for, in calendar days counting today: a week,
+     * ending at 23:59 Kyiv on the last day (Иван, 18.11.2026). A renovation runs Monday to
+     * Friday and «вмикати щоранку» was the friction left over; a month would be the key
+     * that circulates, which the one-day limit was there to prevent.
+     */
+    public const MAX_DAYS = 7;
+
     /** What the resident writes on it: «Бригада, ремонт», «Доставка меблів». */
     public const MAX_LABEL = 60;
 
@@ -62,7 +70,9 @@ class GuestPass
 
     /**
      * The moment it stops working, in Kyiv. Null means «not activated», which is what a
-     * pass is on every day its host did not press the button.
+     * pass is on every day its host did not press the button. Since 18.11.2026 it may lie
+     * up to six days ahead (GuestPass::MAX_DAYS), always at 23:59:59 of the last day for a
+     * day window; no column changed, so passes issued before stay one-day passes.
      */
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTime $active_until = null;

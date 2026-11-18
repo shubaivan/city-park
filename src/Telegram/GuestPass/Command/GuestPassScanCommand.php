@@ -25,8 +25,9 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
  *
  * - **inside its window** → ✅ who they are, which flat is expecting them, and until when;
  * - **outside it** → ❌ said plainly. This is the whole security model: a pass is on for the
- *   couple of hours or the day its host switched on and never past midnight, so yesterday's
- *   screenshot has to read as *wrong*, not as an error the guard might blame on the bot;
+ *   couple of hours or the days its host switched on — at most a week, ending 23:59 of the
+ *   last day — and checked on every scan, so last week's screenshot has to read as
+ *   *wrong*, not as an error the guard might blame on the bot;
  * - **revoked or unknown** → ❌ the same way, without saying whose it was.
  *
  * Every scan is written to the log — see `QrScan`. It was asked for in the same breath as

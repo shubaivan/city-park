@@ -15,19 +15,31 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 /**
- * «➕ Новий пропуск» — one question: who is coming.
+ * «➕ Новий пропуск» — two questions: who is coming, and for how long.
  *
- * One step on purpose. The person doing this is standing in a hallway with a crew about to
+ * Short on purpose. The person doing this is standing in a hallway with a crew about to
  * arrive; every extra question is a reason to give up and tell the guard «нас чекають у
- * 85-й», which is the thing this feature exists to replace. The day is not asked either —
- * a pass is switched on for today the moment it is made, and switched on again tomorrow
- * with one tap.
+ * 85-й», which is the thing this feature exists to replace. So the second question is one
+ * tap, «📅 Сьогодні» first — the default, and what every pass was until 18.11.2026 — then
+ * «Сьогодні й завтра», «3 дні», «Тиждень», each with the date it ends on (Иван, 18.11.2026: a crew
+ * on a five-day job should not need the flat to switch the pass on every morning).
+ *
+ * The pass is created only once the length is chosen. Its buttons are `passnew:days:<n>`,
+ * deliberately outside every pattern in config/telegram.php: a callback that matches a
+ * registered handler escapes the conversation in Nutgram, and the pass would never be made.
+ * GuestPassWiringTest pins that.
  */
 class GuestPassCreate extends Conversation
 {
     public const START_CALLBACK = 'pass:new';
 
+    /** The length buttons, answered inside this conversation: passnew:days:<days>. */
+    public const DAYS_PREFIX = 'passnew:days:';
+
     protected ?string $step = 'askLabel';
+
+    /** What the resident typed, kept while they pick the length. */
+    public ?string $label = null;
 
     public function __construct(
         private TelegramUserService $telegramUserService,
@@ -126,10 +138,66 @@ class GuestPassCreate extends Conversation
             return;
         }
 
+        $this->label = mb_substr($label, 0, GuestPass::MAX_LABEL);
+        $this->askDays($bot);
+        $this->next('saveDays');
+    }
+
+    /** «На скільки днів?» — one tap, today first. */
+    public function askDays(Nutgram $bot): void
+    {
+        $markup = InlineKeyboardMarkup::make();
+
+        foreach (GuestPassCommand::dayRows(self::DAYS_PREFIX, true) as $row) {
+            $markup->addRow(...$row);
+        }
+
+        $markup->addRow(InlineKeyboardButton::make('⬅️ Скасувати', callback_data: 'cancel'));
+
+        $bot->sendMessage(
+            text: sprintf(
+                "📅 <b>На скільки днів пропуск?</b>\n\n👷 %s\n\n"
+                    . "Пропуск почне діяти одразу і працюватиме до 23:59 останнього дня — "
+                    . "найдовше тиждень.\n"
+                    . '<i>Вимкнути раніше чи скасувати його можна будь-коли на картці пропуску.</i>',
+                htmlspecialchars((string)$this->label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            ),
+            parse_mode: ParseMode::HTML,
+            reply_markup: $markup,
+        );
+    }
+
+    public function saveDays(Nutgram $bot): void
+    {
+        $data = $bot->isCallbackQuery() ? (string)($bot->callbackQuery()->data ?? '') : '';
+
+        if (!$bot->isCallbackQuery()) {
+            // Typed instead of tapped: the question stands, the label is kept.
+            $bot->sendMessage(text: 'Оберіть, будь ласка, одну з кнопок нижче 👇');
+            $this->askDays($bot);
+
+            return;
+        }
+
+        $bot->answerCallbackQuery();
+
+        if (!str_starts_with($data, self::DAYS_PREFIX)) {
+            // «⬅️ Скасувати», or a stale button from an older message.
+            $this->end();
+            ($this->menu)($bot);
+
+            return;
+        }
+
+        $days = (int)substr($data, strlen(self::DAYS_PREFIX));
+        $label = (string)$this->label;
         $account = $this->account();
-        $pass = $account === null ? null : $this->passes->create($account, $this->telegramUserService->getCurrentUser(), $label);
 
         $this->end();
+
+        $pass = $account === null || $label === ''
+            ? null
+            : $this->passes->create($account, $this->telegramUserService->getCurrentUser(), $label, $days);
 
         if ($pass === null) {
             $bot->sendMessage(text: '⚠️ Не вдалося створити пропуск. Спробуйте ще раз.');

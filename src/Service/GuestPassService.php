@@ -20,11 +20,13 @@ use SergiX44\Nutgram\Telegram\Properties\ParseMode;
  *
  * The shape, and why (09.09.2026, Иван):
  *
- * - **A pass lives for a day, and the day is switched on.** He asked for «только на
+ * - **A pass lives for a window, and the window is switched on.** He asked for «только на
  *   сегодня», which is right — a pass that lives a month circulates, and a lost screenshot
  *   stays a key. But minting a fresh code every morning would mean *re-sending the picture
  *   to the бригадир every morning*, and on the third day they stop looking at it. So the
- *   picture is made once, forwarded once, and `activate()` turns it on for today.
+ *   picture is made once, forwarded once, and `activate()` turns it on for today. Since
+ *   18.11.2026 a window can also be whole days, up to a week (`activateDays()`): a crew
+ *   on a five-day job no longer needs the flat to press a button every morning.
  * - **The scan log is not optional.** It was asked for in the same breath as opening the
  *   scan to the house, and it is what makes that defensible: «хто їх пустив і коли вони
  *   заходили» has no other answer anywhere in this system.
@@ -69,7 +71,23 @@ class GuestPassService
             && count($this->liveFor($account)) < GuestPass::MAX_PER_ACCOUNT;
     }
 
-    public function create(Account $account, ?TelegramUser $issuedBy, string $label): ?GuestPass
+    /**
+     * The day windows a resident can pick, in calendar days counting today, and what the
+     * button calls each. «Сьогодні» first: it is the default, and what every pass was until
+     * 18.11.2026. Every one of them ends at 23:59 Kyiv on its last day.
+     */
+    public const DAY_OPTIONS = [
+        1 => 'Сьогодні',
+        2 => 'Сьогодні й завтра',
+        3 => '3 дні',
+        7 => 'Тиждень',
+    ];
+
+    /**
+     * `$days` is how many calendar days, counting today, the pass runs: 1 (the default) is
+     * until 23:59 tonight, as every pass was before 18.11.2026; 7 is the outer limit.
+     */
+    public function create(Account $account, ?TelegramUser $issuedBy, string $label, int $days = 1): ?GuestPass
     {
         if (!$this->mayCreate($account)) {
             return null;
@@ -80,10 +98,9 @@ class GuestPassService
             ->setIssuedBy($issuedBy)
             ->setLabel($label);
 
-        // Switched on the moment it is made, until the end of the day: somebody creating a
-        // pass is standing next to the crew, not planning for Thursday. A shorter window is
-        // one tap away on the card.
-        $pass->setActiveUntil(self::endOfDay());
+        // Switched on the moment it is made: somebody creating a pass is standing next to
+        // the crew, or expects them this week. A shorter window is one tap away on the card.
+        $pass->setActiveUntil(self::endOfDays($days));
 
         $this->em->persist($pass);
         $this->em->flush();
@@ -92,15 +109,89 @@ class GuestPassService
     }
 
     /**
+     * Turn it on for whole days: until 23:59 of today, tomorrow, … up to GuestPass::MAX_DAYS.
+     *
+     * Whatever is asked is clamped to 1..MAX_DAYS — the number arrives in a callback, and a
+     * hand-made `pass:days:<id>:365` must not mint a year-long key. Idempotent, and it may
+     * shorten as well as lengthen: «Тиждень» pressed on Friday for a crew that finished
+     * early is corrected with «Сьогодні» or «⏹ Вимкнути зараз».
+     */
+    public function activateDays(GuestPass $pass, int $days): void
+    {
+        if ($pass->isRevoked()) {
+            return;
+        }
+
+        $pass->setActiveUntil(self::endOfDays($days));
+        $this->em->flush();
+    }
+
+    /**
+     * 23:59:59 Kyiv on the last of `$days` calendar days, counting the day of `$now`.
+     *
+     * Built on the wall clock in Europe/Kyiv, so a week across the October or March clock
+     * change still ends at 23:59 local, not at 22:59 or 00:59. `$now` in any other zone is
+     * read as the Kyiv day it falls on.
+     */
+    public static function endOfDays(int $days, ?\DateTimeInterface $now = null): \DateTime
+    {
+        $days = max(1, min(GuestPass::MAX_DAYS, $days));
+        $kyiv = new \DateTimeZone('Europe/Kyiv');
+
+        $end = $now === null
+            ? new \DateTime('now', $kyiv)
+            : \DateTime::createFromInterface($now)->setTimezone($kyiv);
+
+        $end->setTime(23, 59, 59);
+
+        if ($days > 1) {
+            $end->modify(sprintf('+%d days', $days - 1));
+        }
+
+        return $end;
+    }
+
+    /**
+     * How the end of an active window is said to people: «сьогодні до 14:20» on its own day,
+     * «до 24.11 о 23:59» when it runs past today. The date is what matters on a multi-day
+     * pass, and «до 23:59» with no day would read as tonight.
+     */
+    public static function untilLabel(GuestPass $pass, ?\DateTimeInterface $now = null): string
+    {
+        $until = $pass->getActiveUntil();
+
+        if ($until === null) {
+            return '';
+        }
+
+        $kyiv = new \DateTimeZone('Europe/Kyiv');
+        $today = ($now === null ? new \DateTime('now', $kyiv) : \DateTime::createFromInterface($now)->setTimezone($kyiv))->format('Y-m-d');
+        $until = \DateTime::createFromInterface($until)->setTimezone($kyiv);
+
+        return $until->format('Y-m-d') === $today
+            ? 'сьогодні до ' . $until->format('H:i')
+            : 'до ' . $until->format('d.m о H:i');
+    }
+
+    /** Does the window run past tonight — a pass switched on for more than one day? */
+    public static function runsPastToday(GuestPass $pass, ?\DateTimeInterface $now = null): bool
+    {
+        $until = $pass->getActiveUntil();
+
+        return $until !== null && $until > self::endOfDays(1, $now);
+    }
+
+    /**
      * Turn it on — for a few hours, or until the end of the day.
      *
      * A delivery is two hours and a renovation is all day, and «до кінця дня» handed to a
      * courier is a key they keep until midnight. `$hours` null means the rest of today.
      *
-     * **Never past midnight**, whatever is asked: four hours at 22:00 clamps to 23:59. The
-     * pass Иван asked for is a one-day pass, and a window that quietly runs into tomorrow
-     * would be a second lifetime nobody chose. Idempotent — pressing a button twice is
-     * what people do, and the second press simply moves the deadline.
+     * **Never past midnight**, whatever is asked: four hours at 22:00 clamps to 23:59. An
+     * hour window that quietly runs into tomorrow would be a second day nobody chose;
+     * more than one day is asked for explicitly, with activateDays(). On a pass already
+     * switched on for a week, an hour window *replaces* it — the card says so. Idempotent:
+     * pressing a button twice is what people do, and the second press moves the deadline.
      */
     public function activate(GuestPass $pass, ?int $hours = null): void
     {
@@ -135,10 +226,10 @@ class GuestPassService
         $this->em->flush();
     }
 
-    /** 23:59 today, Kyiv — the outer limit of every window. */
+    /** 23:59 today, Kyiv — the outer limit of every hour window. */
     private static function endOfDay(): \DateTime
     {
-        return new \DateTime('today 23:59:59', new \DateTimeZone('Europe/Kyiv'));
+        return self::endOfDays(1);
     }
 
     /** Dead for good — the picture in somebody's phone stops working. */
@@ -270,10 +361,15 @@ class GuestPassService
             $this->bot->sendMessage(
                 text: sprintf(
                     "👷 <b>Ваш пропуск щойно перевірили</b>\n\n%s\n%s о <b>%s</b>\n\n"
-                        . '<i>Схоже, ваші люди на місці.</i>',
+                        . '<i>Схоже, ваші люди на місці.</i>%s',
                     htmlspecialchars($pass->getLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                     $scan->isByGuard() ? 'Перевірила охорона' : 'Перевірив мешканець',
                     $scan->getCreatedAt()->format('H:i'),
+                    // A pass switched on for days says so, once a day, in the message the
+                    // flat actually reads — the reminder that it is still open.
+                    self::runsPastToday($pass, $scan->getCreatedAt())
+                        ? "\n<i>Пропуск діє " . self::untilLabel($pass, $scan->getCreatedAt()) . '.</i>'
+                        : '',
                 ),
                 chat_id: (int)$chatId,
                 parse_mode: ParseMode::HTML,

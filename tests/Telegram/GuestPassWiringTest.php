@@ -55,6 +55,7 @@ class GuestPassWiringTest extends TestCase
                 // and for the hour windows with the length after it.
                 $sample = match (true) {
                     str_starts_with($literal, 'pass:hrs:') => 'pass:hrs:1:2',
+                    str_starts_with($literal, 'pass:days:') => 'pass:days:1:7',
                     str_ends_with($literal, ':') => $literal . '1',
                     default => $literal,
                 };
@@ -115,6 +116,31 @@ class GuestPassWiringTest extends TestCase
         }
 
         $this->assertSame([], $unrouted, 'these buttons reach no handler — they just spin');
+    }
+
+    /**
+     * The length buttons of «➕ Новий пропуск» must match **no** registered pattern.
+     *
+     * The opposite rule to the one above, and for the same kind of reason: in Nutgram a
+     * callback that matches a registered handler escapes the live conversation. A
+     * `passnew:days:3` that some broad pattern caught would end the conversation before
+     * the pass is made — the resident taps «3 дні» and nothing is created, silently.
+     */
+    public function testTheNewPassLengthButtonsStayInsideTheConversation(): void
+    {
+        $config = (string)file_get_contents(__DIR__ . '/../../config/telegram.php');
+        preg_match_all("/onCallbackQueryData\(\s*'([^']+)'/", $config, $matches);
+        $this->assertNotEmpty($matches[1]);
+
+        foreach (array_keys(\App\Service\GuestPassService::DAY_OPTIONS) as $days) {
+            $callback = \App\Telegram\GuestPass\Command\GuestPassCreate::DAYS_PREFIX . $days;
+
+            foreach ($matches[1] as $pattern) {
+                // As Nutgram's Handler::matching() builds it: always a regex, always anchored.
+                $regex = '/^' . preg_replace('/\{\w+\}/', '.*', str_replace('/', '\/', $pattern)) . '$/';
+                $this->assertSame(0, preg_match($regex, $callback), sprintf('%s is caught by %s and would escape the conversation', $callback, $pattern));
+            }
+        }
     }
 
 }

@@ -116,7 +116,8 @@
                                     <td class="text-muted">{{ pass.createdAt|date('d.m H:i') }}</td>
                                     <td>
                                         {% if pass.activeUntil and pass.activeUntil > now %}
-                                            <span class="text-success">✅ активний до {{ pass.activeUntil|date('H:i') }}</span>
+                                            {# The date too: since 18.11.2026 a pass can run up to a week, and «до 23:59» alone reads as tonight. #}
+                                            <span class="text-success">✅ активний до {{ pass.activeUntil|date('d.m H:i') }}</span>
                                         {% else %}
                                             <span class="text-muted">⚪️ ні</span>
                                         {% endif %}

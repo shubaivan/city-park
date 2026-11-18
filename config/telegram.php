@@ -190,6 +190,8 @@ $bot->onCallbackQueryData(\App\Telegram\GuestPass\Command\GuestPassCommand::MENU
 $bot->onCallbackQueryData('^pass:(?:view|on|off|del|delok|share):\d+$', \App\Telegram\GuestPass\Command\GuestPassCommand::class);
 // «⏱ 2 години» carries its length: pass:hrs:<id>:<hours>.
 $bot->onCallbackQueryData('^pass:hrs:\d+:\d+$', \App\Telegram\GuestPass\Command\GuestPassCommand::class);
+// «📅 3 дні» / «📅 Тиждень» carry the number of days, today counted: pass:days:<id>:<days>.
+$bot->onCallbackQueryData('^pass:days:\d+:\d+$', \App\Telegram\GuestPass\Command\GuestPassCommand::class);
 $bot->onCallbackQueryData(\App\Telegram\GuestPass\Command\GuestPassCreate::START_CALLBACK, \App\Telegram\GuestPass\Command\GuestPassCreate::class);
 $bot->onCommand('pass', \App\Telegram\GuestPass\Command\GuestPassCommand::class);
 
