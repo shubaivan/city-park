@@ -59,16 +59,44 @@ class GuestPassService
     }
 
     /**
+     * How many of the flat's passes count against GuestPass::MAX_PER_ACCOUNT: the live ones,
+     * less those dormant for GuestPass::DORMANT_AFTER_DAYS.
+     */
+    public function countedFor(Account $account, ?\DateTimeInterface $now = null): int
+    {
+        $now ??= new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+
+        return count(array_filter(
+            $this->liveFor($account),
+            static fn (GuestPass $pass): bool => !$pass->isDormantAt($now),
+        ));
+    }
+
+    /**
      * Room for one more?
      *
-     * Checked on the button *and* here: a resident can reach «➕ Новий пропуск» from a
-     * keyboard drawn before they created their third somewhere else. Same trap the services
-     * board's per-author cap is written around.
+     * Only creation is capped: switching a dormant pass on again is always allowed, even if
+     * that takes the flat over the cap for a while. The button is drawn either way and this
+     * is what its tap checks (and create() again), so a full flat is told why instead of
+     * finding the button gone.
      */
     public function mayCreate(?Account $account): bool
     {
         return $account instanceof Account
-            && count($this->liveFor($account)) < GuestPass::MAX_PER_ACCOUNT;
+            && $this->countedFor($account) < GuestPass::MAX_PER_ACCOUNT;
+    }
+
+    /** «1 діючий пропуск», «3 діючі пропуски», «10 діючих пропусків». */
+    public static function livePasses(int $n): string
+    {
+        $mod10 = $n % 10;
+        $mod100 = $n % 100;
+
+        return $n . ' ' . match (true) {
+            $mod10 === 1 && $mod100 !== 11 => 'діючий пропуск',
+            $mod10 >= 2 && $mod10 <= 4 && ($mod100 < 12 || $mod100 > 14) => 'діючі пропуски',
+            default => 'діючих пропусків',
+        };
     }
 
     /**
