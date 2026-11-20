@@ -27,6 +27,7 @@ use App\Repository\GateEventRepository;
 use App\Repository\GuestPassRepository;
 use App\Repository\LinkClickRepository;
 use App\Repository\QrScanRepository;
+use App\Service\GuardFeed;
 use App\Repository\SmsLogRepository;
 use App\Repository\SmsRunRepository;
 use App\Service\SmsSender;
@@ -205,33 +206,39 @@ class AdminController extends AbstractController
         return $this->redirectToRoute('app_admin_sms', ['_fragment' => 'debt-sms']);
     }
 
-    /** Scans drawn on /admin/scans. A few a day at most; a fortnight fits easily. */
-    private const SCANS_SHOWN = 300;
-
     /**
-     * Who scanned whose code, and when.
+     * The guard post's screen (Иван, 20.11.2026): entries, exits and QR scans of one week,
+     * newest first, grouped by day — and the live passes above them.
      *
-     * Asked for by Иван in the same breath as opening the scan to the whole house
-     * (09.09.2026), and it is what makes that defensible: the moment 457 people can check
-     * each other, «хто когось перевіряв» stops being hypothetical. It is also the only
-     * place in this system that can answer the question asked after something happens in
-     * the yard — «хто їх пустив і коли вони заходили» — because a guest pass is scanned at
-     * the gate and nowhere else.
+     * The post keeps this page open all day on its own PC, so it is built for that: one
+     * week at a time (`?week=<Monday>`), never the whole history, and the current week
+     * tops itself up every 10 seconds from `scansFeed()` below instead of reloading.
      *
-     * Read by everyone who can sign in, GET only, like the sign-in log: nothing here is
-     * anybody's to change, and a security log that can be edited is not a log.
+     * Who scanned whose code is also what makes opening the scan to the whole house
+     * defensible (09.09.2026): «хто їх пустив і коли вони заходили» is answered here and
+     * nowhere else. Read by everyone who can sign in, GET only: a security log that can be
+     * edited is not a log.
      */
     #[Route('/admin/scans', name: 'app_admin_scans', methods: [Request::METHOD_GET])]
-    public function scans(QrScanRepository $scans, GuestPassRepository $passes, GateEventRepository $gate): Response
+    public function scans(Request $request, QrScanRepository $scans, GuestPassRepository $passes, GateEventRepository $gate): Response
     {
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+        $monday = GuardFeed::parseWeek($request->query->get('week'), $now);
+        $currentWeek = GuardFeed::weekStart($now);
+        $until = (clone $monday)->modify('+7 days');
+
+        $weekScans = $scans->between($monday, $until);
+        $weekEvents = $gate->between($monday, $until);
+        $isCurrent = $monday == $currentWeek;
 
         return $this->render('admin/scans.html.twig', [
-            // «🚗 В'їзд / 🚙 Виїзд» the guard pressed today under a valid scan (13.11.2026).
-            'gate_events' => $gate->ofDay($now),
-            'entries' => $scans->latest(self::SCANS_SHOWN),
-            'total' => $scans->total(),
-            'shown' => self::SCANS_SHOWN,
+            'days' => GuardFeed::byDay(GuardFeed::merge($weekScans, $weekEvents)),
+            'week' => $monday,
+            'week_label' => GuardFeed::weekLabel($monday),
+            'is_current_week' => $isCurrent,
+            'prev_week' => (clone $monday)->modify('-7 days')->format('Y-m-d'),
+            'next_week' => $isCurrent ? null : (clone $monday)->modify('+7 days')->format('Y-m-d'),
+            'cursor' => GuardFeed::cursor($weekScans, $weekEvents),
             // The live passes, so the page answers «які пропуски зараз ходять по ЖК» as
             // well as «хто ними скористався».
             'passes' => $passes->createQueryBuilder('p')
@@ -240,8 +247,50 @@ class AdminController extends AbstractController
                 ->setMaxResults(60)
                 ->getQuery()
                 ->getResult(),
-            'now' => new \DateTime('now', new \DateTimeZone('Europe/Kyiv')),
+            'now' => $now,
         ]);
+    }
+
+    /**
+     * The 10-second poll of the current week: what arrived after the ids the page last saw.
+     * Rows come rendered by the same partial as the page, so the two cannot drift apart.
+     * `week` lets the page notice that Monday has come and reload itself.
+     */
+    #[Route('/admin/scans/feed', name: 'app_admin_scans_feed', methods: [Request::METHOD_GET])]
+    public function scansFeed(Request $request, QrScanRepository $scans, GateEventRepository $gate): JsonResponse
+    {
+        $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+        $monday = GuardFeed::weekStart($now);
+        $afterScan = max(0, $request->query->getInt('scan'));
+        $afterEvent = max(0, $request->query->getInt('event'));
+
+        $newScans = $scans->newerThan($afterScan, $monday);
+        $newEvents = $gate->newerThan($afterEvent, $monday);
+        $guardOnly = $this->isGranted('ROLE_GUARD') && !$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_COMPLAINTS');
+
+        $rows = [];
+
+        // Oldest first, so the page can put each one on top and end up newest first.
+        foreach (array_reverse(GuardFeed::merge($newScans, $newEvents)) as $item) {
+            $rows[] = [
+                'key' => $item['key'],
+                'day' => $item['at']->format('Y-m-d'),
+                'day_label' => GuardFeed::dayLabel($item['at']),
+                'type' => $item['type'],
+                'replaces' => $item['replaces'],
+                'html' => $this->renderView('admin/_scan_feed_row.html.twig', ['item' => $item, 'guard_only' => $guardOnly, 'fresh' => true]),
+            ];
+        }
+
+        $response = new JsonResponse([
+            'week' => $monday->format('Y-m-d'),
+            'cursor' => GuardFeed::cursor($newScans, $newEvents, $afterScan, $afterEvent),
+            'rows' => $rows,
+            'server_time' => $now->format('H:i:s'),
+        ]);
+        $response->headers->set('Cache-Control', 'no-store');
+
+        return $response;
     }
 
     /**

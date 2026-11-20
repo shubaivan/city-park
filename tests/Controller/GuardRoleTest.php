@@ -165,15 +165,23 @@ class GuardRoleTest extends WebTestCase
         $scan = (new \App\Entity\QrScan())->setKind('resident')->setResult('ok')
             ->setScannedByLabel('Охорона')->setSubjectLabel('буд. 19, кв. 85')->setSubjectAccount($account);
 
+        (new \ReflectionProperty(\App\Entity\QrScan::class, 'id'))->setValue($scan, 41);
+        $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+        $monday = \App\Service\GuardFeed::weekStart($now);
+
         $html = $twig->render('admin/scans.html.twig', [
-            'entries' => [$scan],
+            'days' => \App\Service\GuardFeed::byDay(\App\Service\GuardFeed::merge([$scan], [])),
+            'week' => $monday,
+            'week_label' => \App\Service\GuardFeed::weekLabel($monday),
+            'is_current_week' => false,
+            'prev_week' => '2026-11-09',
+            'next_week' => '2026-11-23',
+            'cursor' => ['scan' => 41, 'event' => 0],
             'passes' => [$pass],
-            'total' => 1,
-            'shown' => 300,
-            'now' => new \DateTime('now', new \DateTimeZone('Europe/Kyiv')),
+            'now' => $now,
         ]);
 
-        $this->assertStringContainsString('Сканування QR', $html);
+        $this->assertStringContainsString('сканування QR', $html);
         $this->assertStringContainsString('буд. 19', $html);
         // The issuer's phone, so the guard can ring the flat.
         $this->assertStringContainsString('href="tel:+380671112233"', $html);
@@ -182,7 +190,8 @@ class GuardRoleTest extends WebTestCase
             if (str_starts_with($href, '#') || str_starts_with($href, 'tel:') || str_contains($href, '/build/') || str_ends_with($href, '.jpg')) {
                 continue;
             }
-            $this->assertContains($href, ['/admin/scans', '/logout'], 'the guard is offered a link to ' . $href);
+            // the week arrows stay on the same page
+            $this->assertMatchesRegularExpression('#^(/admin/scans(\?week=\d{4}-\d{2}-\d{2})?|/logout)$#', $href, 'the guard is offered a link to ' . $href);
         }
     }
 }

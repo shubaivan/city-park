@@ -6,6 +6,7 @@ use App\Entity\Account;
 use App\Entity\GateEvent;
 use App\Entity\GuestPass;
 use App\Entity\QrScan;
+use App\Service\GuardFeed;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 use Symfony\Component\Security\Core\User\InMemoryUser;
@@ -21,7 +22,7 @@ use Twig\Environment;
  */
 class AdminScansPageTest extends KernelTestCase
 {
-    private function render(array $entries, array $passes = [], string $role = 'ROLE_ADMIN', array $gate = []): string
+    private function render(array $entries, array $passes = [], string $role = 'ROLE_ADMIN', array $gate = [], bool $current = true): string
     {
         self::bootKernel();
 
@@ -29,13 +30,19 @@ class AdminScansPageTest extends KernelTestCase
             new UsernamePasswordToken(new InMemoryUser('alina', null, [$role]), 'main', [$role]),
         );
 
+        $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+        $monday = GuardFeed::weekStart($now);
+
         return self::getContainer()->get(Environment::class)->render('admin/scans.html.twig', [
-            'entries' => $entries,
+            'days' => GuardFeed::byDay(GuardFeed::merge($entries, $gate)),
+            'week' => $monday,
+            'week_label' => GuardFeed::weekLabel($monday),
+            'is_current_week' => $current,
+            'prev_week' => '2026-11-09',
+            'next_week' => $current ? null : '2026-11-23',
+            'cursor' => GuardFeed::cursor($entries, $gate),
             'passes' => $passes,
-            'gate_events' => $gate,
-            'total' => count($entries),
-            'shown' => 300,
-            'now' => new \DateTime('now', new \DateTimeZone('Europe/Kyiv')),
+            'now' => $now,
         ]);
     }
 
@@ -49,40 +56,43 @@ class AdminScansPageTest extends KernelTestCase
             ->setGuestPassId($kind === QrScan::KIND_GUEST ? 4 : null);
     }
 
-    public function testItNamesWhoScannedWhomAndWhatTheBotAnswered(): void
+    private static int $nextId = 1;
+
+    private static function withId(object $entity, string $at = 'now'): object
     {
-        $html = $this->render([$this->scan(QrScan::KIND_GUEST, QrScan::RESULT_OK)]);
+        (new \ReflectionProperty($entity::class, 'id'))->setValue($entity, self::$nextId++);
+        (new \ReflectionProperty($entity::class, 'created_at'))->setValue($entity, new \DateTime($at, new \DateTimeZone('Europe/Kyiv')));
+
+        return $entity;
+    }
+
+    public function testItNamesWhoScannedWhom(): void
+    {
+        $html = $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_OK))]);
 
         $this->assertStringContainsString('Ніка (буд. 19, кв. 85)', $html);
         $this->assertStringContainsString('буд. 19, кв. 12', $html);
-        $this->assertStringContainsString('дійсний', $html);
         $this->assertStringContainsString('пропуск', $html);
+        $this->assertStringContainsString('class="mark mark-scan"', $html, 'a scan with no press is neither in nor out');
     }
 
     /**
-     * Every result the code can write has a word on the page.
-     *
-     * An unlisted one falling into a neutral branch is the *designed* behaviour; falling
-     * into another result's branch is the /admin/links failure, where a kind nobody had
-     * added was drawn as a complaint and linked to the wrong register for a week.
+     * The альтанка is not the guard's business (Иван, 20.11.2026): «без броні» and
+     * «дійсний» are gone. What stays is a code that did not check out.
      */
-    public function testEveryResultIsNamed(): void
+    public function testTheBookingAnswerIsGoneAndProblemsStay(): void
     {
-        $template = (string)file_get_contents(__DIR__ . '/../../templates/admin/scans.html.twig');
+        $html = $this->render([
+            self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING)),
+            self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK)),
+        ]);
 
-        foreach ([
-            QrScan::RESULT_OK,
-            QrScan::RESULT_NO_BOOKING,
-            QrScan::RESULT_NOT_ACTIVE,
-            QrScan::RESULT_REVOKED,
-            QrScan::RESULT_UNKNOWN,
-        ] as $result) {
-            $this->assertStringContainsString(
-                "result == '" . $result . "'",
-                $template,
-                sprintf('«%s» would render as whatever the last branch happens to be', $result),
-            );
-        }
+        $this->assertStringNotContainsString('без броні', $html);
+        $this->assertStringNotContainsString('дійсний', $html);
+        $this->assertStringNotContainsString('Відповідь', $html);
+
+        $this->assertStringContainsString('пропуск скасований', $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED))]));
+        $this->assertStringContainsString('код не розпізнано', $this->render([self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_UNKNOWN))]));
     }
 
     /** The live passes are on the page: «які пропуски зараз ходять по ЖК». */
@@ -163,7 +173,7 @@ class AdminScansPageTest extends KernelTestCase
         $pass = (new GuestPass())->setAccount($this->flat(9))->setLabel('Бригада, ремонт');
         (new \ReflectionProperty(GuestPass::class, 'id'))->setValue($pass, 4);
 
-        $html = $this->render([$this->scan(QrScan::KIND_GUEST, QrScan::RESULT_OK)], [$pass]);
+        $html = $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_OK))], [$pass]);
 
         $this->assertStringContainsString('href="#pass-4"', $html);
         $this->assertStringContainsString('id="pass-4"', $html, 'the anchor must land on a row that is on the page');
@@ -178,7 +188,7 @@ class AdminScansPageTest extends KernelTestCase
      */
     public function testAScanOfAPassThatIsGoneIsNotALink(): void
     {
-        $html = $this->render([$this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED)]);
+        $html = $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED))]);
 
         $this->assertStringContainsString('пропуск', $html);
         $this->assertStringNotContainsString('href="#pass-', $html);
@@ -187,8 +197,8 @@ class AdminScansPageTest extends KernelTestCase
     /** A resident scan opens the flat whose code it was. */
     public function testAResidentScanOpensTheObjectCard(): void
     {
-        $scan = $this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING)
-            ->setSubjectAccount($this->flat(12));
+        $scan = self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING)
+            ->setSubjectAccount($this->flat(12)));
 
         $this->assertStringContainsString('/admin/objects/12', $this->render([$scan]));
     }
@@ -196,7 +206,7 @@ class AdminScansPageTest extends KernelTestCase
     /** …and says the same words with no link when the account is gone (SET NULL). */
     public function testAResidentScanWithoutAnAccountIsStillNamed(): void
     {
-        $html = $this->render([$this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING)]);
+        $html = $this->render([self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING))]);
 
         $this->assertStringContainsString('мешканець', $html);
         $this->assertStringNotContainsString('/admin/objects/', $html);
@@ -217,37 +227,64 @@ class AdminScansPageTest extends KernelTestCase
 
     public function testAnEmptyLogStillRenders(): void
     {
-        $this->assertStringContainsString('Сканування QR', $this->render([]));
+        $html = $this->render([]);
+
+        $this->assertStringContainsString('сканування QR', $html);
+        $this->assertStringContainsString('Цього тижня ще нічого не було', $html);
     }
 
     /**
-     * Today's «🚗 В'їзд / 🚙 Виїзд» (13.11.2026) — the post's shift sheet, read by the gate's
-     * own login as well as the panel's.
+     * Entries, exits and plain scans in one list, newest first, by day — read by the gate's
+     * own login as well as the panel's (Иван, 20.11.2026).
      */
-    public function testTodaysEntriesAndExitsAreListed(): void
+    public function testEntriesExitsAndScansAreInterleavedByDay(): void
     {
-        $in = (new GateEvent())
+        $in = self::withId((new GateEvent())
             ->setDirection(GateEvent::DIRECTION_IN)
             ->setPersonLabel('Олена Петренко')
             ->setPlaceLabel('буд. 19, кв. 85')
             ->setCarLabel('CA 1234 AB')
-            ->setGuardLabel('Охорона · Охрана Ситипарк');
-        $out = (new GateEvent())
+            ->setGuardLabel('Охорона · Охрана Ситипарк'), 'today 00:10');
+        $out = self::withId((new GateEvent())
             ->setDirection(GateEvent::DIRECTION_OUT)
             ->setPersonLabel('👷 AA1234BB Бригада')
-            ->setPlaceLabel('буд. 21, кв. 3');
+            ->setPlaceLabel('буд. 21, кв. 3'), 'today 00:30');
+        $scan = self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK), 'today 00:20');
 
         foreach (['ROLE_ADMIN', 'ROLE_GUARD'] as $role) {
-            $html = $this->render([], [], $role, [$out, $in]);
+            $html = $this->render([$scan], [], $role, [$out, $in]);
+            $feed = substr($html, (int)strpos($html, 'id="feed"'));
 
-            $this->assertStringContainsString("В'їзд / виїзд сьогодні", $html);
-            $this->assertStringContainsString('🚗 1 · 🚙 1', $html);
+            $this->assertStringContainsString(htmlspecialchars(GuardFeed::dayLabel(new \DateTime('today')), ENT_QUOTES), $html);
             $this->assertStringContainsString('Олена Петренко', $html);
             $this->assertStringContainsString('CA 1234 AB', $html);
             $this->assertStringContainsString('AA1234BB Бригада', $html);
-            $this->assertStringContainsString('🚙 Виїзд', $html);
+            $this->assertMatchesRegularExpression('/mark mark-out.*mark mark-scan.*mark mark-in/s', $feed, 'newest first: out, scan, in');
+            $this->assertStringContainsString('<span class="c-in">1</span>', $html);
+            $this->assertStringContainsString('<span class="c-out">1</span>', $html);
         }
+    }
 
-        $this->assertStringContainsString('Сьогодні ще нічого не зафіксовано', $this->render([]));
+    /** The guard's login gets no links into pages it is refused at. */
+    public function testTheGuardGetsNoObjectLinks(): void
+    {
+        $scan = self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK)->setSubjectAccount($this->flat(12)));
+
+        $this->assertStringNotContainsString('/admin/objects/12', $this->render([$scan], [], 'ROLE_GUARD'));
+    }
+
+    /** Only the current week polls; an earlier one is history and offers the way forward. */
+    public function testOnlyTheCurrentWeekPolls(): void
+    {
+        $current = $this->render([]);
+        $this->assertStringContainsString('data-live="1"', $current);
+        $this->assertStringContainsString('/admin/scans/feed', $current);
+        $this->assertStringContainsString('Попередній тиждень', $current);
+        $this->assertStringNotContainsString('Наступний тиждень', $current);
+
+        $past = $this->render([], [], 'ROLE_ADMIN', [], false);
+        $this->assertStringContainsString('data-live="0"', $past);
+        $this->assertStringContainsString('Наступний тиждень', $past);
+        $this->assertStringNotContainsString('<template id="feed-day-template"', $past);
     }
 }

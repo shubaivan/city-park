@@ -71,4 +71,37 @@ class QrScanRepository extends ServiceEntityRepository
             ->getQuery()
             ->getSingleScalarResult();
     }
+
+    /**
+     * The scans of [from, to), newest first — one week of the guard's feed (20.11.2026).
+     * Rides on qs_created_idx; the cap only guards against a runaway week.
+     *
+     * @return \App\Entity\QrScan[]
+     */
+    public function between(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 3000): array
+    {
+        return $this->createQueryBuilder('s')
+            ->andWhere('s.created_at >= :from')->setParameter('from', $from)
+            ->andWhere('s.created_at < :to')->setParameter('to', $to)
+            ->orderBy('s.id', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * What arrived after the scan the page last saw — the feed's 10-second poll.
+     *
+     * @return \App\Entity\QrScan[]
+     */
+    public function newerThan(int $afterId, \DateTimeInterface $from, int $limit = 200): array
+    {
+        return $this->createQueryBuilder('s')
+            ->andWhere('s.id > :id')->setParameter('id', $afterId)
+            ->andWhere('s.created_at >= :from')->setParameter('from', $from)
+            ->orderBy('s.id', 'ASC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
 }

@@ -35,7 +35,7 @@ class GuardPanelScopeSubscriber implements EventSubscriberInterface
     public const ROLE = 'ROLE_GUARD';
 
     /** The one page, plus the way out. `/admin` itself is redirected, not served. */
-    public const ALLOWED_ROUTES = ['app_admin_scans', 'app_logout'];
+    public const ALLOWED_ROUTES = ['app_admin_scans', 'app_admin_scans_feed', 'app_logout'];
 
     public function __construct(
         private readonly Security $security,

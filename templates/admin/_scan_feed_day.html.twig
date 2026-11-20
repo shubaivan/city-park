@@ -1,0 +1,23 @@
+{# One day of the guard's feed: a header with the day's counts, then its lines, newest first. #}
+<section class="feed-day" data-day="{{ day.date }}">
+    <h5 class="feed-day-title">
+        <span class="feed-day-label">{{ day.label }}</span>
+        <span class="feed-day-counts">
+            <span class="text-success">➜ <span class="c-in">{{ day.in }}</span></span> ·
+            <span class="text-danger"><span class="mark-out-inline">➜</span> <span class="c-out">{{ day.out }}</span></span> ·
+            <span>▣ <span class="c-scan">{{ day.scans }}</span></span>
+        </span>
+    </h5>
+    <div class="table-responsive">
+        <table class="table mb-0 feed-table">
+            <thead>
+            <tr><th>Подія</th><th>Час</th><th>Хто / квартира / авто</th><th>Хто перевіряв</th></tr>
+            </thead>
+            <tbody>
+            {% for item in day.items %}
+                {{ include('admin/_scan_feed_row.html.twig', {item: item, guard_only: guard_only, live_pass_ids: live_pass_ids|default([])}) }}
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>

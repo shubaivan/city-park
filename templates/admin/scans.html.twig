@@ -1,6 +1,6 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Сканування QR · ОСББ City Park{% endblock %}
+{% block title %}В'їзд і сканування · ОСББ City Park{% endblock %}
 
 {#
     Who scanned whose code, and when.
@@ -22,55 +22,50 @@
         {% set guard_only = is_granted('ROLE_GUARD') and not is_granted('ROLE_ADMIN') and not is_granted('ROLE_COMPLAINTS') %}
         {% if not guard_only %}<p class="mb-2"><a href="{{ path('app_admin') }}">← На головну адмінки</a></p>{% endif %}
 
-        <h4 class="mb-1">🪪 Сканування QR-кодів</h4>
-        <p class="text-muted small mb-3">
-            Хто наводив камеру, чий це був код і що відповів бот. Сканувати може будь-який
-            підтверджений мешканець та охорона — тому цей журнал і ведеться.
+        {# What a pass mark may link to: a revoked pass is not drawn below, and an anchor to a
+           row that is not on the page is a click that does nothing. #}
+        {% set live_pass_ids = [] %}
+        {% for pass in passes %}{% set live_pass_ids = live_pass_ids|merge([pass.id]) %}{% endfor %}
+        <h4 class="mb-1">🚧 В'їзд, виїзд і сканування QR</h4>
+        <p class="text-muted mb-3 feed-intro">
+            <span class="mark mark-in">➜</span> в'їзд ·
+            <span class="mark mark-out">➜</span> виїзд ·
+            <span class="mark mark-scan">▣</span> сканування QR без в'їзду чи виїзду.
+            Сканувати може будь-який підтверджений мешканець та охорона — тому цей журнал і ведеться.
         </p>
 
         {#
-            Today at the gate: what the guard pressed under a valid scan, «🚗 В'їзд» or
-            «🚙 Виїзд» (13.11.2026). Today only — this is the post's shift sheet, and the
-            log below already covers the history of who was checked.
+            The post's feed (GuardFeed, 20.11.2026): one week, newest first, by day. Only
+            the current week tops itself up — an earlier week is history and does not change.
         #}
-        {% set gate_events = gate_events|default([]) %}
-        <div class="card mb-3">
-            <div class="card-header py-2 px-3">
-                <b>🚧 В'їзд / виїзд сьогодні</b>
-                {% set gate_in = gate_events|filter(e => e.entry)|length %}
-                <span class="text-muted small">— 🚗 {{ gate_in }} · 🚙 {{ gate_events|length - gate_in }}</span>
+        <div class="feed-nav d-flex flex-wrap align-items-center mb-2">
+            <a class="btn btn-outline-dark mr-2 mb-1" href="{{ path('app_admin_scans', {week: prev_week}) }}">← Попередній тиждень</a>
+            <b class="mr-2 mb-1 feed-week">{{ is_current_week ? 'Цей тиждень' : 'Тиждень' }}: {{ week_label }}</b>
+            {% if next_week %}
+                <a class="btn btn-outline-dark mr-2 mb-1" href="{{ path('app_admin_scans', {week: next_week}) }}">Наступний тиждень →</a>
+                <a class="btn btn-dark mb-1" href="{{ path('app_admin_scans') }}">До поточного</a>
+            {% endif %}
+        </div>
+
+        {% if is_current_week %}
+            <div id="feed-status" class="feed-status mb-2" aria-live="polite">
+                Оновлюється автоматично · <span id="feed-updated">оновлено о {{ now|date('H:i:s') }}</span>
             </div>
-            <div class="card-body p-0">
-                {% if gate_events is empty %}
-                    <div class="p-3 small text-muted mb-0">Сьогодні ще нічого не зафіксовано. Охорона натискає «🚗 В'їзд» або «🚙 Виїзд» у боті після сканування QR.</div>
-                {% else %}
-                    <div class="table-responsive">
-                        <table class="table table-sm mb-0 small">
-                            <thead>
-                            <tr>
-                                <th>Час</th>
-                                <th>Куди</th>
-                                <th>Хто</th>
-                                <th>Квартира</th>
-                                <th>Авто</th>
-                                <th>Охорона</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {% for e in gate_events %}
-                                <tr>
-                                    <td class="text-nowrap">{{ e.createdAt|date('H:i') }}</td>
-                                    <td class="text-nowrap">{{ e.directionLabel }}</td>
-                                    <td>{{ e.personLabel }}</td>
-                                    <td>{{ e.placeLabel }}</td>
-                                    <td>{% if e.carLabel %}<span class="text-nowrap">{{ e.carLabel }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                                    <td class="text-muted">{{ e.guardLabel }}{% if e.gate %} · {{ e.gate }}{% endif %}</td>
-                                </tr>
-                            {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% endif %}
+            <div id="feed-alert" class="alert alert-warning feed-alert mb-2" style="display:none"></div>
+        {% endif %}
+
+        <div id="feed" class="guard-feed mb-4"
+             data-live="{{ is_current_week ? '1' : '0' }}"
+             data-week="{{ week|date('Y-m-d') }}"
+             data-scan="{{ cursor.scan }}"
+             data-event="{{ cursor.event }}"
+             data-url="{{ path('app_admin_scans_feed') }}">
+            {% for day in days %}
+                {{ include('admin/_scan_feed_day.html.twig', {day: day, guard_only: guard_only, live_pass_ids: live_pass_ids}) }}
+            {% endfor %}
+            <div class="feed-empty text-muted p-3"{% if days is not empty %} style="display:none"{% endif %}>
+                {{ is_current_week ? 'Цього тижня ще нічого не було.' : 'Цього тижня нічого не було.' }}
+                Охорона натискає «🚗 В'їзд» або «🚙 Виїзд» у боті після сканування QR.
             </div>
         </div>
 
@@ -78,10 +73,6 @@
             The live passes first: «які пропуски зараз ходять по ЖК» is the question this
             page is opened with more often than «хто сканував».
         #}
-        {# What the log may link to: a revoked pass is not drawn here, and an anchor to a
-           row that is not on the page is a click that does nothing. #}
-        {% set live_pass_ids = [] %}
-        {% for pass in passes %}{% set live_pass_ids = live_pass_ids|merge([pass.id]) %}{% endfor %}
         <div class="card mb-3">
             <div class="card-header py-2 px-3"><b>👷 Діючі пропуски</b> <span class="text-muted small">— видані квартирами для бригад, доставок, майстрів</span></div>
             <div class="card-body p-0">
@@ -146,97 +137,153 @@
             </div>
         </div>
 
-        {% if entries is empty %}
-            <div class="alert alert-light py-2 px-3 small mb-0">
-                Поки що жодного сканування.
-            </div>
-        {% else %}
-            <div class="card">
-                <div class="card-header py-2 px-3">
-                    <b>Журнал сканувань</b>
-                    <span class="text-muted small">
-                        — показано {{ entries|length }} з {{ total }}
-                    </span>
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-sm mb-0 small">
-                        <thead>
-                        <tr>
-                            <th>Коли</th>
-                            <th>Хто сканував</th>
-                            <th>Чий код</th>
-                            <th>Що це було</th>
-                            <th>Відповідь</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {% for scan in entries %}
-                            <tr>
-                                <td class="text-nowrap">{{ scan.createdAt|date('d.m H:i') }}</td>
-                                <td>
-                                    {{ scan.scannedByLabel }}
-                                    {% if scan.byGuard %}<span class="badge badge-dark">охорона</span>{% endif %}
-                                </td>
-                                <td>{{ scan.subjectLabel }}</td>
-                                {#
-                                    Both kinds lead somewhere, because «що це було» is read
-                                    as a question about a particular pass or a particular
-                                    flat, and the answer to both is already on a page: the
-                                    pass is the row above (highlighted on arrival), the
-                                    resident is their object's card.
-
-                                    Neither link is drawn blind — a revoked pass has no row
-                                    up there and a scan whose account was since deleted has
-                                    no card — and a dead link on a security log is worse
-                                    than plain text: it reads as the record having been
-                                    lost.
-                                #}
-                                <td>
-                                    {% if scan.kind == 'guest' %}
-                                        {% if scan.guestPassId and scan.guestPassId in live_pass_ids %}
-                                            <a href="#pass-{{ scan.guestPassId }}" class="text-decoration-none">👷 пропуск <span class="text-muted">#{{ scan.guestPassId }}</span></a>
-                                        {% else %}
-                                            👷 пропуск{% if scan.guestPassId %} <span class="text-muted">#{{ scan.guestPassId }}</span>{% endif %}
-                                        {% endif %}
-                                    {% else %}
-                                        {% if scan.subjectAccount and not guard_only %}
-                                            <a href="{{ path('app_admin_object', {id: scan.subjectAccount.id}) }}" class="text-decoration-none">🪪 мешканець</a>
-                                        {% else %}
-                                            🪪 мешканець
-                                        {% endif %}
-                                    {% endif %}
-                                </td>
-                                {#
-                                    Every result is named explicitly, with a neutral
-                                    fallback — the links page shipped with an unguarded
-                                    `else` that drew one kind as another and said something
-                                    untrue for a week.
-                                #}
-                                <td>
-                                    {% if scan.result == 'ok' %}
-                                        <span class="text-success">✅ дійсний</span>
-                                    {% elseif scan.result == 'no_booking' %}
-                                        <span class="text-muted">без броні</span>
-                                    {% elseif scan.result == 'not_active' %}
-                                        <span class="text-warning">⚪️ не активований</span>
-                                    {% elseif scan.result == 'revoked' %}
-                                        <span class="text-danger">🗑 скасований</span>
-                                    {% elseif scan.result == 'unknown' %}
-                                        <span class="text-danger">⚠️ не розпізнано</span>
-                                    {% else %}
-                                        <span class="text-muted">{{ scan.result }}</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <p class="text-muted small mt-2 mb-0">
-                Показано останні {{ shown }} записів. Журнал не редагується — це навмисно.
-            </p>
+        {% if is_current_week %}
+            <template id="feed-day-template">{{ include('admin/_scan_feed_day.html.twig', {day: {date: '', label: '', items: [], in: 0, out: 0, scans: 0}, guard_only: guard_only}) }}</template>
         {% endif %}
     </div>
+
+    {#
+        Built for the post's old PC, kept open all day: big type, strong contrast, the
+        arrows readable from a step away. In = green arrow pointing in, out = red arrow
+        pointing back out, a plain scan = grey square.
+    #}
+    <style>
+        .guard-feed { font-size: 1.15rem; }
+        .feed-intro { font-size: 1rem; }
+        .feed-nav .btn { font-size: 1.05rem; }
+        .feed-week { font-size: 1.15rem; }
+        .feed-status { font-size: 1rem; color: #333; }
+        .feed-alert { font-size: 1.1rem; font-weight: 600; }
+        .feed-day { margin-bottom: 1.25rem; border: 2px solid #222; border-radius: 6px; overflow: hidden; background: #fff; }
+        .feed-day-title { background: #222; color: #fff; margin: 0; padding: .5rem .75rem; font-size: 1.3rem; font-weight: 700; }
+        .feed-day-counts { float: right; font-weight: 600; background: #fff; color: #111; border-radius: 4px; padding: 0 .5rem; font-size: 1.05rem; }
+        .feed-day-counts .text-success { color: #0a7a2f !important; }
+        .feed-day-counts .text-danger { color: #c4141b !important; }
+        .mark-out-inline { display: inline-block; transform: scaleX(-1); }
+        .feed-table th { font-size: .95rem; color: #444; border-top: 0; }
+        .feed-table td { vertical-align: middle; border-top: 1px solid #ccc; color: #111; }
+        .feed-mark { white-space: nowrap; width: 8.5rem; }
+        .mark { display: inline-block; width: 2.2rem; height: 2.2rem; line-height: 2.2rem; text-align: center; border-radius: 50%; font-size: 1.4rem; font-weight: 900; color: #fff; margin-right: .4rem; vertical-align: middle; }
+        .feed-intro .mark { width: 1.6rem; height: 1.6rem; line-height: 1.6rem; font-size: 1rem; margin-right: .1rem; }
+        .mark-in { background: #0a7a2f; }
+        .mark-out { background: #c4141b; transform: scaleX(-1); }
+        .mark-scan { background: #6c757d; font-size: 1.1rem; }
+        .mark-label { font-weight: 700; vertical-align: middle; }
+        .mark-label.text-success { color: #0a7a2f !important; }
+        .mark-label.text-danger { color: #c4141b !important; }
+        .feed-in { background: #effaf2; }
+        .feed-out { background: #fdf0f0; }
+        .feed-time { font-size: 1.35rem; font-weight: 700; white-space: nowrap; width: 5rem; }
+        .feed-who .who { font-weight: 700; }
+        .feed-who .sub { font-size: 1rem; color: #333; }
+        .feed-who .car { font-weight: 700; white-space: nowrap; }
+        .feed-who .problem { display: inline-block; margin-left: .3rem; padding: 0 .4rem; border-radius: 4px; background: #ffe08a; color: #000; font-weight: 700; }
+        .feed-by { font-size: 1rem; color: #333; }
+        @keyframes feed-flash { from { box-shadow: inset 6px 0 0 #f0a500; background-color: #fff3c4; } to { box-shadow: inset 6px 0 0 transparent; } }
+        .feed-fresh { animation: feed-flash 12s ease-out 1; }
+        @media (max-width: 576px) { .feed-mark .mark-label, .feed-table thead { display: none; } .feed-mark { width: auto; } .feed-day-counts { float: none; display: inline-block; margin-top: .25rem; } }
+    </style>
+
+    {#
+        The 10-second top-up of the current week. Only what is newer than the ids already
+        on the screen is asked for; paused while the tab is hidden, resumed (at once) on
+        focus. A dropped network or an ended session never blanks the page: the rows stay,
+        and a yellow line says what is wrong and what to do.
+    #}
+    <script>
+    (function () {
+        var feed = document.getElementById('feed');
+        if (!feed || feed.dataset.live !== '1' || window.__guardFeedStarted) { return; }
+        window.__guardFeedStarted = true;
+
+        var EVERY = 10000, SLOW = 30000;
+        var cursor = { scan: +feed.dataset.scan || 0, event: +feed.dataset.event || 0 };
+        var timer = null, busy = false, failures = 0;
+        var alertBox = document.getElementById('feed-alert');
+        var updated = document.getElementById('feed-updated');
+
+        function pad(n) { return (n < 10 ? '0' : '') + n; }
+        function clock() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
+        function warn(html) { alertBox.innerHTML = html; alertBox.style.display = ''; }
+        function clearWarn() { alertBox.style.display = 'none'; }
+
+        function bump(section, type, delta) {
+            var el = section && section.querySelector(type === 'in' ? '.c-in' : (type === 'out' ? '.c-out' : '.c-scan'));
+            if (el) { el.textContent = Math.max(0, (+el.textContent || 0) + delta); }
+        }
+
+        function daySection(day, label) {
+            var section = feed.querySelector('.feed-day[data-day="' + day + '"]');
+            if (section) { return section; }
+            var tpl = document.getElementById('feed-day-template');
+            var holder = document.createElement('div');
+            holder.innerHTML = tpl.innerHTML.trim();
+            section = holder.firstElementChild;
+            section.setAttribute('data-day', day);
+            section.querySelector('.feed-day-label').textContent = label;
+            feed.insertBefore(section, feed.firstElementChild);
+            return section;
+        }
+
+        function apply(rows) {
+            rows.forEach(function (row) {
+                if (feed.querySelector('tr[data-key="' + row.key + '"]')) { return; }
+                if (row.replaces) {
+                    var old = feed.querySelector('tr[data-key="' + row.replaces + '"]');
+                    if (old) { bump(old.closest('.feed-day'), 'scan', -1); old.parentNode.removeChild(old); }
+                }
+                var section = daySection(row.day, row.day_label);
+                var body = section.querySelector('tbody');
+                var holder = document.createElement('tbody');
+                holder.innerHTML = row.html.trim();
+                body.insertBefore(holder.firstElementChild, body.firstElementChild);
+                bump(section, row.type, 1);
+            });
+            if (rows.length) { var empty = feed.querySelector('.feed-empty'); if (empty) { empty.style.display = 'none'; } }
+        }
+
+        function schedule(ms) { clearTimeout(timer); if (!document.hidden) { timer = setTimeout(poll, ms); } }
+
+        function poll() {
+            if (busy || document.hidden) { return; }
+            busy = true;
+            var url = feed.dataset.url + '?scan=' + cursor.scan + '&event=' + cursor.event;
+            fetch(url, { credentials: 'same-origin', cache: 'no-store', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (res) {
+                    var type = res.headers.get('Content-Type') || '';
+                    if (res.redirected || res.status === 401 || res.status === 403 || type.indexOf('application/json') === -1) {
+                        var e = new Error('session'); e.session = true; throw e;
+                    }
+                    if (!res.ok) { throw new Error('http ' + res.status); }
+                    return res.json();
+                })
+                .then(function (data) {
+                    if (data.week !== feed.dataset.week) { location.href = location.pathname; return; }
+                    apply(data.rows || []);
+                    cursor = data.cursor || cursor;
+                    failures = 0;
+                    clearWarn();
+                    updated.textContent = 'оновлено о ' + clock();
+                    schedule(EVERY);
+                })
+                .catch(function (err) {
+                    failures++;
+                    if (err && err.session) {
+                        warn('🔒 Сесію завершено — нові записи не надходять. Відкрийте бот → «🔐 Вхід у панель», щоб увійти знову. Записи нижче — станом на ' + updated.textContent.replace('оновлено о ', '') + '.');
+                    } else {
+                        warn('📡 Немає зв\'язку із сервером — повторюю спробу… Записи нижче — станом на ' + updated.textContent.replace('оновлено о ', '') + '.');
+                    }
+                    schedule(failures > 3 ? SLOW : EVERY);
+                })
+                .then(function () { busy = false; }, function () { busy = false; });
+        }
+
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden) { clearTimeout(timer); } else { poll(); }
+        });
+        window.addEventListener('focus', function () { if (!busy) { poll(); } });
+        window.addEventListener('online', function () { poll(); });
+        schedule(EVERY);
+    })();
+    </script>
 {% endblock %}

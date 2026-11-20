@@ -1,0 +1,30 @@
+{#
+    One line of the guard's feed (GuardFeed): the page and the 10-second poll both draw it
+    from here, so a row that arrives later looks exactly like one that was there.
+    Plain text for the guard's login: nothing here may lead it to a page it is refused at.
+#}
+<tr class="feed-row feed-{{ item.type }}{% if fresh|default(false) %} feed-fresh{% endif %}" data-key="{{ item.key }}">
+    <td class="feed-mark">
+        {% if item.type == 'in' %}
+            <span class="mark mark-in" title="В'їзд">➜</span><span class="mark-label text-success">В'їзд</span>
+        {% elseif item.type == 'out' %}
+            <span class="mark mark-out" title="Виїзд">➜</span><span class="mark-label text-danger">Виїзд</span>
+        {% else %}
+            <span class="mark mark-scan" title="Сканування QR">▣</span><span class="mark-label">QR</span>
+        {% endif %}
+    </td>
+    <td class="feed-time">{{ item.at|date('H:i') }}</td>
+    <td class="feed-who">
+        <div class="who">
+            {% if item.account_id and not guard_only|default(false) %}<a href="{{ path('app_admin_object', {id: item.account_id}) }}" class="text-decoration-none">{{ item.who }}</a>{% else %}{{ item.who }}{% endif %}
+        </div>
+        <div class="sub">
+            {% if item.pass_id and item.pass_id in live_pass_ids|default([]) %}<a href="#pass-{{ item.pass_id }}" class="text-decoration-none">{{ item.kind }}</a>{% else %}{{ item.kind }}{% endif %}{% if item.place %} · {{ item.place }}{% endif %}
+            {% if item.car %} · <span class="car">🚗 {{ item.car }}</span>{% endif %}
+            {% if item.problem %} <span class="problem">{{ item.problem }}</span>{% endif %}
+        </div>
+    </td>
+    <td class="feed-by">
+        {{ item.by }}{% if item.by_guard and item.type == 'scan' %} <span class="badge badge-dark">охорона</span>{% endif %}
+    </td>
+</tr>

@@ -60,4 +60,36 @@ class GateEventRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    /**
+     * Entries and exits of [from, to), newest first — one week of the guard's feed.
+     *
+     * @return GateEvent[]
+     */
+    public function between(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 3000): array
+    {
+        return $this->createQueryBuilder('e')
+            ->andWhere('e.created_at >= :from')->setParameter('from', $from)
+            ->andWhere('e.created_at < :to')->setParameter('to', $to)
+            ->orderBy('e.id', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * What was pressed after the event the page last saw — the feed's poll.
+     *
+     * @return GateEvent[]
+     */
+    public function newerThan(int $afterId, \DateTimeInterface $from, int $limit = 200): array
+    {
+        return $this->createQueryBuilder('e')
+            ->andWhere('e.id > :id')->setParameter('id', $afterId)
+            ->andWhere('e.created_at >= :from')->setParameter('from', $from)
+            ->orderBy('e.id', 'ASC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
 }

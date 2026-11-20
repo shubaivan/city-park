@@ -63,6 +63,8 @@ security:
         # ROLE_GUARD — the gate's own login — reads this page and no other one under /admin;
         # GuardPanelScopeSubscriber holds it to that whatever is added to this list later.
         - { path: ^/admin/scans$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS, ROLE_GUARD] }
+        # …and its 10-second top-up (the post keeps the page open all day, 20.11.2026).
+        - { path: ^/admin/scans/feed$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS, ROLE_GUARD] }
         # The SMS journal: read by everyone who can sign in (Иван, 30.09.2026 — «всем»).
         # GET only: a log of what was sent is not anybody's to change.
         - { path: ^/admin/sms$, methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
