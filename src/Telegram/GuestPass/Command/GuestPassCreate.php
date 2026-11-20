@@ -90,9 +90,11 @@ class GuestPassCreate extends Conversation
                 text: $account === null
                     ? "Спершу підтвердіть номер телефону: /phone"
                     : sprintf(
-                        "👷 У вашої квартири вже %d діючих пропуски — це максимум.\n\n"
+                        "👷 У вашої квартири вже %s — це максимум.\n\n"
+                            . "Пропуски, які не вмикали й не сканували понад %d днів, не рахуються.\n"
                             . 'Скасуйте зайвий у списку «👷 Пропуски», і зможете зробити новий.',
-                        GuestPass::MAX_PER_ACCOUNT,
+                        GuestPassService::livePasses($this->passes->countedFor($account)),
+                        GuestPass::DORMANT_AFTER_DAYS,
                     ),
                 parse_mode: ParseMode::HTML,
                 reply_markup: InlineKeyboardMarkup::make()

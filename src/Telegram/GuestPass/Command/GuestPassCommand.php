@@ -16,8 +16,8 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 /**
  * «👷 Пропуски» — the flat's passes for the people working in it.
  *
- * The list is short by construction (three at most), so it is a list of buttons and one
- * card behind each: the card is where the picture, the day and the two decisions live.
+ * The list is short by construction (ten counted at most, see GuestPass::MAX_PER_ACCOUNT),
+ * so it is a list of buttons and one card behind each: the card is where the picture, the day and the two decisions live.
  *
  * **The picture is minted once and forwarded once.** Re-sending a new QR to the бригадир
  * every morning is the friction that would kill this feature, so the code is permanent and
@@ -128,9 +128,9 @@ class GuestPassCommand
             ));
         }
 
-        if ($this->passes->mayCreate($account)) {
-            $markup->addRow(InlineKeyboardButton::make('➕ Новий пропуск', callback_data: GuestPassCreate::START_CALLBACK));
-        }
+        // Always drawn: a flat at the cap taps it and is told why (GuestPassCreate::askLabel),
+        // rather than finding the button silently gone — what Иван ran into on 20.11.2026.
+        $markup->addRow(InlineKeyboardButton::make('➕ Новий пропуск', callback_data: GuestPassCreate::START_CALLBACK));
 
         $markup->addRow(StartCommand::homeButton());
 

@@ -139,9 +139,11 @@ class GuestPassRulesTest extends TestCase
         $this->assertFalse($pass->isActiveAt($now));
     }
 
-    /** Three live passes per flat: a crew, a delivery and a fitter, not a street. */
-    public function testTheCapIsThreeLivePassesPerFlat(): void
+    /** Ten counted passes per flat (three until 20.11.2026): several trades, not a street. */
+    public function testTheCapIsTenCountedPassesPerFlat(): void
     {
+        $this->assertSame(10, GuestPass::MAX_PER_ACCOUNT);
+
         $account = $this->account();
 
         $repo = $this->createMock(GuestPassRepository::class);
@@ -150,10 +152,74 @@ class GuestPassRulesTest extends TestCase
         $this->assertFalse($this->service($repo)->mayCreate($account));
 
         $repo = $this->createMock(GuestPassRepository::class);
-        $repo->method('liveFor')->willReturn([$this->pass()]);
+        $repo->method('liveFor')->willReturn(array_fill(0, GuestPass::MAX_PER_ACCOUNT - 1, $this->pass()));
 
         $this->assertTrue($this->service($repo)->mayCreate($account));
         $this->assertFalse($this->service($repo)->mayCreate(null), 'no flat, nothing to vouch for anybody');
+    }
+
+    /** A pass made on $made and, optionally, last switched on until / scanned at. */
+    private function passFrom(string $made, ?string $until = null, ?string $scanned = null): GuestPass
+    {
+        $kyiv = new \DateTimeZone('Europe/Kyiv');
+        $pass = $this->pass();
+        (new \ReflectionProperty(GuestPass::class, 'created_at'))->setValue($pass, new \DateTime($made, $kyiv));
+        $pass->setActiveUntil($until === null ? null : new \DateTime($until, $kyiv));
+
+        if ($scanned !== null) {
+            $pass->countScan(new \DateTime($scanned, $kyiv));
+        }
+
+        return $pass;
+    }
+
+    /**
+     * Not switched on or scanned for 30 days: out of the count, still in the list.
+     *
+     * 20.11.2026: Иван's flat had two September passes nobody revoked, and with the old cap
+     * of three a delivery pass was enough to hide «➕ Новий пропуск».
+     */
+    public function testPassesUnusedForThirtyDaysDoNotCount(): void
+    {
+        $now = new \DateTime('2026-11-20 14:00', new \DateTimeZone('Europe/Kyiv'));
+
+        $september = $this->passFrom('2026-09-09 08:46', '2026-09-09 23:59:59');
+        $this->assertTrue($september->isDormantAt($now));
+
+        $this->assertFalse($this->passFrom('2026-11-17 12:51', '2026-11-20 23:59:59')->isDormantAt($now), 'running now');
+        $this->assertFalse($this->passFrom('2026-09-01', '2026-10-25 18:00')->isDormantAt($now), 'switched on 26 days ago');
+        $this->assertFalse($this->passFrom('2026-09-01', '2026-09-01 18:00', '2026-10-30 09:00')->isDormantAt($now), 'scanned 21 days ago');
+        $this->assertFalse($this->passFrom('2026-11-01')->isDormantAt($now), 'made 19 days ago, never switched on');
+        $this->assertTrue($this->passFrom('2026-10-01')->isDormantAt($now), 'made 50 days ago, never switched on');
+
+        // Switching a dormant pass on brings it back into the count.
+        $september->setActiveUntil(new \DateTime('2026-11-20 23:59:59', new \DateTimeZone('Europe/Kyiv')));
+        $this->assertFalse($september->isDormantAt($now));
+    }
+
+    public function testDormantPassesFreeTheirPlaceButStayLive(): void
+    {
+        $account = $this->account();
+        $live = array_fill(0, GuestPass::MAX_PER_ACCOUNT - 1, $this->pass());
+        $live[] = $this->passFrom('2026-01-01', '2026-01-01 23:59:59');
+
+        $repo = $this->createMock(GuestPassRepository::class);
+        $repo->method('liveFor')->willReturn($live);
+        $service = $this->service($repo);
+
+        $this->assertCount(GuestPass::MAX_PER_ACCOUNT, $service->liveFor($account), 'the list still shows it');
+        $this->assertSame(GuestPass::MAX_PER_ACCOUNT - 1, $service->countedFor($account));
+        $this->assertTrue($service->mayCreate($account));
+    }
+
+    public function testLivePassesIsDeclined(): void
+    {
+        $this->assertSame('1 діючий пропуск', GuestPassService::livePasses(1));
+        $this->assertSame('3 діючі пропуски', GuestPassService::livePasses(3));
+        $this->assertSame('5 діючих пропусків', GuestPassService::livePasses(5));
+        $this->assertSame('10 діючих пропусків', GuestPassService::livePasses(10));
+        $this->assertSame('11 діючих пропусків', GuestPassService::livePasses(11));
+        $this->assertSame('22 діючі пропуски', GuestPassService::livePasses(22));
     }
 
     /**

@@ -31,10 +31,20 @@ use Doctrine\ORM\Mapping as ORM;
 class GuestPass
 {
     /**
-     * Live passes per flat. A repair crew, a delivery and a fitter is the realistic top of
-     * what a flat has running at once; twenty is somebody handing out passes to the street.
+     * Passes per flat that count against the cap (see DORMANT_AFTER_DAYS for the ones that
+     * do not). Three until 20.11.2026, when Иван could not make one for a ремонтник: two
+     * passes from a September renovation, never revoked, were still holding two of the
+     * three places. Ten is a renovation with several trades at once and still not a street.
      */
-    public const MAX_PER_ACCOUNT = 3;
+    public const MAX_PER_ACCOUNT = 10;
+
+    /**
+     * A pass not switched on or scanned for this many days stops counting against the cap
+     * (Иван, 20.11.2026). It stays in the list and can be switched on again — the picture
+     * the бригадир keeps is still good — and from then on it counts again. Nobody revokes a
+     * pass when a job ends, so without this the cap fills up with finished jobs.
+     */
+    public const DORMANT_AFTER_DAYS = 30;
 
     /**
      * The longest a pass may be switched on for, in calendar days counting today: a week,
@@ -186,6 +196,26 @@ class GuestPass
         $this->last_scanned_at = $at;
 
         return $this;
+    }
+
+    /**
+     * Not used for DORMANT_AFTER_DAYS: no window running, and the last sign of life — made,
+     * switched on (a window ends no earlier than it was switched on), scanned — is older.
+     */
+    public function isDormantAt(\DateTimeInterface $now): bool
+    {
+        if ($this->isActiveAt($now)) {
+            return false;
+        }
+
+        $last = max(array_filter(
+            [$this->created_at, $this->active_until, $this->last_scanned_at],
+            static fn (?\DateTimeInterface $at): bool => $at !== null,
+        ));
+        $cutoff = \DateTimeImmutable::createFromInterface($now)
+            ->modify(sprintf('-%d days', self::DORMANT_AFTER_DAYS));
+
+        return $last < $cutoff;
     }
 
     /** Still inside the window its host switched on. */
