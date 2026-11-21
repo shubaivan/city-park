@@ -241,13 +241,7 @@ class AdminController extends AbstractController
             'cursor' => GuardFeed::cursor($weekScans, $weekEvents),
             // The live passes, so the page answers «які пропуски зараз ходять по ЖК» as
             // well as «хто ними скористався».
-            'passes' => $passes->createQueryBuilder('p')
-                ->leftJoin('p.issuedBy', 'u')->addSelect('u')
-                ->andWhere('p.revoked_at IS NULL')
-                ->orderBy('p.id', 'DESC')
-                ->setMaxResults(60)
-                ->getQuery()
-                ->getResult(),
+            'passes' => $passes->liveWithIssuers(60),
             'now' => $now,
         ]);
     }

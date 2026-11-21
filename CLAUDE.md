@@ -617,7 +617,7 @@ the issuer's phone beside «Видав» for everybody who reads the page — on
 expired passes too; a resident line «Контакт:» the people linked to the flat (≤
 `GuardFeed::MAX_CONTACTS`); «—» when there is nobody. Batch-loaded in two queries per page
 or poll (`GuardFeed::withContacts()`), drawn by `admin/_contact_person.html.twig`, the same
-partial as the live passes' «Видав» — names plain text for ROLE_GUARD, the phone for all.
+partial as the live passes' «Видав», with name and phone from `GuardService::contactName()` / `contactPhone()` (Twig filters `contact_name` / `contact_phone`) — the bot's own «Контакт власника» rules. Names plain text for ROLE_GUARD, the phone for all. `AdminScansFeedTest` drives the page and the poll as the guard.
 
 **Entry / exit log, for the gate only** (Иван, 13.11.2026). Under a guard's **valid** scan
 (resident code `ok`/`no_booking`, guest pass `ok`) the answer gets a row «🚗 В'їзд» /

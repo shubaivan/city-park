@@ -2,13 +2,15 @@
     One person to ring, the way /admin/scans writes it everywhere: the name — a link to the
     resident's card, plain text for the gate's login (it is refused at that card) — and the
     phone as a tel: link for everybody who reads the page (Иван, 12.11.2026). «—» when
-    there is nobody. The live passes' «Видав» and every feed line draw it from here, so the
-    two cannot write the same person two ways.
+    there is nobody. Name and phone come from GuardService (`contact_name`, `contact_phone`),
+    the same as the bot's «Контакт власника», so the panel and the bot cannot disagree; the
+    live passes' «Видав» and every feed line draw it from here.
 #}
 {%- if person -%}
-    {%- if not guard_only|default(false) -%}<a href="{{ path('app_admin_resident', {id: person.id}) }}" class="text-decoration-none">{{ person.firstName }} {{ person.lastName }}</a>{%- else -%}{{ person.firstName }} {{ person.lastName }}{%- endif %}
-    {% set digits = (person.phoneNumber ?? '')|replace({'+': '', ' ': '', '-': '', '(': '', ')': ''}) -%}
-    <span class="text-nowrap">({% if digits %}<a href="tel:+{{ digits }}">+{{ digits }}</a>{% else %}—{% endif %})</span>
+    {%- set name = person|contact_name -%}
+    {%- set phone = person|contact_phone -%}
+    {%- if name != '—' and not guard_only|default(false) -%}<a href="{{ path('app_admin_resident', {id: person.id}) }}" class="text-decoration-none">{{ name }}</a>{%- else -%}{{ name }}{%- endif %}
+    <span class="text-nowrap">({% if phone != '—' %}<a href="tel:{{ phone }}">{{ phone }}</a>{% else %}—{% endif %})</span>
 {%- else -%}
     —
 {%- endif -%}
