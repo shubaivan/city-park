@@ -625,7 +625,8 @@ header — label, flat, «Видав», status — with «× Усі події»
 and the poll answers `week: pass`, so it never reloads on Monday. Above the feed,
 `GuardCalendar`: the month's days with their line count (a scan with its press is one line,
 as in the feed), darker the busier; a day leads to `?week=<Monday>#day-<date>` (or down the
-pass's page), ‹ › switch `?month=`. Counts are one UNION ALL + GROUP BY per month, honouring
+pass's page), ‹ › switch `?month=`; today's cell grows with the poll by the same rule (+1 per new
+line, −1 on the day of a scan its press replaces). Counts are one UNION ALL + GROUP BY per month, honouring
 the pass filter. `GuardCalendarRulesTest`, `AdminScansFeedTest`, `AdminScansPageTest`.
 
 **Entry / exit log, for the gate only** (Иван, 13.11.2026). Under a guard's **valid** scan

@@ -298,13 +298,47 @@
             return section;
         }
 
+        /*
+            Today's calendar cell grows with the poll (Иван, 21.11.2026), by the calendar's own
+            rule: a new line is +1 on its day; a press that replaces a scan already on the
+            screen is −1 on that scan's day, so «scan, then В'їзд» stays one event. A day
+            outside the shown month has no cell, and nothing happens. The heat level is
+            recounted against the month's busiest day, exactly as GuardCalendar::grid() does.
+        */
+        var calCells = {};
+        document.querySelectorAll('.scan-cal-grid td[data-date]').forEach(function (td) { calCells[td.dataset.date] = td; });
+
+        function calBump(date, delta) {
+            var td = calCells[date];
+            if (!td) { return; }
+            var total = Math.max(0, (+td.dataset.total || 0) + delta);
+            td.dataset.total = total;
+            var dc = td.querySelector('.dc');
+            if (dc) { dc.textContent = total > 0 ? total : ''; }
+            var link = td.querySelector('a');
+            if (link) { link.title = total + ' ' + (total === 1 ? 'подія' : 'подій'); }
+            var max = 0, date2;
+            for (date2 in calCells) { max = Math.max(max, +calCells[date2].dataset.total || 0); }
+            for (date2 in calCells) {
+                var cell = calCells[date2], t = +cell.dataset.total || 0;
+                var level = t === 0 ? 0 : Math.max(1, Math.ceil(4 * t / max));
+                cell.className = cell.className.replace(/\blvl-\d\b/, 'lvl-' + level);
+            }
+        }
+
         function apply(rows) {
             rows.forEach(function (row) {
                 if (feed.querySelector('tr[data-key="' + row.key + '"]')) { return; }
                 if (row.replaces) {
                     var old = feed.querySelector('tr[data-key="' + row.replaces + '"]');
-                    if (old) { bump(old.closest('.feed-day'), 'scan', -1); old.parentNode.removeChild(old); }
+                    if (old) {
+                        var oldSection = old.closest('.feed-day');
+                        bump(oldSection, 'scan', -1);
+                        if (oldSection) { calBump(oldSection.dataset.day, -1); }
+                        old.parentNode.removeChild(old);
+                    }
                 }
+                calBump(row.day, 1);
                 var section = daySection(row.day, row.day_label);
                 var body = section.querySelector('tbody');
                 var holder = document.createElement('tbody');

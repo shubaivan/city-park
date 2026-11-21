@@ -299,6 +299,23 @@ class AdminScansPageTest extends KernelTestCase
         $this->assertStringContainsString('× Усі події', $html);
     }
 
+    /**
+     * Today's cell grows with the 10-second poll (21.11.2026): the cells carry their date and
+     * count for the script, and the script applies the calendar's own rule — +1 per new line,
+     * −1 on the day of a scan its press replaces. The arithmetic itself was checked in a
+     * browser against a reload; this pins that the hooks are there.
+     */
+    public function testTheCalendarCellsCarryWhatTheLivePollNeeds(): void
+    {
+        $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+        $today = $now->format('Y-m-d');
+        $html = $this->render([], [], 'ROLE_GUARD', [], true, [], [], null, null, [$today => ['in' => 1, 'out' => 0, 'scans' => 2]]);
+
+        $this->assertMatchesRegularExpression('#<td class="lvl-4 today" data-date="' . $today . '" data-total="3">#', $html);
+        $this->assertStringContainsString('calBump(row.day, 1);', $html);
+        $this->assertStringContainsString('calBump(oldSection.dataset.day, -1);', $html);
+    }
+
     /** The calendar is on the page, counts by day and leads to that day in the feed. */
     public function testTheCalendarLeadsToTheDay(): void
     {

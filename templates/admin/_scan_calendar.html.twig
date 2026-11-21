@@ -11,6 +11,7 @@
         <b class="scan-cal-title">{{ calendar.label }}</b>
         {% if calendar.next %}<a class="scan-cal-nav" href="{{ path('app_admin_scans', base|merge({month: calendar.next})) }}#calendar" aria-label="Наступний місяць">›</a>{% else %}<span class="scan-cal-nav disabled">›</span>{% endif %}
     </div>
+    {# `data-*` lets the 10-second poll keep today's cell growing (scans.html.twig, calBump). #}
     <table class="scan-cal-grid">
         <thead><tr><th class="wk" title="Тиждень">Тж</th><th>Пн</th><th>Вт</th><th>Ср</th><th>Чт</th><th>Пт</th><th>Сб</th><th>Нд</th></tr></thead>
         <tbody>
@@ -34,7 +35,7 @@
                         {% set href = pass_filter
                             ? (d.total > 0 ? path('app_admin_scans', {pass: pass_filter, month: calendar.month}) ~ '#day-' ~ d.date : null)
                             : (d.future ? null : path('app_admin_scans', {week: w.monday, month: calendar.month}) ~ '#day-' ~ d.date) %}
-                        <td class="lvl-{{ d.level }}{% if d.today %} today{% endif %}{% if d.future %} future{% endif %}">
+                        <td class="lvl-{{ d.level }}{% if d.today %} today{% endif %}{% if d.future %} future{% endif %}" data-date="{{ d.date }}" data-total="{{ d.total }}">
                             {% if href %}<a href="{{ href }}" title="{{ d.total }} {{ d.total == 1 ? 'подія' : 'подій' }}">{% endif %}
                                 <span class="dn">{{ d.day }}</span><span class="dc">{{ d.total > 0 ? d.total : '' }}</span>
                             {% if href %}</a>{% endif %}
