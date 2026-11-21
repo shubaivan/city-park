@@ -618,6 +618,15 @@ expired passes too; a resident line «Контакт:» the people linked to the
 `GuardFeed::MAX_CONTACTS`); «—» when there is nobody. Batch-loaded in two queries per page
 or poll (`GuardFeed::withContacts()`), drawn by `admin/_contact_person.html.twig`, the same
 partial as the live passes' «Видав», with name and phone from `GuardService::contactName()` / `contactPhone()` (Twig filters `contact_name` / `contact_phone`) — the bot's own «Контакт власника» rules. Names plain text for ROLE_GUARD, the phone for all. `AdminScansFeedTest` drives the page and the poll as the guard.
+**One pass's page and the month calendar** (Иван, 21.11.2026). `/admin/scans?pass=<id>` is
+that pass's whole life (every scan and entry/exit, revoked and expired passes too) under a
+header — label, flat, «Видав», status — with «× Усі події»; a live-pass row and every
+«👷 пропуск» mark in the feed lead there, for the gate's login too. It polls with `&pass=`
+and the poll answers `week: pass`, so it never reloads on Monday. Above the feed,
+`GuardCalendar`: the month's days with their line count (a scan with its press is one line,
+as in the feed), darker the busier; a day leads to `?week=<Monday>#day-<date>` (or down the
+pass's page), ‹ › switch `?month=`. Counts are one UNION ALL + GROUP BY per month, honouring
+the pass filter. `GuardCalendarRulesTest`, `AdminScansFeedTest`, `AdminScansPageTest`.
 
 **Entry / exit log, for the gate only** (Иван, 13.11.2026). Under a guard's **valid** scan
 (resident code `ok`/`no_booking`, guest pass `ok`) the answer gets a row «🚗 В'їзд» /

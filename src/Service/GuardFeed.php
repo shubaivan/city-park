@@ -33,6 +33,9 @@ final class GuardFeed
     public const TYPE_OUT = 'out';
     public const TYPE_SCAN = 'scan';
 
+    /** Where a pass's own feed (`?pass=`) starts looking: before the first scan the house ever logged. */
+    public const SINCE = '2026-01-01 00:00:00';
+
     /** How many of a flat's linked people a resident line names — the bot's answer names four, a line has room for fewer. */
     public const MAX_CONTACTS = 3;
 

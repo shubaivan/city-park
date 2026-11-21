@@ -190,8 +190,8 @@ class GuardRoleTest extends WebTestCase
             if (str_starts_with($href, '#') || str_starts_with($href, 'tel:') || str_contains($href, '/build/') || str_ends_with($href, '.jpg')) {
                 continue;
             }
-            // the week arrows stay on the same page
-            $this->assertMatchesRegularExpression('#^(/admin/scans(\?week=\d{4}-\d{2}-\d{2})?|/logout)$#', $href, 'the guard is offered a link to ' . $href);
+            // the week arrows, the calendar and the pass filter stay on the same page
+            $this->assertMatchesRegularExpression('#^(/admin/scans(\?(week=\d{4}-\d{2}-\d{2}|pass=\d+|month=\d{4}-\d{2})(&amp;(week=\d{4}-\d{2}-\d{2}|pass=\d+|month=\d{4}-\d{2}))*)?(\#[\w-]+)?|/logout)$#', $href, 'the guard is offered a link to ' . $href);
         }
     }
 }

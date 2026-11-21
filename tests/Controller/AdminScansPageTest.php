@@ -22,7 +22,7 @@ use Twig\Environment;
  */
 class AdminScansPageTest extends KernelTestCase
 {
-    private function render(array $entries, array $passes = [], string $role = 'ROLE_ADMIN', array $gate = [], bool $current = true, array $allPasses = [], array $people = []): string
+    private function render(array $entries, array $passes = [], string $role = 'ROLE_ADMIN', array $gate = [], bool $current = true, array $allPasses = [], array $people = [], ?int $passFilter = null, ?GuestPass $pass = null, array $counts = []): string
     {
         self::bootKernel();
 
@@ -41,6 +41,16 @@ class AdminScansPageTest extends KernelTestCase
             'prev_week' => '2026-11-09',
             'next_week' => $current ? null : '2026-11-23',
             'cursor' => GuardFeed::cursor($entries, $gate),
+            'is_live' => $passFilter !== null || $current,
+            'pass_filter' => $passFilter,
+            'pass' => $pass,
+            'calendar' => [
+                'month' => $now->format('Y-m'),
+                'label' => \App\Service\GuardCalendar::monthLabel($now),
+                'weeks' => \App\Service\GuardCalendar::grid($now, $counts, $now),
+                'prev' => '2026-10',
+                'next' => null,
+            ],
             'passes' => $passes,
             'now' => $now,
         ]);
@@ -220,37 +230,84 @@ class AdminScansPageTest extends KernelTestCase
     }
 
     /**
-     * «Що це було» leads to the thing it names.
+     * «Що це було» leads to the thing it names — the pass's own feed (21.11.2026).
      *
-     * The cell said «👷 пропуск #2» and did nothing, on a page whose whole job is being
-     * opened after the fact: the pass is three lines up in a list of near-identical rows,
-     * and finding it by eye is what the anchor removes. The flash is the `:target` rule in
-     * base.html.twig, shared with /admin/links.
+     * It used to scroll to the pass's row in the live list, which left a revoked pass with
+     * no link at all: the one whose story is asked for most. Now every pass mark opens
+     * `?pass=<id>`, which holds the pass's whole life whether it is live or not.
      */
-    public function testThePassLinkFindsItsRowUpThePage(): void
+    public function testEveryPassMarkOpensThePassFeedRevokedToo(): void
+    {
+        $html = $this->render([
+            self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_OK)),
+            self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED)),
+        ]);
+
+        $this->assertSame(2, substr_count($html, 'href="/admin/scans?pass=4#pass-filter"'));
+        $this->assertStringNotContainsString('href="#pass-', $html);
+    }
+
+    /** A live pass's row opens its feed — for the gate's login too. */
+    public function testALivePassRowOpensItsFeed(): void
     {
         $pass = (new GuestPass())->setAccount($this->flat(9))->setLabel('Бригада, ремонт');
         (new \ReflectionProperty(GuestPass::class, 'id'))->setValue($pass, 4);
 
-        $html = $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_OK))], [$pass]);
-
-        $this->assertStringContainsString('href="#pass-4"', $html);
-        $this->assertStringContainsString('id="pass-4"', $html, 'the anchor must land on a row that is on the page');
+        foreach (['ROLE_ADMIN', 'ROLE_GUARD'] as $role) {
+            $html = $this->render([], [$pass], $role);
+            $this->assertStringContainsString('data-href="/admin/scans?pass=4#pass-filter"', $html);
+            $this->assertStringContainsString('<a href="/admin/scans?pass=4#pass-filter" class="pass-open">Бригада, ремонт</a>', $html);
+        }
     }
 
     /**
-     * A pass that is no longer listed is not linked to.
-     *
-     * Revoked passes are left out of the table above, so the anchor would scroll nowhere —
-     * and a dead link in a security log reads as the record having been lost, which is the
-     * one thing this page must never suggest.
+     * One pass's page says which pass, how to leave, and polls for that pass only.
+     * The guard's login reads it too, still without links into cards.
      */
-    public function testAScanOfAPassThatIsGoneIsNotALink(): void
+    public function testThePassPageNamesThePassAndPollsForIt(): void
     {
-        $html = $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED))]);
+        $issuer = (new \App\Entity\TelegramUser())->setFirstName('Ніна')->setLastName('Коваль')->setPhoneNumber('380671112233');
+        (new \ReflectionProperty(\App\Entity\TelegramUser::class, 'id'))->setValue($issuer, 5);
+        $pass = (new GuestPass())->setAccount($this->flat(9))->setLabel('Бригада, ремонт')->setIssuedBy($issuer);
+        (new \ReflectionProperty(GuestPass::class, 'id'))->setValue($pass, 4);
+        $pass->revoke();
 
-        $this->assertStringContainsString('пропуск', $html);
-        $this->assertStringNotContainsString('href="#pass-', $html);
+        foreach (['ROLE_ADMIN', 'ROLE_GUARD'] as $role) {
+            $html = $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED))], [], $role, [], true, [$pass], [], 4, $pass);
+
+            $this->assertStringContainsString('Пропуск: <b>Бригада, ремонт</b>', $html);
+            $this->assertStringContainsString('× Усі події', $html);
+            $this->assertStringContainsString('скасований', $html);
+            $this->assertStringContainsString('href="tel:+380671112233"', $html);
+            $this->assertStringContainsString('data-pass="4"', $html);
+            $this->assertStringContainsString('data-live="1"', $html, 'a pass is live whatever week it is');
+            $this->assertStringContainsString('data-week="pass"', $html);
+            $this->assertStringNotContainsString('Попередній тиждень', $html, 'a pass has no weeks');
+            if ($role === 'ROLE_GUARD') {
+                $this->assertStringNotContainsString('/admin/users/', $html);
+                $this->assertStringNotContainsString('/admin/objects/', $html);
+            }
+        }
+    }
+
+    /** A pass the base no longer has still gets its page, saying so. */
+    public function testAPassThatIsGoneStillHasAPage(): void
+    {
+        $html = $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED))], [], 'ROLE_GUARD', [], true, [], [], 4, null);
+
+        $this->assertStringContainsString('Пропуск #4', $html);
+        $this->assertStringContainsString('× Усі події', $html);
+    }
+
+    /** The calendar is on the page, counts by day and leads to that day in the feed. */
+    public function testTheCalendarLeadsToTheDay(): void
+    {
+        $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+        $today = $now->format('Y-m-d');
+        $html = $this->render([], [], 'ROLE_GUARD', [], true, [], [], null, null, [$today => ['in' => 2, 'out' => 1, 'scans' => 4]]);
+
+        $this->assertStringContainsString('id="calendar"', $html);
+        $this->assertMatchesRegularExpression('#href="/admin/scans\?week=' . GuardFeed::weekStart($now)->format('Y-m-d') . '&amp;month=' . $now->format('Y-m') . '\#day-' . $today . '"[^>]*>\s*<span class="dn">' . (int)$now->format('j') . '</span><span class="dc">7</span>#u', $html);
     }
 
     /** A resident scan opens the flat whose code it was. */

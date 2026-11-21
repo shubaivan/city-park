@@ -27,6 +27,7 @@ use App\Repository\GateEventRepository;
 use App\Repository\GuestPassRepository;
 use App\Repository\LinkClickRepository;
 use App\Repository\QrScanRepository;
+use App\Service\GuardCalendar;
 use App\Service\GuardFeed;
 use App\Repository\SmsLogRepository;
 use App\Repository\SmsRunRepository;
@@ -220,25 +221,56 @@ class AdminController extends AbstractController
      * edited is not a log.
      */
     #[Route('/admin/scans', name: 'app_admin_scans', methods: [Request::METHOD_GET])]
-    public function scans(Request $request, QrScanRepository $scans, GuestPassRepository $passes, GateEventRepository $gate, TelegramUserRepository $people): Response
+    public function scans(Request $request, QrScanRepository $scans, GuestPassRepository $passes, GateEventRepository $gate, TelegramUserRepository $people, GuardCalendar $calendar): Response
     {
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+        $passId = self::passFilter($request);
         $monday = GuardFeed::parseWeek($request->query->get('week'), $now);
         $currentWeek = GuardFeed::weekStart($now);
-        $until = (clone $monday)->modify('+7 days');
 
-        $weekScans = $scans->between($monday, $until);
-        $weekEvents = $gate->between($monday, $until);
+        if ($passId !== null) {
+            // One pass, its whole life — a pass is reused for days, sometimes across a
+            // week's edge, and «що було з цим пропуском» is one question.
+            $feedScans = $scans->between(new \DateTime(GuardFeed::SINCE), (clone $now)->modify('+1 day'), 3000, $passId);
+            $feedEvents = $gate->between(new \DateTime(GuardFeed::SINCE), (clone $now)->modify('+1 day'), 3000, $passId);
+            $pass = $passes->withIssuers([$passId])[0] ?? null;
+        } else {
+            $until = (clone $monday)->modify('+7 days');
+            $feedScans = $scans->between($monday, $until);
+            $feedEvents = $gate->between($monday, $until);
+            $pass = null;
+        }
+
         $isCurrent = $monday == $currentWeek;
+        $items = $this->feedWithContacts(GuardFeed::merge($feedScans, $feedEvents), $passes, $people);
+
+        // The calendar opens on the month being looked at: the pass's latest line, or the
+        // week on the screen.
+        $month = GuardCalendar::parseMonth(
+            $request->query->get('month'),
+            $passId !== null ? ($items[0]['at'] ?? $now) : ($isCurrent ? $now : $monday),
+            $now,
+        );
+        $nextMonth = (clone $month)->modify('+1 month');
 
         return $this->render('admin/scans.html.twig', [
-            'days' => GuardFeed::byDay($this->feedWithContacts(GuardFeed::merge($weekScans, $weekEvents), $passes, $people)),
+            'days' => GuardFeed::byDay($items),
             'week' => $monday,
             'week_label' => GuardFeed::weekLabel($monday),
             'is_current_week' => $isCurrent,
+            'is_live' => $passId !== null || $isCurrent,
             'prev_week' => (clone $monday)->modify('-7 days')->format('Y-m-d'),
             'next_week' => $isCurrent ? null : (clone $monday)->modify('+7 days')->format('Y-m-d'),
-            'cursor' => GuardFeed::cursor($weekScans, $weekEvents),
+            'cursor' => GuardFeed::cursor($feedScans, $feedEvents),
+            'pass_filter' => $passId,
+            'pass' => $pass,
+            'calendar' => [
+                'month' => $month->format('Y-m'),
+                'label' => GuardCalendar::monthLabel($month),
+                'weeks' => GuardCalendar::grid($month, $calendar->counts($month, $passId), $now),
+                'prev' => (clone $month)->modify('-1 month')->format('Y-m'),
+                'next' => $nextMonth <= $now ? $nextMonth->format('Y-m') : null,
+            ],
             // The live passes, so the page answers «які пропуски зараз ходять по ЖК» as
             // well as «хто ними скористався».
             'passes' => $passes->liveWithIssuers(60),
@@ -247,20 +279,23 @@ class AdminController extends AbstractController
     }
 
     /**
-     * The 10-second poll of the current week: what arrived after the ids the page last saw.
-     * Rows come rendered by the same partial as the page, so the two cannot drift apart.
-     * `week` lets the page notice that Monday has come and reload itself.
+     * The 10-second poll of the current week, or of one pass (`pass`): what arrived after
+     * the ids the page last saw. Rows come rendered by the same partial as the page, so the
+     * two cannot drift apart. `week` lets the page notice that Monday has come and reload
+     * itself; a pass's page has no week, so it says `pass` and never reloads.
      */
     #[Route('/admin/scans/feed', name: 'app_admin_scans_feed', methods: [Request::METHOD_GET])]
     public function scansFeed(Request $request, QrScanRepository $scans, GateEventRepository $gate, GuestPassRepository $passes, TelegramUserRepository $people): JsonResponse
     {
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
+        $passId = self::passFilter($request);
         $monday = GuardFeed::weekStart($now);
+        $from = $passId !== null ? new \DateTime(GuardFeed::SINCE) : $monday;
         $afterScan = max(0, $request->query->getInt('scan'));
         $afterEvent = max(0, $request->query->getInt('event'));
 
-        $newScans = $scans->newerThan($afterScan, $monday);
-        $newEvents = $gate->newerThan($afterEvent, $monday);
+        $newScans = $scans->newerThan($afterScan, $from, 200, $passId);
+        $newEvents = $gate->newerThan($afterEvent, $from, 200, $passId);
         $guardOnly = $this->isGranted('ROLE_GUARD') && !$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_COMPLAINTS');
 
         $rows = [];
@@ -278,7 +313,7 @@ class AdminController extends AbstractController
         }
 
         $response = new JsonResponse([
-            'week' => $monday->format('Y-m-d'),
+            'week' => $passId !== null ? 'pass' : $monday->format('Y-m-d'),
             'cursor' => GuardFeed::cursor($newScans, $newEvents, $afterScan, $afterEvent),
             'rows' => $rows,
             'server_time' => $now->format('H:i:s'),
@@ -286,6 +321,14 @@ class AdminController extends AbstractController
         $response->headers->set('Cache-Control', 'no-store');
 
         return $response;
+    }
+
+    /** `?pass=<id>` — one pass's lines; anything that is not a positive id is no filter. */
+    private static function passFilter(Request $request): ?int
+    {
+        $raw = (string)$request->query->get('pass', '');
+
+        return preg_match('/^[1-9]\d{0,8}$/', $raw) ? (int)$raw : null;
     }
 
     /**

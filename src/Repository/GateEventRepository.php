@@ -66,9 +66,9 @@ class GateEventRepository extends ServiceEntityRepository
      *
      * @return GateEvent[]
      */
-    public function between(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 3000): array
+    public function between(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 3000, ?int $passId = null): array
     {
-        return $this->createQueryBuilder('e')
+        return $this->onlyPass($this->createQueryBuilder('e'), $passId)
             ->andWhere('e.created_at >= :from')->setParameter('from', $from)
             ->andWhere('e.created_at < :to')->setParameter('to', $to)
             ->orderBy('e.id', 'DESC')
@@ -82,14 +82,25 @@ class GateEventRepository extends ServiceEntityRepository
      *
      * @return GateEvent[]
      */
-    public function newerThan(int $afterId, \DateTimeInterface $from, int $limit = 200): array
+    public function newerThan(int $afterId, \DateTimeInterface $from, int $limit = 200, ?int $passId = null): array
     {
-        return $this->createQueryBuilder('e')
+        return $this->onlyPass($this->createQueryBuilder('e'), $passId)
             ->andWhere('e.id > :id')->setParameter('id', $afterId)
             ->andWhere('e.created_at >= :from')->setParameter('from', $from)
             ->orderBy('e.id', 'ASC')
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
+    }
+
+    /** `?pass=<id>` on /admin/scans: one pass's lines only, revoked and expired passes too. */
+    private function onlyPass(\Doctrine\ORM\QueryBuilder $qb, ?int $passId): \Doctrine\ORM\QueryBuilder
+    {
+        if ($passId !== null) {
+            $alias = $qb->getRootAliases()[0];
+            $qb->andWhere($alias . '.guest_pass_id = :pass')->setParameter('pass', $passId);
+        }
+
+        return $qb;
     }
 }

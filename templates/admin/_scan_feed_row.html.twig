@@ -19,7 +19,7 @@
             {% if item.account_id and not guard_only|default(false) %}<a href="{{ path('app_admin_object', {id: item.account_id}) }}" class="text-decoration-none">{{ item.who }}</a>{% else %}{{ item.who }}{% endif %}
         </div>
         <div class="sub">
-            {% if item.pass_id and item.pass_id in live_pass_ids|default([]) %}<a href="#pass-{{ item.pass_id }}" class="text-decoration-none">{{ item.kind }}</a>{% else %}{{ item.kind }}{% endif %}{% if item.place %} · {{ item.place }}{% endif %}
+            {# A pass mark opens that pass's own feed — revoked and expired passes too (21.11.2026). #}{% if item.pass_id %}<a href="{{ path('app_admin_scans', {pass: item.pass_id}) }}#pass-filter" class="text-decoration-none">{{ item.kind }}</a>{% else %}{{ item.kind }}{% endif %}{% if item.place %} · {{ item.place }}{% endif %}
             {% if item.car %} · <span class="car">🚗 {{ item.car }}</span>{% endif %}
             {% if item.problem %} <span class="problem">{{ item.problem }}</span>{% endif %}
         </div>

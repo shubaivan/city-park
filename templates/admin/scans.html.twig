@@ -20,12 +20,11 @@
             plain text rather than links to cards it would only be refused at.
         #}
         {% set guard_only = is_granted('ROLE_GUARD') and not is_granted('ROLE_ADMIN') and not is_granted('ROLE_COMPLAINTS') %}
+        {% set pass_filter = pass_filter|default(null) %}
+        {% set pass = pass|default(null) %}
+        {% set is_live = is_live|default(is_current_week) %}
         {% if not guard_only %}<p class="mb-2"><a href="{{ path('app_admin') }}">← На головну адмінки</a></p>{% endif %}
 
-        {# What a pass mark may link to: a revoked pass is not drawn below, and an anchor to a
-           row that is not on the page is a click that does nothing. #}
-        {% set live_pass_ids = [] %}
-        {% for pass in passes %}{% set live_pass_ids = live_pass_ids|merge([pass.id]) %}{% endfor %}
         <h4 class="mb-1">🚧 В'їзд, виїзд і сканування QR</h4>
         <p class="text-muted mb-3 feed-intro">
             <span class="mark mark-in">➜</span> в'їзд ·
@@ -38,6 +37,34 @@
             The post's feed (GuardFeed, 20.11.2026): one week, newest first, by day. Only
             the current week tops itself up — an earlier week is history and does not change.
         #}
+        {#
+            One pass's page (`?pass=`, 21.11.2026): every line of that pass, its whole life —
+            revoked and expired passes too — under a header saying which pass it is.
+        #}
+        {% if pass_filter|default(null) %}
+            <div class="pass-filter alert alert-info mb-2" id="pass-filter">
+                <a class="btn btn-dark btn-sm float-right ml-2" href="{{ path('app_admin_scans') }}">× Усі події</a>
+                {% if pass %}
+                    <div class="pf-title">👷 Пропуск: <b>{{ pass.label }}</b> <span class="text-muted">#{{ pass.id }}</span></div>
+                    <div class="pf-sub">
+                        {{ pass.account ? pass.account.placeLabel : '—' }} ·
+                        Видав: {{ include('admin/_contact_person.html.twig', {person: pass.issuedBy, guard_only: guard_only}) }}
+                    </div>
+                    <div class="pf-sub">
+                        Створено {{ pass.createdAt|date('d.m.Y H:i') }} ·
+                        {% if pass.revokedAt|default(null) %}🗑 скасований {{ pass.revokedAt|date('d.m H:i') }}
+                        {% elseif pass.activeUntil and pass.activeUntil > now %}<span class="text-success">✅ активний до {{ pass.activeUntil|date('d.m H:i') }}</span>
+                        {% else %}⚪️ не активний{% endif %}
+                    </div>
+                {% else %}
+                    <div class="pf-title">👷 Пропуск #{{ pass_filter }} — у базі його вже немає; нижче — його записи в журналі.</div>
+                {% endif %}
+            </div>
+        {% endif %}
+
+        {% if calendar is defined %}{{ include('admin/_scan_calendar.html.twig') }}{% endif %}
+
+        {% if not pass_filter|default(null) %}
         <div class="feed-nav d-flex flex-wrap align-items-center mb-2">
             <a class="btn btn-outline-dark mr-2 mb-1" href="{{ path('app_admin_scans', {week: prev_week}) }}">← Попередній тиждень</a>
             <b class="mr-2 mb-1 feed-week">{{ is_current_week ? 'Цей тиждень' : 'Тиждень' }}: {{ week_label }}</b>
@@ -46,8 +73,9 @@
                 <a class="btn btn-dark mb-1" href="{{ path('app_admin_scans') }}">До поточного</a>
             {% endif %}
         </div>
+        {% endif %}
 
-        {% if is_current_week %}
+        {% if is_live %}
             <div id="feed-status" class="feed-status mb-2" aria-live="polite">
                 Оновлюється автоматично · <span id="feed-updated">оновлено о {{ now|date('H:i:s') }}</span>
             </div>
@@ -55,16 +83,17 @@
         {% endif %}
 
         <div id="feed" class="guard-feed mb-4"
-             data-live="{{ is_current_week ? '1' : '0' }}"
-             data-week="{{ week|date('Y-m-d') }}"
+             data-live="{{ is_live ? '1' : '0' }}"
+             data-week="{{ pass_filter|default(null) ? 'pass' : week|date('Y-m-d') }}"
+             data-pass="{{ pass_filter|default('') }}"
              data-scan="{{ cursor.scan }}"
              data-event="{{ cursor.event }}"
              data-url="{{ path('app_admin_scans_feed') }}">
             {% for day in days %}
-                {{ include('admin/_scan_feed_day.html.twig', {day: day, guard_only: guard_only, live_pass_ids: live_pass_ids}) }}
+                {{ include('admin/_scan_feed_day.html.twig', {day: day, guard_only: guard_only}) }}
             {% endfor %}
             <div class="feed-empty text-muted p-3"{% if days is not empty %} style="display:none"{% endif %}>
-                {{ is_current_week ? 'Цього тижня ще нічого не було.' : 'Цього тижня нічого не було.' }}
+                {% if pass_filter|default(null) %}Цим пропуском ще не користувались.{% else %}{{ is_current_week ? 'Цього тижня ще нічого не було.' : 'Цього тижня нічого не було.' }}{% endif %}
                 Охорона натискає «🚗 В'їзд» або «🚙 Виїзд» у боті після сканування QR.
             </div>
         </div>
@@ -99,8 +128,9 @@
                                     flashes it — a scroll position on its own says nothing
                                     about which of a dozen near-identical lines was meant.
                                 #}
-                                <tr id="pass-{{ pass.id }}">
-                                    <td>{{ pass.label }}</td>
+                                {# The whole row opens the pass's own feed (21.11.2026); the links inside it keep their own targets. #}
+                                <tr id="pass-{{ pass.id }}" class="pass-row{% if pass.id == pass_filter|default(null) %} pass-row-current{% endif %}" data-href="{{ path('app_admin_scans', {pass: pass.id}) }}#pass-filter">
+                                    <td><a href="{{ path('app_admin_scans', {pass: pass.id}) }}#pass-filter" class="pass-open">{{ pass.label }}</a></td>
                                     <td>
                                         {% if pass.account and pass.account.id and not guard_only %}<a href="{{ path('app_admin_object', {id: pass.account.id}) }}" class="text-decoration-none">{{ pass.account.placeLabel }}</a>{% else %}{{ pass.account ? pass.account.placeLabel : '—' }}{% endif %}
                                     </td>
@@ -133,7 +163,7 @@
             </div>
         </div>
 
-        {% if is_current_week %}
+        {% if is_live %}
             <template id="feed-day-template">{{ include('admin/_scan_feed_day.html.twig', {day: {date: '', label: '', items: [], in: 0, out: 0, scans: 0}, guard_only: guard_only}) }}</template>
         {% endif %}
     </div>
@@ -175,6 +205,35 @@
         .feed-who .car { font-weight: 700; white-space: nowrap; }
         .feed-who .problem { display: inline-block; margin-left: .3rem; padding: 0 .4rem; border-radius: 4px; background: #ffe08a; color: #000; font-weight: 700; }
         .feed-who .contact { font-size: 1rem; color: #333; }
+        .pass-row { cursor: pointer; }
+        .pass-row:hover { background: #f1f6ff; }
+        .pass-row-current { background: #e3efff; }
+        .pass-open { font-weight: 700; }
+        .pass-filter { font-size: 1.05rem; color: #0c3c5e; }
+        .pass-filter .pf-title { font-size: 1.15rem; }
+        .scan-cal { max-width: 26rem; }
+        .scan-cal-head { display: flex; align-items: center; justify-content: space-between; padding: .35rem .5rem; }
+        .scan-cal-title { font-size: 1.1rem; }
+        .scan-cal-nav { display: inline-block; min-width: 2.6rem; text-align: center; font-size: 1.5rem; line-height: 2.2rem; border: 1px solid #ccc; border-radius: 6px; text-decoration: none !important; color: #111; }
+        .scan-cal-nav.disabled { color: #bbb; }
+        .scan-cal-grid { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 3px; }
+        .scan-cal-grid th { text-align: center; font-size: .8rem; color: #555; font-weight: 600; }
+        .scan-cal-grid td { text-align: center; height: 2.7rem; border-radius: 5px; padding: 0; vertical-align: middle; }
+        .scan-cal-grid td a { display: block; height: 100%; color: inherit; text-decoration: none; padding-top: .15rem; }
+        .scan-cal-grid .wk { width: 1.9rem; }
+        .scan-cal-grid td.wk a { font-weight: 700; color: #333; padding-top: .55rem; }
+        .scan-cal-grid .dn { display: block; font-size: .75rem; line-height: 1rem; }
+        .scan-cal-grid .dc { display: block; font-size: 1rem; font-weight: 800; line-height: 1.2rem; min-height: 1.2rem; }
+        .scan-cal-grid .lvl-0 { background: #f3f4f6; color: #555; }
+        .scan-cal-grid .lvl-1 { background: #d6e9fb; color: #0b2e4f; }
+        .scan-cal-grid .lvl-2 { background: #9fcbf3; color: #0b2e4f; }
+        .scan-cal-grid .lvl-3 { background: #4a98de; color: #fff; }
+        .scan-cal-grid .lvl-4 { background: #1d5fa3; color: #fff; }
+        .scan-cal-grid .today { box-shadow: inset 0 0 0 2px #f0a500; }
+        .scan-cal-grid .future { background: transparent; color: #bbb; }
+        .scan-cal-grid .out { background: transparent; }
+        .scan-cal-grid tr.shown-week td:not(.out) { outline: 2px solid #222; outline-offset: -1px; }
+        .feed-day { scroll-margin-top: .5rem; }
         .feed-by { font-size: 1rem; color: #333; }
         @keyframes feed-flash { from { box-shadow: inset 6px 0 0 #f0a500; background-color: #fff3c4; } to { box-shadow: inset 6px 0 0 transparent; } }
         .feed-fresh { animation: feed-flash 12s ease-out 1; }
@@ -188,6 +247,22 @@
         and a yellow line says what is wrong and what to do.
     #}
     <script>
+    (function () {
+        // A pass row opens the pass's own feed; a tap on a link inside it keeps its own target.
+        document.querySelectorAll('tr.pass-row[data-href]').forEach(function (row) {
+            row.addEventListener('click', function (e) {
+                if (e.target.closest('a')) { return; }
+                location.href = row.dataset.href;
+            });
+        });
+        // A calendar day with nothing on it has no section to land on — land on the feed.
+        // After load: the browser's own jump to a missing anchor would undo an earlier scroll.
+        window.addEventListener('load', function () {
+            if (/^#day-/.test(location.hash) && !document.getElementById(location.hash.slice(1))) {
+                var f = document.getElementById('feed'); if (f) { setTimeout(function () { f.scrollIntoView(); }, 0); }
+            }
+        });
+    })();
     (function () {
         var feed = document.getElementById('feed');
         if (!feed || feed.dataset.live !== '1' || window.__guardFeedStarted) { return; }
@@ -217,6 +292,7 @@
             holder.innerHTML = tpl.innerHTML.trim();
             section = holder.firstElementChild;
             section.setAttribute('data-day', day);
+            section.id = 'day-' + day;
             section.querySelector('.feed-day-label').textContent = label;
             feed.insertBefore(section, feed.firstElementChild);
             return section;
@@ -244,7 +320,7 @@
         function poll() {
             if (busy || document.hidden) { return; }
             busy = true;
-            var url = feed.dataset.url + '?scan=' + cursor.scan + '&event=' + cursor.event;
+            var url = feed.dataset.url + '?scan=' + cursor.scan + '&event=' + cursor.event + (feed.dataset.pass ? '&pass=' + encodeURIComponent(feed.dataset.pass) : '');
             fetch(url, { credentials: 'same-origin', cache: 'no-store', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (res) {
                     var type = res.headers.get('Content-Type') || '';

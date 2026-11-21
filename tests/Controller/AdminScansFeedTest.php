@@ -11,6 +11,7 @@ use App\Repository\GateEventRepository;
 use App\Repository\GuestPassRepository;
 use App\Repository\QrScanRepository;
 use App\Repository\TelegramUserRepository;
+use App\Service\GuardCalendar;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
@@ -23,6 +24,9 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  */
 class AdminScansFeedTest extends WebTestCase
 {
+    /** @var list<array{string, array<int, mixed>}> */
+    private array $asked = [];
+
     private function client(string $login): KernelBrowser
     {
         $client = static::createClient();
@@ -52,24 +56,35 @@ class AdminScansFeedTest extends WebTestCase
             (new \ReflectionProperty(QrScan::class, 'created_at'))->setValue($scan, (clone $now)->modify('-' . (10 - $i) . ' minutes'));
         }
 
-        $scans = $this->createStub(QrScanRepository::class);
-        $scans->method('between')->willReturn([$passScan, $residentScan, $unknown]);
-        $scans->method('newerThan')->willReturn([$passScan, $residentScan, $unknown]);
-        $gate = $this->createStub(GateEventRepository::class);
-        $gate->method('between')->willReturn([]);
-        $gate->method('newerThan')->willReturn([]);
+        // What the repositories were asked for: the pass filter must reach every query.
+        $this->asked = [];
+        $record = function (string $what, array $args, array $result): array {
+            $this->asked[] = [$what, $args];
 
-        $passes = $this->createMock(GuestPassRepository::class);
-        $passes->expects($this->once())->method('withIssuers')->with([4])->willReturn([$pass]);
+            return $result;
+        };
+        $all = [$passScan, $residentScan, $unknown];
+        $scans = $this->createStub(QrScanRepository::class);
+        $scans->method('between')->willReturnCallback(fn (...$a) => $record('scans', $a, ($a[3] ?? null) === 4 ? [$passScan] : $all));
+        $scans->method('newerThan')->willReturnCallback(fn (...$a) => $record('scans', $a, ($a[3] ?? null) === 4 ? [$passScan] : $all));
+        $gate = $this->createStub(GateEventRepository::class);
+        $gate->method('between')->willReturnCallback(fn (...$a) => $record('gate', $a, []));
+        $gate->method('newerThan')->willReturnCallback(fn (...$a) => $record('gate', $a, []));
+
+        $passes = $this->createStub(GuestPassRepository::class);
+        $passes->method('withIssuers')->willReturnCallback(fn (array $ids) => $record('passes', [$ids], in_array(4, $ids, true) ? [$pass] : []));
         $passes->method('liveWithIssuers')->willReturn([]);
-        $people = $this->createMock(TelegramUserRepository::class);
-        $people->expects($this->once())->method('linkedTo')->with([12])->willReturn([$neighbour]);
+        $people = $this->createStub(TelegramUserRepository::class);
+        $people->method('linkedTo')->willReturnCallback(fn (array $ids) => $record('people', [$ids], in_array(12, $ids, true) ? [$neighbour] : []));
+        $calendar = $this->createStub(GuardCalendar::class);
+        $calendar->method('counts')->willReturnCallback(fn (...$a) => $record('calendar', $a, []));
 
         $container = static::getContainer();
         $container->set(QrScanRepository::class, $scans);
         $container->set(GateEventRepository::class, $gate);
         $container->set(GuestPassRepository::class, $passes);
         $container->set(TelegramUserRepository::class, $people);
+        $container->set(GuardCalendar::class, $calendar);
 
         return $client;
     }
@@ -111,5 +126,61 @@ class AdminScansFeedTest extends WebTestCase
     private function setId(object $entity, int $id): void
     {
         (new \ReflectionProperty($entity::class, 'id'))->setValue($entity, $id);
+    }
+
+    /** `?pass=` reaches every query of the poll, and the poll never asks the page to reload for a new week. */
+    public function testThePollOfOnePassAsksForThatPassOnly(): void
+    {
+        $client = $this->client('test_guard');
+        $client->request('GET', '/admin/scans/feed?scan=0&event=0&pass=4');
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode((string)$client->getResponse()->getContent(), true);
+        $this->assertSame('pass', $data['week']);
+        $this->assertSame(['s10'], array_column($data['rows'], 'key'));
+
+        foreach ($this->asked as [$what, $args]) {
+            if (in_array($what, ['scans', 'gate'], true)) {
+                $this->assertSame(4, $args[3], $what . ' must be asked for pass 4 only');
+            }
+        }
+    }
+
+    /** The pass's own page, for the gate: the pass named, its lines, the calendar counted for it. */
+    public function testThePassPageForTheGuard(): void
+    {
+        $client = $this->client('test_guard');
+        $client->request('GET', '/admin/scans?pass=4');
+
+        $this->assertResponseIsSuccessful();
+        $page = (string)$client->getResponse()->getContent();
+        $this->assertStringContainsString('Пропуск: <b>Бригада</b>', $page);
+        $this->assertStringContainsString('× Усі події', $page);
+        $this->assertStringContainsString('href="tel:+380671112233"', $page);
+        $this->assertStringContainsString('data-key="s10"', $page);
+        $this->assertStringNotContainsString('data-key="s11"', $page, 'the resident line is not this pass\'s');
+        $this->assertStringNotContainsString('data-key="s12"', $page);
+        $this->assertStringNotContainsString('/admin/users/', $page);
+
+        $asked = array_filter($this->asked, static fn ($a) => in_array($a[0], ['scans', 'gate', 'calendar'], true));
+        $this->assertNotEmpty($asked);
+        foreach ($asked as [$what, $args]) {
+            $this->assertSame(4, $what === 'calendar' ? $args[1] : $args[3], $what . ' must be filtered to pass 4');
+        }
+    }
+
+    /** Anything that is not a pass id is no filter at all — never an error, never «pass 0». */
+    public function testAGarbagePassIsNoFilter(): void
+    {
+        $client = $this->client('test_guard');
+        $client->request('GET', '/admin/scans?pass=abc');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertStringNotContainsString('× Усі події', (string)$client->getResponse()->getContent());
+        foreach ($this->asked as [$what, $args]) {
+            if ($what === 'calendar') {
+                $this->assertNull($args[1]);
+            }
+        }
     }
 }
