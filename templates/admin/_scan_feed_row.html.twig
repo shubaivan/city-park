@@ -23,6 +23,17 @@
             {% if item.car %} · <span class="car">🚗 {{ item.car }}</span>{% endif %}
             {% if item.problem %} <span class="problem">{{ item.problem }}</span>{% endif %}
         </div>
+        {#
+            Who to ring (Иван, 21.11.2026): the pass's issuer — for a revoked or expired pass
+            too, it is not in the live list above — or the people on the flat whose code it is. Mandatory on every line
+            (Иван, 21.11.2026: the guard rings to clarify); «—» when there is nobody.
+        #}
+        {% if item.guest|default(false) %}
+            <div class="contact">Видав: {{ include('admin/_contact_person.html.twig', {person: item.issuer|default(null), guard_only: guard_only|default(false)}) }}</div>
+        {% else %}
+            {# Every line has somebody to ring, or says there is nobody (an unrecognised code, a flat with no one linked). #}
+            <div class="contact">Контакт: {% for person in item.contacts|default([]) %}{{ include('admin/_contact_person.html.twig', {person: person, guard_only: guard_only|default(false)}) }}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</div>
+        {% endif %}
     </td>
     <td class="feed-by">
         {{ item.by }}{% if item.by_guard and item.type == 'scan' %} <span class="badge badge-dark">охорона</span>{% endif %}

@@ -612,6 +612,12 @@ for a missing field — under the usual answer: the pass's issuer, or the people
 the flat whose QR it is (`GuardService::contactBlock()`). Everybody else still gets the
 address alone; `GuardScanAudienceTest` / `GuestPassScanTest` pin both. `/admin/scans` shows
 the issuer's phone beside «Видав» for everybody who reads the page — one view, no role rule.
+**Every feed line on `/admin/scans` carries somebody to ring** (Иван, 21.11.2026 — «це
+важливо»): a pass line (scan or the entry/exit under it) «Видав: ПІБ (+380…)», for revoked and
+expired passes too; a resident line «Контакт:» the people linked to the flat (≤
+`GuardFeed::MAX_CONTACTS`); «—» when there is nobody. Batch-loaded in two queries per page
+or poll (`GuardFeed::withContacts()`), drawn by `admin/_contact_person.html.twig`, the same
+partial as the live passes' «Видав» — names plain text for ROLE_GUARD, the phone for all.
 
 **Entry / exit log, for the gate only** (Иван, 13.11.2026). Under a guard's **valid** scan
 (resident code `ok`/`no_booking`, guest pass `ok`) the answer gets a row «🚗 В'їзд» /

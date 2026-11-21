@@ -117,16 +117,12 @@
                                     <td class="text-muted">{{ pass.lastScannedAt ? pass.lastScannedAt|date('d.m H:i') : '—' }}</td>
                                     <td class="text-muted">
                                         {# The resident's card: where they live, their phone, who else is on the flat. #}
-                                        {% if pass.issuedBy and not guard_only %}<a href="{{ path('app_admin_resident', {id: pass.issuedBy.id}) }}" class="text-decoration-none">{{ pass.issuedBy.firstName }} {{ pass.issuedBy.lastName }}</a>{% elseif pass.issuedBy %}{{ pass.issuedBy.firstName }} {{ pass.issuedBy.lastName }}{% else %}—{% endif %}
                                         {#
                                             The issuer's phone, for everybody who reads this page
                                             (Иван, 12.11.2026): the guard rings the flat when
                                             something is wrong with a crew. One view, no role rule.
                                         #}
-                                        {% if pass.issuedBy %}
-                                            {% set digits = (pass.issuedBy.phoneNumber ?? '')|replace({'+': '', ' ': '', '-': '', '(': '', ')': ''}) %}
-                                            <span class="text-nowrap">({% if digits %}<a href="tel:+{{ digits }}">+{{ digits }}</a>{% else %}—{% endif %})</span>
-                                        {% endif %}
+                                        {{ include('admin/_contact_person.html.twig', {person: pass.issuedBy, guard_only: guard_only}) }}
                                     </td>
                                 </tr>
                             {% endfor %}
@@ -178,6 +174,7 @@
         .feed-who .sub { font-size: 1rem; color: #333; }
         .feed-who .car { font-weight: 700; white-space: nowrap; }
         .feed-who .problem { display: inline-block; margin-left: .3rem; padding: 0 .4rem; border-radius: 4px; background: #ffe08a; color: #000; font-weight: 700; }
+        .feed-who .contact { font-size: 1rem; color: #333; }
         .feed-by { font-size: 1rem; color: #333; }
         @keyframes feed-flash { from { box-shadow: inset 6px 0 0 #f0a500; background-color: #fff3c4; } to { box-shadow: inset 6px 0 0 transparent; } }
         .feed-fresh { animation: feed-flash 12s ease-out 1; }

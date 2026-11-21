@@ -82,6 +82,37 @@ class GuardFeedRulesTest extends TestCase
         $this->assertSame(['scan' => $s->getId(), 'event' => $e->getId()], GuardFeed::cursor([$s], [$e], 1, 1));
     }
 
+    /** Who to ring is matched per line, from two batch loads — every pass, live or not. */
+    public function testContactsAreMatchedToTheirLines(): void
+    {
+        $flat = new \App\Entity\Account();
+        (new \ReflectionProperty(\App\Entity\Account::class, 'id'))->setValue($flat, 12);
+        $issuer = new \App\Entity\TelegramUser();
+        $pass = (new \App\Entity\GuestPass())->setIssuedBy($issuer);
+        (new \ReflectionProperty(\App\Entity\GuestPass::class, 'id'))->setValue($pass, 4);
+        $people = [];
+        foreach (range(1, 5) as $i) {
+            $people[] = (new \App\Entity\TelegramUser())->setAccount($flat);
+        }
+
+        $guest = $this->scan('2026-11-20 10:00')->setKind(QrScan::KIND_GUEST)->setGuestPassId(4);
+        $gone = $this->scan('2026-11-20 10:01')->setKind(QrScan::KIND_GUEST)->setGuestPassId(99);
+        $resident = $this->scan('2026-11-20 10:02')->setSubjectAccount($flat);
+        $press = $this->event(GateEvent::DIRECTION_IN, '2026-11-20 10:03')->setKind(QrScan::KIND_GUEST)->setGuestPassId(4);
+
+        $items = GuardFeed::merge([$guest, $gone, $resident], [$press]);
+        $this->assertEqualsCanonicalizing([4, 99], GuardFeed::passIds($items));
+        $this->assertSame([12], GuardFeed::residentAccountIds($items));
+
+        $byKey = array_column(GuardFeed::withContacts($items, [$pass], $people), null, 'key');
+        $this->assertSame($issuer, $byKey['s' . $guest->getId()]['issuer']);
+        $this->assertSame($issuer, $byKey['e' . $press->getId()]['issuer'], 'the entry under a pass names its issuer too');
+        $this->assertNull($byKey['s' . $gone->getId()]['issuer']);
+        $this->assertSame([], $byKey['s' . $guest->getId()]['contacts']);
+        $this->assertCount(GuardFeed::MAX_CONTACTS, $byKey['s' . $resident->getId()]['contacts']);
+        $this->assertNull($byKey['s' . $resident->getId()]['issuer']);
+    }
+
     /** The poll is open to the guard's login, or its page goes quiet without a word. */
     public function testTheGuardMayPoll(): void
     {

@@ -34,6 +34,27 @@ class TelegramUserRepository extends ServiceEntityRepository
             ->getQuery()->getOneOrNullResult();
     }
 
+    /**
+     * The people linked to these flats, oldest link first — the same people the bot's
+     * «Контакт власника» names (`Account::getUsers()`), for many flats in one query.
+     *
+     * @param int[] $accountIds
+     *
+     * @return TelegramUser[]
+     */
+    public function linkedTo(array $accountIds): array
+    {
+        if ($accountIds === []) {
+            return [];
+        }
+
+        return $this->createQueryBuilder('u')
+            ->andWhere('IDENTITY(u.account) IN (:ids)')->setParameter('ids', $accountIds)
+            ->orderBy('u.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
     public function save(TelegramUser $telegramUser)
     {
         $this->getEntityManager()->persist($telegramUser);

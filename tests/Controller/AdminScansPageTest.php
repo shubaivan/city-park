@@ -22,7 +22,7 @@ use Twig\Environment;
  */
 class AdminScansPageTest extends KernelTestCase
 {
-    private function render(array $entries, array $passes = [], string $role = 'ROLE_ADMIN', array $gate = [], bool $current = true): string
+    private function render(array $entries, array $passes = [], string $role = 'ROLE_ADMIN', array $gate = [], bool $current = true, array $allPasses = [], array $people = []): string
     {
         self::bootKernel();
 
@@ -34,7 +34,7 @@ class AdminScansPageTest extends KernelTestCase
         $monday = GuardFeed::weekStart($now);
 
         return self::getContainer()->get(Environment::class)->render('admin/scans.html.twig', [
-            'days' => GuardFeed::byDay(GuardFeed::merge($entries, $gate)),
+            'days' => GuardFeed::byDay(GuardFeed::withContacts(GuardFeed::merge($entries, $gate), $allPasses, $people)),
             'week' => $monday,
             'week_label' => GuardFeed::weekLabel($monday),
             'is_current_week' => $current,
@@ -131,6 +131,65 @@ class AdminScansPageTest extends KernelTestCase
         $this->assertStringContainsString('href="tel:+380671112233"', $this->render([], [$pass]));
         $this->assertStringContainsString('href="tel:+380671112233"', $this->render([], [$pass], 'ROLE_COMPLAINTS'));
         $this->assertStringContainsString('Ніна Коваль', $this->render([], [$pass]));
+    }
+
+    /**
+     * Every pass line in the feed names who issued the pass, with the phone (Иван,
+     * 21.11.2026 — «це важливо») — a revoked pass too, which is not in the live list.
+     */
+    public function testEveryPassLineNamesItsIssuerWithThePhone(): void
+    {
+        $issuer = (new \App\Entity\TelegramUser())->setFirstName('Ніна')->setLastName('Коваль')->setPhoneNumber('+380 67 111-22-33');
+        (new \ReflectionProperty(\App\Entity\TelegramUser::class, 'id'))->setValue($issuer, 5);
+        $revoked = (new GuestPass())->setAccount($this->flat(9))->setLabel('Бригада')->setIssuedBy($issuer);
+        (new \ReflectionProperty(GuestPass::class, 'id'))->setValue($revoked, 4);
+
+        $scan = self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED));
+        $press = self::withId((new GateEvent())->setDirection(GateEvent::DIRECTION_IN)->setKind(QrScan::KIND_GUEST)
+            ->setPersonLabel('Бригада')->setPlaceLabel('буд. 19, кв. 9')->setGuestPassId(4));
+
+        $html = $this->render([$scan], [], 'ROLE_ADMIN', [$press], true, [$revoked]);
+        $this->assertSame(2, substr_count($html, 'href="tel:+380671112233"'), 'the scan line and the entry line both');
+        $this->assertSame(2, substr_count($html, 'href="/admin/users/5"'));
+        $this->assertStringContainsString('Видав: ', $html);
+
+        $guard = $this->render([$scan], [], 'ROLE_GUARD', [$press], true, [$revoked]);
+        $this->assertSame(2, substr_count($guard, 'href="tel:+380671112233"'), 'the gate rings the issuer too');
+        $this->assertStringNotContainsString('/admin/users/', $guard);
+        $this->assertStringContainsString('Ніна Коваль', $guard);
+    }
+
+    /** A pass the base no longer knows still says «Видав: —» rather than nothing. */
+    public function testAPassLineWithoutAKnownIssuerSaysSo(): void
+    {
+        $html = $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_OK))]);
+
+        $this->assertMatchesRegularExpression('/Видав:\s*—/u', $html);
+    }
+
+    /** Every line carries a contact line — an unrecognised code says «—». */
+    public function testEveryLineHasAContactEvenWhenThereIsNobody(): void
+    {
+        $unknown = self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_UNKNOWN));
+        $html = $this->render([$unknown]);
+
+        $this->assertMatchesRegularExpression('/Контакт:\s*—/u', $html);
+    }
+
+    /** A resident line names the people on the flat, with their phones. */
+    public function testAResidentLineNamesThePeopleOnTheFlat(): void
+    {
+        $flat = $this->flat(12);
+        $person = (new \App\Entity\TelegramUser())->setFirstName('Олена')->setLastName('Бойко')->setPhoneNumber('380501234567')->setAccount($flat);
+        (new \ReflectionProperty(\App\Entity\TelegramUser::class, 'id'))->setValue($person, 77);
+        $scan = self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK)->setSubjectAccount($flat));
+
+        $html = $this->render([$scan], [], 'ROLE_GUARD', [], true, [], [$person]);
+
+        $this->assertStringContainsString('Контакт: ', $html);
+        $this->assertStringContainsString('Олена Бойко', $html);
+        $this->assertStringContainsString('href="tel:+380501234567"', $html);
+        $this->assertStringNotContainsString('/admin/users/', $html);
     }
 
     public function testLivePassesShowWhenTheyWereCreated(): void

@@ -34,4 +34,25 @@ class GuestPassRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    /**
+     * Passes by id with their issuer in the same query — revoked and expired ones too: the
+     * scan feed names the issuer of every pass it shows (GuardFeed::withContacts()).
+     *
+     * @param int[] $ids
+     *
+     * @return GuestPass[]
+     */
+    public function withIssuers(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        return $this->createQueryBuilder('p')
+            ->leftJoin('p.issuedBy', 'u')->addSelect('u')
+            ->andWhere('p.id IN (:ids)')->setParameter('ids', $ids)
+            ->getQuery()
+            ->getResult();
+    }
 }

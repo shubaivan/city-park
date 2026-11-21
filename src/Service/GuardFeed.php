@@ -3,7 +3,9 @@
 namespace App\Service;
 
 use App\Entity\GateEvent;
+use App\Entity\GuestPass;
 use App\Entity\QrScan;
+use App\Entity\TelegramUser;
 
 /**
  * The guard post's feed on /admin/scans (Иван, 20.11.2026): one list, newest first,
@@ -30,6 +32,9 @@ final class GuardFeed
     public const TYPE_IN = 'in';
     public const TYPE_OUT = 'out';
     public const TYPE_SCAN = 'scan';
+
+    /** How many of a flat's linked people a resident line names — the bot's answer names four, a line has room for fewer. */
+    public const MAX_CONTACTS = 3;
 
     private const DAYS = [1 => 'Понеділок', 2 => 'Вівторок', 3 => 'Середа', 4 => 'Четвер', 5 => "П'ятниця", 6 => 'Субота', 7 => 'Неділя'];
 
@@ -148,6 +153,7 @@ final class GuardFeed
             'place' => $event->getPersonLabel() !== '' ? $event->getPlaceLabel() : '',
             'car' => $event->getCarLabel(),
             'kind' => $guest ? '👷 пропуск' : '🪪 мешканець',
+            'guest' => $guest,
             'pass_id' => $event->getGuestPassId(),
             'account_id' => $event->getSubjectAccount()?->getId(),
             'by' => $event->getGuardLabel() . ($event->getGate() ? ' · ' . $event->getGate() : ''),
@@ -170,6 +176,7 @@ final class GuardFeed
             'place' => '',
             'car' => null,
             'kind' => $guest ? '👷 пропуск' . ($scan->getGuestPassId() ? ' #' . $scan->getGuestPassId() : '') : '🪪 мешканець',
+            'guest' => $guest,
             'pass_id' => $scan->getGuestPassId(),
             'account_id' => $scan->getSubjectAccount()?->getId(),
             'by' => $scan->getScannedByLabel(),
@@ -177,6 +184,87 @@ final class GuardFeed
             'problem' => self::problem($scan->getResult()),
             'replaces' => null,
         ];
+    }
+
+    /**
+     * The pass ids the lines name — every pass, revoked and expired ones included: the live
+     * list above the feed holds only the live ones, and «хто видав» matters most for a pass
+     * that is already gone.
+     *
+     * @param list<array<string, mixed>> $items
+     *
+     * @return list<int>
+     */
+    public static function passIds(array $items): array
+    {
+        $ids = [];
+
+        foreach ($items as $item) {
+            if ($item['guest'] && $item['pass_id'] !== null) {
+                $ids[(int)$item['pass_id']] = true;
+            }
+        }
+
+        return array_keys($ids);
+    }
+
+    /**
+     * The flats whose resident QR the lines name.
+     *
+     * @param list<array<string, mixed>> $items
+     *
+     * @return list<int>
+     */
+    public static function residentAccountIds(array $items): array
+    {
+        $ids = [];
+
+        foreach ($items as $item) {
+            if (!$item['guest'] && $item['account_id'] !== null) {
+                $ids[(int)$item['account_id']] = true;
+            }
+        }
+
+        return array_keys($ids);
+    }
+
+    /**
+     * Who to ring, beside every line (Иван, 21.11.2026 — «це важливо»): a pass line gets
+     * the pass's issuer (`issuer`, null when unknown), a resident line the people linked to
+     * the flat whose code it is (`contacts`, at most MAX_CONTACTS). Both are batch-loaded by
+     * the caller, one query each, so a week of lines costs two queries, not one per line.
+     *
+     * @param list<array<string, mixed>> $items
+     * @param GuestPass[] $passes any order; matched by id
+     * @param TelegramUser[] $people any order; matched by their account's id
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function withContacts(array $items, array $passes, array $people): array
+    {
+        $issuers = [];
+
+        foreach ($passes as $pass) {
+            $issuers[$pass->getId()] = $pass->getIssuedBy();
+        }
+
+        $byAccount = [];
+
+        foreach ($people as $person) {
+            $accountId = $person->getAccount()?->getId();
+
+            if ($accountId !== null && count($byAccount[$accountId] ?? []) < self::MAX_CONTACTS) {
+                $byAccount[$accountId][] = $person;
+            }
+        }
+
+        foreach ($items as &$item) {
+            $item['issuer'] = $item['guest'] && $item['pass_id'] !== null ? ($issuers[(int)$item['pass_id']] ?? null) : null;
+            $item['contacts'] = !$item['guest'] && $item['account_id'] !== null ? ($byAccount[(int)$item['account_id']] ?? []) : [];
+        }
+        unset($item);
+
+        return $items;
     }
 
     /** Only a code that did not check out is worth the guard's attention. */

@@ -220,7 +220,7 @@ class AdminController extends AbstractController
      * edited is not a log.
      */
     #[Route('/admin/scans', name: 'app_admin_scans', methods: [Request::METHOD_GET])]
-    public function scans(Request $request, QrScanRepository $scans, GuestPassRepository $passes, GateEventRepository $gate): Response
+    public function scans(Request $request, QrScanRepository $scans, GuestPassRepository $passes, GateEventRepository $gate, TelegramUserRepository $people): Response
     {
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
         $monday = GuardFeed::parseWeek($request->query->get('week'), $now);
@@ -232,7 +232,7 @@ class AdminController extends AbstractController
         $isCurrent = $monday == $currentWeek;
 
         return $this->render('admin/scans.html.twig', [
-            'days' => GuardFeed::byDay(GuardFeed::merge($weekScans, $weekEvents)),
+            'days' => GuardFeed::byDay($this->feedWithContacts(GuardFeed::merge($weekScans, $weekEvents), $passes, $people)),
             'week' => $monday,
             'week_label' => GuardFeed::weekLabel($monday),
             'is_current_week' => $isCurrent,
@@ -242,6 +242,7 @@ class AdminController extends AbstractController
             // The live passes, so the page answers «які пропуски зараз ходять по ЖК» as
             // well as «хто ними скористався».
             'passes' => $passes->createQueryBuilder('p')
+                ->leftJoin('p.issuedBy', 'u')->addSelect('u')
                 ->andWhere('p.revoked_at IS NULL')
                 ->orderBy('p.id', 'DESC')
                 ->setMaxResults(60)
@@ -257,7 +258,7 @@ class AdminController extends AbstractController
      * `week` lets the page notice that Monday has come and reload itself.
      */
     #[Route('/admin/scans/feed', name: 'app_admin_scans_feed', methods: [Request::METHOD_GET])]
-    public function scansFeed(Request $request, QrScanRepository $scans, GateEventRepository $gate): JsonResponse
+    public function scansFeed(Request $request, QrScanRepository $scans, GateEventRepository $gate, GuestPassRepository $passes, TelegramUserRepository $people): JsonResponse
     {
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
         $monday = GuardFeed::weekStart($now);
@@ -271,7 +272,7 @@ class AdminController extends AbstractController
         $rows = [];
 
         // Oldest first, so the page can put each one on top and end up newest first.
-        foreach (array_reverse(GuardFeed::merge($newScans, $newEvents)) as $item) {
+        foreach (array_reverse($this->feedWithContacts(GuardFeed::merge($newScans, $newEvents), $passes, $people)) as $item) {
             $rows[] = [
                 'key' => $item['key'],
                 'day' => $item['at']->format('Y-m-d'),
@@ -291,6 +292,23 @@ class AdminController extends AbstractController
         $response->headers->set('Cache-Control', 'no-store');
 
         return $response;
+    }
+
+    /**
+     * Who to ring beside every feed line — the pass's issuer, the flat's people — loaded
+     * in two queries for the whole page or poll, never one per line.
+     *
+     * @param list<array<string, mixed>> $items
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function feedWithContacts(array $items, GuestPassRepository $passes, TelegramUserRepository $people): array
+    {
+        return GuardFeed::withContacts(
+            $items,
+            $passes->withIssuers(GuardFeed::passIds($items)),
+            $people->linkedTo(GuardFeed::residentAccountIds($items)),
+        );
     }
 
     /**
