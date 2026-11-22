@@ -208,9 +208,6 @@
         .feed-week { font-size: 1.15rem; }
         .feed-status { font-size: 1rem; color: #333; }
         .feed-alert { font-size: 1.1rem; font-weight: 600; }
-        .feed-day { margin-bottom: 1.25rem; border: 2px solid #222; border-radius: 6px; overflow: hidden; background: #fff; }
-        .feed-day-title { background: #222; color: #fff; margin: 0; padding: .5rem .75rem; font-size: 1.3rem; font-weight: 700; }
-        .feed-day-counts { float: right; font-weight: 600; background: #fff; color: #111; border-radius: 4px; padding: 0 .5rem; font-size: 1.05rem; }
         .feed-day-counts .text-success { color: #0a7a2f !important; }
         .feed-day-counts .text-danger { color: #c4141b !important; }
         .mark-out-inline { display: inline-block; transform: scaleX(-1); }
@@ -297,6 +294,12 @@
             .feed-who .pass-status { white-space: normal; }
             .guard-feed { font-size: 1.05rem; }
         }
+        /* Days (Иван, 22.11.2026): a light grey strip, small caps, that stays on top while its day scrolls by. */
+        .feed-day { margin-bottom: 1rem; border: 1px solid #dee2e6; border-radius: 6px; background: #fff; }
+        .feed-day-title { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .75rem; margin: 0; padding: .35rem .75rem; background: #f1f3f5; color: #495057; border-bottom: 1px solid #dee2e6; border-radius: 6px 6px 0 0; font-size: .9rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+        .feed-day-counts { float: none; margin: 0 0 0 auto; text-transform: none; letter-spacing: 0; font-size: .95rem; font-weight: 500; color: #555; }
+        .feed-day ~ .feed-day .feed-table thead { display: none; }
+        .feed-day ~ .feed-day .feed-table tbody tr:first-child, .feed-day ~ .feed-day .feed-table tbody tr:first-child td { border-top: 0; }
     </style>
 
     {#
