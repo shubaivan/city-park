@@ -32,7 +32,7 @@ class OwnerGroupService
     public function __construct(
         private AccountRepository $accounts,
         private EntityManagerInterface $em,
-        private LoggerInterface $logger,
+        private LoggerInterface $adminLogger,
     ) {}
 
     /**
@@ -75,7 +75,7 @@ class OwnerGroupService
 
         $this->em->flush();
 
-        $this->logger->info('owner group linked', [
+        $this->adminLogger->info('owner group linked', [
             'source' => $source->getAccountNumber(),
             'partner' => $partner->getAccountNumber(),
             'group' => $source->getOwnerGroupId(),
@@ -124,7 +124,7 @@ class OwnerGroupService
             $this->em->flush();
         }
 
-        $this->logger->info('owner group unlinked', [
+        $this->adminLogger->info('owner group unlinked', [
             'account' => $account->getAccountNumber(),
             'group' => $groupId,
         ]);

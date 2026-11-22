@@ -4,6 +4,7 @@ monolog:
         - photo # Pavilion photo-upload + reminder audit trail (see var/log/photo-upload.log)
         - chat  # Residents' group gate: who knocked and why they were let in or not (see var/log/resident-chat.log)
         - sms   # Who pressed «Відправити СМС», what the run would cost and how it ended (see var/log/sms.log)
+        - admin # Who did what in the panel: owner groups, moves, uploads + every «Журнал дій» row (see var/log/admin.log)
 
 when@dev:
     monolog:
@@ -12,7 +13,12 @@ when@dev:
                 type: stream
                 path: "%kernel.logs_dir%/%kernel.environment%.log"
                 level: debug
-                channels: ["!event", "!photo", "!chat"]
+                channels: ["!event", "!photo", "!chat", "!admin"]
+            admin_actions:
+                type: stream
+                path: "%kernel.logs_dir%/admin.log"
+                level: info
+                channels: ["admin"]
             photo_upload:
                 type: stream
                 path: "%kernel.logs_dir%/photo-upload.log"
@@ -59,7 +65,7 @@ when@prod:
                 handler: nested
                 excluded_http_codes: [404, 405]
                 buffer_size: 50 # How many messages should be saved? Prevent memory leaks
-                channels: ["!photo", "!chat", "!sms"] # these audit trails must NOT be buffered by fingers_crossed (would be dropped unless an error follows)
+                channels: ["!photo", "!chat", "!sms", "!admin"] # these audit trails must NOT be buffered by fingers_crossed (would be dropped unless an error follows)
             nested:
                 type: stream
                 path: php://stderr
@@ -111,6 +117,16 @@ when@prod:
                 path: "%kernel.logs_dir%/sms.log"
                 level: info
                 channels: ["sms"]
+            # Who did what in the panel (22.11.2026): nobody could say who had put seven
+            # flats into one owner group, because «owner group linked» was an info line on
+            # the default channel — fingers_crossed, then stderr, then nowhere. Every
+            # «Журнал дій» row is mirrored here too, so the file still answers if the
+            # database write ever fails. Errors on this channel also reach errors_file.
+            admin_actions:
+                type: stream
+                path: "%kernel.logs_dir%/admin.log"
+                level: info
+                channels: ["admin"]
             console:
                 type: console
                 process_psr_3_messages: false

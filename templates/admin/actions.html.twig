@@ -1,0 +1,151 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Журнал дій · ОСББ City Park{% endblock %}
+
+{#
+    «Журнал дій» — who did what. Rows grouped by day under the same calm light-grey strip
+    as the scan feed (variant B, 22.11.2026); a row is «коли · хто · що», with the field
+    by field old → new folded under «деталі» so the list stays readable on a phone.
+#}
+{% block body %}
+    {{ parent() }}
+
+    <style>
+        .act-day { margin-bottom: 1rem; border: 1px solid #dee2e6; border-radius: 6px; background: #fff; }
+        .act-day-title { position: sticky; top: 0; z-index: 2; margin: 0; padding: .35rem .75rem; background: #f1f3f5; color: #495057; border-bottom: 1px solid #dee2e6; border-radius: 6px 6px 0 0; font-size: .85rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+        .act-row { display: flex; gap: .75rem; padding: .5rem .75rem; border-top: 1px solid #f1f3f5; font-size: .92rem; }
+        .act-row:first-of-type { border-top: 0; }
+        .act-time { flex: 0 0 3.2rem; color: #6c757d; font-variant-numeric: tabular-nums; }
+        .act-who { flex: 0 0 11rem; color: #343a40; overflow-wrap: anywhere; }
+        .act-what { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+        .act-meta { color: #868e96; font-size: .8rem; }
+        .act-details summary { color: #6c757d; font-size: .8rem; cursor: pointer; }
+        .act-details table { font-size: .8rem; margin: .25rem 0 0; }
+        .act-details td { padding: .1rem .5rem .1rem 0; vertical-align: top; }
+        .act-old { color: #a61e4d; text-decoration: line-through; }
+        .act-new { color: #2b8a3e; }
+        .act-manual { background: #fff9db; }
+        .act-refused { background: #fff5f5; }
+        @media (max-width: 767.98px) {
+            .act-row { flex-wrap: wrap; gap: .1rem .5rem; }
+            .act-who { flex: 1 1 auto; }
+            .act-what { flex-basis: 100%; }
+        }
+    </style>
+
+    <div class="container-fluid py-3" style="max-width: 1100px;">
+        <p class="mb-2"><a href="{{ path('app_admin') }}">← На головну адмінки</a></p>
+
+        <h4 class="mb-1">📜 Журнал дій</h4>
+        <p class="text-muted small mb-3">
+            Хто що змінив: у панелі, через бота і вручну на сервері. Видно всім, хто має доступ до панелі.
+            Записи з'являються з 22.11.2026.
+        </p>
+
+        <form method="get" class="card card-body py-2 px-3 mb-3">
+            <div class="form-row">
+                <div class="col-6 col-md-2 mb-2">
+                    <label class="small text-muted mb-0" for="f-actor">Хто</label>
+                    <select id="f-actor" name="actor" class="form-control form-control-sm">
+                        <option value="">усі</option>
+                        {% for a in actors %}
+                            <option value="{{ a }}" {{ filters.actor == a ? 'selected' }}>{{ a == 'bot' ? '🤖 бот' : a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-2 mb-2">
+                    <label class="small text-muted mb-0" for="f-object">Об'єкт</label>
+                    <input id="f-object" name="object" class="form-control form-control-sm" value="{{ object }}" placeholder="особовий або буд/кв, напр. 19/50">
+                </div>
+                <div class="col-6 col-md-2 mb-2">
+                    <label class="small text-muted mb-0" for="f-from">З дати</label>
+                    <input id="f-from" type="date" name="from" class="form-control form-control-sm" value="{{ filters.from ? filters.from|date('Y-m-d') }}">
+                </div>
+                <div class="col-6 col-md-2 mb-2">
+                    <label class="small text-muted mb-0" for="f-to">По дату</label>
+                    <input id="f-to" type="date" name="to" class="form-control form-control-sm" value="{{ filters.to ? filters.to|date('Y-m-d') }}">
+                </div>
+                <div class="col-12 col-md-3 mb-2">
+                    <label class="small text-muted mb-0" for="f-q">Текст</label>
+                    <input id="f-q" name="q" class="form-control form-control-sm" value="{{ filters.q }}" placeholder="прізвище, номер, «група»…">
+                </div>
+                <div class="col-12 col-md-1 mb-2 d-flex align-items-end">
+                    <button class="btn btn-sm btn-primary btn-block">Знайти</button>
+                </div>
+            </div>
+            {% if account or filters.user %}
+                <input type="hidden" name="{{ account ? 'account' : 'user' }}" value="{{ account ?: filters.user }}">
+            {% endif %}
+            {% if account or filters.user or object or filters.actor or filters.q or filters.from or filters.to %}
+                <div class="small">
+                    {% if matched|length %}
+                        Об'єкт: {% for a in matched %}<a href="{{ path('app_admin_object', {id: a.id}) }}">{{ a.streetPlaceLabel }} ({{ a.accountNumber }})</a>{{ not loop.last ? ', ' }}{% endfor %} ·
+                    {% elseif object %}
+                        <span class="text-danger">Об'єкт «{{ object }}» не знайдено.</span> ·
+                    {% endif %}
+                    {% if filters.user %}Мешканець <a href="{{ path('app_admin_resident', {id: filters.user}) }}">#{{ filters.user }}</a> · {% endif %}
+                    <a href="{{ path('app_admin_actions') }}">✕ Скинути фільтри</a>
+                </div>
+            {% endif %}
+        </form>
+
+        {% if items is empty %}
+            <div class="alert alert-light py-2 px-3 small">Нічого не знайдено.</div>
+        {% else %}
+            {% set day = null %}
+            {% for item in items %}
+                {% set e = item.entry %}
+                {% set d = e.at|date('Y-m-d') %}
+                {% if d != day %}
+                    {% if day is not null %}</div>{% endif %}
+                    {% set day = d %}
+                    <div class="act-day">
+                    <h6 class="act-day-title">{{ e.at|date('d.m.Y') }}</h6>
+                {% endif %}
+                <div class="act-row {{ e.kind == 'manual' ? 'act-manual' }} {{ e.status and e.status >= 400 ? 'act-refused' }}" id="action-{{ e.id }}">
+                    <div class="act-time">{{ e.at|date('H:i') }}</div>
+                    <div class="act-who">{{ item.who }}</div>
+                    <div class="act-what">
+                        {{ item.summary }}
+                        <div class="act-meta">
+                            {% if item.via %}через «{{ item.via }}» · {% endif %}
+                            {% if e.kind == 'request' %}{{ e.method }} {{ e.path }}{% if e.status %} · {{ e.status }}{% endif %} · {% endif %}
+                            {% if e.ip %}{{ e.ip }} · {% endif %}
+                            {% if e.accountId %}<a href="{{ path('app_admin_actions', {account: e.accountId}) }}">ще про цей об'єкт</a>{% endif %}
+                            {% if e.userId %}{{ e.accountId ? ' · ' }}<a href="{{ path('app_admin_resident', {id: e.userId}) }}">мешканець #{{ e.userId }}</a>{% endif %}
+                        </div>
+                        {% if item.details|length %}
+                            <details class="act-details">
+                                <summary>деталі</summary>
+                                <table>
+                                    {% for f in item.details %}
+                                        <tr>
+                                            <td class="text-muted">{{ f.field }}</td>
+                                            <td>{% if f.old %}<span class="act-old">{{ f.old }}</span> → {% endif %}<span class="{{ f.old ? 'act-new' }}">{{ f.new }}</span></td>
+                                        </tr>
+                                    {% endfor %}
+                                </table>
+                            </details>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if loop.last %}</div>{% endif %}
+            {% endfor %}
+
+            {% if pages > 1 %}
+                {% set q = app.request.query.all|merge({}) %}
+                <nav class="d-flex justify-content-between align-items-center small mt-2">
+                    <span>
+                        {% if page > 1 %}<a href="{{ path('app_admin_actions', q|merge({page: page - 1})) }}">← Новіші</a>{% endif %}
+                    </span>
+                    <span class="text-muted">Сторінка {{ page }} з {{ pages }} · записів {{ total }}</span>
+                    <span>
+                        {% if page < pages %}<a href="{{ path('app_admin_actions', q|merge({page: page + 1})) }}">Старіші →</a>{% endif %}
+                    </span>
+                </nav>
+            {% else %}
+                <p class="small text-muted mt-2 mb-0">Записів: {{ total }}. Час київський.</p>
+            {% endif %}
+        {% endif %}
+    </div>
+{% endblock %}

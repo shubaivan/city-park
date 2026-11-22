@@ -290,6 +290,10 @@
                     </div>
                 {% endif %}
 
+                {% if actions is defined %}
+                    {% include 'admin/_action_history.html.twig' with {actions: actions, card_class: 'obj-card', more_url: path('app_admin_actions', {account: account.id})} %}
+                {% endif %}
+
                 {% if history|length %}
                     <div class="card obj-card">
                         <div class="card-header">🕘 Історія статусу</div>

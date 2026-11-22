@@ -1,0 +1,27 @@
+{#
+    «Історія» on the object and resident cards: the last ~20 «Журнал дій» rows about this
+    object or person — who changed what and when. The full list is one click away.
+    Vars: actions (ActionLogView::present), more_url.
+#}
+<div class="card {{ card_class|default('') }}">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>📜 Історія змін</span>
+        <a class="small" href="{{ more_url }}">увесь журнал →</a>
+    </div>
+    <div class="card-body p-0">
+        {% if actions|default([]) is empty %}
+            <div class="px-3 py-2 small text-muted">Поки що нічого не записано (журнал ведеться з 22.11.2026).</div>
+        {% else %}
+            <ul class="list-unstyled mb-0" style="max-height: 22rem; overflow-y: auto;">
+                {% for item in actions %}
+                    {% set e = item.entry %}
+                    <li class="px-3 py-2 small" style="border-top: 1px dashed #e9ecef;{{ e.kind == 'manual' ? ' background:#fff9db;' }}">
+                        <span class="text-muted">{{ e.at|date('d.m.Y H:i') }}</span>
+                        · <b>{{ item.who }}</b>
+                        <div>{{ item.summary }}{% if item.via %} <span class="text-muted">· через «{{ item.via }}»</span>{% endif %}</div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </div>
+</div>

@@ -11,6 +11,8 @@ use App\Entity\ServiceOffer;
 use App\Entity\ScheduledSet;
 use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
+use App\Repository\AdminActionLogRepository;
+use App\Service\ActionLog\ActionLogView;
 use App\Repository\BookingLogRepository;
 use App\Repository\CarPlateRepository;
 use App\Service\AvatarService;
@@ -464,7 +466,7 @@ class AdminController extends AbstractController
         Request $request,
         CarPlateRepository $plates,
         EntityManagerInterface $em,
-        LoggerInterface $logger,
+        LoggerInterface $adminLogger,
     ): Response
     {
         $id = (int)$request->request->get('plate_id');
@@ -480,7 +482,7 @@ class AdminController extends AbstractController
         $em->remove($plate);
         $em->flush();
 
-        $logger->info('car plate removed in the panel', [
+        $adminLogger->info('car plate removed in the panel', [
             'plate' => $display,
             'by' => (string)$this->getUser()?->getUserIdentifier(),
         ]);
@@ -1543,6 +1545,8 @@ class AdminController extends AbstractController
         ExpectedResidentRepository $expectedResidents,
         EntityManagerInterface $em,
         CarPlateRepository $carPlates,
+        AdminActionLogRepository $actionLog,
+        ActionLogView $actionView,
     ): Response {
         $account = $accountRepository->find($id);
 
@@ -1569,6 +1573,7 @@ class AdminController extends AbstractController
             'expected' => $expectedResidents->forAccount($account),
             'cars' => $carPlates->forAccount($account),
             'history' => $this->statusLogRepository->findRecentForAccount($account, 10),
+            'actions' => $actionView->present($actionLog->forAccount($id, 20), $id),
         ]);
     }
 
@@ -1871,6 +1876,8 @@ class AdminController extends AbstractController
         EntityManagerInterface $em,
         ScheduledSetRepository $scheduledSetRepository,
         CarPlateRepository $carPlates,
+        AdminActionLogRepository $actionLog,
+        ActionLogView $actionView,
     ): Response {
         $user = $repository->find($id);
 
@@ -1900,6 +1907,7 @@ class AdminController extends AbstractController
             // somebody has actually reserved.
             'upcomingBookings' => $account ? count($scheduledSetRepository->getOwn($user)) : 0,
             'cars' => $carPlates->forResident($user),
+            'actions' => $actionView->present($actionLog->forUser($id, 20)),
         ]);
     }
 
@@ -2062,7 +2070,7 @@ class AdminController extends AbstractController
         TelegramUserRepository $repository,
         AccountRepository $accountRepository,
         EntityManagerInterface $em,
-        LoggerInterface $logger,
+        LoggerInterface $adminLogger,
     ): Response {
         $user = $this->residentOr404($id, $repository);
         $number = trim((string)$request->request->get('account_number'));
@@ -2088,7 +2096,7 @@ class AdminController extends AbstractController
         $user->setAccount($target);
         $em->flush();
 
-        $logger->info('Admin account reassignment', [
+        $adminLogger->info('Admin account reassignment', [
             'user_id' => $user->getId(),
             'from_account_number' => $from?->getAccountNumber(),
             'to_account_number' => $target->getAccountNumber(),
@@ -2224,7 +2232,7 @@ class AdminController extends AbstractController
         int $id,
         TelegramUserRepository $repository,
         EntityManagerInterface $em,
-        LoggerInterface $logger,
+        LoggerInterface $adminLogger,
     ): Response {
         $user = $this->residentOr404($id, $repository);
         $from = $user->getAccount();
@@ -2238,7 +2246,7 @@ class AdminController extends AbstractController
         $user->setAccount(null);
         $em->flush();
 
-        $logger->info('Admin account unlink', [
+        $adminLogger->info('Admin account unlink', [
             'user_id' => $user->getId(),
             'from_account_number' => $from->getAccountNumber(),
             'by' => $this->getUser()?->getUserIdentifier(),
@@ -2397,7 +2405,7 @@ class AdminController extends AbstractController
         Request $request,
         AccountRepository $accountRepository,
         EntityManagerInterface $em,
-        LoggerInterface $logger,
+        LoggerInterface $adminLogger,
         ImportArchive $archive,
     ): Response {
         /** @var UploadedFile|null $file */
@@ -2474,7 +2482,7 @@ class AdminController extends AbstractController
 
         $em->flush();
 
-        $logger->info('Area upload', [
+        $adminLogger->info('Area upload', [
             'parsed' => count($areaData),
             'updated' => $updated,
             'not_found' => count($notFound),
@@ -2523,7 +2531,7 @@ class AdminController extends AbstractController
         Request $request,
         TariffRepository $tariffRepository,
         EntityManagerInterface $em,
-        LoggerInterface $logger,
+        LoggerInterface $adminLogger,
         DebtPolicy $debtPolicy,
     ): Response {
         $raw = trim((string)$request->request->get('price_per_meter', ''));
@@ -2543,7 +2551,7 @@ class AdminController extends AbstractController
         $tariff->setPricePerMeter(number_format((float)$normalized, 2, '.', ''));
         $em->flush();
 
-        $logger->info('Admin tariff updated', [
+        $adminLogger->info('Admin tariff updated', [
             'old_price' => $old,
             'new_price' => $tariff->getPricePerMeter(),
         ]);
@@ -2600,7 +2608,7 @@ class AdminController extends AbstractController
         Request $request,
         AccountRepository $accountRepository,
         EntityManagerInterface $em,
-        LoggerInterface $logger,
+        LoggerInterface $adminLogger,
         Nutgram $bot,
         DebtPolicy $debtPolicy,
         PavilionPhotoService $photoService,
@@ -2655,7 +2663,7 @@ class AdminController extends AbstractController
             $processed++;
         }
 
-        $logger->info('Debt upload: parsed rows', ['count' => $processed]);
+        $adminLogger->info('Debt upload: parsed rows', ['count' => $processed]);
 
         $updated = 0;
         $notFound = 0;
@@ -2706,7 +2714,7 @@ class AdminController extends AbstractController
                                         parse_mode: ParseMode::HTML
                                     );
                                 } catch (\Throwable $e) {
-                                    $logger->error('Failed to notify user: ' . $e->getMessage());
+                                    $adminLogger->error('Failed to notify user: ' . $e->getMessage());
                                 }
                             }
                         }
@@ -2778,7 +2786,7 @@ class AdminController extends AbstractController
                     );
                 }
             } else {
-                $logger->info('Debt reset but account kept blocked by open photo request', [
+                $adminLogger->info('Debt reset but account kept blocked by open photo request', [
                     'account_id' => $account->getId(),
                 ]);
             }
@@ -2796,7 +2804,7 @@ class AdminController extends AbstractController
                                 parse_mode: ParseMode::HTML
                             );
                         } catch (\Throwable $e) {
-                            $logger->error('Failed to notify user about debt reset: ' . $e->getMessage());
+                            $adminLogger->error('Failed to notify user about debt reset: ' . $e->getMessage());
                         }
                     }
                 }
@@ -2809,7 +2817,7 @@ class AdminController extends AbstractController
         // chat. Non-fatal by construction — the accountant's upload has already landed.
         $announced = $announcer->afterImport();
 
-        $logger->info('Debt upload complete', [
+        $adminLogger->info('Debt upload complete', [
             'updated' => $updated,
             'not_found' => $notFound,
             'missing_debt' => round($missingDebt, 2),

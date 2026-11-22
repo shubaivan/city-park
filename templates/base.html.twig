@@ -196,6 +196,11 @@
                     <a class="nav-link px-2 {{ section starts with 'app_admin_sms' ? 'active font-weight-bold' }}"
                        href="{{ path('app_admin_sms') }}">✉️ <span class="d-none d-sm-inline">SMS</span></a>
                 </li>
+                {# Who did what (22.11.2026). Both roles read it, like the sign-in log. #}
+                <li class="nav-item">
+                    <a class="nav-link px-2 {{ section == 'app_admin_actions' ? 'active font-weight-bold' }}"
+                       href="{{ path('app_admin_actions') }}">📜 <span class="d-none d-sm-inline">Журнал</span></a>
+                </li>
             </ul>
             {% endif %}
 
