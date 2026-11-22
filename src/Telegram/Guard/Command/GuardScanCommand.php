@@ -4,6 +4,7 @@ namespace App\Telegram\Guard\Command;
 
 use App\Entity\Account;
 use App\Repository\AccountRepository;
+use App\Repository\TelegramUserRepository;
 use App\Entity\QrScan;
 use App\Service\GateLogService;
 use App\Service\GuardService;
@@ -56,6 +57,7 @@ class GuardScanCommand
         private GuestPassService $passes,
         private ?LoggerInterface $chatLogger = null,
         private ?GateLogService $gate = null,
+        private ?TelegramUserRepository $people = null,
     ) {}
 
     public function __invoke(Nutgram $bot, string $payload = ''): void
@@ -79,13 +81,17 @@ class GuardScanCommand
             return;
         }
 
-        $accountId = $this->guard->readToken(trim($payload));
+        $token = $this->guard->readResidentToken(trim($payload));
+        $accountId = $token['account'] ?? null;
+        $personId = $token['person'] ?? null;
         $account = $accountId !== null ? $this->accounts->find($accountId) : null;
+        $person = $personId !== null && $account instanceof Account ? $this->people?->find($personId) : null;
 
         $this->chatLogger?->info('guard qr scanned', [
             'telegram_id' => $user?->getTelegramId(),
             'payload_valid' => $accountId !== null,
             'account_id' => $accountId,
+            'person_id' => $personId,
         ]);
 
         $isGuard = $this->guard->isGuard($user);
@@ -97,22 +103,37 @@ class GuardScanCommand
             return;
         }
 
-        $now = SchedulePavilionService::createNewDate();
-        $session = $this->guard->runningSessionFor($account, $now);
-
-        if ($session === null) {
-            $scan = $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_NO_BOOKING, $user, $account, null, $isGuard);
-            $this->answer($bot, sprintf(
-                "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n\n"
-                    . '<i>Броні на альтанку зараз немає.</i>%s',
-                htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
-                $isGuard ? GuardService::contactBlock($account->getUsers()) : '',
-            ), $this->gate?->buttonsFor($scan, $user));
+        // A personal code (22.11.2026) is only as good as the link behind it: somebody
+        // unlinked from the flat, moved to another one or gone from the bot holds a dead
+        // picture. Said plainly, never as a bot error, and with nothing about who they were.
+        if ($personId !== null && !GuardService::personStillOnFlat($person, (int)$account->getId())) {
+            $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_PERSON_GONE, $user, $account, null, $isGuard, $person);
+            $this->answer($bot, "⛔ <b>Код більше не дійсний</b>\n\n"
+                . "Ця людина вже не прив'язана до квартири в боті. "
+                . 'Якщо вона тут живе — хай відкриє «🪪 Мій QR-код» у боті ще раз.');
 
             return;
         }
 
-        $scan = $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK, $user, $account, null, $isGuard);
+        $now = SchedulePavilionService::createNewDate();
+        $session = $this->guard->runningSessionFor($account, $now);
+        $result = $session === null ? QrScan::RESULT_NO_BOOKING : QrScan::RESULT_OK;
+        $scan = $this->passes->recordScan(QrScan::KIND_RESIDENT, $result, $user, $account, null, $isGuard, $person);
+
+        // Only the gate gets who it is and who to ring; a neighbour checking a code keeps
+        // the address, exactly as before personal codes.
+        $contact = $isGuard ? self::guardContact($account, $person) : '';
+
+        if ($session === null) {
+            $this->answer($bot, sprintf(
+                "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n\n"
+                    . '<i>Броні на альтанку зараз немає.</i>%s',
+                htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                $contact,
+            ), $this->gate?->buttonsFor($scan, $user));
+
+            return;
+        }
 
         $this->answer($bot, sprintf(
             "✅ <b>Код дійсний</b>\n\nЦе мешканець нашого ЖК\n<b>%s</b>\n"
@@ -122,9 +143,40 @@ class GuardScanCommand
             $session['start']->format('H:i'),
             $session['end']->format('H:i'),
             $now->format('d.m о H:i'),
-            // Only the gate gets who to ring; a neighbour checking a code keeps the address.
-            $isGuard ? GuardService::contactBlock($account->getUsers()) : '',
+            $contact,
         ), $this->gate?->buttonsFor($scan, $user));
+    }
+
+    /**
+     * The guard's extra lines. A personal code names its holder first — name, role, phone —
+     * and then the rest of the flat to ring; an old flat-level code says the person is not
+     * known and lists the flat as before.
+     */
+    public static function guardContact(Account $account, ?\App\Entity\TelegramUser $person): string
+    {
+        $esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        if ($person === null) {
+            return "\n\n👤 <i>Хто саме з квартири — невідомо (старий код квартири).</i>"
+                . GuardService::contactBlock($account->getUsers());
+        }
+
+        $others = [];
+
+        foreach ($account->getUsers() as $member) {
+            if ($member !== $person && ($member->getId() === null || $member->getId() !== $person->getId())) {
+                $others[] = $member;
+            }
+        }
+
+        $head = sprintf(
+            "\n\n<b>Чий код:</b> 👤 <b>%s</b> · %s · 📞 %s",
+            $esc(GuardService::contactName($person)),
+            $esc($person->getRoleLabel()),
+            $esc(GuardService::contactPhone($person)),
+        );
+
+        return $others === [] ? $head . "\n<i>(бачить лише охорона)</i>" : $head . GuardService::contactBlock($others, 3, 'Інші з квартири');
     }
 
     /**

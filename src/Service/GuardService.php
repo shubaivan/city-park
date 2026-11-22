@@ -76,7 +76,7 @@ class GuardService
      *
      * @param iterable<TelegramUser|null> $people
      */
-    public static function contactBlock(iterable $people, int $max = 4): string
+    public static function contactBlock(iterable $people, int $max = 4, string $title = 'Контакт власника'): string
     {
         $lines = [];
 
@@ -96,7 +96,7 @@ class GuardService
             $lines[] = '👤 — · 📞 —';
         }
 
-        return "\n\n<b>Контакт власника</b> <i>(бачить лише охорона)</i>\n" . implode("\n", $lines);
+        return "\n\n<b>" . $title . "</b> <i>(бачить лише охорона)</i>\n" . implode("\n", $lines);
     }
 
     /** ПІБ as the panel holds it, else the Telegram name; «—» when there is neither. */
@@ -304,22 +304,36 @@ class GuardService
     }
 
     /**
-     * The payload behind the resident's QR code: `g-<account>-<signature>`.
+     * The payload behind the resident's QR code.
+     *
+     * Two shapes, both `g-…` so the deep-link router needs no change:
+     *
+     * - `g-<account>-<user>-<sig16>` — **personal** (22.11.2026): names the flat *and* the
+     *   person it was minted for, so the guard sees who stands in front of him, not just
+     *   «буд. 17, кв. 1» for a flat of four. What «🪪 Мій QR-код» hands out from now on.
+     * - `g-<account>-<sig12>` — the original flat-level code (07.09.2026). Every picture
+     *   already shown or saved is one of these, and they keep working: read back with
+     *   `person = null`, logged as «особа невідома».
      *
      * **Signed, and deliberately not stored.** The особові рахунки of the largest debtors
      * are published to the whole house every month, so a code that merely named a flat
      * could be drawn by anyone who read the board — and a guard would then confirm it,
      * because the flat really does have a booking. The HMAC is what makes the bot the
-     * only thing that can mint one. Nothing is written to the database: what the guard is
-     * asking is «is this household in the альтанка *now*», and that answer lives in the
-     * bookings table already.
+     * only thing that can mint one. The two shapes sign different strings
+     * (`guard-qr:` / `guard-qr-person:`), so neither can be turned into the other.
      *
-     * The code therefore does not expire and does not need to: it says nothing on its own,
-     * and the bot answers about the current minute or refuses.
+     * The personal code does not expire either, but it is only as good as the link behind
+     * it: `GuardScanCommand` refuses it once the person is no longer on that flat
+     * (`personStillOnFlat()`), so unlinking somebody kills their picture.
      */
-    public function mintToken(Account $account): string
+    public function mintToken(Account $account, ?TelegramUser $person = null): string
     {
         $id = (int)$account->getId();
+        $personId = (int)$person?->getId();
+
+        if ($personId > 0) {
+            return sprintf('g-%d-%d-%s', $id, $personId, $this->personSignature($id, $personId));
+        }
 
         return sprintf('g-%d-%s', $id, $this->signature($id));
     }
@@ -329,20 +343,61 @@ class GuardService
      */
     public function readToken(string $payload): ?int
     {
-        if (!preg_match('/^g-(\d{1,10})-([a-f0-9]{12})$/', $payload, $m)) {
-            return null;
+        return $this->readResidentToken($payload)['account'] ?? null;
+    }
+
+    /**
+     * Either shape, verified.
+     *
+     * @return array{account:int, person:?int}|null `person` is null for an old flat-level code
+     */
+    public function readResidentToken(string $payload): ?array
+    {
+        // hash_equals, not ===: a plain comparison on a signature leaks how much of it was
+        // right through how long it took to say no. No leading zeros: one code, one spelling.
+        if (preg_match('/^g-([1-9]\d{0,9})-([1-9]\d{0,9})-([a-f0-9]{16})$/', $payload, $m)) {
+            $id = (int)$m[1];
+            $personId = (int)$m[2];
+
+            return hash_equals($this->personSignature($id, $personId), $m[3])
+                ? ['account' => $id, 'person' => $personId]
+                : null;
         }
 
-        $id = (int)$m[1];
+        if (preg_match('/^g-([1-9]\d{0,9})-([a-f0-9]{12})$/', $payload, $m)) {
+            $id = (int)$m[1];
 
-        // hash_equals, not ===: a plain comparison on a signature leaks how much of it was
-        // right through how long it took to say no.
-        return hash_equals($this->signature($id), $m[2]) ? $id : null;
+            return hash_equals($this->signature($id), $m[2]) ? ['account' => $id, 'person' => null] : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * A personal code is valid only while its person is still linked to that very flat.
+     * Unlinked, moved to another flat, or gone from the bot → the picture is dead.
+     */
+    public static function personStillOnFlat(?TelegramUser $person, int $accountId): bool
+    {
+        return $person !== null && $person->getAccount()?->getId() === $accountId;
+    }
+
+    /** «Олена Петренко · Власник» — who a personal code belongs to, as the log keeps it. */
+    public static function personLabel(TelegramUser $person): string
+    {
+        $name = self::contactName($person);
+
+        return ($name === '—' ? 'без імені' : $name) . ' · ' . $person->getRoleLabel();
     }
 
     private function signature(int $accountId): string
     {
         return substr(hash_hmac('sha256', 'guard-qr:' . $accountId, $this->appSecret), 0, 12);
+    }
+
+    private function personSignature(int $accountId, int $personId): string
+    {
+        return substr(hash_hmac('sha256', 'guard-qr-person:' . $accountId . ':' . $personId, $this->appSecret), 0, 16);
     }
 
     /**

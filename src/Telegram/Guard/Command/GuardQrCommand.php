@@ -87,7 +87,11 @@ class GuardQrCommand
             return;
         }
 
-        $link = sprintf('https://t.me/%s?start=%s', $username, $this->guard->mintToken($account));
+        // Personal since 22.11.2026: the code names this person as well as the flat, so the
+        // guard sees who it is. Only when the person really is linked to that flat — the
+        // scan checks the same thing, and a code that would be refused is no code.
+        $holder = GuardService::personStillOnFlat($user, (int)$account->getId()) ? $user : null;
+        $link = sprintf('https://t.me/%s?start=%s', $username, $this->guard->mintToken($account, $holder));
 
         $photo = self::photo($link);
 
@@ -114,7 +118,8 @@ class GuardQrCommand
                     . "Покажіть цей екран охоронцю або сусідові — камера відкриє бота, "
                     . "і він підтвердить, що ви мешканець ЖК, назве вашу квартиру та "
                     . "покаже, чи є у вас зараз бронь на альтанку.\n\n"
-                    . "<i>Код ваш постійний. Показувати його стороннім не варто.</i>",
+                    . "<i>Код особистий і постійний: охорона побачить, що це саме ви. "
+                    . "Стороннім його не показуйте.</i>",
                 htmlspecialchars($account->getPlaceLabel(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 $booking,
             ),

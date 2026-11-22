@@ -225,15 +225,20 @@ class AdminController extends AbstractController
     {
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
         $passId = self::passFilter($request);
+        // One filter at a time: a pass, or a person's personal code (22.11.2026).
+        $personId = $passId === null ? self::personFilter($request) : null;
         $monday = GuardFeed::parseWeek($request->query->get('week'), $now);
         $currentWeek = GuardFeed::weekStart($now);
+        $person = null;
 
-        if ($passId !== null) {
-            // One pass, its whole life — a pass is reused for days, sometimes across a
-            // week's edge, and «що було з цим пропуском» is one question.
-            $feedScans = $scans->between(new \DateTime(GuardFeed::SINCE), (clone $now)->modify('+1 day'), 3000, $passId);
-            $feedEvents = $gate->between(new \DateTime(GuardFeed::SINCE), (clone $now)->modify('+1 day'), 3000, $passId);
-            $pass = $passes->withIssuers([$passId])[0] ?? null;
+        if ($passId !== null || $personId !== null) {
+            // One pass, or one person, its whole life — a pass is reused for days, sometimes
+            // across a week's edge, and «що було з цим пропуском» is one question.
+            $tomorrow = (clone $now)->modify('+1 day');
+            $feedScans = $scans->between(new \DateTime(GuardFeed::SINCE), $tomorrow, 3000, $passId, $personId);
+            $feedEvents = $gate->between(new \DateTime(GuardFeed::SINCE), $tomorrow, 3000, $passId, $personId);
+            $pass = $passId !== null ? ($passes->withIssuers([$passId])[0] ?? null) : null;
+            $person = $personId !== null ? $people->find($personId) : null;
         } else {
             $until = (clone $monday)->modify('+7 days');
             $feedScans = $scans->between($monday, $until);
@@ -242,13 +247,14 @@ class AdminController extends AbstractController
         }
 
         $isCurrent = $monday == $currentWeek;
-        $items = $this->feedWithContacts(GuardFeed::merge($feedScans, $feedEvents), $passes, $people);
+        $items = $this->feedWithContacts(GuardFeed::merge($feedScans, $feedEvents), $passes, $people, $now);
+        $filtered = $passId !== null || $personId !== null;
 
         // The calendar opens on the month being looked at: the pass's latest line, or the
         // week on the screen.
         $month = GuardCalendar::parseMonth(
             $request->query->get('month'),
-            $passId !== null ? ($items[0]['at'] ?? $now) : ($isCurrent ? $now : $monday),
+            $filtered ? ($items[0]['at'] ?? $now) : ($isCurrent ? $now : $monday),
             $now,
         );
         $nextMonth = (clone $month)->modify('+1 month');
@@ -258,16 +264,20 @@ class AdminController extends AbstractController
             'week' => $monday,
             'week_label' => GuardFeed::weekLabel($monday),
             'is_current_week' => $isCurrent,
-            'is_live' => $passId !== null || $isCurrent,
+            'is_live' => $filtered || $isCurrent,
             'prev_week' => (clone $monday)->modify('-7 days')->format('Y-m-d'),
             'next_week' => $isCurrent ? null : (clone $monday)->modify('+7 days')->format('Y-m-d'),
             'cursor' => GuardFeed::cursor($feedScans, $feedEvents),
             'pass_filter' => $passId,
             'pass' => $pass,
+            'pass_info' => $pass !== null ? GuardFeed::passSummary($pass, $now) : null,
+            'person_filter' => $personId,
+            'person' => $person,
+            'person_label' => $personId !== null ? self::personLabelFrom($items, $personId) : null,
             'calendar' => [
                 'month' => $month->format('Y-m'),
                 'label' => GuardCalendar::monthLabel($month),
-                'weeks' => GuardCalendar::grid($month, $calendar->counts($month, $passId), $now),
+                'weeks' => GuardCalendar::grid($month, $calendar->counts($month, $passId, $personId), $now),
                 'prev' => (clone $month)->modify('-1 month')->format('Y-m'),
                 'next' => $nextMonth <= $now ? $nextMonth->format('Y-m') : null,
             ],
@@ -289,19 +299,20 @@ class AdminController extends AbstractController
     {
         $now = new \DateTime('now', new \DateTimeZone('Europe/Kyiv'));
         $passId = self::passFilter($request);
+        $personId = $passId === null ? self::personFilter($request) : null;
         $monday = GuardFeed::weekStart($now);
-        $from = $passId !== null ? new \DateTime(GuardFeed::SINCE) : $monday;
+        $from = $passId !== null || $personId !== null ? new \DateTime(GuardFeed::SINCE) : $monday;
         $afterScan = max(0, $request->query->getInt('scan'));
         $afterEvent = max(0, $request->query->getInt('event'));
 
-        $newScans = $scans->newerThan($afterScan, $from, 200, $passId);
-        $newEvents = $gate->newerThan($afterEvent, $from, 200, $passId);
+        $newScans = $scans->newerThan($afterScan, $from, 200, $passId, $personId);
+        $newEvents = $gate->newerThan($afterEvent, $from, 200, $passId, $personId);
         $guardOnly = $this->isGranted('ROLE_GUARD') && !$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_COMPLAINTS');
 
         $rows = [];
 
         // Oldest first, so the page can put each one on top and end up newest first.
-        foreach (array_reverse($this->feedWithContacts(GuardFeed::merge($newScans, $newEvents), $passes, $people)) as $item) {
+        foreach (array_reverse($this->feedWithContacts(GuardFeed::merge($newScans, $newEvents), $passes, $people, $now)) as $item) {
             $rows[] = [
                 'key' => $item['key'],
                 'day' => $item['at']->format('Y-m-d'),
@@ -313,7 +324,7 @@ class AdminController extends AbstractController
         }
 
         $response = new JsonResponse([
-            'week' => $passId !== null ? 'pass' : $monday->format('Y-m-d'),
+            'week' => $passId !== null ? 'pass' : ($personId !== null ? 'person' : $monday->format('Y-m-d')),
             'cursor' => GuardFeed::cursor($newScans, $newEvents, $afterScan, $afterEvent),
             'rows' => $rows,
             'server_time' => $now->format('H:i:s'),
@@ -331,6 +342,30 @@ class AdminController extends AbstractController
         return preg_match('/^[1-9]\d{0,8}$/', $raw) ? (int)$raw : null;
     }
 
+    /** `?person=<id>` — one person's personal-code lines (22.11.2026); same shape as `?pass=`. */
+    private static function personFilter(Request $request): ?int
+    {
+        $raw = (string)$request->query->get('person', '');
+
+        return preg_match('/^[1-9]\d{0,8}$/', $raw) ? (int)$raw : null;
+    }
+
+    /**
+     * The person's name as the log kept it, for the banner when the person is gone from the bot.
+     *
+     * @param list<array<string, mixed>> $items
+     */
+    private static function personLabelFrom(array $items, int $personId): ?string
+    {
+        foreach ($items as $item) {
+            if (($item['person_id'] ?? null) === $personId && ($item['person_label'] ?? '') !== '') {
+                return $item['person_label'];
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Who to ring beside every feed line — the pass's issuer, the flat's people — loaded
      * in two queries for the whole page or poll, never one per line.
@@ -339,12 +374,13 @@ class AdminController extends AbstractController
      *
      * @return list<array<string, mixed>>
      */
-    private function feedWithContacts(array $items, GuestPassRepository $passes, TelegramUserRepository $people): array
+    private function feedWithContacts(array $items, GuestPassRepository $passes, TelegramUserRepository $people, \DateTimeInterface $now): array
     {
         return GuardFeed::withContacts(
             $items,
             $passes->withIssuers(GuardFeed::passIds($items)),
             $people->linkedTo(GuardFeed::residentAccountIds($items)),
+            $now,
         );
     }
 

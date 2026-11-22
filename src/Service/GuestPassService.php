@@ -322,6 +322,7 @@ class GuestPassService
         ?Account $subject,
         ?GuestPass $pass = null,
         bool $byGuard = false,
+        ?TelegramUser $subjectUser = null,
     ): ?QrScan {
         try {
             $scan = (new QrScan())
@@ -331,6 +332,8 @@ class GuestPassService
                 ->setScannedByLabel(self::personLabel($scannedBy, $byGuard))
                 ->setSubjectAccount($subject)
                 ->setSubjectLabel($subject?->getPlaceLabel() ?? '—')
+                ->setSubjectUser($subjectUser)
+                ->setSubjectUserLabel($subjectUser !== null ? GuardService::personLabel($subjectUser) : '')
                 ->setGuestPassId($pass?->getId())
                 ->setByGuard($byGuard);
 

@@ -182,6 +182,13 @@ class GateLogService
         if ($pass instanceof GuestPass) {
             $person = '👷 ' . $pass->getLabel();
             $car = null; // a pass's label already leads with the car number, if it has one
+        } elseif ($scan->getSubjectUserLabel() !== '') {
+            // A personal code (22.11.2026): the gate log names the person who was let in,
+            // not everybody on the flat.
+            $person = $scan->getSubjectUser() !== null ? GuardService::personLabel($scan->getSubjectUser()) : $scan->getSubjectUserLabel();
+            $car = $account !== null
+                ? implode(', ', array_map(static fn ($p) => $p->getDisplay(), $this->plates->forAccount($account)))
+                : null;
         } else {
             $names = [];
 

@@ -1,9 +1,17 @@
 {#
     One line of the guard's feed (GuardFeed): the page and the 10-second poll both draw it
     from here, so a row that arrives later looks exactly like one that was there.
-    Plain text for the guard's login: nothing here may lead it to a page it is refused at.
+    Plain text for the guard's login: nothing here may lead it to a page it is refused at —
+    the filter links (`?pass=`, `?person=`) stay on this page and are fine for it.
+
+    A row whose line names a pass or a person opens that one's feed when tapped anywhere
+    outside a link (`data-href`, scans.html.twig) — 22.11.2026.
 #}
-<tr class="feed-row feed-{{ item.type }}{% if fresh|default(false) %} feed-fresh{% endif %}" data-key="{{ item.key }}">
+{% set guard_only = guard_only|default(false) %}
+{% set person_href = item.person_id|default(null) ? path('app_admin_scans', {person: item.person_id}) ~ '#person-filter' : null %}
+{% set pass_href = item.pass_id ? path('app_admin_scans', {pass: item.pass_id}) ~ '#pass-filter' : null %}
+{% set row_href = item.guest ? pass_href : person_href %}
+<tr class="feed-row feed-{{ item.type }}{% if fresh|default(false) %} feed-fresh{% endif %}{% if row_href %} feed-row-link{% endif %}" data-key="{{ item.key }}"{% if row_href %} data-href="{{ row_href }}"{% endif %}>
     <td class="feed-mark">
         {% if item.type == 'in' %}
             <span class="mark mark-in" title="В'їзд">➜</span><span class="mark-label text-success">В'їзд</span>
@@ -16,23 +24,58 @@
     <td class="feed-time">{{ item.at|date('H:i') }}</td>
     <td class="feed-who">
         <div class="who">
-            {% if item.account_id and not guard_only|default(false) %}<a href="{{ path('app_admin_object', {id: item.account_id}) }}" class="text-decoration-none">{{ item.who }}</a>{% else %}{{ item.who }}{% endif %}
+            {% if item.account_id and not guard_only %}<a href="{{ path('app_admin_object', {id: item.account_id}) }}" class="text-decoration-none">{{ item.who }}</a>{% else %}{{ item.who }}{% endif %}
         </div>
-        <div class="sub">
-            {# A pass mark opens that pass's own feed — revoked and expired passes too (21.11.2026). #}{% if item.pass_id %}<a href="{{ path('app_admin_scans', {pass: item.pass_id}) }}#pass-filter" class="text-decoration-none">{{ item.kind }}</a>{% else %}{{ item.kind }}{% endif %}{% if item.place %} · {{ item.place }}{% endif %}
-            {% if item.car %} · <span class="car">🚗 {{ item.car }}</span>{% endif %}
-            {% if item.problem %} <span class="problem">{{ item.problem }}</span>{% endif %}
-        </div>
-        {#
-            Who to ring (Иван, 21.11.2026): the pass's issuer — for a revoked or expired pass
-            too, it is not in the live list above — or the people on the flat whose code it is. Mandatory on every line
-            (Иван, 21.11.2026: the guard rings to clarify); «—» when there is nobody.
-        #}
-        {% if item.guest|default(false) %}
-            <div class="contact">Видав: {{ include('admin/_contact_person.html.twig', {person: item.issuer|default(null), guard_only: guard_only|default(false)}) }}</div>
+        {% if item.guest %}
+            {#
+                The pass, readable without a click (Иван, 22.11.2026): which one, what for, the
+                car, whether it runs right now, how often it was used. The number opens the
+                pass's own feed — revoked and expired passes too (21.11.2026).
+            #}
+            {% set info = item.pass_info|default(null) %}
+            <div class="sub pass-line">
+                {% if pass_href %}<a href="{{ pass_href }}" class="pass-num">{{ item.kind }}</a>{% else %}<span class="pass-num">{{ item.kind }}</span>{% endif %}
+                {% if info %}
+                    {% if info.purpose %} · <b class="pass-purpose">{{ info.purpose }}</b>{% endif %}
+                    {% if info.plate %} <span class="car-plate">{{ info.plate }}</span>{% endif %}
+                    <span class="pass-status pass-{{ info.status }}">{{ info.status_label }}</span>
+                    <span class="pass-uses text-nowrap">· сканів: {{ info.scans }}</span>
+                {% elseif item.pass_label|default('') %}
+                    · <b class="pass-purpose">{{ item.pass_label }}</b>
+                {% endif %}
+                {% if item.place %} · {{ item.place }}{% endif %}
+                {% if item.car %} · <span class="car">🚗 {{ item.car }}</span>{% endif %}
+                {# What the scan answered then — skipped when the pass's status today already says the same. #}
+                {% set same = info and ((info.status == 'revoked' and item.problem starts with '🗑') or (info.status == 'inactive' and item.problem starts with '⚪️')) %}
+                {% if item.problem and not same %} <span class="problem">{{ item.problem }}</span>{% endif %}
+            </div>
+            {# Who to ring (Иван, 21.11.2026): the issuer, for a revoked or expired pass too. #}
+            <div class="contact">Видав: {{ include('admin/_contact_person.html.twig', {person: item.issuer|default(null), guard_only: guard_only}) }}</div>
         {% else %}
-            {# Every line has somebody to ring, or says there is nobody (an unrecognised code, a flat with no one linked). #}
-            <div class="contact">Контакт: {% for person in item.contacts|default([]) %}{{ include('admin/_contact_person.html.twig', {person: person, guard_only: guard_only|default(false)}) }}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</div>
+            <div class="sub">
+                {{ item.kind }}{% if item.place %} · {{ item.place }}{% endif %}
+                {% if item.car %} · <span class="car">🚗 {{ item.car }}</span>{% endif %}
+                {% if item.problem %} <span class="problem">{{ item.problem }}</span>{% endif %}
+            </div>
+            {#
+                Whose code (22.11.2026): a personal code names its holder — name, role, phone —
+                and the name filters the feed to that person. An old flat-level code says so.
+            #}
+            {% if item.person_label|default('') %}
+                {% set p = item.person|default(null) %}
+                <div class="person-line">
+                    👤 {% if person_href %}<a href="{{ person_href }}" class="person-open">{{ p ? p|contact_name : item.person_label }}</a>{% else %}<b>{{ item.person_label }}</b>{% endif %}
+                    {%- if p %} · <span class="person-role">{{ p.roleLabel }}</span>
+                        {%- set phone = p|contact_phone %} · <span class="text-nowrap">📞 {% if phone != '—' %}<a href="tel:{{ phone }}">{{ phone }}</a>{% else %}—{% endif %}</span>
+                        {%- if not guard_only %} <a href="{{ path('app_admin_resident', {id: p.id}) }}" class="small text-muted">картка</a>{% endif %}
+                    {%- endif %}
+                </div>
+                <div class="contact">Інші з квартири: {% for person in item.contacts|default([]) %}{{ include('admin/_contact_person.html.twig', {person: person, guard_only: guard_only}) }}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</div>
+            {% else %}
+                {% if item.account_id and item.problem is null %}<div class="person-unknown">👤 хто саме — невідомо (старий код квартири)</div>{% endif %}
+                {# Every line has somebody to ring, or says there is nobody (an unrecognised code, a flat with no one linked). #}
+                <div class="contact">Контакт: {% for person in item.contacts|default([]) %}{{ include('admin/_contact_person.html.twig', {person: person, guard_only: guard_only}) }}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</div>
+            {% endif %}
         {% endif %}
     </td>
     <td class="feed-by">

@@ -24,11 +24,14 @@ class GuardCalendar
     /**
      * @return array<string, array{in: int, out: int, scans: int}> by `Y-m-d`, busy days only
      */
-    public function counts(\DateTimeInterface $monthStart, ?int $passId = null): array
+    public function counts(\DateTimeInterface $monthStart, ?int $passId = null, ?int $personId = null): array
     {
         $from = self::monthStart($monthStart);
         $to = (clone $from)->modify('+1 month');
         $pass = $passId !== null ? ' AND guest_pass_id = :pass' : '';
+        // `?person=` (22.11.2026): a press counts when the scan under it was that person's code.
+        $eventPerson = $personId !== null ? ' AND qr_scan_id IN (SELECT id FROM qr_scan WHERE subject_user_id = :person)' : '';
+        $scanPerson = $personId !== null ? ' AND q.subject_user_id = :person' : '';
 
         $rows = $this->db->fetchAllAssociative(
             "SELECT d, SUM(i) AS i, SUM(o) AS o, SUM(s) AS s FROM (
@@ -37,17 +40,18 @@ class GuardCalendar
                        CASE WHEN direction = 'in' THEN 0 ELSE 1 END AS o,
                        0 AS s
                   FROM gate_event
-                 WHERE created_at >= :from AND created_at < :to{$pass}
+                 WHERE created_at >= :from AND created_at < :to{$pass}{$eventPerson}
                 UNION ALL
                 SELECT CAST(q.created_at AS DATE), 0, 0, 1
                   FROM qr_scan q
-                 WHERE q.created_at >= :from AND q.created_at < :to" . str_replace('guest_pass_id', 'q.guest_pass_id', $pass) . "
+                 WHERE q.created_at >= :from AND q.created_at < :to" . str_replace('guest_pass_id', 'q.guest_pass_id', $pass) . $scanPerson . "
                    AND NOT EXISTS (SELECT 1 FROM gate_event g WHERE g.qr_scan_id = q.id)
             ) t GROUP BY d",
             array_filter([
                 'from' => $from->format('Y-m-d H:i:s'),
                 'to' => $to->format('Y-m-d H:i:s'),
                 'pass' => $passId,
+                'person' => $personId,
             ], static fn ($v) => $v !== null),
         );
 

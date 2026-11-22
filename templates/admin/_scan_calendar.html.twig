@@ -2,9 +2,11 @@
     The month at a glance (GuardCalendar, 21.11.2026): how many feed lines each day has,
     the darker the busier, and a tap leads to that day in the feed. Phone first — the post
     reads this on a phone as often as on its PC — so it is a plain 8-column table that fits
-    320px, nothing to hover. With `?pass=` set it counts that pass's lines only.
+    320px, nothing to hover. With `?pass=` (or `?person=`, 22.11.2026) set it counts that
+    pass's (person's) lines only.
 #}
-{% set base = pass_filter ? {pass: pass_filter} : (is_current_week ? {} : {week: week|date('Y-m-d')}) %}
+{% set filter = pass_filter|default(null) ? {pass: pass_filter} : (person_filter|default(null) ? {person: person_filter} : null) %}
+{% set base = filter ? filter : (is_current_week ? {} : {week: week|date('Y-m-d')}) %}
 <div class="scan-cal card mb-3" id="calendar">
     <div class="scan-cal-head">
         <a class="scan-cal-nav" href="{{ path('app_admin_scans', base|merge({month: calendar.prev})) }}#calendar" aria-label="Попередній місяць">‹</a>
@@ -19,11 +21,11 @@
             {# Where a day leads: its week in the feed, or — on a pass's page, which holds the pass's whole life — just that day further down. #}
             {% set busy = w.days|filter(d => d is not null and d.total > 0) %}
             {% set week_first = busy is not empty ? (busy|first).date : null %}
-            {% set is_shown_week = not pass_filter and w.monday == week|date('Y-m-d') %}
+            {% set is_shown_week = not filter and w.monday == week|date('Y-m-d') %}
             <tr{% if is_shown_week %} class="shown-week"{% endif %}>
                 <td class="wk">
-                    {% if pass_filter %}
-                        {% if week_first %}<a href="{{ path('app_admin_scans', {pass: pass_filter, month: calendar.month}) }}#day-{{ week_first }}" title="Цей тиждень">→</a>{% else %}<span class="text-muted">·</span>{% endif %}
+                    {% if filter %}
+                        {% if week_first %}<a href="{{ path('app_admin_scans', filter|merge({month: calendar.month})) }}#day-{{ week_first }}" title="Цей тиждень">→</a>{% else %}<span class="text-muted">·</span>{% endif %}
                     {% elseif w.monday <= now|date('Y-m-d') %}
                         <a href="{{ path('app_admin_scans', {week: w.monday, month: calendar.month}) }}#feed" title="Відкрити тиждень">→</a>
                     {% endif %}
@@ -32,8 +34,8 @@
                     {% if d is null %}
                         <td class="out"></td>
                     {% else %}
-                        {% set href = pass_filter
-                            ? (d.total > 0 ? path('app_admin_scans', {pass: pass_filter, month: calendar.month}) ~ '#day-' ~ d.date : null)
+                        {% set href = filter
+                            ? (d.total > 0 ? path('app_admin_scans', filter|merge({month: calendar.month})) ~ '#day-' ~ d.date : null)
                             : (d.future ? null : path('app_admin_scans', {week: w.monday, month: calendar.month}) ~ '#day-' ~ d.date) %}
                         <td class="lvl-{{ d.level }}{% if d.today %} today{% endif %}{% if d.future %} future{% endif %}" data-date="{{ d.date }}" data-total="{{ d.total }}">
                             {% if href %}<a href="{{ href }}" title="{{ d.total }} {{ d.total == 1 ? 'подія' : 'подій' }}">{% endif %}

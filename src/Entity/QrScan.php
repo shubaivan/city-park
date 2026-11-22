@@ -26,6 +26,8 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: QrScanRepository::class)]
 #[ORM\Table(name: 'qr_scan')]
 #[ORM\Index(name: 'qs_created_idx', columns: ['created_at'])]
+#[ORM\Index(name: 'qs_subject_user_idx', columns: ['subject_user_id'])]
+#[ORM\Index(name: 'qs_guest_pass_idx', columns: ['guest_pass_id'])]
 class QrScan
 {
     /** Somebody's own resident pass. */
@@ -40,6 +42,8 @@ class QrScan
     public const RESULT_NOT_ACTIVE = 'not_active';
     public const RESULT_REVOKED = 'revoked';
     public const RESULT_UNKNOWN = 'unknown';
+    /** A personal resident code whose person is no longer on that flat (22.11.2026). */
+    public const RESULT_PERSON_GONE = 'person_gone';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -68,6 +72,17 @@ class QrScan
 
     #[ORM\Column(type: Types::STRING, length: 120, nullable: false)]
     private string $subject_label = '';
+
+    /**
+     * Whose personal code it was (22.11.2026) — null for an old flat-level code, a guest
+     * pass, or once the person is gone from the bot. The label keeps «Олена · Власник».
+     */
+    #[ORM\ManyToOne(targetEntity: TelegramUser::class)]
+    #[ORM\JoinColumn(name: 'subject_user_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?TelegramUser $subjectUser = null;
+
+    #[ORM\Column(type: Types::STRING, length: 160, nullable: false, options: ['default' => ''])]
+    private string $subject_user_label = '';
 
     /** The guest pass, when it was one. Not a FK: a revoked pass may be deleted one day. */
     #[ORM\Column(type: Types::INTEGER, nullable: true)]
@@ -158,6 +173,30 @@ class QrScan
     public function setSubjectLabel(string $label): static
     {
         $this->subject_label = mb_substr($label, 0, 120);
+
+        return $this;
+    }
+
+    public function getSubjectUser(): ?TelegramUser
+    {
+        return $this->subjectUser;
+    }
+
+    public function setSubjectUser(?TelegramUser $user): static
+    {
+        $this->subjectUser = $user;
+
+        return $this;
+    }
+
+    public function getSubjectUserLabel(): string
+    {
+        return $this->subject_user_label;
+    }
+
+    public function setSubjectUserLabel(string $label): static
+    {
+        $this->subject_user_label = mb_substr($label, 0, 160);
 
         return $this;
     }

@@ -66,9 +66,9 @@ class GateEventRepository extends ServiceEntityRepository
      *
      * @return GateEvent[]
      */
-    public function between(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 3000, ?int $passId = null): array
+    public function between(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 3000, ?int $passId = null, ?int $personId = null): array
     {
-        return $this->onlyPass($this->createQueryBuilder('e'), $passId)
+        return $this->filtered($passId, $personId)
             ->andWhere('e.created_at >= :from')->setParameter('from', $from)
             ->andWhere('e.created_at < :to')->setParameter('to', $to)
             ->orderBy('e.id', 'DESC')
@@ -82,15 +82,32 @@ class GateEventRepository extends ServiceEntityRepository
      *
      * @return GateEvent[]
      */
-    public function newerThan(int $afterId, \DateTimeInterface $from, int $limit = 200, ?int $passId = null): array
+    public function newerThan(int $afterId, \DateTimeInterface $from, int $limit = 200, ?int $passId = null, ?int $personId = null): array
     {
-        return $this->onlyPass($this->createQueryBuilder('e'), $passId)
+        return $this->filtered($passId, $personId)
             ->andWhere('e.id > :id')->setParameter('id', $afterId)
             ->andWhere('e.created_at >= :from')->setParameter('from', $from)
             ->orderBy('e.id', 'ASC')
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
+    }
+
+    /**
+     * The feed's query: the scan behind each press and its person fetched with it, and
+     * narrowed to one person's personal code (`?person=`, 22.11.2026) when asked.
+     */
+    private function filtered(?int $passId, ?int $personId): \Doctrine\ORM\QueryBuilder
+    {
+        $qb = $this->createQueryBuilder('e')
+            ->leftJoin('e.qrScan', 'q')->addSelect('q')
+            ->leftJoin('q.subjectUser', 'qu')->addSelect('qu');
+
+        if ($personId !== null) {
+            $qb->andWhere('qu.id = :person')->setParameter('person', $personId);
+        }
+
+        return $this->onlyPass($qb, $passId);
     }
 
     /** `?pass=<id>` on /admin/scans: one pass's lines only, revoked and expired passes too. */

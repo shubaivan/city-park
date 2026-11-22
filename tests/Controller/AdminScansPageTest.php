@@ -22,7 +22,7 @@ use Twig\Environment;
  */
 class AdminScansPageTest extends KernelTestCase
 {
-    private function render(array $entries, array $passes = [], string $role = 'ROLE_ADMIN', array $gate = [], bool $current = true, array $allPasses = [], array $people = [], ?int $passFilter = null, ?GuestPass $pass = null, array $counts = []): string
+    private function render(array $entries, array $passes = [], string $role = 'ROLE_ADMIN', array $gate = [], bool $current = true, array $allPasses = [], array $people = [], ?int $passFilter = null, ?GuestPass $pass = null, array $counts = [], ?int $personFilter = null, ?\App\Entity\TelegramUser $person = null, ?string $personLabel = null): string
     {
         self::bootKernel();
 
@@ -41,9 +41,13 @@ class AdminScansPageTest extends KernelTestCase
             'prev_week' => '2026-11-09',
             'next_week' => $current ? null : '2026-11-23',
             'cursor' => GuardFeed::cursor($entries, $gate),
-            'is_live' => $passFilter !== null || $current,
+            'is_live' => $passFilter !== null || $personFilter !== null || $current,
             'pass_filter' => $passFilter,
             'pass' => $pass,
+            'pass_info' => $pass !== null ? GuardFeed::passSummary($pass, $now) : null,
+            'person_filter' => $personFilter,
+            'person' => $person,
+            'person_label' => $personLabel,
             'calendar' => [
                 'month' => $now->format('Y-m'),
                 'label' => \App\Service\GuardCalendar::monthLabel($now),
@@ -243,7 +247,8 @@ class AdminScansPageTest extends KernelTestCase
             self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED)),
         ]);
 
-        $this->assertSame(2, substr_count($html, 'href="/admin/scans?pass=4#pass-filter"'));
+        $this->assertSame(2, substr_count($html, '<a href="/admin/scans?pass=4#pass-filter" class="pass-num">'));
+        $this->assertSame(2, substr_count($html, 'data-href="/admin/scans?pass=4#pass-filter"'), 'the whole line opens the pass too');
         $this->assertStringNotContainsString('href="#pass-', $html);
     }
 
@@ -275,8 +280,9 @@ class AdminScansPageTest extends KernelTestCase
         foreach (['ROLE_ADMIN', 'ROLE_GUARD'] as $role) {
             $html = $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED))], [], $role, [], true, [$pass], [], 4, $pass);
 
-            $this->assertStringContainsString('Пропуск: <b>Бригада, ремонт</b>', $html);
-            $this->assertStringContainsString('× Усі події', $html);
+            $this->assertStringContainsString('Показано: <b>👷 пропуск №4</b>', $html);
+            $this->assertStringContainsString('<b>Бригада, ремонт</b>', $html);
+            $this->assertStringContainsString('✕ Усі події', $html);
             $this->assertStringContainsString('скасований', $html);
             $this->assertStringContainsString('href="tel:+380671112233"', $html);
             $this->assertStringContainsString('data-pass="4"', $html);
@@ -296,7 +302,7 @@ class AdminScansPageTest extends KernelTestCase
         $html = $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_REVOKED))], [], 'ROLE_GUARD', [], true, [], [], 4, null);
 
         $this->assertStringContainsString('Пропуск #4', $html);
-        $this->assertStringContainsString('× Усі події', $html);
+        $this->assertStringContainsString('✕ Усі події', $html);
     }
 
     /**
@@ -419,5 +425,164 @@ class AdminScansPageTest extends KernelTestCase
         $this->assertStringContainsString('data-live="0"', $past);
         $this->assertStringContainsString('Наступний тиждень', $past);
         $this->assertStringNotContainsString('<template id="feed-day-template"', $past);
+    }
+
+    #############
+    # Personal codes, pass details, filters (22.11.2026)
+    #############
+
+    private function holder(Account $flat): \App\Entity\TelegramUser
+    {
+        $person = (new \App\Entity\TelegramUser())->setFullName('Олена Петренко')->setPhoneNumber('380501234567')
+            ->setRole(\App\Entity\TelegramUser::ROLE_TENANT)->setAccount($flat);
+        (new \ReflectionProperty(\App\Entity\TelegramUser::class, 'id'))->setValue($person, 42);
+
+        return $person;
+    }
+
+    /** A personal code's line names its holder — name, role, phone — and the name filters the feed. */
+    public function testAPersonalCodeLineNamesThePersonAndFiltersByThem(): void
+    {
+        $flat = $this->flat(12);
+        $holder = $this->holder($flat);
+        $other = (new \App\Entity\TelegramUser())->setFullName('Петро Петренко')->setPhoneNumber('380671112233')->setAccount($flat);
+        (new \ReflectionProperty(\App\Entity\TelegramUser::class, 'id'))->setValue($other, 43);
+        $scan = self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK)->setSubjectAccount($flat)
+            ->setSubjectUser($holder)->setSubjectUserLabel('Олена Петренко · Орендар'));
+
+        foreach (['ROLE_ADMIN', 'ROLE_GUARD'] as $role) {
+            $html = $this->render([$scan], [], $role, [], true, [], [$holder, $other]);
+
+            $this->assertStringContainsString('<a href="/admin/scans?person=42#person-filter" class="person-open">Олена Петренко</a>', $html);
+            $this->assertStringContainsString('data-href="/admin/scans?person=42#person-filter"', $html, 'the whole line filters too');
+            $this->assertStringContainsString('Орендар', $html);
+            $this->assertStringContainsString('href="tel:+380501234567"', $html);
+            $this->assertStringContainsString('Інші з квартири:', $html);
+            $this->assertStringContainsString('href="tel:+380671112233"', $html);
+            $this->assertSame(1, substr_count($html, 'href="tel:+380501234567"'), 'the holder is not listed twice');
+            $this->assertStringNotContainsString('старий код', $html);
+            if ($role === 'ROLE_GUARD') {
+                $this->assertStringNotContainsString('/admin/users/', $html);
+            } else {
+                $this->assertStringContainsString('href="/admin/users/42"', $html);
+            }
+        }
+    }
+
+    /** An old flat-level code is still a line — and says the person is not known. */
+    public function testAnOldFlatLevelCodeSaysThePersonIsUnknown(): void
+    {
+        $flat = $this->flat(12);
+        $scan = self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK)->setSubjectAccount($flat));
+
+        $html = $this->render([$scan], [], 'ROLE_GUARD', [], true, [], [$this->holder($flat)]);
+
+        $this->assertStringContainsString('хто саме — невідомо (старий код квартири)', $html);
+        $this->assertStringContainsString('Контакт: ', $html);
+        $this->assertStringNotContainsString('class="person-open"', $html);
+    }
+
+    /** The person gone from the bot: the label the log kept still says who it was. */
+    public function testAPersonGoneFromTheBotIsStillNamedByTheLabel(): void
+    {
+        $scan = self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_PERSON_GONE)->setSubjectAccount($this->flat(12))
+            ->setSubjectUserLabel('Олена Петренко · Орендар'));
+
+        $html = $this->render([$scan], [], 'ROLE_GUARD');
+
+        $this->assertStringContainsString('Олена Петренко · Орендар', $html);
+        $this->assertStringContainsString('відв&#039;язали від квартири', $html);
+        $this->assertStringNotContainsString('class="person-open"', $html);
+    }
+
+    /** A pass line reads without a click: number, purpose, car, status, uses, issuer. */
+    public function testAPassLineCarriesThePassDetails(): void
+    {
+        $issuer = (new \App\Entity\TelegramUser())->setFullName('Ніна Коваль')->setPhoneNumber('380671112233');
+        (new \ReflectionProperty(\App\Entity\TelegramUser::class, 'id'))->setValue($issuer, 5);
+        $pass = (new GuestPass())->setAccount($this->flat(9))->setLabel('AA1234BB доставка пральної машини')->setIssuedBy($issuer);
+        (new \ReflectionProperty(GuestPass::class, 'id'))->setValue($pass, 4);
+        $pass->setActiveUntil(new \DateTime('+2 hours', new \DateTimeZone('Europe/Kyiv')));
+        $pass->countScan(new \DateTime());
+        $pass->countScan(new \DateTime());
+
+        $scan = self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_OK));
+        $press = self::withId((new GateEvent())->setDirection(GateEvent::DIRECTION_IN)->setKind(QrScan::KIND_GUEST)
+            ->setPersonLabel('👷 AA1234BB доставка пральної машини')->setPlaceLabel('буд. 19, кв. 9')->setGuestPassId(4));
+
+        foreach (['ROLE_ADMIN', 'ROLE_GUARD'] as $role) {
+            $html = $this->render([$scan], [], $role, [$press], true, [$pass]);
+
+            $this->assertSame(2, substr_count($html, 'class="pass-num">👷 пропуск №4</a>'));
+            $this->assertSame(2, substr_count($html, '<b class="pass-purpose">доставка пральної машини</b>'));
+            $this->assertSame(2, substr_count($html, '<span class="car-plate">AA 1234 BB</span>'));
+            $this->assertSame(2, substr_count($html, 'class="pass-status pass-active">✅ діє до '));
+            $this->assertSame(2, substr_count($html, '· сканів: 2'));
+            $this->assertSame(2, substr_count($html, 'href="tel:+380671112233"'));
+        }
+
+        $pass->revoke();
+        $html = $this->render([$scan], [], 'ROLE_GUARD', [], true, [$pass]);
+        $this->assertStringContainsString('class="pass-status pass-revoked">🗑 скасований', $html);
+    }
+
+    /** A pass the base no longer has: the entry line still names what the log kept. */
+    public function testAGonePassStillShowsItsLabelOnAnEntryLine(): void
+    {
+        $press = self::withId((new GateEvent())->setDirection(GateEvent::DIRECTION_IN)->setKind(QrScan::KIND_GUEST)
+            ->setPersonLabel('👷 Бригада плиточників')->setPlaceLabel('буд. 19, кв. 9')->setGuestPassId(4));
+
+        $html = $this->render([], [], 'ROLE_GUARD', [$press]);
+
+        $this->assertStringContainsString('<b class="pass-purpose">Бригада плиточників</b>', $html);
+        $this->assertStringContainsString('буд. 19, кв. 9', $html);
+    }
+
+    /** One person's page: a visible chip with the way back, the poll and calendar filtered. */
+    public function testThePersonPageSaysWhoAndHowToLeave(): void
+    {
+        $flat = $this->flat(12);
+        $holder = $this->holder($flat);
+        $scan = self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK)->setSubjectAccount($flat)
+            ->setSubjectUser($holder)->setSubjectUserLabel('Олена Петренко · Орендар'));
+
+        foreach (['ROLE_ADMIN', 'ROLE_GUARD'] as $role) {
+            $html = $this->render([$scan], [], $role, [], true, [], [$holder], null, null, [], 42, $holder);
+
+            $this->assertStringContainsString('id="person-filter"', $html);
+            $this->assertStringContainsString('Показано: <b>👤 Олена Петренко</b>', $html);
+            $this->assertStringContainsString('<a class="ff-clear btn btn-dark" href="/admin/scans">✕ Усі події</a>', $html);
+            $this->assertStringContainsString('data-person="42"', $html);
+            $this->assertStringContainsString('data-week="person"', $html);
+            $this->assertStringContainsString('data-live="1"', $html);
+            $this->assertStringContainsString('?person=42&amp;month=', $html, 'the calendar keeps the filter');
+            $this->assertStringNotContainsString('Попередній тиждень', $html);
+            $this->assertStringNotContainsString('id="pass-filter"', $html);
+            if ($role === 'ROLE_GUARD') {
+                $this->assertStringNotContainsString('/admin/users/', $html);
+            }
+        }
+
+        $gone = $this->render([], [], 'ROLE_GUARD', [], true, [], [], null, null, [], 42, null, 'Олена Петренко · Орендар');
+        $this->assertStringContainsString('Показано: <b>👤 Олена Петренко · Орендар</b>', $gone);
+        $this->assertStringContainsString('У боті цієї людини вже немає', $gone);
+    }
+
+    /** The pass chip reads «Показано: пропуск №N» with the way back. */
+    public function testThePassPageHasTheChip(): void
+    {
+        $html = $this->render([], [], 'ROLE_GUARD', [], true, [], [], 4, null);
+
+        $this->assertStringContainsString('Показано: <b>👷 пропуск №4</b>', $html);
+        $this->assertStringContainsString('<a class="ff-clear btn btn-dark" href="/admin/scans">✕ Усі події</a>', $html);
+    }
+
+    /** The unfiltered feed shows no chip. */
+    public function testTheDefaultFeedHasNoChip(): void
+    {
+        $html = $this->render([]);
+
+        $this->assertStringNotContainsString('class="ff-clear', $html);
+        $this->assertStringContainsString('data-person=""', $html);
     }
 }

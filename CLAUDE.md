@@ -1243,6 +1243,21 @@ last Saturday has to read as plainly wrong rather than as a bot error.
   from 457 people and shows up as «бот не відповідає», not as an error anywhere.
 - Needs `endroid/qr-code`, so a deploy that brings this in must run `composer install`.
 
+**Personal codes (22.11.2026).** A flat-level code read «буд. 17, кв. 1» and the guard
+could not tell which of four people it was. «🪪 Мій QR-код» now mints
+`g-<account>-<user>-<sig16>` (HMAC over `guard-qr-person:<account>:<user>`, a different
+string from the flat-level `guard-qr:<account>`, so neither converts into the other). The
+scan records the person on `QrScan.subject_user_id` + `subject_user_label` («Олена · Власник»),
+and the **guard** is told name, role and phone first, then the rest of the flat; a neighbour's
+answer is unchanged (flat only). **Old flat-level codes keep working** (person «невідомо»).
+A personal code is valid only while that person is still linked to that very flat
+(`GuardService::personStillOnFlat()`): unlinked, moved or deleted → «⛔ Код більше не дійсний»,
+logged as `person_gone`. `ResidentQrTokenTest`, `GuardScanPersonTest`, `GuardQrPersonalTest`.
+`/admin/scans?person=<id>` is that person's feed, same shape as `?pass=`; both show a
+«Показано: … · ✕ Усі події» chip, and a feed line naming a pass or a person opens that
+filter when tapped. Pass lines read without a click: №, purpose, car plate (split off the
+label by `GuardFeed::splitPlate()`), status now, scan count, issuer.
+
 ## Passes for the people a flat lets in («👷 Пропуски»)
 
 The crew arrives at eight and the guard has no way to tell an expected builder from

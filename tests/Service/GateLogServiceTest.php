@@ -104,6 +104,22 @@ class GateLogServiceTest extends TestCase
         $this->assertStringContainsString('Олена Петренко, буд. 19, кв. 85, авто CA 1234 AB, ' . $event->getCreatedAt()->format('H:i'), $text);
     }
 
+    /** A personal code (22.11.2026): the press names the person who was let in, not the whole flat. */
+    public function testAPressUnderAPersonalCodeNamesThatPerson(): void
+    {
+        $holder = (new TelegramUser())->setFullName('Ігор Петренко')->setRole(TelegramUser::ROLE_FAMILY);
+        $this->scan->setSubjectUser($holder)->setSubjectUserLabel('Ігор Петренко · Член сім\'ї');
+
+        $event = $this->press('in', self::GUARD)->event;
+
+        $this->assertSame('Ігор Петренко · Член сім\'ї', $event->getPersonLabel());
+        $this->assertSame('CA 1234 AB', $event->getCarLabel());
+
+        $item = \App\Service\GuardFeed::fromEvent($event);
+        $this->assertSame('буд. 19, кв. 85', $item['who'], 'the line leads with the flat');
+        $this->assertSame('Ігор Петренко · Член сім\'ї', $item['person_label']);
+    }
+
     /** No car written down — the confirmation simply has no «авто». */
     public function testNoCarMeansNoCarInTheConfirmation(): void
     {

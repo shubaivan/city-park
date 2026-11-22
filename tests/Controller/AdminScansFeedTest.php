@@ -51,7 +51,13 @@ class AdminScansFeedTest extends WebTestCase
             ->setSubjectLabel('буд. 19, кв. 12')->setScannedByLabel('Охорона');
         $unknown = (new QrScan())->setKind(QrScan::KIND_RESIDENT)->setResult(QrScan::RESULT_UNKNOWN)
             ->setSubjectLabel('—')->setScannedByLabel('Охорона');
-        foreach ([$passScan, $residentScan, $unknown] as $i => $scan) {
+        // A personal code (22.11.2026): the neighbour's own QR.
+        $holder = (new TelegramUser())->setFullName('Олена Петренко')->setRole(TelegramUser::ROLE_OWNER)->setPhoneNumber('380509998877')->setAccount($flat);
+        $this->setId($holder, 8);
+        $personal = (new QrScan())->setKind(QrScan::KIND_RESIDENT)->setResult(QrScan::RESULT_OK)->setSubjectAccount($flat)
+            ->setSubjectLabel('буд. 19, кв. 12')->setScannedByLabel('Охорона')
+            ->setSubjectUser($holder)->setSubjectUserLabel('Олена Петренко · Власник');
+        foreach ([$passScan, $residentScan, $unknown, $personal] as $i => $scan) {
             $this->setId($scan, 10 + $i);
             (new \ReflectionProperty(QrScan::class, 'created_at'))->setValue($scan, (clone $now)->modify('-' . (10 - $i) . ' minutes'));
         }
@@ -63,10 +69,11 @@ class AdminScansFeedTest extends WebTestCase
 
             return $result;
         };
-        $all = [$passScan, $residentScan, $unknown];
+        $all = [$passScan, $residentScan, $unknown, $personal];
+        $pick = static fn (array $a): array => ($a[3] ?? null) === 4 ? [$passScan] : (($a[4] ?? null) === 8 ? [$personal] : $all);
         $scans = $this->createStub(QrScanRepository::class);
-        $scans->method('between')->willReturnCallback(fn (...$a) => $record('scans', $a, ($a[3] ?? null) === 4 ? [$passScan] : $all));
-        $scans->method('newerThan')->willReturnCallback(fn (...$a) => $record('scans', $a, ($a[3] ?? null) === 4 ? [$passScan] : $all));
+        $scans->method('between')->willReturnCallback(fn (...$a) => $record('scans', $a, $pick($a)));
+        $scans->method('newerThan')->willReturnCallback(fn (...$a) => $record('scans', $a, $pick($a)));
         $gate = $this->createStub(GateEventRepository::class);
         $gate->method('between')->willReturnCallback(fn (...$a) => $record('gate', $a, []));
         $gate->method('newerThan')->willReturnCallback(fn (...$a) => $record('gate', $a, []));
@@ -75,6 +82,7 @@ class AdminScansFeedTest extends WebTestCase
         $passes->method('withIssuers')->willReturnCallback(fn (array $ids) => $record('passes', [$ids], in_array(4, $ids, true) ? [$pass] : []));
         $passes->method('liveWithIssuers')->willReturn([]);
         $people = $this->createStub(TelegramUserRepository::class);
+        $people->method('find')->willReturnCallback(fn ($id) => $record('person', [$id], [$id === 8 ? $holder : null])[0]);
         $people->method('linkedTo')->willReturnCallback(fn (array $ids) => $record('people', [$ids], in_array(12, $ids, true) ? [$neighbour] : []));
         $calendar = $this->createStub(GuardCalendar::class);
         $calendar->method('counts')->willReturnCallback(fn (...$a) => $record('calendar', $a, []));
@@ -98,7 +106,9 @@ class AdminScansFeedTest extends WebTestCase
         $rows = json_decode((string)$client->getResponse()->getContent(), true)['rows'];
         $html = array_column($rows, 'html', 'key');
 
-        $this->assertCount(3, $html);
+        $this->assertCount(4, $html);
+        $this->assertStringContainsString('href="/admin/scans?person=8#person-filter"', $html['s13']);
+        $this->assertStringContainsString('Власник', $html['s13']);
         $this->assertStringContainsString('Видав: Коваль Ніна Петрівна', $html['s10'], 'the registry name, as the bot writes it');
         $this->assertStringContainsString('href="tel:+380671112233"', $html['s10'], 'every non-digit stripped');
         $this->assertStringContainsString('href="tel:+380501234567"', $html['s11']);
@@ -154,8 +164,9 @@ class AdminScansFeedTest extends WebTestCase
 
         $this->assertResponseIsSuccessful();
         $page = (string)$client->getResponse()->getContent();
-        $this->assertStringContainsString('Пропуск: <b>Бригада</b>', $page);
-        $this->assertStringContainsString('× Усі події', $page);
+        $this->assertStringContainsString('Показано: <b>👷 пропуск №4</b>', $page);
+        $this->assertStringContainsString('<b>Бригада</b>', $page);
+        $this->assertStringContainsString('✕ Усі події', $page);
         $this->assertStringContainsString('href="tel:+380671112233"', $page);
         $this->assertStringContainsString('data-key="s10"', $page);
         $this->assertStringNotContainsString('data-key="s11"', $page, 'the resident line is not this pass\'s');
@@ -176,10 +187,73 @@ class AdminScansFeedTest extends WebTestCase
         $client->request('GET', '/admin/scans?pass=abc');
 
         $this->assertResponseIsSuccessful();
-        $this->assertStringNotContainsString('× Усі події', (string)$client->getResponse()->getContent());
+        $this->assertStringNotContainsString('✕ Усі події', (string)$client->getResponse()->getContent());
         foreach ($this->asked as [$what, $args]) {
             if ($what === 'calendar') {
                 $this->assertNull($args[1]);
+            }
+        }
+    }
+
+    /** `?person=` reaches every query, the calendar and the poll; the page shows the chip. */
+    public function testThePersonPageForTheGuard(): void
+    {
+        $client = $this->client('test_guard');
+        $client->request('GET', '/admin/scans?person=8');
+
+        $this->assertResponseIsSuccessful();
+        $page = (string)$client->getResponse()->getContent();
+        $this->assertStringContainsString('Показано: <b>👤 Олена Петренко</b>', $page);
+        $this->assertStringContainsString('✕ Усі події', $page);
+        $this->assertStringContainsString('data-key="s13"', $page);
+        $this->assertStringNotContainsString('data-key="s11"', $page, 'a flat-level scan names nobody');
+        $this->assertStringNotContainsString('/admin/users/', $page);
+
+        $asked = array_filter($this->asked, static fn ($a) => in_array($a[0], ['scans', 'gate', 'calendar'], true));
+        $this->assertNotEmpty($asked);
+        foreach ($asked as [$what, $args]) {
+            $this->assertSame(8, $what === 'calendar' ? $args[2] : $args[4], $what . ' must be filtered to person 8');
+            $this->assertNull($what === 'calendar' ? $args[1] : $args[3], 'and not to a pass');
+        }
+    }
+
+    public function testThePollOfOnePersonAsksForThatPersonOnly(): void
+    {
+        $client = $this->client('test_guard');
+        $client->request('GET', '/admin/scans/feed?scan=0&event=0&person=8');
+
+        $data = json_decode((string)$client->getResponse()->getContent(), true);
+        $this->assertSame('person', $data['week']);
+        $this->assertSame(['s13'], array_column($data['rows'], 'key'));
+        foreach ($this->asked as [$what, $args]) {
+            if (in_array($what, ['scans', 'gate'], true)) {
+                $this->assertSame(8, $args[4]);
+            }
+        }
+    }
+
+    /** One filter at a time: a pass wins, a garbage person is no filter at all. */
+    public function testPassWinsAndGarbagePersonIsNoFilter(): void
+    {
+        $client = $this->client('test_guard');
+        $client->request('GET', '/admin/scans?pass=4&person=8');
+        $this->assertStringContainsString('id="pass-filter"', (string)$client->getResponse()->getContent());
+        foreach ($this->asked as [$what, $args]) {
+            if (in_array($what, ['scans', 'gate'], true)) {
+                $this->assertSame([4, null], [$args[3], $args[4]]);
+            }
+        }
+
+        foreach (['abc', '0', '-1', '8 OR 1=1'] as $garbage) {
+            self::ensureKernelShutdown();
+            $client = $this->client('test_guard');
+            $client->request('GET', '/admin/scans?person=' . rawurlencode($garbage));
+            $this->assertResponseIsSuccessful();
+            $this->assertStringNotContainsString('✕ Усі події', (string)$client->getResponse()->getContent());
+            foreach ($this->asked as [$what, $args]) {
+                if ($what === 'calendar') {
+                    $this->assertNull($args[2]);
+                }
             }
         }
     }
