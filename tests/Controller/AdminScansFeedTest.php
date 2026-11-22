@@ -257,4 +257,16 @@ class AdminScansFeedTest extends WebTestCase
             }
         }
     }
+
+    /** A person id with no line in the log gives the guard nothing — no paging through residents. */
+    public function testAPersonWithNoLinesRevealsNothing(): void
+    {
+        $client = $this->client('test_guard');
+        $client->request('GET', '/admin/scans?person=6');
+
+        $page = (string)$client->getResponse()->getContent();
+        $this->assertStringContainsString('людина #6', $page);
+        $this->assertStringNotContainsString('380501234567', explode('id="feed"', $page)[0], 'no phone in the chip');
+        $this->assertEmpty(array_filter($this->asked, static fn ($a) => $a[0] === 'person'), 'no lookup by bare id');
+    }
 }

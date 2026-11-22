@@ -238,7 +238,6 @@ class AdminController extends AbstractController
             $feedScans = $scans->between(new \DateTime(GuardFeed::SINCE), $tomorrow, 3000, $passId, $personId);
             $feedEvents = $gate->between(new \DateTime(GuardFeed::SINCE), $tomorrow, 3000, $passId, $personId);
             $pass = $passId !== null ? ($passes->withIssuers([$passId])[0] ?? null) : null;
-            $person = $personId !== null ? $people->find($personId) : null;
         } else {
             $until = (clone $monday)->modify('+7 days');
             $feedScans = $scans->between($monday, $until);
@@ -249,6 +248,9 @@ class AdminController extends AbstractController
         $isCurrent = $monday == $currentWeek;
         $items = $this->feedWithContacts(GuardFeed::merge($feedScans, $feedEvents), $passes, $people, $now);
         $filtered = $passId !== null || $personId !== null;
+        // The person's details come only from a line the log already holds for them — never a
+        // bare lookup by id, or the guard's login could page through every resident's phone.
+        $person = $personId !== null ? self::personFrom($items, $personId) : null;
 
         // The calendar opens on the month being looked at: the pass's latest line, or the
         // week on the screen.
@@ -348,6 +350,20 @@ class AdminController extends AbstractController
         $raw = (string)$request->query->get('person', '');
 
         return preg_match('/^[1-9]\d{0,8}$/', $raw) ? (int)$raw : null;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $items
+     */
+    private static function personFrom(array $items, int $personId): ?\App\Entity\TelegramUser
+    {
+        foreach ($items as $item) {
+            if (($item['person_id'] ?? null) === $personId && ($item['person'] ?? null) instanceof \App\Entity\TelegramUser) {
+                return $item['person'];
+            }
+        }
+
+        return null;
     }
 
     /**

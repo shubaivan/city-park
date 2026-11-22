@@ -1252,7 +1252,12 @@ and the **guard** is told name, role and phone first, then the rest of the flat;
 answer is unchanged (flat only). **Old flat-level codes keep working** (person «невідомо»).
 A personal code is valid only while that person is still linked to that very flat
 (`GuardService::personStillOnFlat()`): unlinked, moved or deleted → «⛔ Код більше не дійсний»,
-logged as `person_gone`. `ResidentQrTokenTest`, `GuardScanPersonTest`, `GuardQrPersonalTest`.
+logged as `person_gone`. **Limit:** a flat-level code saved before
+22.11.2026 cannot be revoked per person — it keeps answering for the flat (kept on purpose so
+no code in anybody's phone broke). The bot no longer mints flat-level codes at all;
+`GuardQrCommand::tokenFor()` refuses rather than fall back. The `?person=` chip takes the
+person's details only from a line already in the log, never from a bare id lookup (the
+guard's login must not be able to page through residents' phones). `ResidentQrTokenTest`, `GuardScanPersonTest`, `GuardQrPersonalTest`.
 `/admin/scans?person=<id>` is that person's feed, same shape as `?pass=`; both show a
 «Показано: … · ✕ Усі події» chip, and a feed line naming a pass or a person opens that
 filter when tapped. Pass lines read without a click: №, purpose, car plate (split off the

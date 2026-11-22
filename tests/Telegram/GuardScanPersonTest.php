@@ -106,6 +106,15 @@ class GuardScanPersonTest extends KernelTestCase
         $this->assertSame(QrScan::RESULT_PERSON_GONE, $this->recorded[0][1]);
     }
 
+    /** A neighbour is not told that somebody left that flat. */
+    public function testANeighbourGetsANeutralRefusal(): void
+    {
+        [$text] = $this->scan('999111', personal: true, relink: true, personAccount: null);
+
+        $this->assertStringContainsString('Код не дійсний', $text);
+        $this->assertStringNotContainsString('прив', $text);
+    }
+
     /** A tampered personal code is no code: never reaches a lookup, logged as unknown. */
     public function testATamperedPersonalCodeIsUnknown(): void
     {

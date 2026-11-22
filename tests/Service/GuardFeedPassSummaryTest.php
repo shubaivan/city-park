@@ -79,6 +79,5 @@ class GuardFeedPassSummaryTest extends TestCase
         $ids = array_map(static fn (TelegramUser $p) => $p->getId(), $item['contacts']);
         $this->assertNotContains(43, $ids);
         $this->assertCount(GuardFeed::MAX_CONTACTS - 1, $ids);
-        $this->assertSame([43], GuardFeed::personIds([$item]));
     }
 }

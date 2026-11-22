@@ -3,6 +3,7 @@
 namespace App\Telegram\Guard\Command;
 
 use App\Entity\Account;
+use App\Entity\TelegramUser;
 use App\Repository\AccountRepository;
 use App\Repository\TelegramUserRepository;
 use App\Entity\QrScan;
@@ -108,9 +109,13 @@ class GuardScanCommand
         // picture. Said plainly, never as a bot error, and with nothing about who they were.
         if ($personId !== null && !GuardService::personStillOnFlat($person, (int)$account->getId())) {
             $this->passes->recordScan(QrScan::KIND_RESIDENT, QrScan::RESULT_PERSON_GONE, $user, $account, null, $isGuard, $person);
-            $this->answer($bot, "⛔ <b>Код більше не дійсний</b>\n\n"
-                . "Ця людина вже не прив'язана до квартири в боті. "
-                . 'Якщо вона тут живе — хай відкриє «🪪 Мій QR-код» у боті ще раз.');
+            // Why it is dead is the guard's business only; a neighbour is not told that
+            // somebody left that flat.
+            $this->answer($bot, $isGuard
+                ? "⛔ <b>Код більше не дійсний</b>\n\n"
+                    . "Ця людина вже не прив'язана до квартири в боті. "
+                    . 'Якщо вона тут живе — хай відкриє «🪪 Мій QR-код» у боті ще раз.'
+                : "⛔ <b>Код не дійсний</b>\n\nПопросіть відкрити його в боті ще раз.");
 
             return;
         }
@@ -152,7 +157,7 @@ class GuardScanCommand
      * and then the rest of the flat to ring; an old flat-level code says the person is not
      * known and lists the flat as before.
      */
-    public static function guardContact(Account $account, ?\App\Entity\TelegramUser $person): string
+    public static function guardContact(Account $account, ?TelegramUser $person): string
     {
         $esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 

@@ -3,6 +3,7 @@
 namespace App\Telegram\Guard\Command;
 
 use App\Entity\Account;
+use App\Entity\TelegramUser;
 use App\Service\GuardService;
 use App\Service\SchedulePavilionService;
 use App\Service\TelegramUserService;
@@ -56,7 +57,12 @@ class GuardQrCommand
         $account = $user ? $this->telegramUserService->resolveAccount($user) : null;
         $now = SchedulePavilionService::createNewDate();
 
-        if (!$this->guard->mayHoldQr($account)) {
+        // Personal since 22.11.2026; nobody gets a flat-level code any more — that one
+        // could never be revoked. resolveAccount() links the user to the account it
+        // returns, so in practice the person is always on it; if not, refuse.
+        $token = $account !== null && $user !== null ? $this->tokenFor($user, $account) : null;
+
+        if (!$this->guard->mayHoldQr($account) || $token === null) {
             // Marked and explained rather than silently missing: the button is drawn only
             // for somebody who may have a code, so anyone who reaches this has arrived from
             // an older keyboard, and «нічого не сталося» is the worst possible answer.
@@ -87,11 +93,7 @@ class GuardQrCommand
             return;
         }
 
-        // Personal since 22.11.2026: the code names this person as well as the flat, so the
-        // guard sees who it is. Only when the person really is linked to that flat — the
-        // scan checks the same thing, and a code that would be refused is no code.
-        $holder = GuardService::personStillOnFlat($user, (int)$account->getId()) ? $user : null;
-        $link = sprintf('https://t.me/%s?start=%s', $username, $this->guard->mintToken($account, $holder));
+        $link = sprintf('https://t.me/%s?start=%s', $username, $token);
 
         $photo = self::photo($link);
 
@@ -126,6 +128,20 @@ class GuardQrCommand
             parse_mode: ParseMode::HTML,
             reply_markup: InlineKeyboardMarkup::make()->addRow(StartCommand::homeButton()),
         );
+    }
+
+    /**
+     * The personal code for this person on this flat (22.11.2026): it names them as well as
+     * the flat, so the guard sees who it is. Null unless they really are linked to that flat —
+     * the scan checks the same thing, and a code that would be refused is no code.
+     */
+    public function tokenFor(TelegramUser $user, Account $account): ?string
+    {
+        if ((int)$user->getId() <= 0 || !GuardService::personStillOnFlat($user, (int)$account->getId())) {
+            return null;
+        }
+
+        return $this->guard->mintToken($account, $user);
     }
 
     /**

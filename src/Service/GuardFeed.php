@@ -381,26 +381,6 @@ final class GuardFeed
     }
 
     /**
-     * The people whose personal code the lines name.
-     *
-     * @param list<array<string, mixed>> $items
-     *
-     * @return list<int>
-     */
-    public static function personIds(array $items): array
-    {
-        $ids = [];
-
-        foreach ($items as $item) {
-            if (($item['person_id'] ?? null) !== null) {
-                $ids[(int)$item['person_id']] = true;
-            }
-        }
-
-        return array_keys($ids);
-    }
-
-    /**
      * The newest ids on the screen — where the poll starts. Ids only grow, so the newest in
      * the current week are the newest anywhere.
      *

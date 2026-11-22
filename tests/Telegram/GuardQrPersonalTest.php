@@ -8,64 +8,52 @@ use App\Repository\ScheduledSetRepository;
 use App\Service\GuardService;
 use App\Service\TelegramUserService;
 use App\Telegram\Guard\Command\GuardQrCommand;
-use SergiX44\Nutgram\Testing\FakeNutgram;
-use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use PHPUnit\Framework\TestCase;
 
 /**
- * «🪪 Мій QR-код» hands out the personal code from 22.11.2026 — and only to somebody who
- * really is linked to the flat, since the scan checks exactly that.
+ * «🪪 Мій QR-код» hands out only the personal code from 22.11.2026 — and only to somebody
+ * really linked to the flat, since the scan checks exactly that. No flat-level code is
+ * minted any more: it could never be revoked.
  */
-class GuardQrPersonalTest extends KernelTestCase
+class GuardQrPersonalTest extends TestCase
 {
-    public function testTheCodeNamesThePerson(): void
+    private function command(): GuardQrCommand
     {
-        $this->assertSame([7, 42], $this->mintedFor(linked: true));
+        return new GuardQrCommand(
+            new GuardService($this->createMock(ScheduledSetRepository::class), '', 's'),
+            $this->createMock(TelegramUserService::class),
+        );
     }
 
-    public function testSomebodyResolvedToAFlatTheyAreNotLinkedToGetsTheFlatCode(): void
+    private function flat(): Account
     {
-        $this->assertSame([7, null], $this->mintedFor(linked: false));
-    }
-
-    /** @return array{0:int, 1:?int} the account and person mintToken() was asked for */
-    private function mintedFor(bool $linked): array
-    {
-        self::bootKernel();
-
         $flat = (new Account())->setAccountNumber('220001')->setApartmentNumber('1')->setHouseNumber('17');
         (new \ReflectionProperty(Account::class, 'id'))->setValue($flat, 7);
-        $user = (new TelegramUser())->setTelegramId('5')->setAccount($linked ? $flat : null);
-        (new \ReflectionProperty(TelegramUser::class, 'id'))->setValue($user, 42);
 
-        $guard = new class ($this->createMock(ScheduledSetRepository::class), '', 's') extends GuardService {
-            /** @var array{0:int, 1:?int}|null */
-            public ?array $minted = null;
+        return $flat;
+    }
 
-            public function runningSessionFor(Account $account, \DateTimeInterface $now): ?array
-            {
-                return null;
-            }
+    private function user(?Account $account, int $id = 42): TelegramUser
+    {
+        $user = (new TelegramUser())->setTelegramId('5')->setAccount($account);
+        (new \ReflectionProperty(TelegramUser::class, 'id'))->setValue($user, $id);
 
-            public function mintToken(Account $account, ?TelegramUser $person = null): string
-            {
-                $this->minted = [(int)$account->getId(), $person?->getId()];
+        return $user;
+    }
 
-                return parent::mintToken($account, $person);
-            }
-        };
+    public function testTheCodeNamesThePerson(): void
+    {
+        $flat = $this->flat();
+        $token = $this->command()->tokenFor($this->user($flat), $flat);
 
-        $users = $this->createMock(TelegramUserService::class);
-        $users->method('getCurrentUser')->willReturn($user);
-        $users->method('resolveAccount')->willReturn($flat);
+        $this->assertMatchesRegularExpression('/^g-7-42-[a-f0-9]{16}$/', (string)$token);
+    }
 
-        $bot = FakeNutgram::instance();
-        $bot->getContainer()->delegate(self::getContainer());
-        $bot->willReceivePartial(['id' => 1, 'is_bot' => true, 'first_name' => 'bot', 'username' => 'test_bot']);
-
-        (new GuardQrCommand($guard, $users))($bot);
-
-        $this->assertNotNull($guard->minted, 'a code was minted');
-
-        return $guard->minted;
+    public function testSomebodyNotLinkedToTheFlatGetsNoCode(): void
+    {
+        $this->assertNull($this->command()->tokenFor($this->user(null), $this->flat()));
+        $other = (new Account())->setAccountNumber('220002');
+        (new \ReflectionProperty(Account::class, 'id'))->setValue($other, 8);
+        $this->assertNull($this->command()->tokenFor($this->user($other), $this->flat()));
     }
 }
