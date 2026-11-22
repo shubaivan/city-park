@@ -104,7 +104,7 @@
 
         {% if is_live %}
             <div id="feed-status" class="feed-status mb-2" aria-live="polite">
-                Оновлюється автоматично · <span id="feed-updated">оновлено о {{ now|date('H:i:s') }}</span>
+                Оновлюється автоматично · <span id="feed-updated">оновлено о {{ now|date('H:i:s', 'Europe/Kyiv') }}</span>
             </div>
             <div id="feed-alert" class="alert alert-warning feed-alert mb-2" style="display:none"></div>
         {% endif %}
@@ -346,8 +346,6 @@
         var alertBox = document.getElementById('feed-alert');
         var updated = document.getElementById('feed-updated');
 
-        function pad(n) { return (n < 10 ? '0' : '') + n; }
-        function clock() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
         function warn(html) { alertBox.innerHTML = html; alertBox.style.display = ''; }
         function clearWarn() { alertBox.style.display = 'none'; }
 
@@ -442,7 +440,8 @@
                     cursor = data.cursor || cursor;
                     failures = 0;
                     clearWarn();
-                    updated.textContent = 'оновлено о ' + clock();
+                    // The server's Kyiv time, never the browser's clock: the post's PC may be set to UTC.
+                    if (data.now) { updated.textContent = 'оновлено о ' + data.now; }
                     schedule(EVERY);
                 })
                 .catch(function (err) {

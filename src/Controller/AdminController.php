@@ -331,7 +331,9 @@ class AdminController extends AbstractController
             'week' => $passId !== null ? 'pass' : ($personId !== null ? 'person' : $monday->format('Y-m-d')),
             'cursor' => GuardFeed::cursor($newScans, $newEvents, $afterScan, $afterEvent),
             'rows' => $rows,
-            'server_time' => $now->format('H:i:s'),
+            // Kyiv, from the server: the page shows it as «оновлено о …», and the guard PC's
+            // own clock (its timezone) is not to be trusted (22.11.2026).
+            'now' => $now->format('H:i:s'),
         ]);
         $response->headers->set('Cache-Control', 'no-store');
 

@@ -119,6 +119,27 @@ class AdminScansFeedTest extends WebTestCase
         }
     }
 
+    /**
+     * «оновлено о …» is the server's Kyiv time, never the browser's clock: the post's PC
+     * may well be set to UTC, and the label then said 12:40 at 14:40 (22.11.2026).
+     */
+    public function testThePollCarriesKyivTimeAndThePageNeverReadsTheBrowserClock(): void
+    {
+        $client = $this->client('test_guard');
+        $client->request('GET', '/admin/scans/feed?scan=0&event=0');
+
+        $data = json_decode((string)$client->getResponse()->getContent(), true);
+        $this->assertMatchesRegularExpression('/^\d{2}:\d{2}:\d{2}$/', $data['now']);
+        $kyiv = new \DateTimeImmutable('now', new \DateTimeZone('Europe/Kyiv'));
+        $diff = abs(\DateTimeImmutable::createFromFormat('H:i:s', $data['now'], new \DateTimeZone('Europe/Kyiv'))->getTimestamp() - $kyiv->getTimestamp());
+        $this->assertLessThan(60, min($diff, 86400 - $diff));
+
+        $template = (string)file_get_contents(dirname(__DIR__, 2) . '/templates/admin/scans.html.twig');
+        $this->assertStringNotContainsString('new Date()', $template);
+        $this->assertStringContainsString("'оновлено о ' + data.now", $template);
+        $this->assertStringContainsString("now|date('H:i:s', 'Europe/Kyiv')", $template);
+    }
+
     public function testThePageCarriesTheContactsAndANamelessPersonIsADash(): void
     {
         $client = $this->client('test_guard');
@@ -146,6 +167,7 @@ class AdminScansFeedTest extends WebTestCase
 
         $this->assertResponseIsSuccessful();
         $data = json_decode((string)$client->getResponse()->getContent(), true);
+        $this->assertMatchesRegularExpression('/^\d{2}:\d{2}:\d{2}$/', $data['now'], 'the one-pass poll carries the Kyiv time too');
         $this->assertSame('pass', $data['week']);
         $this->assertSame(['s10'], array_column($data['rows'], 'key'));
 
