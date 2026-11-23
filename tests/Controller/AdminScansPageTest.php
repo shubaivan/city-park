@@ -87,7 +87,42 @@ class AdminScansPageTest extends KernelTestCase
         $this->assertStringContainsString('Ніка (буд. 19, кв. 85)', $html);
         $this->assertStringContainsString('буд. 19, кв. 12', $html);
         $this->assertStringContainsString('пропуск', $html);
-        $this->assertStringContainsString('class="mark mark-scan"', $html, 'a scan with no press is neither in nor out');
+        $this->assertStringContainsString('<span class="mark mark-scan mark-pass" title="Сканування пропуску">👷</span><span class="mark-label">Пропуск</span>', $html, 'a pass scan with no press is neither in nor out, and is not a resident QR');
+    }
+
+    /**
+     * A refused scan is red and says why once (Иван, 23.11.2026): pass №10, expired the
+     * night before, was refused at 09:29 and sat on the feed as a grey «▣ QR» with a grey
+     * «⚪️ не активний» — the yellow refusal hidden as a repeat of it.
+     */
+    public function testARefusedScanIsRedAndSaysWhyOnce(): void
+    {
+        $pass = (new GuestPass())->setAccount($this->flat(9))->setLabel('Бригада, ремонт');
+        (new \ReflectionProperty(GuestPass::class, 'id'))->setValue($pass, 4);
+        $until = new \DateTime('-10 hours', new \DateTimeZone('Europe/Kyiv'));
+        $pass->setActiveUntil($until);
+
+        $html = $this->render([
+            self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_OK)),
+            self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_NOT_ACTIVE)),
+            self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_OK)),
+            self::withId($this->scan(QrScan::KIND_RESIDENT, QrScan::RESULT_UNKNOWN)),
+        ], [], 'ROLE_GUARD', [], true, [$pass]);
+
+        $this->assertSame(2, substr_count($html, 'feed-row feed-scan feed-refused'), 'the refused pass and the unknown code, nothing else');
+        $this->assertSame(1, substr_count($html, '<span class="problem">❌ не активний · діяв до ' . $until->format('d.m H:i') . '</span>'));
+        $this->assertStringNotContainsString('пропуск не активний', $html, 'one statement, not the status and the refusal both');
+        $this->assertSame(1, substr_count($html, 'class="pass-status pass-inactive"'), 'the scan that went through keeps the plain status');
+        $this->assertStringContainsString('<span class="problem">❌ код не розпізнано</span>', $html);
+        $this->assertSame(2, substr_count($html, 'title="Сканування пропуску">👷</span><span class="mark-label">Пропуск</span>'));
+        $this->assertSame(2, substr_count($html, 'title="Сканування QR">▣</span><span class="mark-label">QR</span>'));
+
+        // Refused then, live now: today's status and the refusal are two facts, both shown.
+        $pass->setActiveUntil(new \DateTime('+2 hours', new \DateTimeZone('Europe/Kyiv')));
+        $html = $this->render([self::withId($this->scan(QrScan::KIND_GUEST, QrScan::RESULT_NOT_ACTIVE))], [], 'ROLE_GUARD', [], true, [$pass]);
+        $this->assertStringContainsString('class="pass-status pass-active">✅ діє до ', $html);
+        $this->assertStringContainsString('<span class="problem">❌ пропуск не активний</span>', $html);
+        $this->assertStringContainsString('feed-row feed-scan feed-refused', $html);
     }
 
     /**

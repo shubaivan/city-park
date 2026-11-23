@@ -71,6 +71,10 @@ class GuardFeedRulesTest extends TestCase
         $this->assertNotNull(GuardFeed::problem(QrScan::RESULT_REVOKED));
         $this->assertNotNull(GuardFeed::problem(QrScan::RESULT_UNKNOWN));
         $this->assertNotNull(GuardFeed::problem('something_new'));
+
+        foreach ([QrScan::RESULT_NOT_ACTIVE, QrScan::RESULT_REVOKED, QrScan::RESULT_UNKNOWN, QrScan::RESULT_PERSON_GONE, 'something_new'] as $result) {
+            $this->assertStringStartsWith('❌ ', (string)GuardFeed::problem($result), 'a refusal reads as one');
+        }
     }
 
     public function testTheCursorKeepsTheNewestIds(): void

@@ -29,7 +29,9 @@
         <p class="text-muted mb-3 feed-intro">
             <span class="mark mark-in">➜</span> в'їзд ·
             <span class="mark mark-out">➜</span> виїзд ·
-            <span class="mark mark-scan">▣</span> сканування QR без в'їзду чи виїзду.
+            <span class="mark mark-scan">▣</span> QR мешканця,
+            <span class="mark mark-scan mark-pass">👷</span> пропуск — без в'їзду чи виїзду;
+            <span class="mark mark-scan mark-refused">▣</span> червоне — бот відмовив.
             Сканувати може будь-який підтверджений мешканець та охорона — тому цей журнал і ведеться.
         </p>
 
@@ -219,6 +221,7 @@
         .mark-in { background: #0a7a2f; }
         .mark-out { background: #c4141b; transform: scaleX(-1); }
         .mark-scan { background: #6c757d; font-size: 1.1rem; }
+        .mark-pass { font-size: 1.3rem; }
         .mark-label { font-weight: 700; vertical-align: middle; }
         .mark-label.text-success { color: #0a7a2f !important; }
         .mark-label.text-danger { color: #c4141b !important; }
@@ -228,7 +231,11 @@
         .feed-who .who { font-weight: 700; }
         .feed-who .sub { font-size: 1rem; color: #333; }
         .feed-who .car { font-weight: 700; white-space: nowrap; }
-        .feed-who .problem { display: inline-block; margin-left: .3rem; padding: 0 .4rem; border-radius: 4px; background: #ffe08a; color: #000; font-weight: 700; }
+        /* A refusal (23.11.2026): red, bold, framed — the first thing read on its line. */
+        .feed-who .problem { display: inline-block; margin-left: .3rem; padding: 0 .4rem; border: 1px solid #c4141b; border-radius: 4px; background: #fde4e4; color: #b0000f; font-weight: 800; }
+        .feed-refused { box-shadow: inset 6px 0 0 #c4141b; }
+        .feed-refused .mark-scan, .mark-scan.mark-refused { background: #c4141b; }
+        .feed-refused .mark-label { color: #c4141b; }
         .feed-who .contact { font-size: 1rem; color: #333; }
         .pass-row { cursor: pointer; }
         .pass-row:hover { background: #f1f6ff; }
@@ -292,6 +299,7 @@
             .feed-table td.feed-by { font-size: .95rem; color: #555; }
             .feed-table td.feed-by::before { content: 'Перевіряв: '; }
             .feed-who .pass-status { white-space: normal; }
+            .feed-refused .feed-mark .mark-label { display: inline; }
             .guard-feed { font-size: 1.05rem; }
         }
         /* Days (Иван, 22.11.2026): a light grey strip, small caps, that stays on top while its day scrolls by. */

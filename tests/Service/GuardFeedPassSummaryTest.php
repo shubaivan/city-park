@@ -52,6 +52,7 @@ class GuardFeedPassSummaryTest extends TestCase
 
         $pass->setActiveUntil(new \DateTime('2026-11-22 11:00', new \DateTimeZone('Europe/Kyiv')));
         $this->assertSame('⚪️ не активний · діяв до 22.11 11:00', GuardFeed::passSummary($pass, $now)['status_label']);
+        $this->assertSame('не активний · діяв до 22.11 11:00', GuardFeed::passSummary($pass, $now)['status_text'], 'the status without its icon, for a refusal');
 
         $pass->setActiveUntil(new \DateTime('2026-11-24 23:59', new \DateTimeZone('Europe/Kyiv')));
         $pass->revoke();

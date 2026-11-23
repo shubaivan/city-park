@@ -170,6 +170,7 @@ final class GuardFeed
             'by' => $event->getGuardLabel() . ($event->getGate() ? ' · ' . $event->getGate() : ''),
             'by_guard' => true,
             'problem' => null,
+            'result' => null,
             'replaces' => $event->getQrScan()?->getId() !== null ? 's' . $event->getQrScan()->getId() : null,
         ];
     }
@@ -197,6 +198,7 @@ final class GuardFeed
             'by' => $scan->getScannedByLabel(),
             'by_guard' => $scan->isByGuard(),
             'problem' => self::problem($scan->getResult()),
+            'result' => $scan->getResult(),
             'replaces' => null,
         ];
     }
@@ -280,6 +282,7 @@ final class GuardFeed
             $pass = $item['guest'] && $item['pass_id'] !== null ? ($byId[(int)$item['pass_id']] ?? null) : null;
             $item['issuer'] = $item['guest'] && $item['pass_id'] !== null ? ($issuers[(int)$item['pass_id']] ?? null) : null;
             $item['pass_info'] = $pass !== null ? self::passSummary($pass, $now) : null;
+            $item['refusal_is_status'] = self::refusalIsTheStatus($item);
             $item['contacts'] = !$item['guest'] && $item['account_id'] !== null ? ($byAccount[(int)$item['account_id']] ?? []) : [];
 
             // A personal code (22.11.2026): its holder leads the contacts, the rest of the
@@ -299,16 +302,38 @@ final class GuardFeed
         return $items;
     }
 
-    /** Only a code that did not check out is worth the guard's attention. */
+    /**
+     * Only a code that did not check out is worth the guard's attention — and it is a
+     * refusal, so it reads as one: «❌», drawn red (Иван, 23.11.2026 — a pass refused at
+     * 09:29 sat on the feed in quiet grey).
+     */
     public static function problem(string $result): ?string
     {
         return match ($result) {
             QrScan::RESULT_OK, QrScan::RESULT_NO_BOOKING => null,
-            QrScan::RESULT_NOT_ACTIVE => '⚪️ пропуск не активний',
-            QrScan::RESULT_REVOKED => '🗑 пропуск скасований',
-            QrScan::RESULT_UNKNOWN => '⚠️ код не розпізнано',
-            QrScan::RESULT_PERSON_GONE => '⛔ код людини, яку відв\'язали від квартири',
-            default => '⚠️ ' . $result,
+            QrScan::RESULT_NOT_ACTIVE => '❌ пропуск не активний',
+            QrScan::RESULT_REVOKED => '❌ пропуск скасований',
+            QrScan::RESULT_UNKNOWN => '❌ код не розпізнано',
+            QrScan::RESULT_PERSON_GONE => '❌ код людини, яку відв\'язали від квартири',
+            default => '❌ ' . $result,
+        };
+    }
+
+    /**
+     * Whether the pass's status today already tells why this scan was refused — an
+     * expired pass refused as «не активний», a revoked one as «скасований». The line then
+     * states it once, as the refusal (`status_text`), instead of twice.
+     *
+     * @param array<string, mixed> $item
+     */
+    public static function refusalIsTheStatus(array $item): bool
+    {
+        $info = $item['pass_info'] ?? null;
+
+        return $info !== null && match ($item['result'] ?? null) {
+            QrScan::RESULT_NOT_ACTIVE => $info['status'] === 'inactive',
+            QrScan::RESULT_REVOKED => $info['status'] === 'revoked',
+            default => false,
         };
     }
 
@@ -318,7 +343,9 @@ final class GuardFeed
      * A pass has no type or use limit of its own — its label is the purpose, typed by the
      * flat, and since 09.11 it leads with the car number when there is one.
      *
-     * @return array{id:int, label:string, purpose:string, plate:?string, status:string, status_label:string, scans:int}
+     * `status_text` is the same status without its icon, for a refused scan's «❌ …».
+     *
+     * @return array{id:int, label:string, purpose:string, plate:?string, status:string, status_label:string, status_text:string, scans:int}
      */
     public static function passSummary(GuestPass $pass, \DateTimeInterface $now): array
     {
@@ -326,13 +353,13 @@ final class GuardFeed
 
         if ($pass->isRevoked()) {
             $status = 'revoked';
-            $label = '🗑 скасований ' . $pass->getRevokedAt()?->format('d.m H:i');
+            [$icon, $text] = ['🗑', 'скасований ' . $pass->getRevokedAt()?->format('d.m H:i')];
         } elseif ($pass->isActiveAt($now)) {
             $status = 'active';
-            $label = '✅ діє до ' . $pass->getActiveUntil()?->format('d.m H:i');
+            [$icon, $text] = ['✅', 'діє до ' . $pass->getActiveUntil()?->format('d.m H:i')];
         } else {
             $status = 'inactive';
-            $label = '⚪️ не активний' . ($pass->getActiveUntil() !== null ? ' · діяв до ' . $pass->getActiveUntil()->format('d.m H:i') : '');
+            [$icon, $text] = ['⚪️', 'не активний' . ($pass->getActiveUntil() !== null ? ' · діяв до ' . $pass->getActiveUntil()->format('d.m H:i') : '')];
         }
 
         return [
@@ -341,7 +368,8 @@ final class GuardFeed
             'purpose' => $purpose,
             'plate' => $plate,
             'status' => $status,
-            'status_label' => trim($label),
+            'status_label' => trim($icon . ' ' . $text),
+            'status_text' => trim($text),
             'scans' => $pass->getScans(),
         ];
     }

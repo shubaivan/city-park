@@ -11,12 +11,17 @@
 {% set person_href = item.person_id|default(null) ? path('app_admin_scans', {person: item.person_id}) ~ '#person-filter' : null %}
 {% set pass_href = item.pass_id ? path('app_admin_scans', {pass: item.pass_id}) ~ '#pass-filter' : null %}
 {% set row_href = item.guest ? pass_href : person_href %}
-<tr class="feed-row feed-{{ item.type }}{% if fresh|default(false) %} feed-fresh{% endif %}{% if row_href %} feed-row-link{% endif %}" data-key="{{ item.key }}"{% if row_href %} data-href="{{ row_href }}"{% endif %}>
+{# A scan the bot refused (Иван, 23.11.2026): red mark, red line — never a quiet grey one. #}
+{% set refused = item.type == 'scan' and item.problem %}
+<tr class="feed-row feed-{{ item.type }}{% if refused %} feed-refused{% endif %}{% if fresh|default(false) %} feed-fresh{% endif %}{% if row_href %} feed-row-link{% endif %}" data-key="{{ item.key }}"{% if row_href %} data-href="{{ row_href }}"{% endif %}>
     <td class="feed-mark">
         {% if item.type == 'in' %}
             <span class="mark mark-in" title="В'їзд">➜</span><span class="mark-label text-success">В'їзд</span>
         {% elseif item.type == 'out' %}
             <span class="mark mark-out" title="Виїзд">➜</span><span class="mark-label text-danger">Виїзд</span>
+        {% elseif item.guest %}
+            {# A guest pass is not a resident's QR: its own mark, the pass's 👷. #}
+            <span class="mark mark-scan mark-pass" title="Сканування пропуску">👷</span><span class="mark-label">Пропуск</span>
         {% else %}
             <span class="mark mark-scan" title="Сканування QR">▣</span><span class="mark-label">QR</span>
         {% endif %}
@@ -38,16 +43,16 @@
                 {% if info %}
                     {% if info.purpose %} · <b class="pass-purpose">{{ info.purpose }}</b>{% endif %}
                     {% if info.plate %} <span class="car-plate">{{ info.plate }}</span>{% endif %}
-                    <span class="pass-status pass-{{ info.status }}">{{ info.status_label }}</span>
+                    {# Refused for what the status says (expired, revoked): said once, as the refusal. #}
+                    {% if item.refusal_is_status|default(false) %}<span class="problem">❌ {{ info.status_text }}</span>{% else %}<span class="pass-status pass-{{ info.status }}">{{ info.status_label }}</span>{% endif %}
                     <span class="pass-uses text-nowrap">· сканів: {{ info.scans }}</span>
                 {% elseif item.pass_label|default('') %}
                     · <b class="pass-purpose">{{ item.pass_label }}</b>
                 {% endif %}
                 {% if item.place %} · {{ item.place }}{% endif %}
                 {% if item.car %} · <span class="car">🚗 {{ item.car }}</span>{% endif %}
-                {# What the scan answered then — skipped when the pass's status today already says the same. #}
-                {% set same = info and ((info.status == 'revoked' and item.problem starts with '🗑') or (info.status == 'inactive' and item.problem starts with '⚪️')) %}
-                {% if item.problem and not same %} <span class="problem">{{ item.problem }}</span>{% endif %}
+                {# What the scan answered then — unless the status above already said it. #}
+                {% if item.problem and not item.refusal_is_status|default(false) %} <span class="problem">{{ item.problem }}</span>{% endif %}
             </div>
             {# Who to ring (Иван, 21.11.2026): the issuer, for a revoked or expired pass too. #}
             <div class="contact">Видав: {{ include('admin/_contact_person.html.twig', {person: item.issuer|default(null), guard_only: guard_only}) }}</div>
