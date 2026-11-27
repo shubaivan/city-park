@@ -8,32 +8,9 @@
     <div class="container mt-4">
         <h3>📐 Площі квартир — реєстр</h3>
 
-        <div class="alert alert-info">
-            <p class="mb-2"><b>Що це:</b> один XLSX-файл з реєстром усіх особових рахунків і їхньої площі. Завантажується окремо від файлу боржників — тут не треба нічого міняти, поки бухгалтерія не випустила оновлений реєстр.</p>
-            <p class="mb-2"><b>Формат файлу:</b> сторінка <code>Лист1</code> (або перша вкладка з підходящим заголовком). Дані починаються з <b>2-го рядка</b>.</p>
-            <div class="table-responsive">
-                <table class="table table-bordered table-sm mb-2" style="max-width:520px;background:#fff">
-                    <thead>
-                    <tr class="table-light">
-                        <th style="width:48px">#</th>
-                        <th>A — ID реєстру</th>
-                        <th>B — Особовий рахунок</th>
-                        <th>C — Загальна площа</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <tr>
-                        <td class="text-muted">2</td>
-                        <td>891439</td>
-                        <td>117091</td>
-                        <td>18.8</td>
-                    </tr>
-                    </tbody>
-                </table>
-            </div>
-            <p class="mb-0 text-muted">
-                Парсер ігнорує колонку A (ID) — нас цікавить лише <b>B</b> (особ. рах.) і <b>C</b> (площа). Інші вкладки книжки (типу «Sheet1» з юридичними довідниками) пропускаються автоматично.
-            </p>
+        <div class="alert alert-warning" id="area-locked">
+            <p class="mb-1"><b>🔒 Реєстр площ зафіксовано.</b> Будинок не змінюється, реєстр уже завантажено, тож через сайт його більше не завантажують — ні з якого логіну.</p>
+            <p class="mb-0">Якщо площа змінилась або з'явився новий об'єкт — напишіть Івану, він оновить реєстр.</p>
         </div>
 
         <div class="alert alert-light">
@@ -55,16 +32,9 @@
             </details>
         {% endif %}
 
-        <form action="{{ path('app_admin_area_upload') }}" method="post" enctype="multipart/form-data" class="mt-3">
-            <div class="form-group">
-                <label for="area_file">Файл реєстру (.xlsx)</label>
-                <input type="file" class="form-control-file" id="area_file" name="area_file" accept=".xlsx" required>
-            </div>
-            <button type="submit" class="btn btn-primary">Завантажити та оновити</button>
-            <a href="{{ path('app_admin') }}" class="btn btn-link">← Назад</a>
-        </form>
+        <a href="{{ path('app_admin') }}" class="btn btn-link px-0 mt-2">← Назад</a>
 
-        <p class="text-muted mt-3"><small>Можна також редагувати площу окремого акаунта вручну у <a href="{{ path('app_admin_users') }}">/admin/users</a> через кнопку «Редагувати».</small></p>
+        <p class="text-muted mt-3"><small>Площу окремого акаунта можна виправити вручну у <a href="{{ path('app_admin_users') }}">/admin/users</a> через кнопку «Редагувати».</small></p>
     </div>
 
         {# Same archive as /admin/debt: the registry these thresholds are computed from
@@ -72,7 +42,7 @@
         <div class="mt-4">
             <h5>📁 Архів завантажень реєстру</h5>
             {% if archive is not defined or archive|length == 0 %}
-                <p class="text-muted"><small>Поки що порожньо — сюди потрапить файл із наступного завантаження.</small></p>
+                <p class="text-muted"><small>Поки що порожньо.</small></p>
             {% else %}
                 <div class="table-responsive">
                     <table class="table table-sm table-striped" style="max-width:640px">

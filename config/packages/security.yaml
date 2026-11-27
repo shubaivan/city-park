@@ -84,6 +84,11 @@ security:
         # comes up empty and looks broken rather than restricted.
         - { path: ^/admin/(users|objects), methods: [GET], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
         - { path: ^/admin/users/data-table$, methods: [POST], roles: [ROLE_ADMIN, ROLE_COMPLAINTS] }
+        # The area registry is not uploaded through the web by anybody (27.11.2026): that
+        # morning it went into the debt form and zeroed 438 debts. The house does not
+        # change; the owner updates it with `bin/console area:import-registry`. No login
+        # holds this role — it exists only to refuse.
+        - { path: ^/admin/area/upload, roles: ROLE_NOBODY_AREA_REGISTRY_IS_CONSOLE_ONLY }
         - { path: ^/admin, roles: ROLE_ADMIN }
         # - { path: ^/profile, roles: ROLE_USER }
 

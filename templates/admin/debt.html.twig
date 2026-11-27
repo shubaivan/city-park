@@ -33,12 +33,20 @@
                 </table>
             </div>
             <p class="mb-2 text-muted">
-                Площа квартир оновлюється окремо — через <a href="{{ path('app_admin_area') }}">/admin/area</a> (один реєстр на всі акаунти).
+                Сюди — лише файл «Боржники». Реєстр площ сюди не завантажується: він зафіксований, площі оновлює Іван (<a href="{{ path('app_admin_area') }}">/admin/area</a>).
             </p>
             <a href="{{ path('app_admin_debt_example') }}" class="btn btn-sm btn-outline-primary">
                 ⬇️ Завантажити приклад .xlsx
             </a>
         </div>
+
+        {% if refused is defined %}
+            {# DebtFileGuard: the file was read and refused before anything was written. #}
+            <div class="alert alert-danger" id="debt-refused">
+                <h5 class="mb-2">⛔ Файл не прийнято</h5>
+                <p class="mb-0">{{ refused }}</p>
+            </div>
+        {% endif %}
 
         <form action="{{ path('app_admin_debt_upload') }}" method="post" enctype="multipart/form-data">
             <div class="form-group">
@@ -88,7 +96,7 @@
                             <small>
                                 Цих грошей немає ні в дошці боржників, ні в оголошенні в чаті: бот рахує
                                 лише за своїми рахунками. Щоб вони потрапили у звіт — їх треба завести
-                                в базу (реєстр площ, <a href="{{ path('app_admin_area') }}">/admin/area</a>).
+                                в базу — напишіть Івану.
                             </small>
                         </div>
                         <details>

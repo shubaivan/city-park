@@ -1554,6 +1554,24 @@ All the judgement is in `DebtBoardService`; `StartCommand::debtBlock()` and
   shipped, "кв. 76" was one household owing 5 402 грн and another owing 651. Apartment
   alone accuses both of the larger debt. Regression test in `tests/Service/DebtBoardRulesTest`.
 
+**The debt upload refuses a file that is not a debtors file (27.11.2026).** At 11:34 the
+area registry was uploaded into `/admin/debt`: nothing matched, the not-in-file loop reset
+438 debts, unblocked them, sent «✅ Ваш борг повністю погашено» and the chat got «Борг 0 грн»;
+the right file 3 s later re-blocked 229. `DebtFileGuard::check()` now runs on the parsed file
+before the first write, message or archive copy, and refuses when **no row matches a known
+о/р**, or when applying it would **reset more than half of today's debtors**. Refused =
+page shows «⛔ Файл не прийнято», nothing written, nothing sent, no announcement, not
+archived. `debt:import-file` (CLI) is not guarded — it has its own dry-run summary.
+
+**The area registry is console-only (27.11.2026).** Owner's call: the house does not change,
+the registry was loaded once, nobody uploads it through the web. `^/admin/area/upload` is
+denied to every login in `security.yaml` (a role nobody has, before the catch-all), the page
+shows a note instead of the form, and the owner runs
+`bin/console area:import-registry <file.xlsx> [--dry-run]` — `AreaRegistryImport`, the same
+parser the form used, columns found by header («Особовий» / «Площ», fallback B/C), writes
+only `area` and only where it differs, archives the file as actor `console`. Pinned by
+`AreaUploadClosedTest`, `AdminDebtUploadGuardTest`, `DebtFileGuardTest`.
+
 **The uploaded spreadsheets are kept.** `ImportArchive` copies every file that arrives at
 `/admin/debt/upload` and `/admin/area/upload` into `var/import-archive/{debt,area}/`, named
 `YYYY-MM-DD_HH-MM-SS-<admin login>.xlsx`, and both pages list the last
