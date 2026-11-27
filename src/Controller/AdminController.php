@@ -46,7 +46,9 @@ use App\Repository\BlockVoteCampaignRepository;
 use App\Service\AccountStatusAuditor;
 use App\Service\BlockReasonResolver;
 use App\Service\BlockVoteService;
+use App\Service\AreaRegistryImport;
 use App\Service\DebtAnnouncer;
+use App\Service\DebtFileGuard;
 use App\Service\ImportArchive;
 use App\Service\OwnerGroupService;
 use App\Service\PhoneKey;
@@ -2402,10 +2404,17 @@ class AdminController extends AbstractController
         return $this->renderArea($em, archive: $archive);
     }
 
+    /**
+     * Closed for every login since 27.11.2026 (security.yaml denies the path before the
+     * catch-all ^/admin): that morning the area registry was uploaded into the debt form and
+     * zeroed 438 debts. The house does not change; the owner updates the areas himself with
+     * `bin/console area:import-registry`. The action is kept, on the same parser, so the
+     * route and its journal label stay what they were if the decision is ever reversed.
+     */
     #[Route('/admin/area/upload', name: 'app_admin_area_upload', methods: [Request::METHOD_POST])]
     public function uploadArea(
         Request $request,
-        AccountRepository $accountRepository,
+        AreaRegistryImport $import,
         EntityManagerInterface $em,
         LoggerInterface $adminLogger,
         ImportArchive $archive,
@@ -2417,89 +2426,27 @@ class AdminController extends AbstractController
             return $this->renderArea($em, ['error' => 'Файл не завантажено або пошкоджено.'], $archive);
         }
 
-        // Archived for the same reason as the debt file, and arguably a stronger one: every
-        // per-account block threshold is area × tariff × 1.5, so this registry is the input
-        // to who gets blocked, and it is overwritten in place too.
         $archive->store($file, ImportArchive::KIND_AREA, $this->getUser()?->getUserIdentifier());
 
-        $spreadsheet = IOFactory::load($file->getPathname());
-
-        // The registry usually has multiple sheets. We pick the one whose row 1
-        // contains "Особовий" (the registry header).
-        $worksheet = null;
-        foreach ($spreadsheet->getAllSheets() as $sheet) {
-            $a1 = (string)$sheet->getCell('A1')->getValue();
-            $b1 = (string)$sheet->getCell('B1')->getValue();
-            $c1 = (string)$sheet->getCell('C1')->getValue();
-            if (
-                stripos($b1, 'особов') !== false
-                || stripos($c1, 'площ') !== false
-                || stripos($a1, 'id') !== false
-            ) {
-                $worksheet = $sheet;
-                break;
-            }
-        }
-        if ($worksheet === null) {
-            $worksheet = $spreadsheet->getActiveSheet();
-        }
-
-        $areaData = [];
-        $skipped = 0;
-        foreach ($worksheet->getRowIterator(2) as $row) {
-            $rowIndex = $row->getRowIndex();
-            $accountNumber = $worksheet->getCell('B' . $rowIndex)->getValue();
-            $area = $worksheet->getCell('C' . $rowIndex)->getValue();
-
-            if ($accountNumber === null || $area === null) {
-                continue;
-            }
-            $accountNumber = trim((string)$accountNumber);
-            $areaStr = trim((string)$area);
-            if ($accountNumber === '' || $areaStr === '') {
-                continue;
-            }
-
-            $areaFloat = (float)str_replace(',', '.', $areaStr);
-            if ($areaFloat <= 0) {
-                $skipped++;
-                continue;
-            }
-
-            $areaData[$accountNumber] = $areaFloat;
-        }
-
-        $updated = 0;
-        $notFound = [];
-        foreach ($areaData as $accountNumber => $area) {
-            $account = $accountRepository->findOneBy(['account_number' => $accountNumber]);
-            if (!$account) {
-                $notFound[] = $accountNumber;
-                continue;
-            }
-            $account->setArea(number_format($area, 2, '.', ''));
-            $em->persist($account);
-            $updated++;
-        }
-
-        $em->flush();
+        $parsed = $import->read($file->getPathname());
+        $result = $import->apply($parsed['rows']);
 
         $adminLogger->info('Area upload', [
-            'parsed' => count($areaData),
-            'updated' => $updated,
-            'not_found' => count($notFound),
-            'skipped' => $skipped,
+            'parsed' => count($parsed['rows']),
+            'updated' => $result['updated'],
+            'not_found' => count($result['not_found']),
+            'skipped' => $parsed['skipped'],
         ]);
 
         return $this->renderArea($em, [
             'success' => sprintf(
                 'Опрацьовано рядків: %d. Оновлено акаунтів: %d. Не знайдено в базі: %d. Пропущено (0/нечислових): %d.',
-                count($areaData),
-                $updated,
-                count($notFound),
-                $skipped
+                count($parsed['rows']),
+                $result['updated'],
+                count($result['not_found']),
+                $parsed['skipped']
             ),
-            'not_found' => $notFound,
+            'not_found' => $result['not_found'],
         ], $archive);
     }
 
@@ -2635,12 +2582,6 @@ class AdminController extends AbstractController
             ]);
         }
 
-        // Keep the spreadsheet before parsing it. Everything downstream overwrites: the
-        // debt column is written in place and DebtSnapshot keeps only the totals, so
-        // without this the only copy of what the house was billed on lives in the
-        // accountant's Telegram history.
-        $archive->store($file, ImportArchive::KIND_DEBT, $this->getUser()?->getUserIdentifier());
-
         $spreadsheet = IOFactory::load($file->getPathname());
         $worksheet = $spreadsheet->getActiveSheet();
 
@@ -2666,6 +2607,35 @@ class AdminController extends AbstractController
         }
 
         $adminLogger->info('Debt upload: parsed rows', ['count' => $processed]);
+
+        // Is it a debtors file at all? Decided before the first write or message: on
+        // 27.11.2026 the area registry went through this form and the reset loop below
+        // "paid off" 438 accounts and announced it to the house (DebtFileGuard).
+        $allAccounts = $accountRepository->findAll();
+        $guard = DebtFileGuard::check($debtData, $allAccounts);
+
+        if ($guard['refusal'] !== null) {
+            $adminLogger->warning('Debt upload refused: not a debtors file', [
+                'file' => $file->getClientOriginalName(),
+                'actor' => $this->getUser()?->getUserIdentifier(),
+                'parsed' => $processed,
+                'matched' => $guard['matched'],
+                'debtors' => $guard['debtors'],
+                'would_reset' => $guard['would_reset'],
+            ]);
+
+            return $this->render('admin/debt.html.twig', [
+                'archive' => $archive->recent(ImportArchive::KIND_DEBT),
+                'refused' => $guard['refusal'],
+            ]);
+        }
+
+        // Keep the spreadsheet before anything is written. Everything downstream
+        // overwrites: the debt column is written in place and DebtSnapshot keeps only the
+        // totals, so without this the only copy of what the house was billed on lives in
+        // the accountant's Telegram history. A refused file is not archived: the archive
+        // is the record of what the bot counted debts from.
+        $archive->store($file, ImportArchive::KIND_DEBT, $this->getUser()?->getUserIdentifier());
 
         $updated = 0;
         $notFound = 0;
@@ -2757,7 +2727,6 @@ class AdminController extends AbstractController
         // We only touch accounts that previously had debt > 0, so admin-deactivated
         // (debt = 0, is_active = false) accounts awaiting confirmation stay untouched.
         $reset = 0;
-        $allAccounts = $accountRepository->findAll();
         $uploadedAccountNumbers = array_map('strval', array_keys($debtData));
 
         foreach ($allAccounts as $account) {
